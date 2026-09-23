@@ -309,7 +309,7 @@ function FigureLink({
   loading: boolean;
 }) {
   return (
-    <Link to={to} className="group flex flex-col gap-1">
+    <Link to={to} data-surface="readout" className="group flex flex-col gap-1">
       <span className="text-muted-foreground text-xs transition-colors group-hover:text-signal">
         {label}
       </span>

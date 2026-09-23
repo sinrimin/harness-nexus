@@ -31,6 +31,8 @@ export interface SkinManifest {
   load: () => Promise<unknown>;
 }
 
+import { baySkin } from './bay/index.js';
+
 export const SKINS: SkinManifest[] = [
   {
     id: 'signal',
@@ -40,6 +42,7 @@ export const SKINS: SkinManifest[] = [
     topology: 'constellation',
     load: async () => {},
   },
+  baySkin,
 ];
 
 export const DEFAULT_SKIN: SkinId = 'signal';

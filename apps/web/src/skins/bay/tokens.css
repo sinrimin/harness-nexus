@@ -1,0 +1,77 @@
+/*
+ * BAY tokens — the instrument-rack palette mapped onto the frozen contract.
+ * Light-only (html.dark[data-skin='bay'] intentionally absent; the manifest
+ * locks the mode). Values come from the BAY comp (docs/dev/theme-designs).
+ */
+
+:root[data-skin='bay'] {
+  color-scheme: light;
+
+  /* chassis */
+  --background: #d5dae1;
+  --foreground: #141a21;
+  --card: #f2f4f7;
+  --card-foreground: #141a21;
+  --popover: #f2f4f7;
+  --popover-foreground: #141a21;
+
+  --primary: #141a21;
+  --primary-foreground: #f2f4f7;
+
+  --secondary: #e3e7ec;
+  --secondary-foreground: #2a3441;
+  --muted: #e3e7ec;
+  --muted-foreground: #5a6675;
+  --accent: #e9edf2;
+  --accent-foreground: #141a21;
+
+  --destructive: #d2311f;
+  --destructive-foreground: #ffffff;
+
+  --border: #aab3bf;
+  --input: #aab3bf;
+  /* focus + the accent: safety orange, spent on one energised thing/screen */
+  --ring: #ef5b13;
+  --signal: #ef5b13;
+  --signal-foreground: #ffffff;
+
+  /* LEDs (connection state only — the rule survives the skin) */
+  --ok: #1a9c53;
+  --warn: #d98324;
+  --danger: #d2311f;
+
+  --scrim: #141a21;
+
+  /* the LCD well */
+  --surface-inverted: #0d1117;
+  --surface-inverted-ink: #c8d4e0;
+  --surface-inverted-dim: #7b8899;
+
+  /* hard panels: cards 4px, wells 2px via local overrides in skin.css */
+  --radius: 0.25rem;
+
+  /* brand: steel blue deepened to sit in aluminium (shape stays frozen) */
+  --brand-bright: #4a7bd0;
+  --brand-mid: #2e5a9e;
+  --brand-deep: #1a335c;
+
+  --sidebar: #cdd3db;
+  --sidebar-foreground: #141a21;
+  --sidebar-primary: #141a21;
+  --sidebar-primary-foreground: #f2f4f7;
+  --sidebar-accent: #e9edf2;
+  --sidebar-accent-foreground: #141a21;
+  --sidebar-border: #aab3bf;
+  --sidebar-ring: #ef5b13;
+
+  /* the rack's type: Archivo body/headers, Narrow caps for labels, JBM data */
+  --app-font-sans:
+    'Archivo Variable', 'Archivo', ui-sans-serif, system-ui, -apple-system, 'Segoe UI',
+    'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'Noto Sans CJK SC', sans-serif;
+  --app-font-mono:
+    'JetBrains Mono', ui-monospace, 'SF Mono', 'Cascadia Code', Menlo, 'PingFang SC',
+    'Microsoft YaHei', 'Noto Sans CJK SC', monospace;
+  --app-font-display:
+    'Archivo Narrow', 'Archivo', ui-sans-serif, system-ui, 'PingFang SC', 'Microsoft YaHei',
+    'Noto Sans CJK SC', sans-serif;
+}

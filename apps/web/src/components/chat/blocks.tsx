@@ -98,7 +98,7 @@ export const ReadBlock = memo(function ReadBlock({
       </div>
     ));
   return (
-    <div className="bg-muted/50 overflow-hidden rounded-md border">
+    <div data-surface="well" className="bg-muted/50 overflow-hidden rounded-md border">
       <div className="text-muted-foreground flex items-center justify-between gap-2 border-b px-3 py-1">
         <span className="truncate font-mono text-[11px]" title={label}>
           {label}
@@ -197,7 +197,7 @@ export const DiffBlock = memo(function DiffBlock({ diffs }: { diffs: DiffHunk[] 
       </div>
     ));
   return (
-    <div className="bg-muted/50 overflow-hidden rounded-md border">
+    <div data-surface="well" className="bg-muted/50 overflow-hidden rounded-md border">
       <div className="relative">
         <div className="text-muted-foreground absolute top-1.5 right-2 z-10">
           <CopyButton
@@ -256,7 +256,7 @@ export const TerminalBlock = memo(function TerminalBlock({
   const dot = running ? 'bg-warn animate-pulse' : failed ? 'bg-danger' : 'bg-ok';
   const empty = !running && lines.length === 0;
   return (
-    <div className="bg-muted/50 overflow-hidden rounded-md border">
+    <div data-surface="well" className="bg-muted/50 overflow-hidden rounded-md border">
       <div className="flex items-start gap-2 border-b px-3 py-1.5">
         <span className={cn('mt-1.5 size-1.5 shrink-0 rounded-full', dot)} aria-hidden />
         <div className="min-w-0 flex-1 font-mono text-xs break-all">
@@ -392,7 +392,7 @@ export const SearchBlock = memo(function SearchBlock({
       );
     });
   return (
-    <div className="bg-muted/50 overflow-hidden rounded-md border">
+    <div data-surface="well" className="bg-muted/50 overflow-hidden rounded-md border">
       <div className="text-muted-foreground flex items-center justify-between border-b px-3 py-1 font-mono text-[10px]">
         <span>{summary}</span>
         <CopyButton

@@ -111,7 +111,10 @@ export function MeshTopology({
   const machineY = spread(shownMachines.length);
 
   return (
-    <div className="border-border bg-card overflow-hidden rounded-xl border">
+    <div
+      data-surface="mesh"
+      className="border-border bg-card overflow-hidden rounded-xl border"
+    >
       <div className="border-border flex items-center justify-between gap-4 border-b px-4 py-2.5">
         <div className="flex items-center gap-2">
           <span className="text-foreground text-sm font-medium">{t('dashboard.yourMesh')}</span>

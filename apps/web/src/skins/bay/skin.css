@@ -1,0 +1,197 @@
+/*
+ * BAY skin — signature surfaces, scoped under [data-skin='bay'] only.
+ * Panels are bolted on (hard offset shadows, no blur); protocol data sits in
+ * inverted LCD wells; status is an LED; the sidebar grows a numbered bay
+ * spine. Wells work by RE-SCOPING the contract variables locally (--border,
+ * --muted-foreground… inside the well), so the utility classes inside them
+ * re-render correctly without a single selector fight.
+ */
+
+/* ---------- Panels: bezel-mount ---------- */
+
+[data-skin='bay'] [data-surface='panel'],
+[data-skin='bay'] [data-surface='mesh'] {
+  border-color: var(--border);
+  border-radius: 6px;
+  box-shadow: 2px 2px 0 #c3cad4; /* the bezel bolts the panel onto the chassis */
+  gap: 1rem;
+}
+
+/* Bezel header strip: the engraved label plate across the panel's top. */
+[data-skin='bay'] [data-surface='panel'] > [data-slot='card-header'] {
+  margin: -1.5rem -1.5rem 0; /* counteract the card's py-6/px-6 to go full-bleed */
+  padding: 0.5rem 1.25rem;
+  border-bottom: 1px solid var(--border);
+  background: #e9edf2;
+}
+
+/* Card titles become engraved panel labels: narrow caps, tracked. */
+[data-skin='bay'] [data-slot='card-title'] {
+  font-family: var(--app-font-display);
+  font-size: 0.8rem;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+
+/* Page titles take the display role without the caps treatment. */
+[data-skin='bay'] h1 {
+  font-family: var(--app-font-display);
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+/* ---------- LCD wells ---------- */
+
+[data-skin='bay'] [data-surface='well'],
+[data-skin='bay'] [data-surface='readout'] {
+  background: var(--surface-inverted);
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.07),
+    inset 0 2px 6px rgba(0, 0, 0, 0.5);
+  color: var(--surface-inverted-ink);
+  /* local re-scope: every utility inside the well reads dark-world values */
+  --foreground: var(--surface-inverted-ink);
+  --muted-foreground: var(--surface-inverted-dim);
+  --border: #2a3340;
+  --muted: #161c26;
+  --background: var(--surface-inverted);
+  --card: var(--surface-inverted);
+}
+
+/* Posture readouts (dashboard figures) get well padding; links keep routing. */
+[data-skin='bay'] [data-surface='readout'] {
+  display: block;
+  padding: 0.75rem 1rem;
+}
+
+/* ---------- LEDs ---------- */
+
+/* Every dot gains a dark instrument ring. */
+[data-skin='bay'] .signal-dot {
+  box-shadow: 0 0 0 1px rgba(20, 26, 33, 0.35);
+}
+
+/* Live states glow — a lit LED, low and physical, never neon. */
+[data-skin='bay'] .signal-dot[data-state='online'],
+[data-skin='bay'] .signal-dot[data-state='connected'],
+[data-skin='bay'] .signal-dot[data-state='succeeded'],
+[data-skin='bay'] .signal-dot[data-state='completed'],
+[data-skin='bay'] .signal-dot[data-state='busy'] {
+  box-shadow:
+    0 0 6px rgba(26, 156, 83, 0.35),
+    0 0 0 1px rgba(20, 26, 33, 0.35);
+}
+
+[data-skin='bay'] .signal-dot[data-state='running'],
+[data-skin='bay'] .signal-dot[data-state='connecting'],
+[data-skin='bay'] .signal-dot[data-state='warn'],
+[data-skin='bay'] .signal-dot[data-state='error'] {
+  box-shadow:
+    0 0 6px rgba(217, 131, 36, 0.35),
+    0 0 0 1px rgba(20, 26, 33, 0.35);
+}
+
+[data-skin='bay'] .signal-dot[data-state='failed'] {
+  box-shadow:
+    0 0 6px rgba(210, 49, 31, 0.35),
+    0 0 0 1px rgba(20, 26, 33, 0.35);
+}
+
+/* The energised channel: orange carries the current. */
+[data-skin='bay'] .signal-dot[data-state='live'] {
+  box-shadow:
+    0 0 7px rgba(239, 91, 19, 0.45),
+    0 0 0 1px rgba(20, 26, 33, 0.35);
+}
+
+/* ---------- Sidebar: the bay spine ---------- */
+
+/* Reserve a 56px gutter for the numbered bays, split by a hairline. */
+[data-skin='bay'] [data-region='sidebar'] {
+  position: relative;
+  padding-left: 56px;
+}
+
+[data-skin='bay'] [data-region='sidebar']::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 56px;
+  width: 1px;
+  background: var(--sidebar-border);
+}
+
+/* Each nav anchor's group number + label, dropped into the gutter. Groups
+ * with consecutive members hide the plate on all but the first (the group
+ * order in navItems is contiguous, which the sibling selectors rely on). */
+[data-skin='bay'] [data-region='nav'] a[data-nav-group] {
+  position: relative;
+}
+
+[data-skin='bay'] [data-region='nav'] a[data-nav-group]::before {
+  position: absolute;
+  left: -44px;
+  width: 36px;
+  text-align: left;
+  font-family: var(--app-font-display);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  line-height: 1.25;
+  color: var(--muted-foreground);
+  white-space: pre-line; /* the \A in content stacks number over label */
+  pointer-events: none;
+}
+
+[data-skin='bay'] a[data-nav-group='nav']::before {
+  content: '01\A NAV';
+}
+[data-skin='bay'] a[data-nav-group='fleet']::before {
+  content: '02\A FLEET';
+}
+[data-skin='bay'] a[data-nav-group='mesh']::before {
+  content: '03\A MESH';
+}
+[data-skin='bay'] a[data-nav-group='asset']::before {
+  content: '04\A ASSET';
+}
+[data-skin='bay'] a[data-nav-group='tokens']::before {
+  content: '05\A TOKENS';
+}
+[data-skin='bay'] a[data-nav-group='admin']::before {
+  content: '06\A ADMIN';
+}
+
+/* Hide the plate on 2nd..nth consecutive member of the same group. */
+[data-skin='bay'] a[data-nav-group='fleet'] ~ a[data-nav-group='fleet']::before,
+[data-skin='bay'] a[data-nav-group='asset'] ~ a[data-nav-group='asset']::before,
+[data-skin='bay'] a[data-nav-group='admin'] ~ a[data-nav-group='admin']::before {
+  display: none;
+}
+
+/* The active bay carries the live edge. */
+[data-skin='bay'] [data-region='nav'] a[data-nav-group][aria-current='page'] {
+  box-shadow: inset 3px 0 0 var(--signal);
+}
+
+/* ---------- Mesh panel: the graticule ---------- */
+
+/* A faint 8px measurement grid behind the constellation drawing. */
+[data-skin='bay'] [data-surface='mesh'] {
+  background-image:
+    linear-gradient(to right, rgba(20, 26, 33, 0.06) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(20, 26, 33, 0.06) 1px, transparent 1px);
+  background-size: 8px 8px;
+}
+
+/* Reduced motion: LEDs stop breathing (the pulse utility animates opacity;
+ * freeze it inside BAY so a static panel stays static). */
+@media (prefers-reduced-motion: reduce) {
+  [data-skin='bay'] .signal-dot {
+    animation: none;
+  }
+}
