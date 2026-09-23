@@ -31,6 +31,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import { StateSignal } from '@/components/state-signal';
 import {
   Dialog,
   DialogContent,
@@ -379,10 +380,7 @@ function TrustBadge({ tier }: { tier: TrustTier }) {
   }
   return (
     <Badge variant="secondary" className="gap-1 text-[10px]">
-      <span
-        className="inline-block size-1.5 rounded-full bg-muted-foreground/60"
-        aria-hidden="true"
-      />
+      <StateSignal state="neutral" aria-hidden className="size-1.5" />
       {t('skillHub.community')}
     </Badge>
   );

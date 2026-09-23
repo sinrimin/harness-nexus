@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useI18n } from '@/i18n';
+import { StateSignal } from '@/components/state-signal';
 import type { ToolCallNode } from './fold.js';
 import {
   bashCommandParts,
@@ -49,7 +50,7 @@ class CardErrorBoundary extends Component<{ children: ReactNode }, { failed: boo
     if (this.state.failed) {
       return (
         <div className="text-destructive flex items-center gap-2 py-1 text-xs">
-          <span className="size-1.5 rounded-full bg-danger" aria-hidden />
+          <StateSignal state="failed" aria-hidden className="size-1.5" />
           tool card failed to render
         </div>
       );
@@ -350,14 +351,11 @@ function ToolCardShell({
 
   const statusMark =
     node.status === 'failed' ? (
-      <span className="bg-danger inline-block size-1.5 shrink-0 rounded-full" aria-label="failed" />
+      <StateSignal state="failed" label="failed" className="size-1.5" />
     ) : node.status === 'running' ? (
-      <span
-        className="bg-warn inline-block size-1.5 shrink-0 animate-pulse rounded-full"
-        aria-label="running"
-      />
+      <StateSignal state="running" label="running" pulse className="size-1.5" />
     ) : (
-      <span className="bg-ok inline-block size-1.5 shrink-0 rounded-full" aria-label="completed" />
+      <StateSignal state="completed" label="completed" className="size-1.5" />
     );
 
   return (

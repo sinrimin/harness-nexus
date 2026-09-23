@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom';
 import { ServerIcon, PlusIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { StateSignal, SIGNAL_FILL_CLASS, type SignalState } from '@/components/state-signal';
 import { useI18n } from '@/i18n';
 
 /**
@@ -173,7 +174,7 @@ export function MeshTopology({
                 y={y + 1}
                 className="fill-foreground"
                 fontSize="13"
-                fontFamily="var(--font-mono)"
+                fontFamily="var(--app-font-mono)"
                 dominantBaseline="middle"
               >
                 {truncate(s.name, 20)}
@@ -188,7 +189,7 @@ export function MeshTopology({
             y={H - 14}
             className="fill-muted-foreground"
             fontSize="12"
-            fontFamily="var(--font-mono)"
+            fontFamily="var(--app-font-mono)"
           >
             {t('dashboard.moreCount', { count: overflowUp })}
           </text>
@@ -224,14 +225,14 @@ export function MeshTopology({
                 cx={MACHINE_X}
                 cy={y}
                 r={5}
-                className={m.online ? 'fill-ok' : 'fill-muted-foreground/70'}
+                className={SIGNAL_FILL_CLASS[m.online ? 'online' : 'offline']}
               />
               <text
                 x={MACHINE_X - 16}
                 y={y - 4}
                 className="fill-foreground"
                 fontSize="13"
-                fontFamily="var(--font-mono)"
+                fontFamily="var(--app-font-mono)"
                 textAnchor="end"
                 dominantBaseline="middle"
               >
@@ -242,7 +243,7 @@ export function MeshTopology({
                 y={y + 13}
                 className="fill-muted-foreground"
                 fontSize="11"
-                fontFamily="var(--font-mono)"
+                fontFamily="var(--app-font-mono)"
                 textAnchor="end"
                 dominantBaseline="middle"
               >
@@ -260,7 +261,7 @@ export function MeshTopology({
             y={H - 14}
             className="fill-muted-foreground"
             fontSize="12"
-            fontFamily="var(--font-mono)"
+            fontFamily="var(--app-font-mono)"
             textAnchor="end"
           >
             {t('dashboard.moreMachines', { count: overflowMachines })}
@@ -285,27 +286,25 @@ export function MeshTopology({
 }
 
 /**
- * Status dot for the legend. `configured`/`pending` are muted; `online` carries
- * the live `--ok` accent; `warn` signals a connection error.
+ * Status dot for the legend — a thin wrapper over the shared StateSignal so
+ * the topology's states stay skin-addressable like every other dot.
+ * `configured`/`pending` are muted; `online` carries the live `--ok` accent;
+ * `warn` signals a connection error.
  */
+const DOT_VARIANT_STATE: Record<'configured' | 'pending' | 'online' | 'warn', SignalState> = {
+  configured: 'configured',
+  pending: 'inactive',
+  online: 'online',
+  warn: 'warn',
+};
+
 function Dot({ variant }: { variant: 'configured' | 'pending' | 'online' | 'warn' }) {
-  const cls = {
-    configured: 'bg-muted-foreground/70',
-    pending: 'bg-muted-foreground/30',
-    online: 'bg-ok',
-    warn: 'bg-warn',
-  }[variant];
-  return <span className={`inline-block size-2 rounded-full ${cls}`} aria-hidden="true" />;
+  return <StateSignal state={DOT_VARIANT_STATE[variant]} aria-hidden />;
 }
 
 /** SVG fill class for an upstream node circle, matching the Dot semantics. */
 function nodeFill(variant: 'configured' | 'pending' | 'online' | 'warn'): string {
-  return {
-    configured: 'fill-muted-foreground/70',
-    pending: 'fill-muted-foreground/40',
-    online: 'fill-ok',
-    warn: 'fill-warn',
-  }[variant];
+  return SIGNAL_FILL_CLASS[DOT_VARIANT_STATE[variant]];
 }
 
 function truncate(s: string, n: number): string {

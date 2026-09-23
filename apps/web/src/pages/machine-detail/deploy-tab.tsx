@@ -13,6 +13,7 @@ import {
   type Profile,
 } from '@harness-nexus/sdk';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { StateSignal } from '@/components/state-signal';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Label } from '@/components/ui/label';
@@ -66,12 +67,12 @@ export function DeployTab({
   );
 }
 
-/** Status → Signal-system color encoding (state colors only; --signal unused). */
-const JOB_STATUS_CLASS: Record<string, string> = {
-  succeeded: 'bg-ok',
-  failed: 'bg-danger',
-  running: 'bg-warn',
-  cancelled: 'bg-muted-foreground/40',
+/** Job wire status → signal state (state colors only; --signal unused). */
+const JOB_STATUS_SIGNAL: Record<string, 'succeeded' | 'failed' | 'running' | 'cancelled'> = {
+  succeeded: 'succeeded',
+  failed: 'failed',
+  running: 'running',
+  cancelled: 'cancelled',
 };
 
 /**
@@ -96,9 +97,7 @@ function jobDetailText(job: JobView, t: ReturnType<typeof useI18n>['t']): string
 function JobStatusBadge({ status }: { status: string }) {
   return (
     <span className="inline-flex items-center gap-2">
-      <span
-        className={`size-2 rounded-full ${JOB_STATUS_CLASS[status] ?? 'bg-muted-foreground/40'}`}
-      />
+      <StateSignal state={JOB_STATUS_SIGNAL[status] ?? 'inactive'} />
       <span className="font-mono text-xs tabular-nums">{status}</span>
     </span>
   );

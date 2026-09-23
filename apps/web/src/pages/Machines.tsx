@@ -44,6 +44,7 @@ import {
 } from '@/components/ui/dialog';
 import { FormDialog } from '@/components/ui/form-dialog';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { StateSignal } from '@/components/state-signal';
 import { HarnessNexusError, type MachineView } from '@harness-nexus/sdk';
 
 /**
@@ -172,7 +173,7 @@ function OnlineDot({ online }: { online: boolean }) {
   const { t } = useI18n();
   return (
     <span className="inline-flex items-center gap-2">
-      <span className={`size-2 rounded-full ${online ? 'bg-ok' : 'bg-muted-foreground/40'}`} />
+      <StateSignal state={online ? 'online' : 'inactive'} />
       <span className="tabular-nums">{online ? t('machines.online') : t('machines.offline')}</span>
     </span>
   );

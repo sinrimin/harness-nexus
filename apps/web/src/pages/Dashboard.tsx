@@ -28,6 +28,7 @@ import {
   type Resource,
 } from '@harness-nexus/sdk';
 import { AppShell } from '@/components/app-shell';
+import { StateSignal } from '@/components/state-signal';
 import { MeshTopology, type FleetNode } from '@/components/mesh-topology';
 import { Button } from '@/components/ui/button';
 
@@ -330,9 +331,9 @@ function FleetRow({ machine, agents }: { machine: MachineView; agents: AgentInst
   const overflow = agents.length - shown.length;
   return (
     <div className="hover:bg-muted/40 flex items-center gap-3 px-4 py-2.5 transition-colors">
-      <span
-        className={`inline-block size-2 shrink-0 rounded-full ${machine.online ? 'bg-ok' : 'bg-muted-foreground/70'}`}
-        aria-label={machine.online ? t('dashboard.legendOnline') : t('dashboard.legendOffline')}
+      <StateSignal
+        state={machine.online ? 'online' : 'offline'}
+        label={machine.online ? t('dashboard.legendOnline') : t('dashboard.legendOffline')}
       />
       <Link
         to={`/machines/${machine.id}`}
