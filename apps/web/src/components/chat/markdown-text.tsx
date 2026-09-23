@@ -32,7 +32,7 @@ function PreBlock({ children }: { children?: ReactNode }) {
   const language = /language-([\w-]+)/.exec(className)?.[1] ?? '';
   const code = nodeText(children);
   return (
-    <div className="bg-muted group/code my-2 overflow-hidden rounded-md border">
+    <div data-surface="well" className="bg-muted group/code my-2 overflow-hidden rounded-md border">
       <div className="flex items-center justify-between border-b px-3 py-1">
         <span className="text-muted-foreground font-mono text-[10px] uppercase">
           {language === '' ? 'code' : language}

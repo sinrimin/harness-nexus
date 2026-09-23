@@ -85,6 +85,26 @@
   --sidebar-accent-foreground: oklch(0.3 0.05 230);
   --sidebar-border: oklch(0.9 0.006 250);
   --sidebar-ring: oklch(0.55 0.11 230);
+
+  /* ---- Skin-system contract additions (wiki: design-skin-system.md) ----
+   * scrim: dialog/drawer overlay base (alpha applied at the use site).
+   * surface-inverted*: the "well" — a surface darker than the page that a
+   *   skin may cut into it for terminal/code/diff readouts. Unused by Signal
+   *   itself; frozen into the contract so skins can rely on the roles.
+   * app-font-*: the runtime font hooks skins override — the @theme layer
+   *   references them, so font-sans / font-mono / font-display follow.
+   */
+  --scrim: oklch(0 0 0);
+  --surface-inverted: oklch(0.18 0.015 260);
+  --surface-inverted-ink: oklch(0.96 0.005 250);
+  --surface-inverted-dim: oklch(0.65 0.012 260);
+  --app-font-sans:
+    'IBM Plex Sans Variable', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', 'PingFang SC',
+    'Hiragino Sans GB', 'Microsoft YaHei', 'Noto Sans CJK SC', sans-serif;
+  --app-font-mono:
+    'IBM Plex Mono', ui-monospace, 'SF Mono', 'Cascadia Code', Menlo, 'PingFang SC',
+    'Microsoft YaHei', 'Noto Sans CJK SC', monospace;
+  --app-font-display: var(--app-font-sans);
 }
 
 .dark {
@@ -137,6 +157,10 @@
   --sidebar-accent-foreground: oklch(0.92 0.04 230);
   --sidebar-border: oklch(1 0 0 / 10%);
   --sidebar-ring: oklch(0.7 0.12 230);
+
+  --surface-inverted: oklch(0.15 0.015 260);
+  --surface-inverted-ink: oklch(0.9 0.005 250);
+  --surface-inverted-dim: oklch(0.6 0.012 260);
 }
 
 /* Map CSS variables into Tailwind's theme so utilities like bg-background,
@@ -145,13 +169,11 @@
 @theme inline {
   /* IBM Plex has no CJK glyphs — the zh locale falls through to the platform's
    * system CJK faces (PingFang / Microsoft YaHei / Noto), keeping everything
-   * local (no webfont downloads). */
-  --font-sans:
-    'IBM Plex Sans Variable', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', 'PingFang SC',
-    'Hiragino Sans GB', 'Microsoft YaHei', 'Noto Sans CJK SC', sans-serif;
-  --font-mono:
-    'IBM Plex Mono', ui-monospace, 'SF Mono', 'Cascadia Code', Menlo, 'PingFang SC',
-    'Microsoft YaHei', 'Noto Sans CJK SC', monospace;
+   * local (no webfont downloads). The stacks live on --app-font-* (:root) so
+   * skins can swap families at runtime (design-skin-system.md). */
+  --font-sans: var(--app-font-sans);
+  --font-mono: var(--app-font-mono);
+  --font-display: var(--app-font-display);
 
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -175,6 +197,10 @@
 
   --color-signal: var(--signal);
   --color-signal-foreground: var(--signal-foreground);
+  --color-scrim: var(--scrim);
+  --color-surface-inverted: var(--surface-inverted);
+  --color-surface-inverted-ink: var(--surface-inverted-ink);
+  --color-surface-inverted-dim: var(--surface-inverted-dim);
   --color-brand-bright: var(--brand-bright);
   --color-brand-mid: var(--brand-mid);
   --color-brand-deep: var(--brand-deep);
@@ -207,7 +233,7 @@
   }
   body {
     @apply bg-background text-foreground;
-    font-family: var(--font-sans);
+    font-family: var(--app-font-sans);
     font-feature-settings: 'cv01', 'cv03', 'ss01';
     -webkit-font-smoothing: antialiased;
     text-rendering: optimizeLegibility;
@@ -221,7 +247,7 @@
   /* Tabular figures anywhere data lives (dates, counts, previews). */
   .nums {
     font-variant-numeric: tabular-nums;
-    font-family: var(--font-mono);
+    font-family: var(--app-font-mono);
   }
   /* Skip link target: clear the sticky header when focused. */
   :target {

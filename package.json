@@ -17,6 +17,8 @@
     "dev:web": "pnpm --filter @harness-nexus/web run dev",
     "start:server": "pnpm --filter @harness-nexus/server run start",
     "smoke": "node scripts/smoke.mjs",
+    "ui-snap": "node scripts/ui-snap.mjs",
+    "ui-snap:update": "node scripts/ui-snap.mjs --update",
     "test": "pnpm -r run test",
     "lint": "pnpm -r run lint",
     "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md,yml,yaml}\"",
@@ -25,7 +27,10 @@
     "clean": "pnpm -r exec rimraf dist node_modules .turbo"
   },
   "devDependencies": {
+    "pixelmatch": "^7.2.0",
+    "pngjs": "^7.0.0",
     "prettier": "^3.3.3",
+    "puppeteer-core": "^25.11.0",
     "rimraf": "^6.0.1",
     "socket.io-client": "^4.8.3",
     "typescript": "^5.6.3"

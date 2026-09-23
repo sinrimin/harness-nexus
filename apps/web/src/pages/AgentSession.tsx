@@ -16,6 +16,7 @@ import { api } from '@/api';
 import { useAuth, withAuthGuard } from '@/auth';
 import { useI18n, dateLocale } from '@/i18n';
 import { AppShell } from '@/components/app-shell';
+import { StateSignal } from '@/components/state-signal';
 import {
   appSocket,
   emitWithAck,
@@ -962,15 +963,15 @@ export function AgentSessionPage() {
                                     {/* The status gutter: green running, blue
                                       opened, empty otherwise (#12/#13). */}
                                     <span className="flex w-2 shrink-0 justify-center">
-                                      <span
-                                        className={cn(
-                                          'inline-block size-1.5 shrink-0 rounded-full',
+                                      <StateSignal
+                                        state={
                                           running
-                                            ? 'bg-ok'
+                                            ? 'busy'
                                             : attached !== undefined
-                                              ? 'bg-signal'
-                                              : 'bg-transparent',
-                                        )}
+                                              ? 'live'
+                                              : 'idle'
+                                        }
+                                        className="size-1.5"
                                       />
                                     </span>
                                     <span className="min-w-0 flex-1 truncate">
@@ -1011,7 +1012,7 @@ export function AgentSessionPage() {
               ) : null}
               {phase === 'ready' && conversation.turnActive ? (
                 <span className="text-signal flex items-center gap-1.5 text-xs">
-                  <span className="bg-signal inline-block size-1.5 animate-pulse rounded-full" />
+                  <StateSignal state="live" pulse className="size-1.5 shrink-0" />
                   {t('chat.working')}
                 </span>
               ) : null}

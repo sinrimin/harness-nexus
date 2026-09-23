@@ -8,6 +8,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu.js';
 import { useI18n } from '@/i18n';
+import { StateSignal } from '@/components/state-signal';
 import { cn } from '@/lib/utils.js';
 import type { ChatChannelView } from '@/realtime.js';
 
@@ -115,7 +116,7 @@ export function ChannelTabs({
                   // #12 — running = a static green dot (ZCode-style); the
                   // accent-colored pulse stays on the page header, the tab
                   // keeps it quiet.
-                  <span className="bg-ok inline-block size-1.5 shrink-0 rounded-full" aria-hidden />
+                  <StateSignal state="busy" aria-hidden className="size-1.5" />
                 ) : null}
                 {ch.deferred ? (
                   <span className="text-muted-foreground shrink-0 text-[10px]">

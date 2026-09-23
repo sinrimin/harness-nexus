@@ -247,6 +247,14 @@ mesh-topology.tsx`) renders upstreams as "configured" (muted), **never** a
   never inside another component. Prefer functional `setState`. Render
   conditionals with ternaries, not `&&`. Hoist static objects/JSX out of
   components.
+- **Skins (#23, second theme axis).** Signal is the baseline; other skins live
+  under `src/skins/<id>/` (tokens.css + skin.css + manifest, selector prefixes
+  `:root[data-skin='<id>']` and `[data-skin='<id>']` only). Components must use
+  contract token names and `StateSignal` for status dots (truth in
+  `data-state`), fonts go through the `--app-font-*` hooks, and layout hooks
+  are `data-region` / `data-nav-group` / `data-surface` annotations — skins
+  restyle, never restructure. Run `scripts/ui-snap.mjs` before merging
+  skin-visible changes. Full contract: `design-skin-system.md` (wiki).
 
 ## Web UI i18n (en / zh-CN)
 
@@ -359,6 +367,7 @@ covers layering; `docs/adr/` the stack decisions.
 | Adapter pre-warm pool (#3–#4)          | `design-adapter-prewarm.md`                         | Machine-scoped `chatPrewarm` map, strict 4-key replace (legacy 3-key → 400; web normalizes); pool holds ONE initialized adapter per target; TTL 120s; opencode default OFF                                                                                                                                            |
 | claude-code marketplace deploy (#6)    | `design-cc-marketplace-deploy.md`                   | claude-code deploys ride the emitter: daemon drives CC's plugin CLI headless (`-y`), state read from CC's JSON files; emitter accepts machine-ctl PATs; web Edit dialog = name/desc + entry re-pick (version auto-numbered since #18: bumps on entry changes only — the bump is the publish switch); no AgentInstance |
 | Live sender (#10)                      | `design-live-sender.md`                             | Queue is SERVER-owned (depth-1 slot on the live session, `queue_state` event, flush on busy→idle, turn-cancel drops); config selects stay writable mid-turn (next-turn effect); #11: `user_message` echo broadcasts the prompt to every viewer + busy sessions re-assert status after history replay                  |
+| Skin system (#23)                      | `design-skin-system.md`                             | Two axes: next-themes mode + `data-skin` (pre-paint, `hnx.skin`); skins = tokens + scoped css + manifest under `src/skins/` (Signal is the zero-package baseline, BAY shipped); status truth is `data-state` via `StateSignal`, styling never alters it; fonts only through `--app-font-*` hooks                           |
 
 ## Authentication & authorization (permission interceptors)
 

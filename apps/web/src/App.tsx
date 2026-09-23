@@ -3,6 +3,7 @@ import { AuthProvider } from '@/auth';
 import { RequireAuth, RequireAdmin } from '@/guards';
 import { I18nProvider } from '@/i18n';
 import { ThemeProvider } from '@/components/theme-provider';
+import { SkinProvider } from '@/components/skin-provider';
 import { Toaster } from '@/components/ui/sonner';
 import { LoginPage } from '@/pages/Login';
 import { RegisterPage } from '@/pages/Register';
@@ -25,7 +26,8 @@ export function App() {
   return (
     <I18nProvider>
       <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
-        <AuthProvider>
+        <SkinProvider>
+          <AuthProvider>
           <BrowserRouter>
             <Routes>
               <Route path="/login" element={<LoginPage />} />
@@ -144,7 +146,8 @@ export function App() {
             </Routes>
           </BrowserRouter>
           <Toaster richColors closeButton />
-        </AuthProvider>
+          </AuthProvider>
+        </SkinProvider>
       </ThemeProvider>
     </I18nProvider>
   );
