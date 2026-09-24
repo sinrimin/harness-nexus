@@ -13,10 +13,27 @@ import {
 import { api } from '@/api';
 import { useAuth, withAuthGuard } from '@/auth';
 import { useI18n, dateLocale, type TranslationKey } from '@/i18n';
-import { PageIntro, Well } from '@/components/kit';
+import {
+  ConfirmDialog,
+  DataTable,
+  FilterBar,
+  FilterSelect,
+  PageIntro,
+  Readout,
+  SortSelect,
+  TableSearch,
+  Well,
+  tableState,
+} from '@/components/kit';
+import {
+  effectiveSort,
+  matchesQuery,
+  sortRows,
+  useListQuery,
+  type ListQuerySpec,
+} from '@/lib/list-query';
 import { PageSlot } from '@/components/shell/page-slots';
 import type { ResourcePageKind } from '@/nav';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
@@ -101,33 +118,53 @@ const KINDS: {
 
 const TARGETS: AgentTarget[] = ['claude-code', 'zcode', 'hermes', 'pi', 'generic'];
 
+/**
+ * The list's vocabulary (07-p3-list-pages.md §5). No `kind` filter: every route
+ * that renders this page fixes one (`/skills`, `/sub-agents`, …), so the kind is
+ * a route fact — the nav is where a kind is chosen. Module scope: it is a
+ * constant, and `useListQuery` holds onto it.
+ */
+const RESOURCE_SPEC: ListQuerySpec = {
+  filters: { scope: ['personal', 'global'] },
+  sort: ['-updated', 'name'],
+};
+
 /** The kind's label key for the page intro; the all-kinds case never renders it. */
-function kindLabelKey(kind: ResourcePageKind | undefined): TranslationKey {
+function kindLabelKey(kind: ResourcePageKind): TranslationKey {
   return KINDS.find((k) => k.value === kind)?.labelKey ?? 'resources.title';
 }
 
 /**
- * One kind per page (#23 P2, README §5.3). A kind page fixes the filter and
- * hides the kind selector: the route is the address, so the kind is not a
- * per-visit decision any more. P4 gives each kind its own columns and editor;
- * until then every kind page is the same table with its kind nailed down.
+ * One kind per page (#23 P2, README §5.3). The route is the address, so the
+ * kind is not a per-visit decision: `/resources` itself redirects to `/skills`.
+ * P4 gives each kind its own columns and editor; until then every kind page is
+ * the same table with its kind nailed down.
+ *
+ * Filtering, search and sort live in the URL and are applied in memory over one
+ * fetch (07-p3-list-pages.md §3.7) — the pre-P3 version refetched the list on
+ * every filter change and pushed nothing into the URL, so a filtered view could
+ * not be shared, reloaded or gone back to.
  */
-export function ResourcesPage({ fixedKind }: { fixedKind?: ResourcePageKind }) {
+export function ResourcesPage({ fixedKind }: { fixedKind: ResourcePageKind }) {
   const { logout, user } = useAuth();
   const { t, lang } = useI18n();
   const isAdmin = user?.role === 'admin';
+  const spec = RESOURCE_SPEC;
+  const query = useListQuery(spec);
   const [items, setItems] = useState<Resource[] | null>(null);
-  const [kindFilter, setKindFilter] = useState<ResourceKind | 'all'>(fixedKind ?? 'all');
-  const [scopeFilter, setScopeFilter] = useState<Scope | 'all'>('all');
+  const [error, setError] = useState<unknown>(null);
   // The resource being edited, or 'new' to open the create dialog, or null.
   const [editing, setEditing] = useState<Resource | 'new' | null>(null);
+  // The resource pending deletion — the ConfirmDialog's subject.
+  const [pending, setPending] = useState<Resource | null>(null);
+  const [busy, setBusy] = useState(false);
 
   async function refresh() {
     try {
-      const all = await withAuthGuard(() => api.listResources(), logout);
-      setItems(all);
+      setItems(await withAuthGuard(() => api.listResources(), logout));
+      setError(null);
     } catch (e) {
-      toast.error(e instanceof HarnessNexusError ? e.message : t('resources.loadFailed'));
+      setError(e);
     }
   }
 
@@ -135,37 +172,42 @@ export function ResourcesPage({ fixedKind }: { fixedKind?: ResourcePageKind }) {
     void refresh();
   }, []);
 
-  // Re-fetch when a filter narrows the set server-side.
-  useEffect(() => {
-    void (async () => {
-      try {
-        const filter =
-          kindFilter === 'all' && scopeFilter === 'all'
-            ? undefined
-            : {
-                ...(kindFilter !== 'all' ? { kind: kindFilter } : {}),
-                ...(scopeFilter !== 'all' ? { scope: scopeFilter } : {}),
-              };
-        setItems(await withAuthGuard(() => api.listResources(filter), logout));
-      } catch {
-        /* refresh() already toasted */
-      }
-    })();
-  }, [kindFilter, scopeFilter, logout]);
+  const visible = useMemo(() => {
+    if (items === null) return null;
+    const rows = items.filter(
+      (r) =>
+        r.kind === fixedKind &&
+        matchesQuery(query.q, [r.name, r.key, r.description]) &&
+        (query.filters['scope'] === null || r.scope === query.filters['scope']),
+    );
+    return sortRows(rows, effectiveSort(spec, query), (r, key) =>
+      key === 'name' ? r.name : r.updatedAt,
+    );
+  }, [items, fixedKind, spec, query.q, query.filters, query.sort]);
 
-  const filtered = useMemo(() => {
-    if (!items) return null;
-    return items;
-  }, [items]);
+  // Label maps are built from `t` at render time (module scope holds keys only).
+  const scopeLabels = useMemo(
+    () => ({ personal: t('common.scopePersonal'), global: t('common.scopeGlobal') }),
+    [t],
+  );
+  const sortLabels = useMemo(
+    () => ({ '-updated': t('common.sortUpdated'), name: t('common.sortName') }),
+    [t],
+  );
 
-  async function remove(r: Resource) {
-    if (!confirm(t('resources.confirmDelete', { name: r.name, kind: r.kind }))) return;
+  async function confirmRemove() {
+    const r = pending;
+    if (r === null) return;
+    setBusy(true);
     try {
       const res = await withAuthGuard(() => api.deleteResource(r.id), logout);
       toast.success(res.mode === 'soft' ? t('resources.deletedSoft') : t('resources.deletedHard'));
+      setPending(null);
       await refresh();
     } catch (e) {
       toast.error(e instanceof HarnessNexusError ? e.message : t('common.deleteFailed'));
+    } finally {
+      setBusy(false);
     }
   }
 
@@ -192,142 +234,152 @@ export function ResourcesPage({ fixedKind }: { fixedKind?: ResourcePageKind }) {
         }
       />
 
-      <Card>
-        <CardHeader>
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <CardTitle className="flex items-center gap-2 text-base">
-                <BoxesIcon className="size-4" />
-                {t('resources.storedTitle')}
-              </CardTitle>
-              <CardDescription>{t('resources.storedDesc')}</CardDescription>
-            </div>
-            <div className="flex items-center gap-2">
-              {fixedKind === undefined ? (
-                <Select
-                  value={kindFilter}
-                  onValueChange={(v) => setKindFilter(v as ResourceKind | 'all')}
-                >
-                  <SelectTrigger id="filter-kind" className="w-[140px]">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">{t('resources.allKinds')}</SelectItem>
-                    {KINDS.map((k) => (
-                      <SelectItem key={k.value} value={k.value}>
-                        {t(k.labelKey)}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              ) : null}
-              <Select value={scopeFilter} onValueChange={(v) => setScopeFilter(v as Scope | 'all')}>
-                <SelectTrigger id="filter-scope" className="w-[130px]">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">{t('resources.allScopes')}</SelectItem>
-                  <SelectItem value="personal">{t('common.scopePersonal')}</SelectItem>
-                  <SelectItem value="global">{t('common.scopeGlobal')}</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-        </CardHeader>
-        <CardContent className="px-0">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="pl-6">{t('common.name')}</TableHead>
-                <TableHead>{t('resources.kind')}</TableHead>
-                <TableHead>{t('resources.key')}</TableHead>
-                <TableHead>{t('common.scope')}</TableHead>
-                <TableHead>{t('resources.updated')}</TableHead>
-                <TableHead className="pr-6 text-right">{t('common.actions')}</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filtered === null ? (
-                <TableRow>
-                  <TableCell colSpan={6} className="text-muted-foreground py-8 text-center">
-                    {t('common.loading')}
-                  </TableCell>
-                </TableRow>
-              ) : filtered.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={6} className="text-muted-foreground py-8 text-center">
-                    {t('resources.empty')}
-                  </TableCell>
-                </TableRow>
-              ) : (
-                filtered.map((r) => (
-                  <TableRow key={r.id}>
-                    <TableCell className="pl-6 font-medium">{r.name}</TableCell>
-                    <TableCell>
-                      <Badge variant="outline" className="font-mono text-[10px]">
-                        {r.kind}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="font-mono text-xs tabular-nums">{r.key}</TableCell>
-                    <TableCell>
-                      <Badge
-                        variant={r.scope === 'global' ? 'default' : 'secondary'}
-                        className="gap-1"
-                      >
-                        {r.scope === 'global' ? (
-                          <GlobeIcon className="size-3" />
-                        ) : (
-                          <UserIcon className="size-3" />
-                        )}
-                        {r.scope === 'global' ? t('common.scopeGlobal') : t('common.scopePersonal')}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-muted-foreground tabular-nums">
-                      {new Date(r.updatedAt).toLocaleDateString(dateLocale(lang), {
-                        year: 'numeric',
-                        month: 'short',
-                        day: 'numeric',
-                      })}
-                    </TableCell>
-                    <TableCell className="pr-6 text-right">
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="icon" className="size-8">
-                            <MoreHorizontalIcon className="size-4" />
-                            <span className="sr-only">{t('common.openMenu')}</span>
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem
-                            disabled={r.scope === 'global' && !isAdmin}
-                            onClick={() => setEditing(r)}
-                          >
-                            <PencilIcon /> {t('common.edit')}
-                          </DropdownMenuItem>
-                          <DropdownMenuItem
-                            variant="destructive"
-                            disabled={r.scope === 'global' && !isAdmin}
-                            onClick={() => remove(r)}
-                          >
-                            <TrashIcon /> {t('common.delete')}
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </TableCell>
-                  </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
+      <DataTable
+        columns={6}
+        label={t('resources.storedTitle')}
+        icon={<BoxesIcon />}
+        meta={
+          <Readout
+            layout="inline"
+            size="sm"
+            value={items?.length ?? 0}
+            label={t('resources.total')}
+            loading={items === null}
+          />
+        }
+        toolbar={
+          <FilterBar query={query} shown={visible?.length} total={items?.length}>
+            <TableSearch query={query} placeholder={t('resources.searchPlaceholder')} />
+            <FilterSelect
+              query={query}
+              spec={spec}
+              name="scope"
+              allLabel={t('common.allScopes')}
+              labels={scopeLabels}
+            />
+            <SortSelect
+              query={query}
+              spec={spec}
+              label={t('common.sortLabel')}
+              labels={sortLabels}
+            />
+          </FilterBar>
+        }
+        state={tableState({
+          error,
+          loading: items === null,
+          count: visible?.length ?? 0,
+          filtered: query.active,
+        })}
+        error={error}
+        onRetry={() => void refresh()}
+        onClearFilters={query.clear}
+        empty={{
+          title: t('resources.empty'),
+          hint: t('resources.emptyHint'),
+          action: (
+            <Button onClick={() => setEditing('new')} className="gap-1.5">
+              <PlusIcon className="size-4" />
+              {fixedKind === 'skill' ? t('resources.newSkill') : t('resources.newResource')}
+            </Button>
+          ),
+        }}
+      >
+        <TableHeader>
+          <TableRow>
+            <TableHead>{t('common.name')}</TableHead>
+            <TableHead>{t('resources.kind')}</TableHead>
+            <TableHead>{t('resources.key')}</TableHead>
+            <TableHead>{t('common.scope')}</TableHead>
+            <TableHead>{t('resources.updated')}</TableHead>
+            <TableHead className="text-right">{t('common.actions')}</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {visible?.map((r) => (
+            <TableRow key={r.id}>
+              <TableCell className="font-medium">{r.name}</TableCell>
+              <TableCell>
+                <Badge variant="outline" className="font-mono text-[10px]">
+                  {r.kind}
+                </Badge>
+              </TableCell>
+              <TableCell className="font-mono text-xs tabular-nums">{r.key}</TableCell>
+              <TableCell>
+                <Badge variant={r.scope === 'global' ? 'default' : 'secondary'} className="gap-1">
+                  {r.scope === 'global' ? (
+                    <GlobeIcon className="size-3" />
+                  ) : (
+                    <UserIcon className="size-3" />
+                  )}
+                  {r.scope === 'global' ? t('common.scopeGlobal') : t('common.scopePersonal')}
+                </Badge>
+              </TableCell>
+              <TableCell className="text-muted-foreground tabular-nums">
+                {new Date(r.updatedAt).toLocaleDateString(dateLocale(lang), {
+                  year: 'numeric',
+                  month: 'short',
+                  day: 'numeric',
+                })}
+              </TableCell>
+              <TableCell className="text-right">
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="ghost" size="icon" className="size-8">
+                      <MoreHorizontalIcon className="size-4" />
+                      <span className="sr-only">{t('common.openMenu')}</span>
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem
+                      disabled={r.scope === 'global' && !isAdmin}
+                      onClick={() => setEditing(r)}
+                    >
+                      <PencilIcon /> {t('common.edit')}
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      variant="destructive"
+                      disabled={r.scope === 'global' && !isAdmin}
+                      onClick={() => setPending(r)}
+                    >
+                      <TrashIcon /> {t('common.delete')}
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </DataTable>
 
       {editing !== null ? (
         <ResourceEditor
           existing={editing === 'new' ? null : editing}
-          {...(fixedKind !== undefined ? { lockedKind: fixedKind } : {})}
+          lockedKind={fixedKind}
           onClose={() => setEditing(null)}
           onSaved={refresh}
+        />
+      ) : null}
+
+      {pending !== null ? (
+        <ConfirmDialog
+          open
+          onOpenChange={(o) => {
+            if (!o) setPending(null);
+          }}
+          title={t('resources.deleteAction')}
+          consequence={t('resources.deleteConsequence')}
+          impact={[
+            { label: 'key', value: pending.key },
+            { label: 'kind', value: pending.kind },
+            { label: 'scope', value: pending.scope },
+          ]}
+          actionLabel={t('resources.deleteAction')}
+          // Two-stage delete: the first one only hides it (see the consequence),
+          // so the kit's generic "cannot be undone" line would be a lie.
+          irreversible={false}
+          busy={busy}
+          onConfirm={() => void confirmRemove()}
         />
       ) : null}
     </>
@@ -342,8 +394,8 @@ function ResourceEditor({
   onSaved,
 }: {
   existing: Resource | null;
-  /** A kind page's kind — the editor opens on it and shows it as a fact. */
-  lockedKind?: ResourceKind;
+  /** The page's kind — the editor opens on it and shows it as a fact. */
+  lockedKind: ResourceKind;
   onClose: () => void;
   onSaved: () => void;
 }) {
@@ -352,7 +404,7 @@ function ResourceEditor({
   const isAdmin = user?.role === 'admin';
   const isCreate = existing === null;
 
-  const [kind, setKind] = useState<ResourceKind>(existing?.kind ?? lockedKind ?? 'sub_agent');
+  const kind = existing?.kind ?? lockedKind;
   const [key, setKey] = useState(existing?.key ?? '');
   const [name, setName] = useState(existing?.name ?? '');
   const [description, setDescription] = useState(existing?.description ?? '');
@@ -447,29 +499,10 @@ function ResourceEditor({
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="grid gap-2">
               <Label htmlFor="res-kind">{t('resources.kind')}</Label>
-              {lockedKind !== undefined ? (
-                // The page owns the kind; the editor states it rather than asking.
-                <div>
-                  <Badge variant="secondary">{t(kindMeta.labelKey)}</Badge>
-                </div>
-              ) : (
-                <Select
-                  value={kind}
-                  onValueChange={(v) => setKind(v as ResourceKind)}
-                  disabled={!isCreate}
-                >
-                  <SelectTrigger id="res-kind">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {KINDS.map((k) => (
-                      <SelectItem key={k.value} value={k.value}>
-                        {t(k.labelKey)}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              )}
+              {/* The page owns the kind; the editor states it rather than asking. */}
+              <div>
+                <Badge variant="secondary">{t(kindMeta.labelKey)}</Badge>
+              </div>
             </div>
             <div className="grid gap-2">
               <Label htmlFor="res-scope">{t('common.scope')}</Label>

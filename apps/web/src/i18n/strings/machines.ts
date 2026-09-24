@@ -16,6 +16,11 @@ const en = {
   online: 'Online',
   offline: 'Offline',
   neverConnected: 'never connected',
+  // List toolbar (07-p3-list-pages.md §4).
+  searchPlaceholder: 'Search name, host or daemon',
+  sortLastSeen: 'Recently seen',
+  sortStatus: 'Status (online first)',
+  allStatuses: 'Any status',
   // Action names — the dialog title, its confirm button and nothing else: the
   // same words everywhere (03-interaction.md §9).
   removeAction: 'Remove machine',
@@ -64,6 +69,10 @@ const zh: typeof en = {
   online: '在线',
   offline: '离线',
   neverConnected: '从未连接',
+  searchPlaceholder: '搜索名称、主机或守护进程',
+  sortLastSeen: '最近活动',
+  sortStatus: '状态（在线在前）',
+  allStatuses: '全部状态',
   removeAction: '移除机器',
   removeConsequence: '其机器令牌将立即吊销，守护进程会断开连接。',
   chatEnableAction: '启用远程聊天',
