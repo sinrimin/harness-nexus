@@ -11,24 +11,30 @@ const en = {
   remoteChat: 'Remote chat',
   lastSeen: 'Last seen',
   empty: 'No machines enrolled yet.',
+  emptyHint: 'Enroll one from here, or run hnx enroll on the machine itself.',
+  offlineCount: '{count} offline',
   online: 'Online',
   offline: 'Offline',
   neverConnected: 'never connected',
-  confirmEnable:
-    'Enable remote chat on "{name}"?\n\nChatting with an agent on this machine drives tool execution there (equivalent to running commands yourself).',
-  confirmDisable: 'Disable remote chat on "{name}"?',
+  // Action names — the dialog title, its confirm button and nothing else: the
+  // same words everywhere (03-interaction.md §9).
+  removeAction: 'Remove machine',
+  removeConsequence: 'Its machine token is revoked immediately and the daemon disconnects.',
+  chatEnableAction: 'Enable remote chat',
+  chatEnableConsequence:
+    'Chatting with an agent on this machine drives tool execution there — equivalent to running commands yourself.',
+  chatDisableAction: 'Disable remote chat',
+  chatDisableConsequence:
+    'The agent channels on this machine are closed to you until you enable it again.',
   chatEnabled: 'Remote chat enabled',
   chatDisabled: 'Remote chat disabled',
-  confirmRemove:
-    'Remove machine "{name}"?\n\nIts machine token is revoked immediately and the daemon disconnects.',
   removed: 'Machine removed',
   removeFailed: 'Remove failed',
   toggleChatAria: 'Toggle remote chat for {name}',
   loadFailed: 'Failed to load machines',
   enrollTitle: 'Enroll a machine',
-  enrollDescA:
-    'Creates the machine and its dedicated machine token (shown once). Or enroll straight from the machine with',
-  enrollDescB: '.',
+  enrollDescA: 'Creates the machine and its dedicated machine token — shown once, right here.',
+  enrollDescB: 'Or enroll straight from the machine itself, without creating it here first:',
   namePlaceholder: 'e.g. work-laptop',
   enrolling: 'Enrolling…',
   enrollButton: 'Enroll machine',
@@ -39,8 +45,7 @@ const en = {
   revealDescB: 'to bring it online:',
   revealWarning:
     'Closing this dialog hides the token permanently. Removing the machine revokes it.',
-  tokenCopied: 'Token copied',
-  commandCopied: 'Command copied',
+  tokenLabel: 'Machine token',
 };
 
 const zh: typeof en = {
@@ -54,22 +59,26 @@ const zh: typeof en = {
   remoteChat: '远程聊天',
   lastSeen: '最后在线',
   empty: '尚未注册任何机器。',
+  emptyHint: '可以在这里注册，也可以直接在机器上运行 hnx enroll。',
+  offlineCount: '{count} 台离线',
   online: '在线',
   offline: '离线',
   neverConnected: '从未连接',
-  confirmEnable:
-    '在“{name}”上启用远程聊天？\n\n在这台机器上与代理聊天会在其上驱动工具执行（相当于亲自运行命令）。',
-  confirmDisable: '在“{name}”上禁用远程聊天？',
+  removeAction: '移除机器',
+  removeConsequence: '其机器令牌将立即吊销，守护进程会断开连接。',
+  chatEnableAction: '启用远程聊天',
+  chatEnableConsequence: '在这台机器上与代理聊天会在其上驱动工具执行——相当于亲自运行命令。',
+  chatDisableAction: '禁用远程聊天',
+  chatDisableConsequence: '在你再次启用之前，这台机器上的代理渠道将对你关闭。',
   chatEnabled: '远程聊天已启用',
   chatDisabled: '远程聊天已禁用',
-  confirmRemove: '移除机器“{name}”？\n\n其机器令牌将立即吊销，守护进程会断开连接。',
   removed: '机器已移除',
   removeFailed: '移除失败',
   toggleChatAria: '切换 {name} 的远程聊天',
   loadFailed: '加载机器列表失败',
   enrollTitle: '注册机器',
-  enrollDescA: '创建机器及其专用机器令牌（仅显示一次）。也可以直接在机器上以',
-  enrollDescB: '注册。',
+  enrollDescA: '创建机器及其专用机器令牌——仅在此处显示一次。',
+  enrollDescB: '也可以直接在机器上注册，无需先在这里创建：',
   namePlaceholder: '例如：work-laptop',
   enrolling: '注册中…',
   enrollButton: '注册机器',
@@ -79,8 +88,7 @@ const zh: typeof en = {
   revealDescA: '机器令牌仅显示一次。在',
   revealDescB: '上运行此命令使其上线：',
   revealWarning: '关闭此对话框后令牌将永久隐藏。移除机器会吊销该令牌。',
-  tokenCopied: '令牌已复制',
-  commandCopied: '命令已复制',
+  tokenLabel: '机器令牌',
 };
 
 export const machinesStrings = { en, zh };

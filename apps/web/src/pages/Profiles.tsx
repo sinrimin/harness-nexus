@@ -40,6 +40,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { FormDialog } from '@/components/ui/form-dialog';
+import { CommandLine, Panel, PanelBody, Well } from '@/components/kit';
 import { MoreHorizontalIcon } from 'lucide-react';
 import {
   HarnessNexusError,
@@ -310,31 +311,34 @@ export function ProfilesPage() {
       </div>
 
       {user && (
-        <Card className="mb-6 border-dashed">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-base">
-              <TerminalIcon className="size-4" />
-              {t('profiles.installTitle')}
-            </CardTitle>
-            <CardDescription>
-              {t('profiles.installDescBefore')} <code className="font-mono">claude-code</code>{' '}
+        <Panel
+          className="mb-6 border-dashed"
+          label={t('profiles.installTitle')}
+          icon={<TerminalIcon />}
+        >
+          <PanelBody className="flex flex-col gap-3">
+            <p className="text-muted-foreground max-w-[68ch] text-xs">
+              {t('profiles.installDescBefore')}{' '}
+              <Well variant="chip" copy="claude-code">
+                claude-code
+              </Well>{' '}
               {t('profiles.installDescAfter')}
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <pre className="bg-muted overflow-x-auto rounded-md border p-3 font-mono text-xs leading-relaxed">
-              <code>{`claude plugin marketplace add <server>/api/marketplace/<marketplace-token>/marketplace.json
-claude plugin install <profile-name>@harness-nexus-${user.username.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`}</code>
-            </pre>
-            <p className="text-muted-foreground mt-2 text-xs">
-              {t('profiles.installNoteBefore')}
-              <a className="text-signal underline-offset-4 hover:underline" href="/tokens">
-                {t('profiles.manageTokens')}
-              </a>
-              {t('profiles.installNoteAfter')}
             </p>
-          </CardContent>
-        </Card>
+            <CommandLine
+              command={`claude plugin marketplace add <server>/api/marketplace/<marketplace-token>/marketplace.json
+claude plugin install <profile-name>@harness-nexus-${user.username.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`}
+              note={
+                <span>
+                  {t('profiles.installNoteBefore')}
+                  <a className="text-signal underline-offset-4 hover:underline" href="/tokens">
+                    {t('profiles.manageTokens')}
+                  </a>
+                  {t('profiles.installNoteAfter')}
+                </span>
+              }
+            />
+          </PanelBody>
+        </Panel>
       )}
 
       <Card>

@@ -28,9 +28,9 @@ import {
   type Resource,
 } from '@harness-nexus/sdk';
 import { AppShell } from '@/components/app-shell';
-import { StateSignal } from '@/components/state-signal';
 import { MeshTopology, type FleetNode } from '@/components/mesh-topology';
 import { Button } from '@/components/ui/button';
+import { Chip, Lamp, Readout } from '@/components/kit';
 
 /**
  * Overview — the fleet posture page. The constellation hero draws the whole
@@ -166,32 +166,30 @@ export function DashboardPage() {
       {/* Posture figures — a quiet typographic strip, each figure routes on.
           No rules: the hero card above already ends in a border. */}
       <section className="mb-8 grid grid-cols-2 gap-x-6 gap-y-4 py-4 sm:grid-cols-4">
-        <FigureLink
+        <Readout
           to="/machines"
           label={t('dashboard.machinesOnline')}
-          value={`${onlineCount}/${machines?.length ?? 0}`}
+          value={onlineCount}
+          total={machines?.length ?? 0}
           loading={machines === null}
         />
-        <FigureLink
+        <Readout
           to="/chat"
           label={t('dashboard.agentsFigure')}
-          value={String(agentTotal)}
+          value={agentTotal}
           loading={agentsByMachine === null}
         />
-        <FigureLink
+        <Readout
           to="/mcp-servers"
           label={t('dashboard.mcpConnected')}
-          value={
-            connectedUpstreams !== null
-              ? `${connectedUpstreams}/${servers?.length ?? 0}`
-              : String(servers?.length ?? 0)
-          }
+          value={connectedUpstreams ?? servers?.length ?? 0}
+          {...(connectedUpstreams !== null ? { total: servers?.length ?? 0 } : {})}
           loading={servers === null}
         />
-        <FigureLink
+        <Readout
           to="/llm-providers"
           label={t('dashboard.providersFigure')}
-          value={String(providers?.length ?? 0)}
+          value={providers?.length ?? 0}
           loading={providers === null}
         />
       </section>
@@ -297,29 +295,6 @@ export function DashboardPage() {
 }
 
 /** One posture figure — label above, big mono number below, whole cell routes. */
-function FigureLink({
-  to,
-  label,
-  value,
-  loading,
-}: {
-  to: string;
-  label: string;
-  value: string;
-  loading: boolean;
-}) {
-  return (
-    <Link to={to} data-surface="readout" className="group flex flex-col gap-1">
-      <span className="text-muted-foreground text-xs transition-colors group-hover:text-signal">
-        {label}
-      </span>
-      <span className="text-foreground text-2xl font-semibold tabular-nums">
-        {loading ? '—' : value}
-      </span>
-    </Link>
-  );
-}
-
 /**
  * One fleet row: presence dot + machine name (→ machine detail) on the left,
  * agent chips (→ that agent's chat session) on the right. Nested links are
@@ -331,7 +306,7 @@ function FleetRow({ machine, agents }: { machine: MachineView; agents: AgentInst
   const overflow = agents.length - shown.length;
   return (
     <div className="hover:bg-muted/40 flex items-center gap-3 px-4 py-2.5 transition-colors">
-      <StateSignal
+      <Lamp
         state={machine.online ? 'online' : 'offline'}
         label={machine.online ? t('dashboard.legendOnline') : t('dashboard.legendOffline')}
       />
@@ -353,22 +328,14 @@ function FleetRow({ machine, agents }: { machine: MachineView; agents: AgentInst
         ) : (
           <>
             {shown.map((a) => (
-              <Link
-                key={a.id}
-                to={`/chat/agents/${a.id}`}
-                title={`${a.name} · ${a.source}`}
-                className="border-border bg-muted/40 hover:border-signal/50 rounded border px-1.5 py-0.5 font-mono text-xs transition-colors"
-              >
+              <Chip key={a.id} to={`/chat/agents/${a.id}`} title={`${a.name} · ${a.source}`}>
                 {a.target}
-              </Link>
+              </Chip>
             ))}
             {overflow > 0 ? (
-              <Link
-                to={`/machines/${machine.id}`}
-                className="text-muted-foreground px-1 font-mono text-xs tabular-nums"
-              >
+              <Chip to={`/machines/${machine.id}`} tone="muted">
                 {t('dashboard.moreAgents', { count: overflow })}
-              </Link>
+              </Chip>
             ) : null}
           </>
         )}
