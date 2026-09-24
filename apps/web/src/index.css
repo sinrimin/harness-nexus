@@ -105,6 +105,70 @@
     'IBM Plex Mono', ui-monospace, 'SF Mono', 'Cascadia Code', Menlo, 'PingFang SC',
     'Microsoft YaHei', 'Noto Sans CJK SC', monospace;
   --app-font-display: var(--app-font-sans);
+
+  /* ---- Token v2: device roles (docs/dev/ui-refactor/04-contract.md §1) ----
+   * Until now the only geometric token was --radius: every surface, row height
+   * and type size was decided at the call site. These roles give the devices
+   * (Panel / Well / Lamp / Readout / Table) something to read, and give skins
+   * something to override. Values are the Signal reading — a quiet console.
+   */
+  --app-font-label: var(--app-font-sans);
+  --label-size: 11px;
+  --label-size-sm: 9.5px;
+  --label-tracking: 0.09em;
+  --label-tracking-sm: 0.12em;
+  --data-size: 12px;
+  --data-size-sm: 11px;
+  --readout-size: 27px;
+  --readout-size-dim: 17px;
+
+  /* Tray: the neutral step behind table heads, list feet, sub-panels and row
+   * hover — the one surface between card and muted. */
+  --tray: oklch(0.955 0.005 250);
+
+  /* Well: the surface protocol material sits on (hosts, paths, ids, commands).
+   * Signal cuts a shallow trough; BAY re-points it at the dark LCD window.
+   * --well-ok/-warn/-fail are the status inks *inside* the well: on a dark
+   * window the light-surface status colors do not carry. */
+  --well: oklch(0.958 0.005 250);
+  --well-edge: oklch(0.9 0.006 250);
+  --well-ink: var(--foreground);
+  --well-dim: var(--muted-foreground);
+  --well-ok: var(--state-ok-ink);
+  --well-warn: var(--state-warn-ink);
+  --well-fail: var(--state-fail-ink);
+
+  /* Lamp hues stay separate from the status *text* inks: a lamp reads as a
+   * lit object (large area, glow), a status word reads as type. */
+  --lamp-ok: var(--ok);
+  --lamp-warn: var(--warn);
+  --lamp-fail: var(--danger);
+  --lamp-off: oklch(0.72 0.01 260);
+
+  /* Status text on a light surface — deepened so a word stays legible where a
+   * lamp's raw hue would not (the comp shipped its own #14713c / #9c2417). */
+  --state-ok-ink: oklch(0.5 0.13 152);
+  --state-warn-ink: oklch(0.5 0.12 62);
+  --state-fail-ink: oklch(0.5 0.19 25);
+
+  /* Physics — a skin may make the panel hard-shadowed and mechanical. */
+  --shadow-panel: 0 1px 2px oklch(0 0 0 / 5%);
+  --shadow-press: 0px; /* the :active displacement; BAY = 2px 2px 0 offset */
+  --radius-panel: var(--radius);
+  --radius-well: calc(var(--radius) - 2px);
+
+  /* Density — instrument density, not document density. */
+  --panel-pad: 13px;
+  --panel-pad-wide: 20px; /* table first/last cell: the shell owns its edges */
+  --panel-head-h: 28px;
+  --row-h: 30px;
+  --gap: 16px;
+  --gap-tight: 8px;
+  --touch: 40px;
+
+  /* Motion — the four motions the system allows (02/03 in the plan docs). */
+  --motion-seat: 180ms;
+  --motion-breath: 2.4s;
 }
 
 .dark {
@@ -161,6 +225,22 @@
   --surface-inverted: oklch(0.15 0.015 260);
   --surface-inverted-ink: oklch(0.9 0.005 250);
   --surface-inverted-dim: oklch(0.6 0.012 260);
+
+  /* Token v2 roles, dark reading. A trough in dark mode is darker than the
+   * card it is cut into, so --well moves down instead of up. */
+  --tray: oklch(0.26 0.015 260);
+  --well: oklch(0.205 0.014 260);
+  --well-edge: oklch(1 0 0 / 8%);
+  --well-ink: var(--foreground);
+  --well-dim: var(--muted-foreground);
+  --well-ok: var(--state-ok-ink);
+  --well-warn: var(--state-warn-ink);
+  --well-fail: var(--state-fail-ink);
+  --lamp-off: oklch(0.42 0.01 260);
+  --state-ok-ink: oklch(0.8 0.15 155);
+  --state-warn-ink: oklch(0.83 0.14 72);
+  --state-fail-ink: oklch(0.76 0.17 22);
+  --shadow-panel: 0 1px 2px oklch(0 0 0 / 35%);
 }
 
 /* Map CSS variables into Tailwind's theme so utilities like bg-background,
@@ -174,6 +254,7 @@
   --font-sans: var(--app-font-sans);
   --font-mono: var(--app-font-mono);
   --font-display: var(--app-font-display);
+  --font-label: var(--app-font-label);
 
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -198,6 +279,21 @@
   --color-signal: var(--signal);
   --color-signal-foreground: var(--signal-foreground);
   --color-scrim: var(--scrim);
+  --color-tray: var(--tray);
+  --color-well: var(--well);
+  --color-well-edge: var(--well-edge);
+  --color-well-ink: var(--well-ink);
+  --color-well-dim: var(--well-dim);
+  --color-well-ok: var(--well-ok);
+  --color-well-warn: var(--well-warn);
+  --color-well-fail: var(--well-fail);
+  --color-lamp-ok: var(--lamp-ok);
+  --color-lamp-warn: var(--lamp-warn);
+  --color-lamp-fail: var(--lamp-fail);
+  --color-lamp-off: var(--lamp-off);
+  --color-state-ok-ink: var(--state-ok-ink);
+  --color-state-warn-ink: var(--state-warn-ink);
+  --color-state-fail-ink: var(--state-fail-ink);
   --color-surface-inverted: var(--surface-inverted);
   --color-surface-inverted-ink: var(--surface-inverted-ink);
   --color-surface-inverted-dim: var(--surface-inverted-dim);
@@ -252,6 +348,52 @@
   /* Skip link target: clear the sticky header when focused. */
   :target {
     scroll-margin-top: 5rem;
+  }
+
+  /* Instrument density, one step tighter. */
+  [data-density='compact'] {
+    --row-h: 26px;
+    --panel-pad: 9px;
+  }
+
+  /* The one ambient animation the system allows: a thing that is running right
+   * now. Reduced motion pins it lit (see below) rather than leaving it faint. */
+  @keyframes lamp-breath {
+    0%,
+    100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.55;
+    }
+  }
+  .lamp-breath {
+    animation: lamp-breath var(--motion-breath) ease-in-out infinite;
+  }
+}
+
+/* ---- Reduced motion ----------------------------------------------------
+ * Global, in the base layer: every skin inherits it. Two terminal states are
+ * restored explicitly — a lamp mid-breath and a constellation link mid-draw
+ * would otherwise be left invisible by the blanket rule. (Previously this
+ * only existed inside the BAY skin, so Signal animations ignored the
+ * preference entirely.)
+ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+  [data-lamp][data-live='true'],
+  .lamp-breath {
+    opacity: 1 !important;
+  }
+  [data-topology-link] {
+    stroke-dashoffset: 0 !important;
   }
 }
 
@@ -347,3 +489,112 @@
 .hljs-strong {
   font-weight: 600;
 }
+
+/* ---- Type roles (02-content.md §2) -------------------------------------
+ * Four roles, not a scale: prose stays sans, every protocol string and
+ * number goes through the data role, and the label role is the only place
+ * that gets uppercase + positive tracking. Skins move these through
+ * --app-font-label / --label-size / --data-size.
+ *
+ * UNLAYERED on purpose (like the table shell below): a role owns its
+ * typography outright, so a stray `text-lg` in a wrapper cannot silently
+ * out-vote the role. Sizes are meant to be changed by token, not per site.
+ */
+.role-label {
+  font-family: var(--app-font-label);
+  font-size: var(--label-size);
+  font-weight: 600;
+  letter-spacing: var(--label-tracking);
+  line-height: 1;
+  text-transform: uppercase;
+}
+.role-label-sm {
+  font-family: var(--app-font-label);
+  font-size: var(--label-size-sm);
+  font-weight: 600;
+  letter-spacing: var(--label-tracking-sm);
+  line-height: 1;
+  text-transform: uppercase;
+}
+.role-data {
+  font-family: var(--app-font-mono);
+  font-size: var(--data-size);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+}
+.role-data-sm {
+  font-family: var(--app-font-mono);
+  font-size: var(--data-size-sm);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.4;
+}
+
+/* The table shell's edge padding: 13 call sites used to hand-write pl-6/pr-6
+ * on the first and last cell. Unlayered for the same reason — `ui/table`'s
+ * `p-2` / `px-2` utilities would otherwise win over it. */
+[data-surface='table'] :is(th, td):first-child {
+  padding-inline-start: var(--panel-pad-wide);
+}
+[data-surface='table'] :is(th, td):last-child {
+  padding-inline-end: var(--panel-pad-wide);
+}
+
+/* The readout figure: a count with a denominator reads as one number, so the
+   * numerator and the dimmer denominator share a baseline (02-content.md §7). */
+.role-readout {
+  font-family: var(--app-font-mono);
+  font-size: var(--readout-size);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  letter-spacing: -0.02em;
+}
+.role-readout-dim {
+  font-family: var(--app-font-mono);
+  font-size: var(--readout-size-dim);
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  color: var(--muted-foreground);
+}
+
+/* ---- Table shell (kit `DataTable`) --------------------------------------
+ * The shell owns the head, the row height and the edges, so a page cannot
+ * re-decide them per table — density is the knob (--row-h / --panel-pad via
+ * [data-density]). Written UNLAYERED on purpose: Tailwind utilities live in a
+ * cascade layer, so these win over `h-10` / `pl-6` without an `!important`
+ * fight and without editing every cell.
+ */
+[data-surface='table'] thead tr {
+  background: var(--tray);
+}
+
+[data-surface='table'] thead th {
+  height: var(--panel-head-h);
+  padding-block: 0;
+  font-family: var(--app-font-label);
+  font-size: var(--label-size-sm);
+  font-weight: 600;
+  letter-spacing: var(--label-tracking-sm);
+  text-transform: uppercase;
+  color: var(--muted-foreground);
+  white-space: nowrap;
+}
+
+[data-surface='table'] tbody td {
+  height: var(--row-h);
+  padding-block: 0;
+}
+
+[data-surface='table'] tbody tr:hover {
+  background: color-mix(in oklab, var(--tray) 60%, transparent);
+}
+
+/* Only the panel's own sticky head — never a window-level sticky header. */
+[data-surface='table'][data-sticky-head] thead th {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+/* The copies that are still `ui/table` outside the kit (unchanged pages) keep
+ * their own look; nothing here reaches them. */
