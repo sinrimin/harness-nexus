@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import {
@@ -18,6 +18,7 @@ import {
   DataTable,
   FilterBar,
   FilterSelect,
+  LabelText,
   PageIntro,
   Readout,
   SortSelect,
@@ -135,6 +136,41 @@ function kindLabelKey(kind: ResourcePageKind): TranslationKey {
 }
 
 /**
+ * Per-kind column facts (09-p4-resource-kinds.md §2). Every one of these reads
+ * a field the model actually has; `null` means "not a fact we can state", which
+ * renders as a dash rather than a made-up number.
+ */
+function bundleCount(r: Resource): number | null {
+  if (r.source.type === 'inline-bundle') return Object.keys(r.source.files).length;
+  if (r.source.type === 'inline') return 1;
+  return null; // plugin: the files live in the plugin, resolved at install time
+}
+
+function sourceLabelKey(r: Resource): TranslationKey {
+  return r.source.type === 'plugin' ? 'resources.sourceMarket' : 'resources.sourceLocal';
+}
+
+function pluginName(r: Resource): string | null {
+  return r.source.type === 'plugin' ? r.source.plugin : null;
+}
+
+/** `labels.trust`, stamped server-side for plugin sources (7.1). Absent otherwise. */
+function trustLabelKey(r: Resource): TranslationKey | null {
+  const tier = r.labels?.['trust'];
+  if (tier === 'builtin') return 'resources.trustBuiltin';
+  if (tier === 'trusted') return 'resources.trustTrusted';
+  if (tier === 'community') return 'resources.trustCommunity';
+  return null;
+}
+
+/** The events a hooks.json body covers, in declaration order (09 §2). */
+function hookEventsOf(r: Resource): HookEvent[] {
+  if (r.source.type !== 'inline') return [];
+  const covered = new Set(parseHooksJson(r.source.content).map((e) => e.event));
+  return HOOK_EVENTS.filter((e) => covered.has(e));
+}
+
+/**
  * One kind per page (#23 P2, README §5.3). The route is the address, so the
  * kind is not a per-visit decision: `/resources` itself redirects to `/skills`.
  * P4 gives each kind its own columns and editor; until then every kind page is
@@ -195,6 +231,167 @@ export function ResourcesPage({ fixedKind }: { fixedKind: ResourcePageKind }) {
     [t],
   );
 
+  /**
+   * The columns each kind page gets (09-p4-resource-kinds.md §3). `kind` is
+   * deliberately absent: the route already says which kind this is, and a
+   * per-row badge would only repeat the page's own name. Cells are built here
+   * rather than at module scope because they need `t` and the date locale.
+   */
+  const table = useMemo(() => {
+    const nameCell = (r: Resource) => <TableCell className="font-medium">{r.name}</TableCell>;
+    const nameDescCell = (r: Resource) => (
+      <TableCell className="font-medium">
+        <span className="block">{r.name}</span>
+        {r.description !== undefined && r.description !== '' ? (
+          <span className="text-muted-foreground mt-0.5 block max-w-[46ch] truncate text-xs">
+            {r.description}
+          </span>
+        ) : null}
+      </TableCell>
+    );
+    const descriptionCell = (r: Resource) => (
+      <TableCell className="text-muted-foreground max-w-[46ch] truncate text-xs">
+        {r.description !== undefined && r.description !== '' ? r.description : '—'}
+      </TableCell>
+    );
+    const keyCell = (r: Resource) => (
+      <TableCell>
+        <Well variant="chip" copy={r.key}>
+          {r.key}
+        </Well>
+      </TableCell>
+    );
+    const targetsCell = (r: Resource) => (
+      <TableCell>
+        <div className="flex flex-wrap gap-1">
+          {r.targets.map((target) => (
+            <Badge key={target} variant="outline" className="font-mono text-[10px]">
+              {target}
+            </Badge>
+          ))}
+        </div>
+      </TableCell>
+    );
+    const bundleCell = (r: Resource) => {
+      const count = bundleCount(r);
+      return (
+        <TableCell className="text-muted-foreground tabular-nums">
+          {count === null ? '—' : t('resources.bundleCount', { count })}
+        </TableCell>
+      );
+    };
+    const sourceCell = (r: Resource) => {
+      const plugin = pluginName(r);
+      return (
+        <TableCell>
+          <div className="flex flex-wrap items-center gap-1">
+            <Badge variant="secondary" className="text-[10px]">
+              {t(sourceLabelKey(r))}
+            </Badge>
+            {plugin !== null ? (
+              <Well variant="chip" copy={plugin}>
+                {plugin}
+              </Well>
+            ) : null}
+          </div>
+        </TableCell>
+      );
+    };
+    const trustCell = (r: Resource) => {
+      const key = trustLabelKey(r);
+      return (
+        <TableCell>
+          {key === null ? (
+            <span className="text-muted-foreground">—</span>
+          ) : (
+            <Badge variant="outline" className="text-[10px]">
+              {t(key)}
+            </Badge>
+          )}
+        </TableCell>
+      );
+    };
+    const eventsCell = (r: Resource) => {
+      const events = hookEventsOf(r);
+      return (
+        <TableCell>
+          {events.length === 0 ? (
+            <span className="text-muted-foreground">—</span>
+          ) : (
+            <div className="flex flex-wrap gap-1">
+              {events.map((event) => (
+                <Badge key={event} variant="outline" className="font-mono text-[10px]">
+                  {event}
+                </Badge>
+              ))}
+            </div>
+          )}
+        </TableCell>
+      );
+    };
+    const scopeCell = (r: Resource) => (
+      <TableCell>
+        <Badge variant={r.scope === 'global' ? 'default' : 'secondary'} className="gap-1">
+          {r.scope === 'global' ? (
+            <GlobeIcon className="size-3" />
+          ) : (
+            <UserIcon className="size-3" />
+          )}
+          {r.scope === 'global' ? t('common.scopeGlobal') : t('common.scopePersonal')}
+        </Badge>
+      </TableCell>
+    );
+    const updatedCell = (r: Resource) => (
+      <TableCell className="text-muted-foreground tabular-nums">
+        {new Date(r.updatedAt).toLocaleDateString(dateLocale(lang), {
+          year: 'numeric',
+          month: 'short',
+          day: 'numeric',
+        })}
+      </TableCell>
+    );
+
+    const perKind: Record<
+      ResourcePageKind,
+      { headers: TranslationKey[]; cells: Array<(r: Resource) => ReactNode> }
+    > = {
+      skill: {
+        headers: ['common.name', 'resources.bundle', 'resources.source', 'resources.trust'],
+        cells: [nameDescCell, bundleCell, sourceCell, trustCell],
+      },
+      sub_agent: {
+        headers: ['common.name', 'common.description', 'resources.targets'],
+        cells: [nameCell, descriptionCell, targetsCell],
+      },
+      rule: {
+        headers: ['common.name', 'resources.key', 'resources.targets'],
+        cells: [nameDescCell, keyCell, targetsCell],
+      },
+      command: {
+        headers: ['resources.triggerWord', 'common.description', 'resources.targets'],
+        cells: [nameCell, descriptionCell, targetsCell],
+      },
+      hook: {
+        headers: ['common.name', 'resources.events', 'resources.targets'],
+        cells: [nameDescCell, eventsCell, targetsCell],
+      },
+    };
+    const kind = perKind[fixedKind];
+    const headers: TranslationKey[] = [
+      ...kind.headers,
+      'common.scope',
+      'resources.updated',
+      'common.actions',
+    ];
+    return { headers, cells: [...kind.cells, scopeCell, updatedCell] };
+  }, [fixedKind, t, lang]);
+
+  /** Skills from the marketplace, for the panel nameplate's fact line (09 §3). */
+  const marketCount = useMemo(
+    () => (items ?? []).filter((r) => r.kind === fixedKind && r.source.type === 'plugin').length,
+    [items, fixedKind],
+  );
+
   async function confirmRemove() {
     const r = pending;
     if (r === null) return;
@@ -235,17 +432,24 @@ export function ResourcesPage({ fixedKind }: { fixedKind: ResourcePageKind }) {
       />
 
       <DataTable
-        columns={6}
+        columns={table.headers.length}
         label={t('resources.storedTitle')}
         icon={<BoxesIcon />}
         meta={
-          <Readout
-            layout="inline"
-            size="sm"
-            value={items?.length ?? 0}
-            label={t('resources.total')}
-            loading={items === null}
-          />
+          <>
+            <Readout
+              layout="inline"
+              size="sm"
+              value={items?.length ?? 0}
+              label={t('resources.total')}
+              loading={items === null}
+            />
+            {fixedKind === 'skill' && marketCount > 0 ? (
+              <span className="text-muted-foreground text-xs">
+                {t('resources.marketCount', { count: marketCount })}
+              </span>
+            ) : null}
+          </>
         }
         toolbar={
           <FilterBar query={query} shown={visible?.length} total={items?.length}>
@@ -287,41 +491,19 @@ export function ResourcesPage({ fixedKind }: { fixedKind: ResourcePageKind }) {
       >
         <TableHeader>
           <TableRow>
-            <TableHead>{t('common.name')}</TableHead>
-            <TableHead>{t('resources.kind')}</TableHead>
-            <TableHead>{t('resources.key')}</TableHead>
-            <TableHead>{t('common.scope')}</TableHead>
-            <TableHead>{t('resources.updated')}</TableHead>
-            <TableHead className="text-right">{t('common.actions')}</TableHead>
+            {table.headers.map((key, i) => (
+              <TableHead key={key} className={i === table.headers.length - 1 ? 'text-right' : ''}>
+                {t(key)}
+              </TableHead>
+            ))}
           </TableRow>
         </TableHeader>
         <TableBody>
           {visible?.map((r) => (
             <TableRow key={r.id}>
-              <TableCell className="font-medium">{r.name}</TableCell>
-              <TableCell>
-                <Badge variant="outline" className="font-mono text-[10px]">
-                  {r.kind}
-                </Badge>
-              </TableCell>
-              <TableCell className="font-mono text-xs tabular-nums">{r.key}</TableCell>
-              <TableCell>
-                <Badge variant={r.scope === 'global' ? 'default' : 'secondary'} className="gap-1">
-                  {r.scope === 'global' ? (
-                    <GlobeIcon className="size-3" />
-                  ) : (
-                    <UserIcon className="size-3" />
-                  )}
-                  {r.scope === 'global' ? t('common.scopeGlobal') : t('common.scopePersonal')}
-                </Badge>
-              </TableCell>
-              <TableCell className="text-muted-foreground tabular-nums">
-                {new Date(r.updatedAt).toLocaleDateString(dateLocale(lang), {
-                  year: 'numeric',
-                  month: 'short',
-                  day: 'numeric',
-                })}
-              </TableCell>
+              {table.cells.map((cell, i) => (
+                <Fragment key={i}>{cell(r)}</Fragment>
+              ))}
               <TableCell className="text-right">
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
@@ -498,8 +680,9 @@ function ResourceEditor({
         <form onSubmit={onSubmit} className="grid gap-4">
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="grid gap-2">
-              <Label htmlFor="res-kind">{t('resources.kind')}</Label>
-              {/* The page owns the kind; the editor states it rather than asking. */}
+              <LabelText>{t('resources.kind')}</LabelText>
+              {/* The page owns the kind; the editor states it rather than asking.
+                  Not a <Label htmlFor>: the value is a badge, not a control. */}
               <div>
                 <Badge variant="secondary">{t(kindMeta.labelKey)}</Badge>
               </div>
