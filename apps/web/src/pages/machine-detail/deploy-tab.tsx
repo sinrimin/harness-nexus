@@ -12,10 +12,9 @@ import {
   type JobView,
   type Profile,
 } from '@harness-nexus/sdk';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { StateSignal } from '@/components/state-signal';
-import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import {
   Select,
@@ -24,19 +23,20 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
+import { TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { DataTable, Note, Panel, PanelBody, Readout, tableState, Well } from '@/components/kit';
 
 /**
  * 部署与作业 tab — the machine's operational surface: profile deployments +
  * the job table + agent instances (Phase 8 C4), and the live adapter-process
  * panel with the operator kill (Phase 9 W11 C).
+ *
+ * P5 turned the two hand-rolled tables (a `Card > div.border > Table` shell and
+ * two flavours of centred `colSpan` state row) into `DataTable`s: the panel, the
+ * head, the row geometry and the four state rows are the kit's, and the page
+ * keeps only the columns. Job type/status/detail are the devices the content
+ * map asks for — a chip for the type, a lamp + word for the status, a chip for
+ * the detail, and one plain sentence for the single place a failure is prose.
  */
 export function DeployTab({
   machineId,
@@ -54,18 +54,16 @@ export function DeployTab({
   capabilities: string[];
 }) {
   return (
-    <>
-      <div className="flex flex-col gap-6">
-        <DeploymentsCard
-          machineId={machineId}
-          online={online}
-          jobs={jobs}
-          agents={agents}
-          onChanged={onChanged}
-        />
-        <AdaptersCard machineId={machineId} online={online} capabilities={capabilities} />
-      </div>
-    </>
+    <div className="flex flex-col gap-(--gap)">
+      <DeploymentsPanel
+        machineId={machineId}
+        online={online}
+        jobs={jobs}
+        onChanged={onChanged}
+      />
+      <AgentsTable agents={agents} />
+      <AdaptersPanel machineId={machineId} online={online} capabilities={capabilities} />
+    </div>
   );
 }
 
@@ -77,52 +75,48 @@ const JOB_STATUS_SIGNAL: Record<string, 'succeeded' | 'failed' | 'running' | 'ca
   cancelled: 'cancelled',
 };
 
+/** Status → the rail word, so the two channels never disagree (02-content.md §3.3). */
+const JOB_STATUS_WORD: Record<string, string> = {
+  succeeded: 'succeeded',
+  failed: 'failed',
+  running: 'running',
+  queued: 'queued',
+  cancelled: 'cancelled',
+};
+
 /**
  * The job-table detail cell: error text, the queued hint, or — for succeeded
  * #6 marketplace deploys — `marketplace · <plugin> v<version>` from the result
  * payload (read defensively; adapter results have no `method`).
  */
-function jobDetailText(job: JobView, t: ReturnType<typeof useI18n>['t']): string {
-  if (job.error) return job.error;
-  if (job.status === 'queued') return t('machineDetail.waitingDaemon');
+function jobDetail(job: JobView, t: ReturnType<typeof useI18n>['t']): { text: string; fail: boolean } {
+  if (job.error) return { text: job.error, fail: true };
+  if (job.status === 'queued') return { text: t('machineDetail.waitingDaemon'), fail: false };
   if (job.status === 'succeeded' && job.result && typeof job.result === 'object') {
     const r = job.result as { method?: unknown; name?: unknown; installedVersion?: unknown };
     if (r.method === 'marketplace') {
       const name = typeof r.name === 'string' ? r.name : '';
       const ver = typeof r.installedVersion === 'string' ? ` v${r.installedVersion}` : '';
-      return `${t('machineDetail.viaMarketplace')} · ${name}${ver}`;
+      return { text: `${t('machineDetail.viaMarketplace')} · ${name}${ver}`, fail: false };
     }
   }
-  return '—';
-}
-
-function JobStatusBadge({ status }: { status: string }) {
-  return (
-    <>
-      <span className="inline-flex items-center gap-2">
-        <StateSignal state={JOB_STATUS_SIGNAL[status] ?? 'inactive'} />
-        <span className="font-mono text-xs tabular-nums">{status}</span>
-      </span>
-    </>
-  );
+  return { text: '—', fail: false };
 }
 
 /**
  * Deploy jobs + deployed agent instances (Phase 8 C4). A deploy queues when
- * the daemon is offline and replays on reconnect — the hint says so instead
- * of hiding the queue.
+ * the daemon is offline and replays on reconnect — the toolbar says so through
+ * the button's own label instead of hiding the queue.
  */
-function DeploymentsCard({
+function DeploymentsPanel({
   machineId,
   online,
   jobs,
-  agents,
   onChanged,
 }: {
   machineId: string;
   online: boolean;
   jobs: JobView[] | null;
-  agents: AgentInstanceView[];
   onChanged: () => void;
 }) {
   const { logout } = useAuth();
@@ -177,146 +171,108 @@ function DeploymentsCard({
     }
   }
 
+  const jobCount = jobs?.length ?? 0;
+
   return (
-    <>
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-base">
-            <RocketIcon className="size-4" />
-            {t('machineDetail.deployTitle')}
-          </CardTitle>
-          <CardDescription>{t('machineDetail.deployDesc')}</CardDescription>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-4">
-          <div className="flex flex-wrap items-end gap-3">
-            <div className="grid min-w-64 gap-2">
-              <Label htmlFor="deploy-profile">{t('machineDetail.profileLabel')}</Label>
-              <Select value={profileId} onValueChange={setProfileId}>
-                <SelectTrigger id="deploy-profile" className="font-mono text-xs">
-                  <SelectValue placeholder={t('machineDetail.pickProfile')} />
-                </SelectTrigger>
-                <SelectContent>
-                  {(profiles ?? []).map((p) => (
-                    <SelectItem key={p.id} value={p.id} className="font-mono text-xs">
-                      {p.name} (
-                      {p.target === 'claude-code'
-                        ? `claude-code · ${t('machineDetail.viaMarketplace')}`
-                        : p.target}
-                      )
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <Button onClick={() => void deploy()} disabled={busy || profileId === ''}>
-              <RocketIcon className="size-4" />
-              {busy
-                ? t('machineDetail.creating')
-                : online
-                  ? t('machineDetail.deploy')
-                  : t('machineDetail.queueDeploy')}
-            </Button>
-            <p className="text-muted-foreground pb-2 text-sm">
-              {profiles !== null && profiles.length === 0 ? t('machineDetail.noDeployable') : null}
-            </p>
-          </div>
-
-          <div className="overflow-hidden rounded-md border">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="pl-4">{t('machineDetail.job')}</TableHead>
-                  <TableHead>{t('common.status')}</TableHead>
-                  <TableHead>{t('machineDetail.detail')}</TableHead>
-                  <TableHead className="pr-4 text-right">{t('common.actions')}</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {jobs === null ? (
-                  <TableRow>
-                    <TableCell colSpan={4} className="text-muted-foreground py-6 text-center">
-                      {t('machineDetail.loadingJobs')}
-                    </TableCell>
-                  </TableRow>
-                ) : jobs.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={4} className="text-muted-foreground py-6 text-center">
-                      {t('machineDetail.noJobs')}
-                    </TableCell>
-                  </TableRow>
-                ) : (
-                  jobs.map((job) => (
-                    <TableRow key={job.id}>
-                      <TableCell className="pl-4">
-                        <span className="flex items-center gap-2">
-                          <Badge variant="outline" className="font-mono text-[10px]">
-                            {job.type}
-                          </Badge>
-                          <span className="text-muted-foreground font-mono text-xs">
-                            {new Date(job.createdAt).toLocaleString(dateLocale(lang))}
-                          </span>
-                        </span>
-                      </TableCell>
-                      <TableCell>
-                        <JobStatusBadge status={job.status} />
-                      </TableCell>
-                      <TableCell className="max-w-[24rem] truncate text-muted-foreground text-xs">
-                        {jobDetailText(job, t)}
-                      </TableCell>
-                      <TableCell className="pr-4 text-right">
-                        {job.status === 'queued' ? (
-                          <Button variant="ghost" size="sm" onClick={() => void cancel(job)}>
-                            <SquareIcon className="size-4" />
-                            {t('common.cancel')}
-                          </Button>
-                        ) : null}
-                      </TableCell>
-                    </TableRow>
-                  ))
-                )}
-              </TableBody>
-            </Table>
-          </div>
-
-          <div>
-            <p className="mb-2 text-sm font-medium">
-              {t('machineDetail.agentsHeading', { count: agents.length })}
-            </p>
-            {agents.length === 0 ? (
-              <p className="text-muted-foreground text-sm">{t('machineDetail.noAgents')}</p>
-            ) : (
-              <ul className="flex flex-col gap-1">
-                {agents.map((a) => (
-                  <li key={a.id} className="flex flex-wrap items-center gap-2 text-sm">
-                    <span className="font-medium">{a.name}</span>
-                    <Badge variant="outline" className="font-mono text-[10px]">
-                      {a.target}
-                    </Badge>
-                    {a.source === 'detected' ? (
-                      <Badge variant="secondary" className="text-[10px]">
-                        {t('machineDetail.detectedSource')}
-                      </Badge>
-                    ) : null}
-                    <span className="text-muted-foreground font-mono text-xs">{a.directory}</span>
-                    {a.profileVersion ? (
-                      <span className="text-muted-foreground font-mono text-xs tabular-nums">
-                        v{a.profileVersion}
-                      </span>
-                    ) : null}
-                    <Button asChild variant="ghost" size="sm" className="ml-auto">
-                      <Link to={`/chat/agents/${a.id}`}>
-                        <MessageSquareIcon className="size-4" />
-                        {t('machineDetail.chat')}
-                      </Link>
-                    </Button>
-                  </li>
+    <DataTable
+      columns={4}
+      label={t('machineDetail.deployTitle')}
+      icon={<RocketIcon />}
+      meta={<Readout layout="inline" size="sm" value={jobCount} label={t('machineDetail.jobsFigure')} />}
+      state={tableState({ loading: jobs === null, count: jobCount })}
+      empty={{
+        title: t('machineDetail.noJobsTitle'),
+        hint: t('machineDetail.noJobsHint'),
+      }}
+      toolbar={
+        <>
+          <div className="flex items-center gap-2">
+            <Label htmlFor="deploy-profile" className="sr-only">
+              {t('machineDetail.profileLabel')}
+            </Label>
+            <Select value={profileId} onValueChange={setProfileId}>
+              <SelectTrigger id="deploy-profile" className="h-8 w-64 font-mono text-xs">
+                <SelectValue placeholder={t('machineDetail.pickProfile')} />
+              </SelectTrigger>
+              <SelectContent>
+                {(profiles ?? []).map((p) => (
+                  <SelectItem key={p.id} value={p.id} className="font-mono text-xs">
+                    {p.name} (
+                    {p.target === 'claude-code'
+                      ? `claude-code · ${t('machineDetail.viaMarketplace')}`
+                      : p.target}
+                    )
+                  </SelectItem>
                 ))}
-              </ul>
-            )}
+              </SelectContent>
+            </Select>
           </div>
-        </CardContent>
-      </Card>
-    </>
+          <Button size="sm" onClick={() => void deploy()} disabled={busy || profileId === ''}>
+            <RocketIcon className="size-3.5" />
+            {busy
+              ? t('machineDetail.creating')
+              : online
+                ? t('machineDetail.deploy')
+                : t('machineDetail.queueDeploy')}
+          </Button>
+          <span className="text-muted-foreground text-xs">
+            {profiles !== null && profiles.length === 0 ? t('machineDetail.noDeployable') : null}
+          </span>
+        </>
+      }
+    >
+      <TableHeader>
+        <TableRow>
+          <TableHead>{t('machineDetail.job')}</TableHead>
+          <TableHead>{t('common.status')}</TableHead>
+          <TableHead>{t('machineDetail.detail')}</TableHead>
+          <TableHead className="text-right">{t('common.actions')}</TableHead>
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {(jobs ?? []).map((job) => {
+          const detail = jobDetail(job, t);
+          return (
+            <TableRow key={job.id}>
+              <TableCell>
+                <span className="flex items-center gap-2">
+                  {/* Job type is an enum → Badge; the timestamp is numeric data →
+                      the data role (02-content.md §4). */}
+                  <Badge variant="outline" className="font-mono text-[10px]">
+                    {job.type}
+                  </Badge>
+                  <span className="text-muted-foreground role-data-sm">
+                    {new Date(job.createdAt).toLocaleString(dateLocale(lang))}
+                  </span>
+                </span>
+              </TableCell>
+              <TableCell>
+                <span className="inline-flex items-center gap-2">
+                  <StateSignal state={JOB_STATUS_SIGNAL[job.status] ?? 'inactive'} />
+                  <span className="role-data text-xs">{JOB_STATUS_WORD[job.status] ?? job.status}</span>
+                </span>
+              </TableCell>
+              <TableCell className="max-w-[28rem]">
+                {detail.fail ? (
+                  // The one place a long sentence is allowed — a failure detail.
+                  <span className="text-state-fail-ink line-clamp-2 text-xs">{detail.text}</span>
+                ) : (
+                  <span className="text-muted-foreground truncate text-xs">{detail.text}</span>
+                )}
+              </TableCell>
+              <TableCell className="text-right">
+                {job.status === 'queued' ? (
+                  <Button variant="ghost" size="sm" onClick={() => void cancel(job)}>
+                    <SquareIcon className="size-3.5" />
+                    {t('common.cancel')}
+                  </Button>
+                ) : null}
+              </TableCell>
+            </TableRow>
+          );
+        })}
+      </TableBody>
+    </DataTable>
   );
 }
 
@@ -336,7 +292,7 @@ function adapterUptime(startedAt: number, locale: string): string {
  * per-row 终止 is the OPERATOR kill (owner-or-admin); the owner's everyday
  * path remains the chat tab bar's ×.
  */
-function AdaptersCard({
+function AdaptersPanel({
   machineId,
   online,
   capabilities,
@@ -387,99 +343,138 @@ function AdaptersCard({
     }
   }
 
+  // Unavailable is not an empty table: the report needs a live daemon with the
+  // chat capability, and a Note says so where a centred sentence used to.
+  if (!available) {
+    return (
+      <Panel label={t('machineDetail.adaptersTitle')} icon={<CpuIcon />}>
+        <PanelBody>
+          <Note title={t('machineDetail.adaptersOffline')} />
+        </PanelBody>
+      </Panel>
+    );
+  }
+
+  const count = rows?.length ?? 0;
   return (
-    <>
-      <Card>
-        <CardHeader className="flex flex-row items-start justify-between gap-2">
-          <div>
-            <CardTitle className="flex items-center gap-2 text-base">
-              <CpuIcon className="size-4" />
-              {t('machineDetail.adaptersTitle')}
-            </CardTitle>
-            <CardDescription>{t('machineDetail.adaptersDesc')}</CardDescription>
-          </div>
-          {available ? (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => void load()}
-              disabled={loading}
-              className="shrink-0"
-            >
-              <RefreshCwIcon className={loading ? 'size-4 animate-spin' : 'size-4'} />
-              {t('machineDetail.adaptersRefresh')}
-            </Button>
-          ) : null}
-        </CardHeader>
-        <CardContent>
-          {!available ? (
-            <p className="text-muted-foreground py-6 text-center text-sm">
-              {t('machineDetail.adaptersOffline')}
-            </p>
-          ) : (
-            <div className="overflow-hidden rounded-md border">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="pl-4">{t('machineDetail.adapterTarget')}</TableHead>
-                    <TableHead>{t('machineDetail.adapterNative')}</TableHead>
-                    <TableHead>{t('machineDetail.adapterUptime')}</TableHead>
-                    <TableHead>PGID</TableHead>
-                    <TableHead className="pr-4 text-right">{t('common.actions')}</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {rows === null || loading ? (
-                    <TableRow>
-                      <TableCell colSpan={5} className="text-muted-foreground py-6 text-center">
-                        {t('machineDetail.adaptersLoading')}
-                      </TableCell>
-                    </TableRow>
-                  ) : rows.length === 0 ? (
-                    <TableRow>
-                      <TableCell colSpan={5} className="text-muted-foreground py-6 text-center">
-                        {t('machineDetail.adaptersEmpty')}
-                      </TableCell>
-                    </TableRow>
-                  ) : (
-                    rows.map((a) => (
-                      <TableRow key={a.wireSessionId}>
-                        <TableCell className="pl-4">
-                          <Badge variant="outline" className="font-mono text-[10px]">
-                            {a.target}
-                          </Badge>
-                        </TableCell>
-                        <TableCell
-                          className="max-w-56 truncate font-mono text-xs"
-                          title={a.nativeSessionId ?? ''}
-                        >
-                          {a.nativeSessionId ?? '—'}
-                        </TableCell>
-                        <TableCell className="nums text-sm">
-                          {adapterUptime(a.startedAt, lang)}
-                        </TableCell>
-                        <TableCell className="nums font-mono text-xs">{a.pgid}</TableCell>
-                        <TableCell className="pr-4 text-right">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            disabled={killing !== null}
-                            onClick={() => void kill(a.wireSessionId)}
-                          >
-                            {killing === a.wireSessionId
-                              ? t('common.saving')
-                              : t('machineDetail.adapterKill')}
-                          </Button>
-                        </TableCell>
-                      </TableRow>
-                    ))
-                  )}
-                </TableBody>
-              </Table>
-            </div>
-          )}
-        </CardContent>
-      </Card>
-    </>
+    <DataTable
+      columns={5}
+      label={t('machineDetail.adaptersTitle')}
+      icon={<CpuIcon />}
+      meta={
+        <Readout
+          layout="inline"
+          size="sm"
+          value={count}
+          label={t('machineDetail.adaptersFigure')}
+        />
+      }
+      actions={
+        <Button variant="ghost" size="sm" onClick={() => void load()} disabled={loading}>
+          <RefreshCwIcon className={loading ? 'size-3.5 animate-spin' : 'size-3.5'} />
+          {t('machineDetail.adaptersRefresh')}
+        </Button>
+      }
+      state={tableState({ loading: rows === null || loading, count })}
+      empty={{
+        title: t('machineDetail.adaptersEmpty'),
+        hint: t('machineDetail.adaptersEmptyHint'),
+      }}
+    >
+      <TableHeader>
+        <TableRow>
+          <TableHead>{t('machineDetail.adapterTarget')}</TableHead>
+          <TableHead>{t('machineDetail.adapterNative')}</TableHead>
+          <TableHead>{t('machineDetail.adapterUptime')}</TableHead>
+          <TableHead>PGID</TableHead>
+          <TableHead className="text-right">{t('common.actions')}</TableHead>
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {(rows ?? []).map((a) => (
+          <TableRow key={a.wireSessionId}>
+            <TableCell>
+              <Badge variant="outline" className="font-mono text-[10px]">
+                {a.target}
+              </Badge>
+            </TableCell>
+            <TableCell className="max-w-56">
+              {a.nativeSessionId === null ? (
+                <span className="text-muted-foreground">—</span>
+              ) : (
+                <Well copy={a.nativeSessionId}>{a.nativeSessionId}</Well>
+              )}
+            </TableCell>
+            <TableCell className="nums text-sm">{adapterUptime(a.startedAt, lang)}</TableCell>
+            <TableCell className="role-data text-xs">{a.pgid}</TableCell>
+            <TableCell className="text-right">
+              <Button
+                variant="ghost"
+                size="sm"
+                disabled={killing !== null}
+                onClick={() => void kill(a.wireSessionId)}
+              >
+                {killing === a.wireSessionId ? t('common.saving') : t('machineDetail.adapterKill')}
+              </Button>
+            </TableCell>
+          </TableRow>
+        ))}
+      </TableBody>
+    </DataTable>
+  );
+}
+
+/** Agent instances (deployed or detected) as chips — the row links to chat. */
+function AgentsTable({ agents }: { agents: AgentInstanceView[] }) {
+  const { t } = useI18n();
+  return (
+    <DataTable
+      columns={4}
+      label={t('machineDetail.agentsTitle')}
+      meta={<Readout layout="inline" size="sm" value={agents.length} label={t('machineDetail.agentsFigure')} />}
+      state={tableState({ count: agents.length })}
+      empty={{ title: t('machineDetail.noAgents') }}
+    >
+      <TableHeader>
+        <TableRow>
+          <TableHead>{t('common.name')}</TableHead>
+          <TableHead>{t('machineDetail.adapterTarget')}</TableHead>
+          <TableHead>{t('machineDetail.agentDirectory')}</TableHead>
+          <TableHead className="text-right">{t('common.actions')}</TableHead>
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {agents.map((a) => (
+          <TableRow key={a.id}>
+            <TableCell>
+              <span className="flex items-center gap-2">
+                <span className="truncate font-medium">{a.name}</span>
+                {a.source === 'detected' ? (
+                  <Badge variant="secondary" className="text-[10px]">
+                    {t('machineDetail.detectedSource')}
+                  </Badge>
+                ) : null}
+              </span>
+            </TableCell>
+            <TableCell>
+              <Badge variant="outline" className="font-mono text-[10px]">
+                {a.target}
+              </Badge>
+            </TableCell>
+            <TableCell className="max-w-64">
+              <Well copy={a.directory}>{a.directory}</Well>
+            </TableCell>
+            <TableCell className="text-right">
+              <Button asChild variant="ghost" size="sm">
+                <Link to={`/chat/agents/${a.id}`}>
+                  <MessageSquareIcon className="size-3.5" />
+                  {t('machineDetail.chat')}
+                </Link>
+              </Button>
+            </TableCell>
+          </TableRow>
+        ))}
+      </TableBody>
+    </DataTable>
   );
 }
