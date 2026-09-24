@@ -55,12 +55,7 @@ export function DeployTab({
 }) {
   return (
     <div className="flex flex-col gap-(--gap)">
-      <DeploymentsPanel
-        machineId={machineId}
-        online={online}
-        jobs={jobs}
-        onChanged={onChanged}
-      />
+      <DeploymentsPanel machineId={machineId} online={online} jobs={jobs} onChanged={onChanged} />
       <AgentsTable agents={agents} />
       <AdaptersPanel machineId={machineId} online={online} capabilities={capabilities} />
     </div>
@@ -89,7 +84,10 @@ const JOB_STATUS_WORD: Record<string, string> = {
  * #6 marketplace deploys — `marketplace · <plugin> v<version>` from the result
  * payload (read defensively; adapter results have no `method`).
  */
-function jobDetail(job: JobView, t: ReturnType<typeof useI18n>['t']): { text: string; fail: boolean } {
+function jobDetail(
+  job: JobView,
+  t: ReturnType<typeof useI18n>['t'],
+): { text: string; fail: boolean } {
   if (job.error) return { text: job.error, fail: true };
   if (job.status === 'queued') return { text: t('machineDetail.waitingDaemon'), fail: false };
   if (job.status === 'succeeded' && job.result && typeof job.result === 'object') {
@@ -178,7 +176,9 @@ function DeploymentsPanel({
       columns={4}
       label={t('machineDetail.deployTitle')}
       icon={<RocketIcon />}
-      meta={<Readout layout="inline" size="sm" value={jobCount} label={t('machineDetail.jobsFigure')} />}
+      meta={
+        <Readout layout="inline" size="sm" value={jobCount} label={t('machineDetail.jobsFigure')} />
+      }
       state={tableState({ loading: jobs === null, count: jobCount })}
       empty={{
         title: t('machineDetail.noJobsTitle'),
@@ -249,7 +249,9 @@ function DeploymentsPanel({
               <TableCell>
                 <span className="inline-flex items-center gap-2">
                   <StateSignal state={JOB_STATUS_SIGNAL[job.status] ?? 'inactive'} />
-                  <span className="role-data text-xs">{JOB_STATUS_WORD[job.status] ?? job.status}</span>
+                  <span className="role-data text-xs">
+                    {JOB_STATUS_WORD[job.status] ?? job.status}
+                  </span>
                 </span>
               </TableCell>
               <TableCell className="max-w-[28rem]">
@@ -431,7 +433,14 @@ function AgentsTable({ agents }: { agents: AgentInstanceView[] }) {
     <DataTable
       columns={4}
       label={t('machineDetail.agentsTitle')}
-      meta={<Readout layout="inline" size="sm" value={agents.length} label={t('machineDetail.agentsFigure')} />}
+      meta={
+        <Readout
+          layout="inline"
+          size="sm"
+          value={agents.length}
+          label={t('machineDetail.agentsFigure')}
+        />
+      }
       state={tableState({ count: agents.length })}
       empty={{ title: t('machineDetail.noAgents') }}
     >

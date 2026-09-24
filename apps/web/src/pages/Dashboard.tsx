@@ -28,9 +28,11 @@ import {
   type Profile,
   type Resource,
 } from '@harness-nexus/sdk';
-import { MeshTopology, type FleetNode } from '@/components/mesh-topology';
+import { topologyRenderer } from '@/components/topology.js';
+import { useSkin } from '@/components/skin-provider.js';
 import { Button } from '@/components/ui/button';
-import { Chip, Lamp, PageIntro, Readout } from '@/components/kit';
+import { CommandLine, EmptyState, Panel, PanelBody, Chip, Lamp, Readout } from '@/components/kit';
+import type { FleetNode } from '@/components/topology-frame.js';
 
 /**
  * Overview — the fleet posture page. The constellation hero draws the whole
@@ -42,7 +44,10 @@ import { Chip, Lamp, PageIntro, Readout } from '@/components/kit';
 export function DashboardPage() {
   const { user, logout } = useAuth();
   const { t } = useI18n();
+  const { manifest } = useSkin();
   const isAdmin = user?.role === 'admin';
+  // The skin decides the hero's renderer (04-contract.md §3).
+  const Topology = topologyRenderer(manifest.topology);
 
   const [machines, setMachines] = useState<MachineView[] | null>(null);
   const [agentsByMachine, setAgentsByMachine] = useState<Map<string, AgentInstanceView[]> | null>(
@@ -128,10 +133,11 @@ export function DashboardPage() {
   return (
     <>
       {/* Hero — the signature. The constellation IS the product: upstreams
-          converge on the nexus, the nexus reaches out to the fleet. */}
-      <section className="mb-6">
-        <PageIntro sub={t('dashboard.subtitle')} className="mb-3" />
-        <MeshTopology
+          converge on the nexus, the nexus reaches out to the fleet. The skin
+          picks the renderer (`SkinManifest.topology`); the narrow case steps
+          aside to the list renderer inside `MeshTopology`. */}
+      <section className="mb-(--gap)">
+        <Topology
           servers={servers ?? []}
           loading={servers === null}
           statuses={statuses ?? undefined}
@@ -139,133 +145,157 @@ export function DashboardPage() {
         />
       </section>
 
-      {/* Posture figures — a quiet typographic strip, each figure routes on.
-          No rules: the hero card above already ends in a border. */}
-      <section className="mb-8 grid grid-cols-2 gap-x-6 gap-y-4 py-4 sm:grid-cols-4">
-        <Readout
-          to="/machines"
-          label={t('dashboard.machinesOnline')}
-          value={onlineCount}
-          total={machines?.length ?? 0}
-          loading={machines === null}
-        />
-        <Readout
-          to="/chat"
-          label={t('dashboard.agentsFigure')}
-          value={agentTotal}
-          loading={agentsByMachine === null}
-        />
-        <Readout
-          to="/mcp-servers"
-          label={t('dashboard.mcpConnected')}
-          value={connectedUpstreams ?? servers?.length ?? 0}
-          {...(connectedUpstreams !== null ? { total: servers?.length ?? 0 } : {})}
-          loading={servers === null}
-        />
-        <Readout
-          to="/llm-providers"
-          label={t('dashboard.providersFigure')}
-          value={providers?.length ?? 0}
-          loading={providers === null}
-        />
-      </section>
+      {/* Posture — a readout window: four figures, each routing on. Kept a
+          panel rather than a bare strip so the numbers read as one instrument
+          (01-skeleton.md §7.5) and so a skin has a surface to finish. */}
+      <div className="mb-(--gap)">
+        <Panel label={t('dashboard.postureTitle')} density="compact">
+          <PanelBody className="grid grid-cols-2 gap-x-6 gap-y-4 sm:grid-cols-4">
+            <Readout
+              to="/machines"
+              label={t('dashboard.machinesOnline')}
+              value={onlineCount}
+              total={machines?.length ?? 0}
+              loading={machines === null}
+            />
+            <Readout
+              to="/chat"
+              label={t('dashboard.agentsFigure')}
+              value={agentTotal}
+              loading={agentsByMachine === null}
+            />
+            <Readout
+              to="/mcp-servers"
+              label={t('dashboard.mcpConnected')}
+              value={connectedUpstreams ?? servers?.length ?? 0}
+              {...(connectedUpstreams !== null ? { total: servers?.length ?? 0 } : {})}
+              loading={servers === null}
+            />
+            <Readout
+              to="/llm-providers"
+              label={t('dashboard.providersFigure')}
+              value={providers?.length ?? 0}
+              loading={providers === null}
+            />
+          </PanelBody>
+        </Panel>
+      </div>
 
       {/* Working entries — the fleet (left, wide) and the assets (right). */}
-      <section className="grid gap-6 lg:grid-cols-[1fr_300px]">
-        <div>
-          <div className="mb-2">
-            <h2 className="text-base font-semibold">{t('dashboard.fleetHeading')}</h2>
-            <p className="text-muted-foreground text-xs">{t('dashboard.fleetHint')}</p>
-          </div>
+      <section className="grid gap-(--gap) lg:grid-cols-[1fr_300px]">
+        <Panel
+          label={t('dashboard.fleetHeading')}
+          meta={t('dashboard.fleetHint')}
+          density="compact"
+        >
           {machines === null ? (
-            <p className="text-muted-foreground py-6 text-center text-sm" role="status">
-              {t('common.loading')}
-            </p>
+            <PanelBody>
+              <p className="text-muted-foreground py-6 text-center text-sm" role="status">
+                {t('common.loading')}
+              </p>
+            </PanelBody>
           ) : machines.length === 0 ? (
-            <div className="border-muted-foreground/20 bg-muted/30 flex flex-col items-center gap-3 rounded-xl border border-dashed px-6 py-8 text-center">
-              <LaptopIcon className="text-muted-foreground size-6" />
-              <div>
-                <p className="text-foreground text-sm font-medium">{t('dashboard.noMachines')}</p>
-                <p className="text-muted-foreground mt-1 text-xs">
-                  {t('dashboard.noMachinesHint')}
-                </p>
-              </div>
-              <Button asChild size="sm" className="mt-1">
-                <Link to="/machines">
-                  <LaptopIcon className="size-4" /> {t('dashboard.noMachinesAction')}
-                </Link>
-              </Button>
-            </div>
+            <PanelBody>
+              <EmptyState
+                title={t('dashboard.noMachines')}
+                hint={t('dashboard.noMachinesHint')}
+                action={
+                  <Button asChild size="sm">
+                    <Link to="/machines">
+                      <LaptopIcon className="size-4" /> {t('dashboard.noMachinesAction')}
+                    </Link>
+                  </Button>
+                }
+              />
+            </PanelBody>
           ) : (
-            <div className="border-border divide-border rounded-xl border">
-              {machines.slice(0, 8).map((m) => (
-                <FleetRow key={m.id} machine={m} agents={agentsByMachine?.get(m.id) ?? []} />
-              ))}
+            <PanelBody variant="flush">
+              <div className="divide-border divide-y">
+                {machines.slice(0, 8).map((m) => (
+                  <FleetRow key={m.id} machine={m} agents={agentsByMachine?.get(m.id) ?? []} />
+                ))}
+              </div>
               {machines.length > 8 ? (
                 <Link
                   to="/machines"
-                  className="text-muted-foreground hover:text-signal flex items-center justify-end gap-1 px-4 py-2 text-xs transition-colors"
+                  className="text-muted-foreground hover:text-signal border-border flex items-center justify-end gap-1 border-t px-4 py-2 text-xs transition-colors"
                 >
                   {t('dashboard.moreMachinesLink')}
                   <ArrowRightIcon className="size-3.5" />
                 </Link>
               ) : null}
-            </div>
+            </PanelBody>
           )}
-        </div>
+        </Panel>
 
-        <div>
-          <div className="mb-2">
-            <h2 className="text-base font-semibold">{t('dashboard.assetsHeading')}</h2>
-            <p className="text-muted-foreground text-xs">{t('dashboard.assetsHint')}</p>
-          </div>
-          <div className="border-border divide-border rounded-xl border">
-            <AssetRow
-              to="/profiles"
-              icon={<LayersIcon className="size-4" />}
-              label={t('dashboard.assetProfiles')}
-              count={profiles?.length}
-            />
-            <AssetRow
-              to="/resources"
-              icon={<BoxesIcon className="size-4" />}
-              label={t('dashboard.assetResources')}
-              count={resources?.length}
-            />
-            <AssetRow
-              to="/credentials"
-              icon={<KeyRoundIcon className="size-4" />}
-              label={t('dashboard.assetCredentials')}
-              count={creds?.length}
-            />
-            <AssetRow
-              to="/llm-providers"
-              icon={<PlugZapIcon className="size-4" />}
-              label={t('dashboard.assetProviders')}
-              count={providers?.length}
-            />
-            {isAdmin ? (
-              <>
-                <AssetRow
-                  to="/admin/users"
-                  icon={<UsersIcon className="size-4" />}
-                  label={t('dashboard.users')}
-                />
-                <AssetRow
-                  to="/admin/settings"
-                  icon={<SettingsIcon className="size-4" />}
-                  label={t('dashboard.settings')}
-                />
-              </>
-            ) : null}
-          </div>
-        </div>
+        <Panel
+          label={t('dashboard.assetsHeading')}
+          meta={t('dashboard.assetsHint')}
+          density="compact"
+        >
+          <PanelBody variant="flush">
+            <div className="divide-border divide-y">
+              <AssetRow
+                to="/profiles"
+                icon={<LayersIcon className="size-4" />}
+                label={t('dashboard.assetProfiles')}
+                count={profiles?.length}
+              />
+              <AssetRow
+                to="/resources"
+                icon={<BoxesIcon className="size-4" />}
+                label={t('dashboard.assetResources')}
+                count={resources?.length}
+              />
+              <AssetRow
+                to="/credentials"
+                icon={<KeyRoundIcon className="size-4" />}
+                label={t('dashboard.assetCredentials')}
+                count={creds?.length}
+              />
+              <AssetRow
+                to="/llm-providers"
+                icon={<PlugZapIcon className="size-4" />}
+                label={t('dashboard.assetProviders')}
+                count={providers?.length}
+              />
+              {isAdmin ? (
+                <>
+                  <AssetRow
+                    to="/admin/users"
+                    icon={<UsersIcon className="size-4" />}
+                    label={t('dashboard.users')}
+                  />
+                  <AssetRow
+                    to="/admin/settings"
+                    icon={<SettingsIcon className="size-4" />}
+                    label={t('dashboard.settings')}
+                  />
+                </>
+              ) : null}
+            </div>
+          </PanelBody>
+        </Panel>
       </section>
 
-      <p className="text-muted-foreground mt-6 text-xs">
-        {t('dashboard.footerPrefix')} <code className="font-mono">/mcp?profile=&lt;id&gt;</code>
-        {t('dashboard.footerSuffix')}
-      </p>
+      {/* Enrolling a machine is the first thing an operator does with a fresh
+          install, so the command lives on the overview — with the placeholder
+          marked rather than a fake token, since the real one is shown once. */}
+      <div className="mt-(--gap)">
+        <Panel label={t('dashboard.cliTitle')} density="compact">
+          <PanelBody className="flex flex-col gap-3">
+            <CommandLine
+              command={`hnx enroll --server ${window.location.origin} --token <your-pat>\nhnx daemon`}
+              note={t('dashboard.cliNote')}
+            />
+            <p className="text-muted-foreground text-xs">
+              {t('dashboard.footerPrefix')}{' '}
+              <code className="font-mono">/mcp?profile=&lt;id&gt;</code>
+              {t('dashboard.footerSuffix')}
+            </p>
+          </PanelBody>
+        </Panel>
+      </div>
     </>
   );
 }

@@ -1,8 +1,18 @@
+import { useCallback, useEffect, useRef, useState, type RefCallback } from 'react';
 import { Link } from 'react-router-dom';
-import { ServerIcon, PlusIcon } from 'lucide-react';
+import { PlusIcon, ServerIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { StateSignal, SIGNAL_FILL_CLASS, type SignalState } from '@/components/state-signal';
 import { useI18n } from '@/i18n';
+import {
+  Dot,
+  MeshFrame,
+  TopologyPending,
+  truncate,
+  upstreamVariant,
+  variantFill,
+  type TopologyProps,
+} from './topology-frame.js';
+import { PlateTopology } from './plate-topology.js';
 
 /**
  * Dashboard signature: the CONSTELLATION. Upstream MCP servers fan in from
@@ -16,26 +26,13 @@ import { useI18n } from '@/i18n';
  * on `machine:status` pushes. The legend documents the states so the diagram
  * never lies, and overflow is summarized on both sides so it never lies by
  * omission either.
+ *
+ * One measured limit (P5): the SVG's labels are set in viewBox units, so they
+ * scale with the container — at 390px the 13px label renders ~6.7px. Below a
+ * legible floor this renderer steps aside for `plate` (the list), which carries
+ * the same facts in a shape a phone can read. The threshold is measured from the
+ * container width (ResizeObserver), not guessed from the viewport.
  */
-
-import type { McpServerStatus } from '@harness-nexus/sdk';
-
-type Upstream = { id: string; name: string };
-export type FleetNode = { id: string; name: string; online: boolean; agentCount: number };
-
-/** Map a live status to a Dot variant for rendering. */
-function dotVariantFor(
-  id: string,
-  statuses: McpServerStatus[] | undefined,
-): 'configured' | 'pending' | 'online' | 'warn' {
-  if (!statuses) return 'configured';
-  const s = statuses.find((x) => x.id === id);
-  if (!s) return 'configured';
-  if (s.status === 'connected') return 'online';
-  if (s.status === 'connecting') return 'pending';
-  if (s.status === 'error') return 'warn';
-  return 'configured';
-}
 
 const MAX_NAMED_UPSTREAMS = 4;
 const MAX_NAMED_MACHINES = 5;
@@ -44,47 +41,49 @@ const W = 760;
 const HUB_X = W / 2;
 const UPSTREAM_X = 70;
 const MACHINE_X = W - 78;
+const LABEL_PX = 13;
+/** Below this the rendered label is too small to read — hand over to `plate`. */
+const MIN_RENDERED_LABEL_PX = 9.5;
 /** Canvas height follows the tallest fan — sparse fleets get a compact card
  *  instead of a single row floating in 300px of dead whitespace. */
 const canvasH = (upCount: number, machineCount: number): number =>
   Math.min(300, Math.max(176, 88 + Math.max(upCount, machineCount) * 48));
 
-export function MeshTopology({
+export function MeshTopology(props: TopologyProps) {
+  const { servers, loading, statuses, machines } = props;
+  const { t } = useI18n();
+  const [measureRef, width] = useMeasuredWidth();
+
+  return (
+    // The measured wrapper is rendered on EVERY branch (loading, empty, svg,
+    // plate): a ref that only exists in one of them never attaches, and the
+    // observer then never fires — which is exactly how the first version of this
+    // stayed on the SVG at 390px.
+    <div ref={measureRef} className="min-w-0">
+      <MeshBody {...props} width={width} />
+    </div>
+  );
+}
+
+function MeshBody({
   servers,
   loading,
   statuses,
   machines,
-}: {
-  servers: Upstream[];
-  loading: boolean;
-  statuses?: McpServerStatus[];
-  machines?: FleetNode[];
-}) {
+  width,
+}: TopologyProps & { width: number | null }) {
   const { t } = useI18n();
-  const shownUp = servers.slice(0, MAX_NAMED_UPSTREAMS);
-  const overflowUp = Math.max(0, servers.length - MAX_NAMED_UPSTREAMS);
-  const fleet = machines ?? [];
-  const shownMachines = fleet.slice(0, MAX_NAMED_MACHINES);
-  const overflowMachines = Math.max(0, fleet.length - MAX_NAMED_MACHINES);
-  const hasLive = !!statuses;
-  const H = canvasH(shownUp.length, shownMachines.length);
-  const HUB_Y = H / 2;
-
   if (loading) {
     return (
-      <div
-        className="border-muted-foreground/20 bg-muted/30 flex h-[240px] items-center justify-center rounded-xl border border-dashed"
-        role="status"
-        aria-live="polite"
-      >
-        <span className="text-muted-foreground text-sm">{t('dashboard.loadingMesh')}</span>
-      </div>
+      <TopologyPending loading>
+        <></>
+      </TopologyPending>
     );
   }
 
   if (servers.length === 0) {
     return (
-      <div className="border-muted-foreground/20 bg-muted/30 flex h-[240px] flex-col items-center justify-center gap-3 rounded-xl border border-dashed text-center">
+      <TopologyPending loading={false}>
         <ServerIcon className="text-muted-foreground size-6" />
         <div>
           <p className="text-foreground text-sm font-medium">{t('dashboard.noServers')}</p>
@@ -95,9 +94,29 @@ export function MeshTopology({
             <PlusIcon className="size-4" /> {t('dashboard.addConnection')}
           </Link>
         </Button>
-      </div>
+      </TopologyPending>
     );
   }
+
+  // Too narrow to read the labels at their rendered size → the list renderer.
+  if (width !== null && (width * LABEL_PX) / W < MIN_RENDERED_LABEL_PX) {
+    return (
+      <PlateTopology
+        servers={servers}
+        loading={loading}
+        {...(statuses !== undefined ? { statuses } : {})}
+        {...(machines !== undefined ? { machines } : {})}
+      />
+    );
+  }
+
+  const shownUp = servers.slice(0, MAX_NAMED_UPSTREAMS);
+  const overflowUp = Math.max(0, servers.length - MAX_NAMED_UPSTREAMS);
+  const fleet = machines ?? [];
+  const shownMachines = fleet.slice(0, MAX_NAMED_MACHINES);
+  const overflowMachines = Math.max(0, fleet.length - MAX_NAMED_MACHINES);
+  const H = canvasH(shownUp.length, shownMachines.length);
+  const HUB_Y = H / 2;
 
   // Spread each fan evenly across the vertical span, inset from the edges.
   const spread = (count: number): ((i: number) => number) => {
@@ -111,44 +130,11 @@ export function MeshTopology({
   const machineY = spread(shownMachines.length);
 
   return (
-    <div
-      data-surface="mesh"
-      className="border-border bg-card overflow-hidden rounded-xl border"
+    <MeshFrame
+      upstreamCount={servers.length}
+      machineCount={fleet.length}
+      {...(statuses !== undefined ? { statuses } : {})}
     >
-      <div className="border-border flex items-center justify-between gap-4 border-b px-4 py-2.5">
-        <div className="flex items-center gap-2">
-          <span className="text-foreground text-sm font-medium">{t('dashboard.yourMesh')}</span>
-          <span className="text-muted-foreground text-xs nums">
-            {t(servers.length === 1 ? 'dashboard.upOne' : 'dashboard.upMany', {
-              count: servers.length,
-            })}
-          </span>
-        </div>
-        {/* Legend — documents the live states on both sides of the hub. */}
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
-          {hasLive ? (
-            <>
-              <span className="text-muted-foreground flex items-center gap-1.5">
-                <Dot variant="online" /> {t('dashboard.legendConnected')}
-              </span>
-              <span className="text-muted-foreground flex items-center gap-1.5">
-                <Dot variant="warn" /> {t('dashboard.legendError')}
-              </span>
-            </>
-          ) : (
-            <span className="text-muted-foreground flex items-center gap-1.5">
-              <Dot variant="configured" /> {t('dashboard.legendConfigured')}
-            </span>
-          )}
-          <span className="bg-border mx-1 inline-block h-3 w-px" aria-hidden="true" />
-          <span className="text-muted-foreground flex items-center gap-1.5">
-            <Dot variant="online" /> {t('dashboard.legendOnline')}
-          </span>
-          <span className="text-muted-foreground flex items-center gap-1.5">
-            <Dot variant="configured" /> {t('dashboard.legendOffline')}
-          </span>
-        </div>
-      </div>
       <svg
         viewBox={`0 0 ${W} ${H}`}
         className="w-full"
@@ -168,10 +154,10 @@ export function MeshTopology({
         {/* upstream nodes — label sits right of the dot */}
         {shownUp.map((s, i) => {
           const y = upY(i);
-          const variant = dotVariantFor(s.id, statuses);
+          const variant = upstreamVariant(s.id, statuses);
           return (
             <g key={s.id}>
-              <circle cx={UPSTREAM_X} cy={y} r={5} className={nodeFill(variant)} />
+              <circle cx={UPSTREAM_X} cy={y} r={5} className={variantFill(variant)} />
               <text
                 x={UPSTREAM_X + 16}
                 y={y + 1}
@@ -228,7 +214,7 @@ export function MeshTopology({
                 cx={MACHINE_X}
                 cy={y}
                 r={5}
-                className={SIGNAL_FILL_CLASS[m.online ? 'online' : 'offline']}
+                className={variantFill(m.online ? 'online' : 'configured')}
               />
               <text
                 x={MACHINE_X - 16}
@@ -284,32 +270,32 @@ export function MeshTopology({
           </text>
         )}
       </svg>
-    </div>
+    </MeshFrame>
   );
 }
 
 /**
- * Status dot for the legend — a thin wrapper over the shared StateSignal so
- * the topology's states stay skin-addressable like every other dot.
- * `configured`/`pending` are muted; `online` carries the live `--ok` accent;
- * `warn` signals a connection error.
+ * The measured width of the node the returned ref is attached to, and the ref
+ * itself. A CALLBACK ref, not `useRef`: the effect version binds once, and any
+ * branch that does not render the node on the first commit leaves it bound to
+ * nothing (`null`) forever — which is how the first attempt stayed on the SVG.
  */
-const DOT_VARIANT_STATE: Record<'configured' | 'pending' | 'online' | 'warn', SignalState> = {
-  configured: 'configured',
-  pending: 'inactive',
-  online: 'online',
-  warn: 'warn',
-};
-
-function Dot({ variant }: { variant: 'configured' | 'pending' | 'online' | 'warn' }) {
-  return <StateSignal state={DOT_VARIANT_STATE[variant]} aria-hidden />;
-}
-
-/** SVG fill class for an upstream node circle, matching the Dot semantics. */
-function nodeFill(variant: 'configured' | 'pending' | 'online' | 'warn'): string {
-  return SIGNAL_FILL_CLASS[DOT_VARIANT_STATE[variant]];
-}
-
-function truncate(s: string, n: number): string {
-  return s.length > n ? `${s.slice(0, n - 1)}…` : s;
+function useMeasuredWidth(): [RefCallback<HTMLDivElement | null>, number | null] {
+  const [width, setWidth] = useState<number | null>(null);
+  const observer = useRef<ResizeObserver | null>(null);
+  const ref = useCallback<RefCallback<HTMLDivElement | null>>((el) => {
+    observer.current?.disconnect();
+    observer.current = null;
+    if (el === null) return;
+    setWidth(el.clientWidth);
+    if (typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver((entries) => {
+      const entry = entries[0];
+      if (entry !== undefined) setWidth(entry.contentRect.width);
+    });
+    ro.observe(el);
+    observer.current = ro;
+  }, []);
+  useEffect(() => () => observer.current?.disconnect(), []);
+  return [ref, width];
 }
