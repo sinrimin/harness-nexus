@@ -119,7 +119,10 @@ export function StateSignal({ state, label, pulse, className, ...props }: StateS
       className={cn(
         'signal-dot inline-block size-2 shrink-0 rounded-full',
         SIGNAL_DOT_CLASS[state],
-        pulse && 'animate-pulse',
+        // The one breathing motion the design allows (03-interaction.md §6):
+        // token-driven, 0.55→1 over `--motion-breath`, restored to full
+        // opacity by the global reduced-motion block.
+        pulse && 'lamp-breath',
         className,
       )}
       aria-label={label}

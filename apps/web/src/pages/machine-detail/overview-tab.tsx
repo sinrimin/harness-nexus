@@ -7,7 +7,15 @@ import { HarnessNexusError, type MachineView } from '@harness-nexus/sdk';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
-import { Field, LabelText, Panel, PanelBody, Skeleton, Well } from '@/components/kit';
+import {
+  ConfirmDialog,
+  Field,
+  LabelText,
+  Panel,
+  PanelBody,
+  Skeleton,
+  Well,
+} from '@/components/kit';
 
 /**
  * 概览 tab — machine identity + the two machine-level settings (P5).
@@ -170,12 +178,7 @@ function BaseWorkspaceField({
       htmlFor="machine-base-workspace"
       hint={t('machineDetail.baseWorkspaceHint')}
       aside={
-        <Button
-          variant="outline"
-          size="sm"
-          disabled={!dirty || busy}
-          onClick={() => void save()}
-        >
+        <Button variant="outline" size="sm" disabled={!dirty || busy} onClick={() => void save()}>
           {busy ? t('common.saving') : t('common.save')}
         </Button>
       }
@@ -193,14 +196,14 @@ function BaseWorkspaceField({
   );
 }
 
-/** Remote chat toggle — a remote-code-execution switch; confirm-first. */
+/** Remote chat toggle — a remote-code-execution switch; confirm-first.
+ *  Same action as the Machines list's switch, so it borrows that page's words
+ *  (and its tier): the flip is one click back, so no "cannot be undone". */
 function RemoteChatToggle({ machine, onChanged }: { machine: MachineView; onChanged: () => void }) {
   const { logout } = useAuth();
   const { t } = useI18n();
+  const [pending, setPending] = useState<boolean | null>(null);
   async function toggle(next: boolean): Promise<void> {
-    if (next && !window.confirm(t('machineDetail.chatConfirm'))) {
-      return;
-    }
     try {
       await withAuthGuard(() => api.updateMachine(machine.id, { remoteChatEnabled: next }), logout);
       toast.success(next ? t('machineDetail.chatEnabled') : t('machineDetail.chatDisabled'));
@@ -209,18 +212,44 @@ function RemoteChatToggle({ machine, onChanged }: { machine: MachineView; onChan
       toast.error(e instanceof HarnessNexusError ? e.message : t('common.updateFailed'));
     }
   }
+  function confirmPending(): void {
+    const next = pending;
+    if (next === null) return;
+    setPending(null);
+    void toggle(next);
+  }
   return (
-    <Field
-      label={t('machineDetail.chatLabel')}
-      aside={
-        <Switch
-          checked={machine.remoteChatEnabled}
-          onCheckedChange={(v) => void toggle(v)}
-          aria-label={t('machineDetail.chatLabel')}
+    <>
+      <Field
+        label={t('machineDetail.chatLabel')}
+        aside={
+          <Switch
+            checked={machine.remoteChatEnabled}
+            onCheckedChange={(v) => setPending(v)}
+            aria-label={t('machineDetail.chatLabel')}
+          />
+        }
+      >
+        <p className="text-muted-foreground text-xs">{t('machineDetail.chatHint')}</p>
+      </Field>
+
+      {pending !== null ? (
+        <ConfirmDialog
+          open
+          onOpenChange={(o) => {
+            if (!o) setPending(null);
+          }}
+          title={pending ? t('machines.chatEnableAction') : t('machines.chatDisableAction')}
+          consequence={
+            pending ? t('machines.chatEnableConsequence') : t('machines.chatDisableConsequence')
+          }
+          impact={[{ label: 'machine', value: machine.name }]}
+          actionLabel={pending ? t('machines.chatEnableAction') : t('machines.chatDisableAction')}
+          tone="default"
+          irreversible={false}
+          onConfirm={confirmPending}
         />
-      }
-    >
-      <p className="text-muted-foreground text-xs">{t('machineDetail.chatHint')}</p>
-    </Field>
+      ) : null}
+    </>
   );
 }

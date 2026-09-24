@@ -44,15 +44,35 @@ function DialogContent({
   className,
   children,
   showCloseButton = true,
+  onCloseAutoFocus,
   ...props
 }: React.ComponentProps<typeof DialogPrimitive.Content> & {
   showCloseButton?: boolean;
 }) {
+  // P6 — Radix restores focus on close only when the dialog was opened by a
+  // `DialogTrigger`; every dialog in this app is opened programmatically (a
+  // row action, a switch, a button), so focus fell back to <body> and a
+  // keyboard user lost their place in the page. Capture the opener before
+  // Radix moves focus inside, and hand it back — but never fight a focus that
+  // Radix or the page already placed somewhere real.
+  const opener = React.useRef<HTMLElement | null>(
+    typeof document === 'undefined' ? null : (document.activeElement as HTMLElement | null),
+  );
   return (
     <DialogPortal data-slot="dialog-portal">
       <DialogOverlay />
       <DialogPrimitive.Content
         data-slot="dialog-content"
+        onCloseAutoFocus={(event) => {
+          onCloseAutoFocus?.(event);
+          const target = opener.current;
+          if (target === null) return;
+          requestAnimationFrame(() => {
+            const here = document.activeElement;
+            if (!target.isConnected) return;
+            if (here === null || here === document.body) target.focus();
+          });
+        }}
         className={cn(
           'bg-background data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 fixed top-[50%] left-[50%] z-50 grid w-full max-w-[calc(100%-2rem)] translate-x-[-50%] translate-y-[-50%] gap-4 rounded-lg border p-6 shadow-lg duration-200 sm:max-w-lg',
           className,

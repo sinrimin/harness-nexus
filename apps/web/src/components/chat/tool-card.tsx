@@ -360,7 +360,7 @@ function ToolCardShell({
 
   return (
     <div
-      className={cn('rounded-sm text-xs', node.status === 'running' && 'animate-pulse')}
+      className={cn('rounded-sm text-xs', node.status === 'running' && 'lamp-breath')}
       data-tool-status={node.status}
     >
       <button

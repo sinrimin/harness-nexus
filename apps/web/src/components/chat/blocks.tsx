@@ -253,7 +253,7 @@ export const TerminalBlock = memo(function TerminalBlock({
     return body === '' ? [] : body.split('\n');
   }, [command]);
   const promptLabel = cwd !== undefined && cwd !== '' ? `${cwdBasename(cwd)} $` : '$';
-  const dot = running ? 'bg-warn animate-pulse' : failed ? 'bg-danger' : 'bg-ok';
+  const dot = running ? 'bg-warn lamp-breath' : failed ? 'bg-danger' : 'bg-ok';
   const empty = !running && lines.length === 0;
   return (
     <div data-surface="well" className="bg-muted/50 overflow-hidden rounded-md border">

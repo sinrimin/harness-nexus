@@ -106,7 +106,13 @@ export function AppShell({ children }: { children: ReactNode }) {
         <main
           id="main"
           data-region="main"
-          className={cn('min-h-0 flex-1', panes ? 'overflow-hidden' : 'overflow-y-auto')}
+          // P6 — the skip link's target has to be focusable, or the "skip"
+          // only moves the URL hash and leaves the keyboard user at the top of
+          // the document (measured: activeElement stayed BODY). `outline-none`
+          // because this is a container, not a control: the replacement for the
+          // ring is the content itself arriving under the caret.
+          tabIndex={-1}
+          className={cn('min-h-0 flex-1 outline-none', panes ? 'overflow-hidden' : 'overflow-y-auto')}
         >
           <div
             className={cn(

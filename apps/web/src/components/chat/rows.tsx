@@ -177,7 +177,7 @@ export function ReasoningRow({ text, running }: { text: string; running: boolean
         className={cn(
           'flex h-6 w-full items-center gap-1.5 rounded-sm text-left',
           !empty && 'hover:text-foreground',
-          running && 'animate-pulse',
+          running && 'lamp-breath',
         )}
       >
         <BrainIcon className="size-3.5 shrink-0" />

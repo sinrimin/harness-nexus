@@ -13,8 +13,6 @@ const en = {
   source: 'Source',
   trust: 'Trust',
   timedOut: 'Some sources timed out ({sources}); showing partial results.',
-  emptySearch: 'No skills match the search.',
-  emptyFilters: 'No plugins match the current filters.',
   saveAsSkill: 'Save as skill',
   archiveTooltip: 'Archive sources cannot be saved as plugin-source skills',
   // Trust badge labels.
@@ -36,7 +34,6 @@ const en = {
   savedToast: 'Saved as skill resource',
   saveFailedToast: 'Failed to save skill',
   loadMarketplacesFailed: 'Failed to load marketplaces',
-  loadSkillsFailed: 'Failed to load skills',
 };
 
 const zh: typeof en = {
@@ -51,8 +48,6 @@ const zh: typeof en = {
   source: '来源',
   trust: '信任',
   timedOut: '以下来源超时（{sources}）；仅显示部分结果。',
-  emptySearch: '没有符合搜索条件的技能。',
-  emptyFilters: '当前筛选条件下没有插件。',
   saveAsSkill: '保存为技能',
   archiveTooltip: '归档来源无法保存为插件来源的技能',
   trusted: '可信',
@@ -71,7 +66,6 @@ const zh: typeof en = {
   savedToast: '已保存为技能资源',
   saveFailedToast: '保存技能失败',
   loadMarketplacesFailed: '加载市场失败',
-  loadSkillsFailed: '加载技能失败',
 };
 
 export const skillHubStrings = { en, zh };

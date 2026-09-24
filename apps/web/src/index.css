@@ -387,6 +387,91 @@
   }
 }
 
+/* ---- Panel seating (03-interaction.md §6) -------------------------------
+ * A page's top-level blocks drop the last 3px and fade in, staggered 40ms
+ * apart, so a route change reads as a panel being fitted rather than a flash
+ * of content. Route changes mount new elements, which is what replays it — no
+ * JS, no per-page wiring; a page that renders one wrapper seats as one block.
+ * Ends at `transform: none`, so nothing is left holding a containing block
+ * for a sticky header or a fixed overlay.
+ */
+@keyframes panel-seat {
+  from {
+    opacity: 0;
+    transform: translateY(-3px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+[data-region='main'] > div > * {
+  animation: panel-seat var(--motion-seat) ease-out both;
+}
+[data-region='main'] > div > :nth-child(2) {
+  animation-delay: calc(var(--motion-seat) * 0.22);
+}
+[data-region='main'] > div > :nth-child(3) {
+  animation-delay: calc(var(--motion-seat) * 0.44);
+}
+[data-region='main'] > div > :nth-child(4) {
+  animation-delay: calc(var(--motion-seat) * 0.66);
+}
+/* The rest arrive together with the fourth: a long page must not keep
+   trickling panels in for half a second. */
+[data-region='main'] > div > :nth-child(n + 5) {
+  animation-delay: calc(var(--motion-seat) * 0.66);
+}
+
+/* ---- Toast (03-interaction.md §3) --------------------------------------
+ * The Note's material on sonner's engine: panel surface, 1px frame, a 3px
+ * tone edge on the left, mono body (the `role-data-sm` title set in
+ * sonner.tsx). Sonner's `richColors` palette is off — a toast that paints
+ * itself in another product's greens is the thing this rule replaces. Every
+ * colour here is a semantic token, so skins restyle the surface for free and
+ * the status word still carries the meaning on its own.
+ */
+/* Three attributes deep on purpose: sonner's own surface rule is
+   `[data-sonner-toast][data-styled='true']`, and the two stylesheets' order in
+   the bundle is not ours to rely on. */
+[data-sonner-toaster] [data-sonner-toast][data-styled='true'] {
+  border-left-width: 3px;
+  border-left-style: solid;
+  border-left-color: var(--border);
+  border-radius: var(--radius-panel);
+  box-shadow: var(--shadow-panel);
+  padding: 8px 10px;
+  gap: 8px;
+}
+[data-sonner-toaster] [data-sonner-toast][data-type='success'] {
+  border-left-color: var(--ok);
+}
+[data-sonner-toaster] [data-sonner-toast][data-type='error'] {
+  border-left-color: var(--danger);
+}
+[data-sonner-toaster] [data-sonner-toast][data-type='warning'] {
+  border-left-color: var(--warn);
+}
+[data-sonner-toaster] [data-sonner-toast][data-type='info'],
+[data-sonner-toaster] [data-sonner-toast][data-type='loading'] {
+  border-left-color: var(--signal);
+}
+/* Only the icon carries the status colour: the sentence stays in the reading
+   colour, the way the inline `Note` does it. */
+[data-sonner-toaster] [data-sonner-toast][data-type='success'] [data-icon] {
+  color: var(--state-ok-ink);
+}
+[data-sonner-toaster] [data-sonner-toast][data-type='error'] [data-icon] {
+  color: var(--state-fail-ink);
+}
+[data-sonner-toaster] [data-sonner-toast][data-type='warning'] [data-icon] {
+  color: var(--state-warn-ink);
+}
+[data-sonner-toaster] [data-sonner-toast][data-type='info'] [data-icon],
+[data-sonner-toaster] [data-sonner-toast][data-type='loading'] [data-icon] {
+  color: var(--signal);
+}
+
 /* ---- Reduced motion ----------------------------------------------------
  * Global, in the base layer: every skin inherits it. Two terminal states are
  * restored explicitly — a lamp mid-breath and a constellation link mid-draw
@@ -400,7 +485,12 @@
   *::after {
     animation-duration: 0.001ms !important;
     animation-iteration-count: 1 !important;
+    /* Delays too: a staggered seat would otherwise hold its `from` state —
+       `opacity: 0` — for the length of the delay, which is the opposite of
+       what the preference asks for. */
+    animation-delay: 0.001ms !important;
     transition-duration: 0.001ms !important;
+    transition-delay: 0.001ms !important;
     scroll-behavior: auto !important;
   }
   [data-lamp][data-live='true'],
