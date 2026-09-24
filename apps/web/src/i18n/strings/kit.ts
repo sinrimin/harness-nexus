@@ -8,6 +8,7 @@ const en = {
   loadFailed: 'Could not load this list',
   filteredEmpty: 'No rows match the current filter',
   clearFilters: 'Clear filters',
+  clearSearch: 'Clear search',
   // Two-step confirmation (irreversible actions only).
   typeToConfirm: 'Type {name} to confirm',
   irreversible: 'This cannot be undone.',
@@ -22,6 +23,7 @@ const zh: typeof en = {
   loadFailed: '列表加载失败',
   filteredEmpty: '没有符合当前筛选的行',
   clearFilters: '清除筛选',
+  clearSearch: '清除搜索',
   typeToConfirm: '输入 {name} 以确认',
   irreversible: '此操作不可撤销。',
   substitute: '请替换为你的取值：',

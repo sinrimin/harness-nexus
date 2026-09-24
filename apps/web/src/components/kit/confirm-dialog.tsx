@@ -48,6 +48,13 @@ type ConfirmDialogProps = {
   /** The confirm button's label; same words as `title`. */
   actionLabel: ReactNode;
   tone?: 'danger' | 'default';
+  /**
+   * Whether the generic "This cannot be undone." line is true. Defaults to the
+   * danger tone, which is right for a destroyed secret or a revoked token — but
+   * a two-stage delete is *not* irreversible, and claiming otherwise would be
+   * the one thing this kit promises never to do.
+   */
+  irreversible?: boolean;
   busy?: boolean;
   onConfirm: () => void;
   children?: ReactNode;
@@ -62,6 +69,7 @@ export function ConfirmDialog({
   confirmPhrase,
   actionLabel,
   tone = 'danger',
+  irreversible,
   busy,
   onConfirm,
   children,
@@ -95,7 +103,7 @@ export function ConfirmDialog({
           <DialogDescription className="text-foreground max-w-[68ch] text-sm">
             {consequence}
           </DialogDescription>
-          {tone === 'danger' ? (
+          {(irreversible ?? tone === 'danger') === true ? (
             <p className="text-muted-foreground text-xs">{t('kit.irreversible')}</p>
           ) : null}
 
