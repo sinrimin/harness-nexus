@@ -97,7 +97,7 @@ interface HubRow {
  * owns no page chrome — the tab row above it and the shell's topbar carry the
  * identity.
  */
-export function SkillHubPanel() {
+export function SkillHubPanel({ onSavedSkill }: { onSavedSkill?: (key: string) => void } = {}) {
   const { logout } = useAuth();
   const { t } = useI18n();
   const [marketplaces, setMarketplaces] = useState<{ id: string }[] | null>(null);
@@ -274,9 +274,11 @@ export function SkillHubPanel() {
         <SavePluginDialog
           row={saving}
           onClose={() => setSaving(null)}
-          onSaved={() => {
+          onSaved={(key) => {
             setSaving(null);
-            toast.success(t('skillHub.savedToast'));
+            // The hub produces skills; the list is where they land. Hand the new
+            // key up so the page can switch tabs and point at it (09 §5).
+            onSavedSkill?.(key);
           }}
         />
       ) : null}
@@ -409,7 +411,8 @@ function SavePluginDialog({
 }: {
   row: HubRow;
   onClose: () => void;
-  onSaved: () => void;
+  /** The saved resource's key, so the page can reveal it in the list. */
+  onSaved: (key: string) => void;
 }) {
   const { logout, user } = useAuth();
   const { t } = useI18n();
@@ -430,7 +433,7 @@ function SavePluginDialog({
     setBusy(true);
     try {
       const source = row.pluginSource as Parameters<typeof api.createResource>[0]['source'];
-      await withAuthGuard(
+      const { resource } = await withAuthGuard(
         () =>
           api.createResource({
             key,
@@ -443,7 +446,7 @@ function SavePluginDialog({
           }),
         logout,
       );
-      onSaved();
+      onSaved(resource.key);
     } catch (e) {
       toast.error(e instanceof HarnessNexusError ? e.message : t('skillHub.saveFailedToast'));
     } finally {

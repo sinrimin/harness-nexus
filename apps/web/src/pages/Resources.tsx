@@ -9,6 +9,10 @@ import {
   GlobeIcon,
   UserIcon,
   MoreHorizontalIcon,
+  ChevronDownIcon,
+  ChevronRightIcon,
+  FileTextIcon,
+  FolderIcon,
 } from 'lucide-react';
 import { api } from '@/api';
 import { useAuth, withAuthGuard } from '@/auth';
@@ -33,6 +37,7 @@ import {
   useListQuery,
   type ListQuerySpec,
 } from '@/lib/list-query';
+import { buildBundleTree, bundlePathError, type BundleNode } from '@/lib/bundle-tree';
 import { PageSlot } from '@/components/shell/page-slots';
 import type { ResourcePageKind } from '@/nav';
 import { Button } from '@/components/ui/button';
@@ -181,7 +186,19 @@ function hookEventsOf(r: Resource): HookEvent[] {
  * every filter change and pushed nothing into the URL, so a filtered view could
  * not be shared, reloaded or gone back to.
  */
-export function ResourcesPage({ fixedKind }: { fixedKind: ResourcePageKind }) {
+export function ResourcesPage({
+  fixedKind,
+  highlightKey,
+}: {
+  fixedKind: ResourcePageKind;
+  /**
+   * A resource to point at (09 §5): the skills page sets it when the hub hands
+   * a freshly saved skill over, so the row you just made is visible instead of
+   * somewhere in the list. Absent on every other kind page — and a `highlight`
+   * that matches nothing is simply no highlight.
+   */
+  highlightKey?: string;
+}) {
   const { logout, user } = useAuth();
   const { t, lang } = useI18n();
   const isAdmin = user?.role === 'admin';
@@ -207,6 +224,18 @@ export function ResourcesPage({ fixedKind }: { fixedKind: ResourcePageKind }) {
   useEffect(() => {
     void refresh();
   }, []);
+
+  /**
+   * Bring the pointed-at row into view once it is actually rendered. Smooth
+   * scrolling is motion, so it is skipped when the reader asked for less.
+   */
+  useEffect(() => {
+    if (highlightKey === undefined || items === null) return;
+    const row = document.querySelector('[data-highlight]');
+    if (row === null) return;
+    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    row.scrollIntoView({ block: 'center', behavior: reduced ? 'auto' : 'smooth' });
+  }, [highlightKey, items]);
 
   const visible = useMemo(() => {
     if (items === null) return null;
@@ -500,7 +529,11 @@ export function ResourcesPage({ fixedKind }: { fixedKind: ResourcePageKind }) {
         </TableHeader>
         <TableBody>
           {visible?.map((r) => (
-            <TableRow key={r.id}>
+            <TableRow
+              key={r.id}
+              data-highlight={r.key === highlightKey ? '' : undefined}
+              className={r.key === highlightKey ? 'bg-signal/5' : undefined}
+            >
               {table.cells.map((cell, i) => (
                 <Fragment key={i}>{cell(r)}</Fragment>
               ))}
@@ -978,11 +1011,121 @@ function serializeHooksJson(entries: HookEntry[]): string {
 }
 
 /**
+ * One row of the bundle tree. Folders collapse and offer "add a file here";
+ * files select for editing. Module scope on purpose (09 §4): the tree is data,
+ * and a nested component definition would remount every keystroke.
+ */
+function BundleTreeRow({
+  node,
+  depth,
+  activePath,
+  collapsed,
+  onToggle,
+  onSelect,
+  onRemove,
+  onAddHere,
+}: {
+  node: BundleNode;
+  depth: number;
+  activePath: string | null;
+  collapsed: Record<string, boolean>;
+  onToggle: (path: string) => void;
+  onSelect: (path: string) => void;
+  onRemove: (path: string) => void;
+  onAddHere: (dir: string) => void;
+}) {
+  const { t } = useI18n();
+  const indent = { paddingLeft: `${depth * 12 + 8}px` };
+
+  if (node.dir) {
+    const isCollapsed = collapsed[node.path] === true;
+    return (
+      <>
+        <div className="hover:bg-accent/40 group flex items-center rounded" style={indent}>
+          <button
+            type="button"
+            aria-expanded={!isCollapsed}
+            onClick={() => onToggle(node.path)}
+            className="flex flex-1 items-center gap-1.5 py-1.5 text-left font-mono text-xs"
+          >
+            {isCollapsed ? (
+              <ChevronRightIcon className="text-muted-foreground size-3.5 shrink-0" />
+            ) : (
+              <ChevronDownIcon className="text-muted-foreground size-3.5 shrink-0" />
+            )}
+            <FolderIcon className="text-muted-foreground size-3.5 shrink-0" />
+            <span className="truncate">{node.name}/</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => onAddHere(node.path)}
+            className="text-muted-foreground hover:text-foreground mr-1 size-6 shrink-0 rounded"
+          >
+            <PlusIcon className="mx-auto size-3.5" />
+            <span className="sr-only">{t('resources.addHere')}</span>
+          </button>
+        </div>
+        {isCollapsed ? null : (
+          <>
+            {node.children.map((child) => (
+              <BundleTreeRow
+                key={child.path}
+                node={child}
+                depth={depth + 1}
+                activePath={activePath}
+                collapsed={collapsed}
+                onToggle={onToggle}
+                onSelect={onSelect}
+                onRemove={onRemove}
+                onAddHere={onAddHere}
+              />
+            ))}
+          </>
+        )}
+      </>
+    );
+  }
+
+  const active = activePath === node.path;
+  return (
+    <div
+      className={cn(
+        'group flex items-center rounded',
+        active ? 'bg-accent text-accent-foreground' : 'hover:bg-accent/60',
+      )}
+      style={indent}
+    >
+      <button
+        type="button"
+        onClick={() => onSelect(node.path)}
+        className="flex flex-1 items-center gap-1.5 py-1.5 text-left font-mono text-xs"
+      >
+        <FileTextIcon className="text-muted-foreground size-3.5 shrink-0" />
+        <span className="truncate">{node.name}</span>
+      </button>
+      <button
+        type="button"
+        onClick={() => onRemove(node.path)}
+        className="text-muted-foreground hover:text-destructive mr-1 size-6 shrink-0 rounded"
+      >
+        <TrashIcon className="mx-auto size-3.5" />
+        <span className="sr-only">{t('resources.removeFile')}</span>
+      </button>
+    </div>
+  );
+}
+
+/**
  * Manages the extra files of a multi-file skill (everything besides the main
- * SKILL.md, which lives in the primary body textarea). Each entry is a
- * relative path → content pair. When any extra file exists, the editor emits
+ * SKILL.md, which lives in the primary body textarea). Each entry is a relative
+ * path → content pair. When any extra file exists, the editor emits
  * `source.inline-bundle` instead of `source.inline`. See Phase 4.6 / the 4.4
  * skill research (~42% of real skills are multi-file).
+ *
+ * P4 (09 §4): the files are shown as the tree their paths describe — a skill
+ * with `references/a.md` and `scripts/run.sh` is two folders, not a flat list
+ * that makes you read the slashes. The tree is a *view*: the stored shape stays
+ * the flat `path → content` map.
  */
 function SkillBundleEditor({
   files,
@@ -994,12 +1137,16 @@ function SkillBundleEditor({
   const { t } = useI18n();
   const [newPath, setNewPath] = useState('');
   const [activePath, setActivePath] = useState<string | null>(null);
+  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
+  const [renaming, setRenaming] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState('');
   const paths = Object.keys(files).sort();
+  const tree = buildBundleTree(paths);
 
   function addFile() {
     const p = newPath.trim();
     if (!p) return;
-    if (p === 'SKILL.md' || p.startsWith('/') || p.includes('..') || p.includes('\\')) {
+    if (bundlePathError(p) !== null) {
       toast.error(t('resources.invalidPath'));
       return;
     }
@@ -1010,6 +1157,27 @@ function SkillBundleEditor({
     setFiles({ ...files, [p]: '' });
     setActivePath(p);
     setNewPath('');
+  }
+
+  function renameFile(from: string) {
+    const to = renameValue.trim();
+    if (to === from) {
+      setRenaming(null);
+      return;
+    }
+    if (to === '' || bundlePathError(to) !== null) {
+      toast.error(t('resources.invalidPath'));
+      return;
+    }
+    if (files[to] !== undefined) {
+      toast.error(t('resources.pathExists', { path: to }));
+      return;
+    }
+    const next: Record<string, string> = {};
+    for (const [k, v] of Object.entries(files)) next[k === from ? to : k] = v;
+    setFiles(next);
+    if (activePath === from) setActivePath(to);
+    setRenaming(null);
   }
 
   function removeFile(p: string) {
@@ -1042,39 +1210,70 @@ function SkillBundleEditor({
 
         {paths.length > 0 ? (
           <div className="flex flex-col gap-3 sm:flex-row">
-            {/* File list */}
-            <div className="bg-muted/40 flex flex-col rounded-md border p-2 sm:w-56 sm:shrink-0">
-              {paths.map((p) => (
-                <button
-                  key={p}
-                  type="button"
-                  onClick={() => setActivePath(p)}
-                  className={cn(
-                    'flex items-center justify-between rounded px-2 py-1.5 text-left font-mono text-xs transition-colors',
-                    activePath === p ? 'bg-accent text-accent-foreground' : 'hover:bg-accent/60',
-                  )}
-                >
-                  <span className="truncate">{p}</span>
-                  <TrashIcon
-                    className="text-muted-foreground hover:text-destructive size-3.5 shrink-0"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      removeFile(p);
-                    }}
-                  />
-                </button>
+            {/* File tree (folders are derived from the paths) */}
+            <div className="bg-muted/40 flex flex-col rounded-md border p-1 sm:w-64 sm:shrink-0">
+              {tree.map((node) => (
+                <BundleTreeRow
+                  key={node.path}
+                  node={node}
+                  depth={0}
+                  activePath={activePath}
+                  collapsed={collapsed}
+                  onToggle={(path) => setCollapsed((prev) => ({ ...prev, [path]: !prev[path] }))}
+                  onSelect={setActivePath}
+                  onRemove={removeFile}
+                  onAddHere={(dir) => setNewPath(`${dir}/`)}
+                />
               ))}
             </div>
-            {/* Active file editor */}
-            {activePath ? (
-              <Textarea
-                key={activePath}
-                value={files[activePath]}
-                onChange={(e) => updateContent(activePath, e.target.value)}
-                placeholder={t('resources.fileContent', { path: activePath })}
-                spellCheck={false}
-                className="min-h-48 flex-1 font-mono text-xs"
-              />
+            {/* Active file: its path is protocol material (a Well), its body is text */}
+            {activePath !== null ? (
+              <div className="flex min-w-0 flex-1 flex-col gap-2">
+                <div className="flex items-center gap-2">
+                  <Well variant="chip" copy={activePath}>
+                    {activePath}
+                  </Well>
+                  {renaming === activePath ? (
+                    <Input
+                      autoFocus
+                      value={renameValue}
+                      onChange={(e) => setRenameValue(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          renameFile(activePath);
+                        }
+                        if (e.key === 'Escape') setRenaming(null);
+                      }}
+                      onBlur={() => renameFile(activePath)}
+                      spellCheck={false}
+                      className="h-7 max-w-64 font-mono text-xs"
+                    />
+                  ) : (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="size-7"
+                      onClick={() => {
+                        setRenaming(activePath);
+                        setRenameValue(activePath);
+                      }}
+                    >
+                      <PencilIcon className="size-3.5" />
+                      <span className="sr-only">{t('resources.renameFile')}</span>
+                    </Button>
+                  )}
+                </div>
+                <Textarea
+                  key={activePath}
+                  value={files[activePath]}
+                  onChange={(e) => updateContent(activePath, e.target.value)}
+                  placeholder={t('resources.fileContent', { path: activePath })}
+                  spellCheck={false}
+                  className="min-h-48 flex-1 font-mono text-xs"
+                />
+              </div>
             ) : (
               <div className="text-muted-foreground flex flex-1 items-center justify-center rounded-md border border-dashed py-8 text-sm">
                 {t('resources.selectFile')}

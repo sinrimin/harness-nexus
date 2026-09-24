@@ -86,6 +86,9 @@ const en = {
   fileContent: 'Content of {path}',
   selectFile: 'Select a file to edit',
   addFile: 'Add file',
+  addHere: 'Add a file in this folder',
+  removeFile: 'Remove file',
+  renameFile: 'Rename file',
 };
 
 const zh: typeof en = {
@@ -168,6 +171,9 @@ const zh: typeof en = {
   fileContent: '{path} 的内容',
   selectFile: '选择要编辑的文件',
   addFile: '添加文件',
+  addHere: '在此文件夹中添加文件',
+  removeFile: '移除文件',
+  renameFile: '重命名文件',
 };
 
 export const resourcesStrings = { en, zh };
