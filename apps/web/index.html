@@ -12,18 +12,9 @@
     />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <title>Harness Nexus</title>
-    <script>
-      // Skin pre-paint — sets <html data-skin> before first paint so a saved
-      // skin never flashes the baseline. Keep the id list in sync with
-      // apps/web/src/skins/registry.ts.
-      try {
-        var sk = localStorage.getItem('hnx.skin');
-        if (sk !== 'bay' && sk !== 'ledger' && sk !== 'nightwatch') sk = 'signal';
-        document.documentElement.dataset.skin = sk;
-      } catch (e) {
-        document.documentElement.dataset.skin = 'signal';
-      }
-    </script>
+    <!-- External (not inline) so the strict CSP keeps blocking inline scripts;
+         public/ files ship verbatim, same-origin, and still run pre-paint. -->
+    <script src="/skin-boot.js"></script>
   </head>
   <body>
     <div id="root"></div>
