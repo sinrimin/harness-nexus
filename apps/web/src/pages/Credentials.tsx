@@ -1,11 +1,17 @@
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
-import { KeyRoundIcon, PlusIcon, TrashIcon, GlobeIcon, UserIcon } from 'lucide-react';
+import {
+  GlobeIcon,
+  KeyRoundIcon,
+  MoreHorizontalIcon,
+  PlusIcon,
+  TrashIcon,
+  UserIcon,
+} from 'lucide-react';
 import { api } from '@/api';
 import { useAuth, withAuthGuard } from '@/auth';
 import { useI18n } from '@/i18n';
 import { AppShell } from '@/components/app-shell';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
@@ -18,14 +24,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
+import { TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -33,23 +32,43 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { FormDialog } from '@/components/ui/form-dialog';
-import { MoreHorizontalIcon } from 'lucide-react';
+import {
+  ConfirmDialog,
+  DataTable,
+  DataText,
+  Field,
+  PageHeader,
+  Readout,
+  Well,
+  tableState,
+} from '@/components/kit';
 import { HarnessNexusError, type CredentialView } from '@harness-nexus/sdk';
 
 type Scope = 'global' | 'personal';
 
+/**
+ * Credentials (Phase 2.1) — outbound secrets referenced by name.
+ *
+ * The page's whole vocabulary is one placeholder string, so the page states it
+ * in a Well rather than in the sentence (02-content.md §1), and every row
+ * repeats it as copyable protocol material.
+ */
 export function CredentialsPage() {
   const { logout, user } = useAuth();
   const { t } = useI18n();
   const [items, setItems] = useState<CredentialView[] | null>(null);
+  const [error, setError] = useState<unknown>(null);
   const [creating, setCreating] = useState(false);
+  const [pending, setPending] = useState<CredentialView | null>(null);
+  const [busy, setBusy] = useState(false);
   const isAdmin = user?.role === 'admin';
 
   async function refresh() {
     try {
       setItems(await withAuthGuard(() => api.listCredentials(), logout));
+      setError(null);
     } catch (e) {
-      toast.error(e instanceof HarnessNexusError ? e.message : t('credentials.loadFailed'));
+      setError(e);
     }
   }
 
@@ -57,116 +76,131 @@ export function CredentialsPage() {
     void refresh();
   }, []);
 
-  async function remove(c: CredentialView) {
-    if (!confirm(t('credentials.confirmDelete', { name: c.name }))) return;
+  async function confirmRemove(): Promise<void> {
+    if (pending === null) return;
+    setBusy(true);
     try {
-      await withAuthGuard(() => api.deleteCredential(c.id), logout);
+      await withAuthGuard(() => api.deleteCredential(pending.id), logout);
       toast.success(t('credentials.deletedToast'));
+      setPending(null);
       await refresh();
     } catch (e) {
       toast.error(e instanceof HarnessNexusError ? e.message : t('common.deleteFailed'));
+    } finally {
+      setBusy(false);
     }
   }
 
+  const total = items?.length ?? 0;
+  const globalCount = items?.filter((c) => c.scope === 'global').length ?? 0;
+
   return (
     <AppShell>
-      <div className="mb-8 flex items-start justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">{t('credentials.title')}</h1>
-          <p className="text-muted-foreground mt-1 text-sm">
-            {t('credentials.subtitle1')} <code className="font-mono">{'${cred:NAME}'}</code>{' '}
+      <PageHeader
+        title={t('credentials.title')}
+        sub={
+          <>
+            {t('credentials.subtitle1')}{' '}
+            <Well variant="chip" copy="${cred:NAME}">
+              {'${cred:NAME}'}
+            </Well>{' '}
             {t('credentials.subtitle2')}
-          </p>
-        </div>
-        <Button onClick={() => setCreating(true)}>
-          <PlusIcon className="size-4" />
-          {t('common.create')}
-        </Button>
-      </div>
+          </>
+        }
+        actions={
+          <Button onClick={() => setCreating(true)}>
+            <PlusIcon className="size-4" />
+            {t('common.create')}
+          </Button>
+        }
+      />
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-base">
-            <KeyRoundIcon className="size-4" />
-            {t('credentials.storedTitle')}
-          </CardTitle>
-          <CardDescription>{t('credentials.storedDesc')}</CardDescription>
-        </CardHeader>
-        <CardContent className="px-0">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="pl-6">{t('common.name')}</TableHead>
-                <TableHead>{t('credentials.placeholderHeader')}</TableHead>
-                <TableHead>{t('credentials.previewHeader')}</TableHead>
-                <TableHead>{t('common.scope')}</TableHead>
-                <TableHead className="pr-6 text-right">{t('common.actions')}</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {items === null ? (
-                <TableRow>
-                  <TableCell colSpan={5} className="text-muted-foreground py-8 text-center">
-                    {t('common.loading')}
-                  </TableCell>
-                </TableRow>
-              ) : items.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={5} className="text-muted-foreground py-8 text-center">
-                    {t('credentials.empty')}
-                  </TableCell>
-                </TableRow>
-              ) : (
-                items.map((c) => (
-                  <TableRow key={c.id}>
-                    <TableCell className="pl-6 font-medium">{c.name}</TableCell>
-                    <TableCell className="font-mono text-xs">
-                      {'${cred:'}
-                      {c.name}
-                      {'}'}
-                    </TableCell>
-                    <TableCell className="text-muted-foreground font-mono text-xs tabular-nums">
-                      {c.secretPreview}
-                    </TableCell>
-                    <TableCell>
-                      <Badge
-                        variant={c.scope === 'global' ? 'default' : 'secondary'}
-                        className="gap-1"
+      <DataTable
+        columns={5}
+        label={t('credentials.storedTitle')}
+        icon={<KeyRoundIcon />}
+        meta={
+          items === null ? undefined : (
+            <Readout
+              layout="inline"
+              size="sm"
+              value={globalCount}
+              total={total}
+              label={t('common.scopeGlobal')}
+            />
+          )
+        }
+        state={tableState({ error, loading: items === null, count: total })}
+        error={error}
+        onRetry={() => void refresh()}
+        empty={{
+          title: t('credentials.empty'),
+          hint: t('credentials.emptyHint'),
+          action: (
+            <Button onClick={() => setCreating(true)}>
+              <PlusIcon className="size-4" />
+              {t('common.create')}
+            </Button>
+          ),
+        }}
+      >
+        <TableHeader>
+          <TableRow>
+            <TableHead>{t('common.name')}</TableHead>
+            <TableHead>{t('credentials.placeholderHeader')}</TableHead>
+            <TableHead>{t('credentials.previewHeader')}</TableHead>
+            <TableHead>{t('common.scope')}</TableHead>
+            <TableHead className="text-right">{t('common.actions')}</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {items?.map((c) => {
+            const placeholder = `\${cred:${c.name}}`;
+            return (
+              <TableRow key={c.id}>
+                <TableCell className="font-medium">{c.name}</TableCell>
+                <TableCell>
+                  <Well copy={placeholder}>{placeholder}</Well>
+                </TableCell>
+                <TableCell>
+                  <DataText size="sm" tone="dim">
+                    {c.secretPreview}
+                  </DataText>
+                </TableCell>
+                <TableCell>
+                  <Badge variant={c.scope === 'global' ? 'default' : 'secondary'} className="gap-1">
+                    {c.scope === 'global' ? (
+                      <GlobeIcon className="size-3" />
+                    ) : (
+                      <UserIcon className="size-3" />
+                    )}
+                    {c.scope === 'global' ? t('common.scopeGlobal') : t('common.scopePersonal')}
+                  </Badge>
+                </TableCell>
+                <TableCell className="text-right">
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="ghost" size="icon" className="size-8">
+                        <MoreHorizontalIcon className="size-4" />
+                        <span className="sr-only">{t('common.openMenu')}</span>
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem
+                        variant="destructive"
+                        disabled={c.scope === 'global' && !isAdmin}
+                        onClick={() => setPending(c)}
                       >
-                        {c.scope === 'global' ? (
-                          <GlobeIcon className="size-3" />
-                        ) : (
-                          <UserIcon className="size-3" />
-                        )}
-                        {c.scope === 'global' ? t('common.scopeGlobal') : t('common.scopePersonal')}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="pr-6 text-right">
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="icon" className="size-8">
-                            <MoreHorizontalIcon className="size-4" />
-                            <span className="sr-only">{t('common.openMenu')}</span>
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem
-                            variant="destructive"
-                            disabled={c.scope === 'global' && !isAdmin}
-                            onClick={() => remove(c)}
-                          >
-                            <TrashIcon /> {t('common.delete')}
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </TableCell>
-                  </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
+                        <TrashIcon /> {t('common.delete')}
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </TableCell>
+              </TableRow>
+            );
+          })}
+        </TableBody>
+      </DataTable>
 
       {creating ? (
         <CreateCredential
@@ -175,6 +209,24 @@ export function CredentialsPage() {
             setCreating(false);
             void refresh();
           }}
+        />
+      ) : null}
+
+      {pending !== null ? (
+        <ConfirmDialog
+          open
+          onOpenChange={(o) => {
+            if (!o) setPending(null);
+          }}
+          title={t('credentials.removeAction')}
+          consequence={t('credentials.removeConsequence')}
+          impact={[
+            { label: 'credential', value: pending.name },
+            ...(pending.scope === 'global' ? [{ label: 'scope', value: 'global' }] : []),
+          ]}
+          actionLabel={t('credentials.removeAction')}
+          busy={busy}
+          onConfirm={() => void confirmRemove()}
         />
       ) : null}
     </AppShell>
@@ -226,8 +278,7 @@ function CreateCredential({ onClose, onCreated }: { onClose: () => void; onCreat
     >
       <form onSubmit={onSubmit} className="flex flex-col gap-4">
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          <div className="grid gap-2">
-            <Label htmlFor="cred-name">{t('common.name')}</Label>
+          <Field label={t('common.name')} htmlFor="cred-name" required>
             <Input
               id="cred-name"
               value={name}
@@ -237,9 +288,8 @@ function CreateCredential({ onClose, onCreated }: { onClose: () => void; onCreat
               spellCheck={false}
               required
             />
-          </div>
-          <div className="grid gap-2">
-            <Label htmlFor="cred-secret">{t('credentials.secret')}</Label>
+          </Field>
+          <Field label={t('credentials.secret')} htmlFor="cred-secret" required>
             <Input
               id="cred-secret"
               value={secret}
@@ -249,9 +299,8 @@ function CreateCredential({ onClose, onCreated }: { onClose: () => void; onCreat
               autoComplete="new-password"
               spellCheck={false}
             />
-          </div>
-          <div className="grid gap-2">
-            <Label htmlFor="cred-scope">{t('common.scope')}</Label>
+          </Field>
+          <Field label={t('common.scope')} htmlFor="cred-scope">
             <Select value={scope} onValueChange={(v) => setScope(v as Scope)} disabled={!isAdmin}>
               <SelectTrigger id="cred-scope">
                 <SelectValue />
@@ -264,7 +313,7 @@ function CreateCredential({ onClose, onCreated }: { onClose: () => void; onCreat
                 </SelectItem>
               </SelectContent>
             </Select>
-          </div>
+          </Field>
         </div>
         {scope === 'global' && isAdmin ? (
           <div className="flex items-center gap-3">
@@ -274,10 +323,15 @@ function CreateCredential({ onClose, onCreated }: { onClose: () => void; onCreat
               onCheckedChange={setDistributable}
               aria-label={t('credentials.distributableAria')}
             />
-            <Label htmlFor="cred-distributable" className="font-normal">
+            <Label htmlFor="cred-distributable" className="flex-wrap font-normal">
               {t('credentials.distributableLabel1')}{' '}
-              <code className="font-mono">hnx mcp serve</code>{' '}
-              {t('credentials.distributableLabel2')} <code className="font-mono">/mcp</code>{' '}
+              <Well variant="chip" copy="hnx mcp serve">
+                hnx mcp serve
+              </Well>{' '}
+              {t('credentials.distributableLabel2')}{' '}
+              <Well variant="chip" copy="/mcp">
+                /mcp
+              </Well>{' '}
               {t('credentials.distributableLabel3')}
             </Label>
           </div>

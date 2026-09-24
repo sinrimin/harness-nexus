@@ -1,33 +1,16 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
-import {
-  CheckIcon,
-  CopyIcon,
-  LaptopIcon,
-  MoreHorizontalIcon,
-  PlusIcon,
-  TrashIcon,
-} from 'lucide-react';
+import { LaptopIcon, MoreHorizontalIcon, PlusIcon, TrashIcon } from 'lucide-react';
 import { api } from '@/api';
 import { useAuth, withAuthGuard } from '@/auth';
 import { useI18n, dateLocale } from '@/i18n';
 import { AppShell } from '@/components/app-shell';
 import { appSocket, type MachineStatusEvent } from '@/realtime';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
+import { TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -43,8 +26,21 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { FormDialog } from '@/components/ui/form-dialog';
-import { Alert, AlertDescription } from '@/components/ui/alert';
-import { StateSignal } from '@/components/state-signal';
+import {
+  Chip,
+  CommandLine,
+  ConfirmDialog,
+  DataTable,
+  DataText,
+  Field,
+  LabelText,
+  Lamp,
+  Note,
+  PageHeader,
+  Readout,
+  Well,
+  tableState,
+} from '@/components/kit';
 import { HarnessNexusError, type MachineView } from '@harness-nexus/sdk';
 
 /**
@@ -52,21 +48,36 @@ import { HarnessNexusError, type MachineView } from '@harness-nexus/sdk';
  * (shown once, with a ready-to-paste `hnx daemon` command). Online status is
  * live socket presence pushed over the /app channel — honest by construction:
  * the row shows offline the moment the daemon disconnects.
+ *
+ * The list is the reference for the kit's list archetype: the shell states the
+ * facts (how many are online, of how many), every protocol value sits in a
+ * Well, status is a lamp plus its word, and the two destructive actions ask
+ * through a dialog that names what it is about to do.
  */
 export function MachinesPage() {
   const { logout } = useAuth();
   const { t } = useI18n();
   const [items, setItems] = useState<MachineView[] | null>(null);
+  const [error, setError] = useState<unknown>(null);
   const [enrolling, setEnrolling] = useState(false);
   const [reveal, setReveal] = useState<{ machine: MachineView; token: string } | null>(null);
+  const [pending, setPending] = useState<{
+    action: 'remove' | 'chat';
+    machine: MachineView;
+    next?: boolean;
+  } | null>(null);
+  const [busy, setBusy] = useState(false);
 
   const refresh = useCallback(async () => {
     try {
       setItems(await withAuthGuard(() => api.listMachines(), logout));
+      setError(null);
     } catch (e) {
-      toast.error(e instanceof HarnessNexusError ? e.message : t('machines.loadFailed'));
+      // The list keeps its shape and states the failure in place — a toast
+      // alone would leave the page blank with no way to ask again.
+      setError(e);
     }
-  }, [logout, t]);
+  }, [logout]);
 
   useEffect(() => {
     void refresh();
@@ -96,63 +107,120 @@ export function MachinesPage() {
     };
   }, []);
 
+  async function confirmPending(): Promise<void> {
+    if (pending === null) return;
+    const { action, machine, next } = pending;
+    setBusy(true);
+    try {
+      if (action === 'remove') {
+        await withAuthGuard(() => api.deleteMachine(machine.id), logout);
+        toast.success(t('machines.removed'));
+      } else {
+        const enabled = next === true;
+        await withAuthGuard(
+          () => api.updateMachine(machine.id, { remoteChatEnabled: enabled }),
+          logout,
+        );
+        toast.success(enabled ? t('machines.chatEnabled') : t('machines.chatDisabled'));
+      }
+      setPending(null);
+      await refresh();
+    } catch (e) {
+      toast.error(
+        e instanceof HarnessNexusError
+          ? e.message
+          : action === 'remove'
+            ? t('machines.removeFailed')
+            : t('common.updateFailed'),
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const onlineCount = items?.filter((m) => m.online).length ?? 0;
+  const total = items?.length ?? 0;
+  const offlineCount = total - onlineCount;
+
+  const state = tableState({ error, loading: items === null, count: total });
+
   return (
     <AppShell>
-      <div className="mb-8 flex items-start justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">{t('machines.title')}</h1>
-          <p className="text-muted-foreground mt-1 text-sm">
-            {t('machines.subtitleA')} <code className="font-mono">hnx daemon</code>{' '}
+      <PageHeader
+        title={t('machines.title')}
+        sub={
+          <>
+            {t('machines.subtitleA')}{' '}
+            <Well variant="chip" copy="hnx daemon">
+              hnx daemon
+            </Well>{' '}
             {t('machines.subtitleB')}
-          </p>
-        </div>
-        <Button onClick={() => setEnrolling(true)}>
-          <PlusIcon className="size-4" />
-          {t('machines.enrollButton')}
-        </Button>
-      </div>
+          </>
+        }
+        actions={
+          <Button onClick={() => setEnrolling(true)}>
+            <PlusIcon className="size-4" />
+            {t('machines.enrollButton')}
+          </Button>
+        }
+      />
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-base">
-            <LaptopIcon className="size-4" />
-            {t('machines.enrolledTitle')}
-          </CardTitle>
-          <CardDescription>{t('machines.enrolledDesc')}</CardDescription>
-        </CardHeader>
-        <CardContent className="px-0">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="pl-6">{t('common.name')}</TableHead>
-                <TableHead>{t('machines.host')}</TableHead>
-                <TableHead>{t('machines.daemon')}</TableHead>
-                <TableHead>{t('common.status')}</TableHead>
-                <TableHead>{t('machines.remoteChat')}</TableHead>
-                <TableHead>{t('machines.lastSeen')}</TableHead>
-                <TableHead className="pr-6 text-right">{t('common.actions')}</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {items === null ? (
-                <TableRow>
-                  <TableCell colSpan={7} className="text-muted-foreground py-8 text-center">
-                    {t('common.loading')}
-                  </TableCell>
-                </TableRow>
-              ) : items.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={7} className="text-muted-foreground py-8 text-center">
-                    {t('machines.empty')}
-                  </TableCell>
-                </TableRow>
-              ) : (
-                items.map((m) => <MachineRow key={m.id} machine={m} onRevoke={refresh} />)
-              )}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
+      <DataTable
+        columns={7}
+        label={t('machines.enrolledTitle')}
+        icon={<LaptopIcon />}
+        meta={
+          items === null ? undefined : (
+            <Readout
+              layout="inline"
+              size="sm"
+              lamp={
+                onlineCount === total && total > 0
+                  ? 'online'
+                  : offlineCount > 0
+                    ? 'warn'
+                    : 'offline'
+              }
+              value={onlineCount}
+              total={total}
+              label={t('machines.online')}
+              {...(offlineCount > 0
+                ? { qualifier: t('machines.offlineCount', { count: offlineCount }) }
+                : {})}
+            />
+          )
+        }
+        state={state}
+        error={error}
+        onRetry={() => void refresh()}
+        empty={{
+          title: t('machines.empty'),
+          hint: t('machines.emptyHint'),
+          action: (
+            <Button onClick={() => setEnrolling(true)}>
+              <PlusIcon className="size-4" />
+              {t('machines.enrollButton')}
+            </Button>
+          ),
+        }}
+      >
+        <TableHeader>
+          <TableRow>
+            <TableHead>{t('common.name')}</TableHead>
+            <TableHead>{t('machines.host')}</TableHead>
+            <TableHead>{t('machines.daemon')}</TableHead>
+            <TableHead>{t('common.status')}</TableHead>
+            <TableHead>{t('machines.remoteChat')}</TableHead>
+            <TableHead>{t('machines.lastSeen')}</TableHead>
+            <TableHead className="text-right">{t('common.actions')}</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {items?.map((m) => (
+            <MachineRow key={m.id} machine={m} onAsk={setPending} />
+          ))}
+        </TableBody>
+      </DataTable>
 
       {enrolling ? (
         <EnrollCard
@@ -165,93 +233,122 @@ export function MachinesPage() {
         />
       ) : null}
       <RevealDialog reveal={reveal} onClose={() => setReveal(null)} />
+
+      {pending !== null ? (
+        <ConfirmDialog
+          open
+          onOpenChange={(o) => {
+            if (!o) setPending(null);
+          }}
+          title={
+            pending.action === 'remove'
+              ? t('machines.removeAction')
+              : pending.next === true
+                ? t('machines.chatEnableAction')
+                : t('machines.chatDisableAction')
+          }
+          consequence={
+            pending.action === 'remove'
+              ? t('machines.removeConsequence')
+              : pending.next === true
+                ? t('machines.chatEnableConsequence')
+                : t('machines.chatDisableConsequence')
+          }
+          impact={[
+            { label: 'machine', value: pending.machine.id },
+            ...(pending.machine.daemonVersion !== null &&
+            pending.machine.daemonVersion !== undefined
+              ? [{ label: 'daemon', value: pending.machine.daemonVersion }]
+              : []),
+          ]}
+          {...(pending.action === 'remove' ? { confirmPhrase: pending.machine.name } : {})}
+          actionLabel={
+            pending.action === 'remove'
+              ? t('machines.removeAction')
+              : pending.next === true
+                ? t('machines.chatEnableAction')
+                : t('machines.chatDisableAction')
+          }
+          tone={pending.action === 'remove' ? 'danger' : 'default'}
+          busy={busy}
+          onConfirm={() => void confirmPending()}
+        />
+      ) : null}
     </AppShell>
   );
 }
 
-function OnlineDot({ online }: { online: boolean }) {
-  const { t } = useI18n();
-  return (
-    <span className="inline-flex items-center gap-2">
-      <StateSignal state={online ? 'online' : 'inactive'} />
-      <span className="tabular-nums">{online ? t('machines.online') : t('machines.offline')}</span>
-    </span>
-  );
-}
-
-function MachineRow({ machine, onRevoke }: { machine: MachineView; onRevoke: () => void }) {
-  const { logout } = useAuth();
+function MachineRow({
+  machine,
+  onAsk,
+}: {
+  machine: MachineView;
+  onAsk: (ask: { action: 'remove' | 'chat'; machine: MachineView; next?: boolean }) => void;
+}) {
   const { t, lang } = useI18n();
-  const [remoteChat, setRemoteChat] = useState(machine.remoteChatEnabled);
-
-  useEffect(() => {
-    setRemoteChat(machine.remoteChatEnabled);
-  }, [machine.remoteChatEnabled]);
-
-  async function toggleRemoteChat(next: boolean): Promise<void> {
-    const consent = next
-      ? confirm(t('machines.confirmEnable', { name: machine.name }))
-      : confirm(t('machines.confirmDisable', { name: machine.name }));
-    if (!consent) return;
-    setRemoteChat(next);
-    try {
-      await withAuthGuard(() => api.updateMachine(machine.id, { remoteChatEnabled: next }), logout);
-      toast.success(next ? t('machines.chatEnabled') : t('machines.chatDisabled'));
-    } catch (e) {
-      setRemoteChat(!next);
-      toast.error(e instanceof HarnessNexusError ? e.message : t('common.updateFailed'));
-    }
-  }
-
-  async function revoke(): Promise<void> {
-    if (!confirm(t('machines.confirmRemove', { name: machine.name }))) return;
-    try {
-      await withAuthGuard(() => api.deleteMachine(machine.id), logout);
-      toast.success(t('machines.removed'));
-      onRevoke();
-    } catch (e) {
-      toast.error(e instanceof HarnessNexusError ? e.message : t('machines.removeFailed'));
-    }
-  }
-
   const host = [machine.hostname, machine.os, machine.arch].filter(Boolean).join(' · ');
 
   return (
     <TableRow>
-      <TableCell className="pl-6 font-medium">
+      <TableCell className="font-medium">
         <Link to={`/machines/${machine.id}`} className="hover:underline">
           {machine.name}
         </Link>
       </TableCell>
-      <TableCell className="text-muted-foreground font-mono text-xs">{host || '—'}</TableCell>
-      <TableCell>
-        {machine.daemonVersion ? (
-          <span className="flex flex-wrap items-center gap-1">
-            <span className="font-mono text-xs tabular-nums">{machine.daemonVersion}</span>
-            {machine.capabilities.map((c) => (
-              <Badge key={c} variant="secondary" className="font-mono text-[10px]">
-                {c}
-              </Badge>
-            ))}
-          </span>
+      <TableCell className="text-muted-foreground">
+        {host === '' ? (
+          <DataText size="sm" tone="dim">
+            —
+          </DataText>
         ) : (
-          <span className="text-muted-foreground">{t('machines.neverConnected')}</span>
+          <Well copy={host}>{host}</Well>
         )}
       </TableCell>
       <TableCell>
-        <OnlineDot online={machine.online} />
+        {machine.daemonVersion ? (
+          <span className="flex items-center gap-1">
+            <DataText size="sm" className="shrink-0">
+              {machine.daemonVersion}
+            </DataText>
+            {/* A daemon reports a dozen capabilities; the list shows the first
+             * few and lets the rest be counted — the full set belongs to the
+             * machine's own page, not to a table column. */}
+            {machine.capabilities.slice(0, 3).map((c) => (
+              <Well key={c} variant="chip">
+                {c}
+              </Well>
+            ))}
+            {machine.capabilities.length > 3 ? (
+              <Chip to={`/machines/${machine.id}`} tone="muted">
+                +{machine.capabilities.length - 3}
+              </Chip>
+            ) : null}
+          </span>
+        ) : (
+          <DataText size="sm" tone="dim">
+            {t('machines.neverConnected')}
+          </DataText>
+        )}
+      </TableCell>
+      <TableCell>
+        <Lamp
+          state={machine.online ? 'online' : 'offline'}
+          word={machine.online ? t('machines.online') : t('machines.offline')}
+        />
       </TableCell>
       <TableCell>
         <Switch
-          checked={remoteChat}
-          onCheckedChange={(v) => void toggleRemoteChat(v)}
+          checked={machine.remoteChatEnabled}
+          onCheckedChange={(v) => onAsk({ action: 'chat', machine, next: v })}
           aria-label={t('machines.toggleChatAria', { name: machine.name })}
         />
       </TableCell>
-      <TableCell className="text-muted-foreground tabular-nums">
-        {machine.lastSeenAt ? new Date(machine.lastSeenAt).toLocaleString(dateLocale(lang)) : '—'}
+      <TableCell>
+        <DataText size="sm" tone="dim">
+          {machine.lastSeenAt ? new Date(machine.lastSeenAt).toLocaleString(dateLocale(lang)) : '—'}
+        </DataText>
       </TableCell>
-      <TableCell className="pr-6 text-right">
+      <TableCell className="text-right">
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="ghost" size="icon" className="size-8">
@@ -260,8 +357,11 @@ function MachineRow({ machine, onRevoke }: { machine: MachineView; onRevoke: () 
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
-            <DropdownMenuItem variant="destructive" onClick={() => void revoke()}>
-              <TrashIcon /> {t('common.remove')}
+            <DropdownMenuItem
+              variant="destructive"
+              onClick={() => onAsk({ action: 'remove', machine })}
+            >
+              <TrashIcon /> {t('machines.removeAction')}
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
@@ -304,19 +404,14 @@ function EnrollCard({
       open
       onClose={onClose}
       title={t('machines.enrollTitle')}
-      description={
-        <>
-          {t('machines.enrollDescA')}{' '}
-          <code className="font-mono">
-            hnx enroll --server &lt;url&gt; --token &lt;your-pat&gt;
-          </code>
-          {t('machines.enrollDescB')}
-        </>
-      }
+      description={t('machines.enrollDescA')}
     >
       <form onSubmit={onSubmit} className="flex flex-col gap-4">
-        <div className="grid gap-2">
-          <Label htmlFor="machine-name">{t('common.name')}</Label>
+        <CommandLine
+          command="hnx enroll --server <url> --token <your-pat>"
+          note={t('machines.enrollDescB')}
+        />
+        <Field label={t('common.name')} htmlFor="machine-name" required>
           <Input
             id="machine-name"
             value={name}
@@ -326,7 +421,7 @@ function EnrollCard({
             spellCheck={false}
             required
           />
-        </div>
+        </Field>
         <div className="flex justify-end gap-2">
           <Button type="button" variant="outline" onClick={onClose} disabled={busy}>
             {t('common.cancel')}
@@ -349,78 +444,42 @@ function RevealDialog({
   onClose: () => void;
 }) {
   const { t } = useI18n();
-  const [copied, setCopied] = useState<'token' | 'command' | null>(null);
-
-  useEffect(() => {
-    setCopied(null);
-  }, [reveal]);
 
   if (reveal === null) return null;
   const command = `hnx daemon --server ${window.location.origin} --token ${reveal.token} --machine-id ${reveal.machine.id}`;
 
-  function copy(kind: 'token' | 'command', text: string): void {
-    void navigator.clipboard.writeText(text).then(() => {
-      setCopied(kind);
-      toast.success(kind === 'token' ? t('machines.tokenCopied') : t('machines.commandCopied'));
-    });
-  }
-
   return (
     <Dialog open onOpenChange={(o) => (o ? undefined : onClose())}>
-      <DialogContent showCloseButton={false} className="sm:max-w-xl">
-        <DialogHeader>
-          <DialogTitle>{t('machines.revealTitle')}</DialogTitle>
-          <DialogDescription>
+      <DialogContent
+        showCloseButton={false}
+        data-surface="panel"
+        className="gap-0 overflow-hidden p-0 sm:max-w-xl"
+      >
+        <DialogHeader className="h-(--panel-head-h) flex-row items-center border-b px-3">
+          <DialogTitle className="role-label text-foreground">
+            {t('machines.revealTitle')}
+          </DialogTitle>
+        </DialogHeader>
+
+        <div className="flex flex-col gap-3 p-(--panel-pad)">
+          <DialogDescription className="text-sm">
             {t('machines.revealDescA')} <strong>{reveal.machine.name}</strong>{' '}
             {t('machines.revealDescB')}
           </DialogDescription>
-        </DialogHeader>
 
-        <Alert variant="destructive">
-          <AlertDescription>{t('machines.revealWarning')}</AlertDescription>
-        </Alert>
+          <Note tone="warn">{t('machines.revealWarning')}</Note>
 
-        <div className="bg-muted flex items-center gap-2 rounded-md border p-3">
-          <code className="text-foreground min-w-0 flex-1 break-all font-mono text-xs">
-            {command}
-          </code>
-          <Button
-            type="button"
-            size="sm"
-            variant="secondary"
-            className="shrink-0"
-            onClick={() => copy('command', command)}
-          >
-            {copied === 'command' ? (
-              <CheckIcon className="size-4" />
-            ) : (
-              <CopyIcon className="size-4" />
-            )}
-            {copied === 'command' ? t('common.copied') : t('common.copy')}
-          </Button>
+          <CommandLine command={command} />
+
+          <div className="flex flex-col gap-1.5">
+            <LabelText size="sm">{t('machines.tokenLabel')}</LabelText>
+            <Well variant="code" copy={reveal.token}>
+              {reveal.token}
+            </Well>
+          </div>
         </div>
 
-        <div className="bg-muted flex items-center gap-2 rounded-md border p-3">
-          <code className="text-foreground min-w-0 flex-1 break-all font-mono text-sm">
-            {reveal.token}
-          </code>
-          <Button
-            type="button"
-            size="sm"
-            variant="secondary"
-            className="shrink-0"
-            onClick={() => copy('token', reveal.token)}
-          >
-            {copied === 'token' ? (
-              <CheckIcon className="size-4" />
-            ) : (
-              <CopyIcon className="size-4" />
-            )}
-            {copied === 'token' ? t('common.copied') : t('common.copy')}
-          </Button>
-        </div>
-
-        <DialogFooter>
+        <DialogFooter className="flex-row justify-end border-t px-3 py-2">
           <Button type="button" onClick={onClose}>
             {t('common.done')}
           </Button>

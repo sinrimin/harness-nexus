@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Note } from '@/components/kit';
 import { Brand } from '@/components/brand-mark';
 
 export function LoginPage() {
@@ -54,11 +54,7 @@ export function LoginPage() {
         </CardHeader>
         <CardContent>
           <form onSubmit={onSubmit} className="flex flex-col gap-4">
-            {error && (
-              <Alert variant="destructive">
-                <AlertDescription>{error}</AlertDescription>
-              </Alert>
-            )}
+            {error !== null ? <Note tone="fail">{error}</Note> : null}
             <div className="grid gap-2">
               <Label htmlFor="username">{t('login.username')}</Label>
               <Input
