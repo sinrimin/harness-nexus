@@ -1,9 +1,15 @@
 // @vitest-environment jsdom
-import { describe, expect, it } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import type { ReactNode } from 'react';
+import { afterEach, describe, expect, it } from 'vitest';
+import { cleanup, render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { ROUTES, groupRoutes, groupLanding, matchRoute, routeTrail, visibleGroups } from '@/nav';
-import { PageSlot, PageSlotsProvider, usePageSlots } from '@/components/shell/page-slots';
+import {
+  PageSlot,
+  PageSlotsProvider,
+  usePageSlots,
+  usePageTitle,
+} from '@/components/shell/page-slots';
 
 /**
  * #23 P2 — the route manifest is the single source for the router, the nav and
@@ -11,6 +17,10 @@ import { PageSlot, PageSlotsProvider, usePageSlots } from '@/components/shell/pa
  * agreement (a page that is in the nav but not routable, a section with no
  * landing page, a crumb pointing at itself).
  */
+afterEach(() => {
+  cleanup();
+});
+
 describe('route manifest', () => {
   it('matches every declared path, including the parameterized ones', () => {
     for (const route of ROUTES) {
@@ -50,27 +60,47 @@ describe('route manifest', () => {
 });
 
 describe('page slots', () => {
+  /** Mirrors the shell: the title is the h1's own text (one writer), and the
+   * actions slot is the only portal target. */
   function Host() {
-    const { value, ref } = usePageSlots();
+    const { value, actionsRef } = usePageSlots();
     return (
       <>
-        <div data-testid="title" ref={ref('title')} />
+        <h1 data-testid="title">{value.claims.title === true ? value.title : 'fallback'}</h1>
+        <div data-slot="page-actions" ref={actionsRef} />
         <PageSlotsProvider value={value}>
-          <PageSlot slot="title">
-            <h1>a97bb4e6</h1>
-          </PageSlot>
+          <Page>
+            <PageSlot slot="actions">
+              <button type="button">enroll</button>
+            </PageSlot>
+          </Page>
         </PageSlotsProvider>
       </>
     );
   }
 
-  it('portals page content into the shell slot', async () => {
+  function Page({ children }: { children: ReactNode }) {
+    usePageTitle('a97bb4e6');
+    return <>{children}</>;
+  }
+
+  it('publishes a page title as the shell h1’s own text', async () => {
     render(
       <MemoryRouter>
         <Host />
       </MemoryRouter>,
     );
-    const slot = await screen.findByTestId('title');
-    expect(slot.querySelector('h1')?.textContent).toBe('a97bb4e6');
+    const title = await screen.findByTestId('title');
+    expect(title.textContent).toBe('a97bb4e6');
+  });
+
+  it('portals page actions into the shell slot', async () => {
+    render(
+      <MemoryRouter>
+        <Host />
+      </MemoryRouter>,
+    );
+    const action = await screen.findByRole('button', { name: 'enroll' });
+    expect(action.closest('[data-slot="page-actions"]')).not.toBeNull();
   });
 });
