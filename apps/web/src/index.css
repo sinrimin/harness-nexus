@@ -121,6 +121,8 @@
   --data-size-sm: 11px;
   --readout-size: 27px;
   --readout-size-dim: 17px;
+  --readout-size-sm: 16px; /* inside a 28px nameplate the figure is not a poster */
+  --readout-size-sm-dim: 11px;
 
   /* Tray: the neutral step behind table heads, list feet, sub-panels and row
    * hover — the one surface between card and muted. */
@@ -552,6 +554,20 @@
 .role-readout-dim {
   font-family: var(--app-font-mono);
   font-size: var(--readout-size-dim);
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  color: var(--muted-foreground);
+}
+.role-readout-sm {
+  font-family: var(--app-font-mono);
+  font-size: var(--readout-size-sm);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+.role-readout-sm-dim {
+  font-family: var(--app-font-mono);
+  font-size: var(--readout-size-sm-dim);
   font-variant-numeric: tabular-nums;
   line-height: 1;
   color: var(--muted-foreground);

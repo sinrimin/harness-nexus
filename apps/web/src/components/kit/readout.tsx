@@ -29,6 +29,8 @@ type ReadoutProps = {
   /** Renders the whole readout as a link to the thing it counts. */
   to?: string;
   layout?: 'figure' | 'inline';
+  /** `lg` is the overview figure; `sm` has to live inside a 28px nameplate. */
+  size?: 'lg' | 'sm';
   /** No data yet — shows an em dash, never a zero. */
   loading?: boolean;
   className?: string;
@@ -43,14 +45,17 @@ export function Readout({
   live,
   to,
   layout = 'figure',
+  size = 'lg',
   loading,
   className,
 }: ReadoutProps) {
   const number = (
     <span className="flex items-baseline gap-0.5">
-      <span className="role-readout text-foreground">{loading === true ? '—' : value}</span>
+      <span className={cn(size === 'sm' ? 'role-readout-sm' : 'role-readout', 'text-foreground')}>
+        {loading === true ? '—' : value}
+      </span>
       {total !== undefined && loading !== true ? (
-        <span className="role-readout-dim">/{total}</span>
+        <span className={size === 'sm' ? 'role-readout-sm-dim' : 'role-readout-dim'}>/{total}</span>
       ) : null}
     </span>
   );

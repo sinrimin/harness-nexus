@@ -83,6 +83,10 @@ export function Lamp({
       {asWord ? null : (
         <span
           data-slot="lamp-body"
+          /* The body carries the state too: a skin styles the lit object itself
+           * (BAY's LED ring and glow select on it), while the wrapper stays the
+           * element that names the state. */
+          data-state={state}
           aria-hidden="true"
           className={cn(
             'lamp-body shrink-0 rounded-full',

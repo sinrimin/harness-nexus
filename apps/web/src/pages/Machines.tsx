@@ -27,6 +27,7 @@ import {
 } from '@/components/ui/dialog';
 import { FormDialog } from '@/components/ui/form-dialog';
 import {
+  Chip,
   CommandLine,
   ConfirmDialog,
   DataTable,
@@ -172,6 +173,7 @@ export function MachinesPage() {
           items === null ? undefined : (
             <Readout
               layout="inline"
+              size="sm"
               lamp={
                 onlineCount === total && total > 0
                   ? 'online'
@@ -304,13 +306,23 @@ function MachineRow({
       </TableCell>
       <TableCell>
         {machine.daemonVersion ? (
-          <span className="flex flex-wrap items-center gap-1">
-            <DataText size="sm">{machine.daemonVersion}</DataText>
-            {machine.capabilities.map((c) => (
+          <span className="flex items-center gap-1">
+            <DataText size="sm" className="shrink-0">
+              {machine.daemonVersion}
+            </DataText>
+            {/* A daemon reports a dozen capabilities; the list shows the first
+             * few and lets the rest be counted — the full set belongs to the
+             * machine's own page, not to a table column. */}
+            {machine.capabilities.slice(0, 3).map((c) => (
               <Well key={c} variant="chip">
                 {c}
               </Well>
             ))}
+            {machine.capabilities.length > 3 ? (
+              <Chip to={`/machines/${machine.id}`} tone="muted">
+                +{machine.capabilities.length - 3}
+              </Chip>
+            ) : null}
           </span>
         ) : (
           <DataText size="sm" tone="dim">

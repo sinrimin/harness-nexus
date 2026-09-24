@@ -123,6 +123,7 @@ export function CredentialsPage() {
           items === null ? undefined : (
             <Readout
               layout="inline"
+              size="sm"
               value={globalCount}
               total={total}
               label={t('common.scopeGlobal')}
