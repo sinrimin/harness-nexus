@@ -11,8 +11,12 @@ const en = {
   cardOffline: 'Machine offline',
   cardChatOff: 'Remote chat disabled',
   cardEnter: 'Open sessions',
+  // P5: the phone's session-list drawer.
+  railOpen: 'Sessions',
   sourceDeploy: 'deployed',
   sourceDetected: 'detected',
+  // P5: the machine group's nameplate — the machine's NAME is prose in the body.
+  machineGroupLabel: 'Conversations',
   // ---- session page ----
   backToAgents: 'All agents',
   newSession: 'New session',
@@ -153,8 +157,10 @@ const zh: typeof en = {
   cardOffline: '机器离线',
   cardChatOff: '远程聊天未开启',
   cardEnter: '进入会话',
+  railOpen: '会话列表',
   sourceDeploy: '部署',
   sourceDetected: '检测',
+  machineGroupLabel: '对话',
   backToAgents: '全部代理',
   newSession: '新建会话',
   noSessions: '暂无会话——新建一个开始。',
