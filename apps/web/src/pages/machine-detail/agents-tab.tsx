@@ -10,7 +10,7 @@ import {
 } from 'lucide-react';
 import { api } from '@/api';
 import { useAuth, withAuthGuard } from '@/auth';
-import { useI18n, dateLocale } from '@/i18n';
+import { useI18n, dateLocale, type TranslationKey } from '@/i18n';
 import { cn } from '@/lib/utils';
 import {
   HarnessNexusError,
@@ -55,6 +55,7 @@ import {
   DrawerHeader,
   DrawerTitle,
 } from '@/components/ui/drawer';
+import { ConfirmDialog } from '@/components/kit';
 import type { InventoryEntry, RuntimeInfoView } from './types.js';
 
 /**
@@ -284,6 +285,25 @@ function RuntimeStatus({ runtime }: { runtime: RuntimeInfoView | null }) {
  * confirm-first; an optional version turns the action into a pin/install-at.
  * Renders nothing when the daemon doesn't probe runtimes (hermes, old hnx).
  */
+/** The three actions this control can take, as title/consequence key pairs
+ *  resolved at render (module scope holds keys, never `t()`). */
+const MANAGE_KEYS = {
+  install: {
+    action: 'machineDetail.manageActionInstall',
+    consequence: 'machineDetail.manageConsequenceInstall',
+  },
+  upgrade: {
+    action: 'machineDetail.manageActionUpgrade',
+    consequence: 'machineDetail.manageConsequenceUpgrade',
+  },
+  pin: {
+    action: 'machineDetail.manageActionPin',
+    consequence: 'machineDetail.manageConsequencePin',
+  },
+} as const satisfies Record<string, { action: TranslationKey; consequence: TranslationKey }>;
+
+type ManageAction = keyof typeof MANAGE_KEYS;
+
 function RuntimeManage({
   machineId,
   target,
@@ -297,23 +317,18 @@ function RuntimeManage({
   const { t } = useI18n();
   const [version, setVersion] = useState('');
   const [busy, setBusy] = useState(false);
+  // P6 — the action is chosen first (typed version → pin), confirmed in a
+  // designed dialog, and only then queued.
+  const [pending, setPending] = useState<ManageAction | null>(null);
   if (runtime === null) return null;
   const installed = runtime.installed;
   const trimmed = version.trim();
+  const params = { target, version: trimmed };
 
-  async function manage(): Promise<void> {
-    const action = trimmed !== '' ? 'pin' : installed ? 'upgrade' : 'install';
-    const confirmKey =
-      action === 'pin'
-        ? 'machineDetail.manageConfirmPin'
-        : action === 'upgrade'
-          ? 'machineDetail.manageConfirmUpgrade'
-          : 'machineDetail.manageConfirmInstall';
-    if (
-      !window.confirm(t(confirmKey, { target, ...(action === 'pin' ? { version: trimmed } : {}) }))
-    ) {
-      return;
-    }
+  async function run(): Promise<void> {
+    const action = pending;
+    if (action === null) return;
+    setPending(null);
     setBusy(true);
     try {
       await withAuthGuard(
@@ -345,7 +360,11 @@ function RuntimeManage({
           autoComplete="off"
           spellCheck={false}
         />
-        <Button size="sm" onClick={() => void manage()} disabled={busy}>
+        <Button
+          size="sm"
+          onClick={() => setPending(trimmed !== '' ? 'pin' : installed ? 'upgrade' : 'install')}
+          disabled={busy}
+        >
           {busy
             ? t('machineDetail.managing')
             : installed
@@ -353,6 +372,28 @@ function RuntimeManage({
               : t('machineDetail.installButton')}
         </Button>
       </span>
+
+      {pending !== null ? (
+        <ConfirmDialog
+          open
+          onOpenChange={(o) => {
+            if (!o) setPending(null);
+          }}
+          title={t(MANAGE_KEYS[pending].action)}
+          consequence={t(MANAGE_KEYS[pending].consequence, params)}
+          impact={[
+            { label: 'target', value: target },
+            ...(pending === 'pin' ? [{ label: 'version', value: trimmed }] : []),
+          ]}
+          actionLabel={t(MANAGE_KEYS[pending].action)}
+          // A harness job is re-runnable and a version can be pinned back, so
+          // this is the ordinary tier — no danger edge, no irreversible claim.
+          tone="default"
+          irreversible={false}
+          busy={busy}
+          onConfirm={() => void run()}
+        />
+      ) : null}
     </>
   );
 }
@@ -521,6 +562,8 @@ function ProviderConfigForm({
   const [fetched, setFetched] = useState<LlmModelInfo[] | null>(null);
   const [fetching, setFetching] = useState(false);
   const [busy, setBusy] = useState(false);
+  // P6 — Apply config confirms first (the credential goes to the machine).
+  const [asking, setAsking] = useState(false);
 
   const managedTarget = runtime !== null ? (target as RuntimeTarget) : null;
   const apiOptions = managedTarget !== null ? RUNTIME_API_SUPPORT[managedTarget] : [];
@@ -587,6 +630,8 @@ function ProviderConfigForm({
   /** The spec's effective base URL: the provider's, or the supplemental/manual input. */
   const effectiveBaseUrl =
     selectedProvider !== null ? (selectedProvider.baseUrl ?? baseUrl.trim()) : baseUrl.trim();
+  /** The credential that will be written — worth naming in the confirm dialog. */
+  const effectiveCredential = selectedProvider?.credentialName ?? credentialName;
 
   async function fetchModels(): Promise<void> {
     setFetching(true);
@@ -615,7 +660,6 @@ function ProviderConfigForm({
   }
 
   async function apply(): Promise<void> {
-    if (!window.confirm(t('machineDetail.applyConfirm', { target }))) return;
     setBusy(true);
     try {
       // Row inputs are free-typed: normalize before sending (trim, drop
@@ -817,7 +861,7 @@ function ProviderConfigForm({
               </Button>
             </div>
           </div>
-          <Button onClick={() => void apply()} disabled={!ready}>
+          <Button onClick={() => setAsking(true)} disabled={!ready}>
             {busy ? t('machineDetail.applying') : t('machineDetail.applyButton')}
           </Button>
         </div>
@@ -909,6 +953,33 @@ function ProviderConfigForm({
           <p className="text-muted-foreground text-xs">{t('machineDetail.extraModelsHint')}</p>
         </div>
       </div>
+
+      {asking ? (
+        <ConfirmDialog
+          open
+          onOpenChange={(o) => {
+            if (!o) setAsking(false);
+          }}
+          title={t('machineDetail.applyButton')}
+          consequence={t('machineDetail.applyConsequence', { target })}
+          impact={[
+            { label: 'target', value: target },
+            { label: 'credential', value: effectiveCredential },
+            ...(model.trim() !== '' ? [{ label: 'model', value: model.trim() }] : []),
+          ]}
+          actionLabel={t('machineDetail.applyButton')}
+          // The credential goes down to the machine in clear text — a danger
+          // edge, but not the irreversible line: the writer is merge-preserving
+          // and a re-apply restores any value (design 9 W3).
+          tone="danger"
+          irreversible={false}
+          busy={busy}
+          onConfirm={() => {
+            setAsking(false);
+            void apply();
+          }}
+        />
+      ) : null}
     </>
   );
 }

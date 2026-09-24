@@ -31,6 +31,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { StateSignal } from '@/components/state-signal';
+import { TableStateRow } from '@/components/kit';
 import {
   Dialog,
   DialogContent,
@@ -107,6 +108,11 @@ export function SkillHubPanel({ onSavedSkill }: { onSavedSkill?: (key: string) =
   const [rows, setRows] = useState<HubRow[] | null>(null);
   const [timedOut, setTimedOut] = useState<string[]>([]);
   const [saving, setSaving] = useState<HubRow | null>(null);
+  // P6 — a failed fetch is an ERROR face with a Retry, not an empty list: the
+  // marketplace fetch reaches the network, so it fails for real, and "no rows
+  // match the filter" would have been a lie about why the table is empty.
+  const [loadError, setLoadError] = useState<unknown>(null);
+  const [reloads, setReloads] = useState(0);
 
   const searching = q.trim().length > 0;
 
@@ -135,6 +141,7 @@ export function SkillHubPanel({ onSavedSkill }: { onSavedSkill?: (key: string) =
     void (async () => {
       setRows(null);
       setTimedOut([]);
+      setLoadError(null);
       try {
         if (searching) {
           const res = await withAuthGuard(() => api.searchSkills(q.trim()), logout);
@@ -150,11 +157,11 @@ export function SkillHubPanel({ onSavedSkill }: { onSavedSkill?: (key: string) =
           setRows(res.plugins.map((p) => pluginToRow(p)));
         }
       } catch (e) {
-        toast.error(e instanceof HarnessNexusError ? e.message : t('skillHub.loadSkillsFailed'));
+        setLoadError(e);
         setRows([]);
       }
     })();
-  }, [selectedMkt, category, q, logout, searching]);
+  }, [selectedMkt, category, q, logout, searching, reloads]);
 
   // Categories are derived from the currently-loaded set (browse mode only).
   const categories = useMemo(() => {
@@ -244,18 +251,35 @@ export function SkillHubPanel({ onSavedSkill }: { onSavedSkill?: (key: string) =
               </TableRow>
             </TableHeader>
             <TableBody>
-              {rows === null ? (
-                <TableRow>
-                  <TableCell colSpan={5} className="text-muted-foreground py-8 text-center">
-                    {t('common.loading')}
-                  </TableCell>
-                </TableRow>
+              {loadError !== null ? (
+                <TableStateRow
+                  state="error"
+                  columns={5}
+                  error={loadError}
+                  onRetry={() => setReloads((n) => n + 1)}
+                />
+              ) : rows === null ? (
+                <TableStateRow state="loading" columns={5} />
               ) : rows.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={5} className="text-muted-foreground py-8 text-center">
-                    {searching ? t('skillHub.emptySearch') : t('skillHub.emptyFilters')}
-                  </TableCell>
-                </TableRow>
+                // Both arms are filter-driven emptiness — a search or the
+                // category filter excluded everything — so this is the kit's
+                // `filtered` state, whose whole point is the way out (the
+                // centred sentence it replaces left the reader stuck).
+                <TableStateRow
+                  state="filtered"
+                  columns={5}
+                  // Only offered while there IS something to clear — a filter
+                  // button that changes nothing would be the misleading CTA
+                  // 03-interaction.md §1 warns about.
+                  {...(searching || category !== 'all'
+                    ? {
+                        onClearFilters: () => {
+                          if (searching) setQ('');
+                          else setCategory('all');
+                        },
+                      }
+                    : {})}
+                />
               ) : (
                 rows.map((r) => (
                   <HubRowView

@@ -24,7 +24,16 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { DataTable, Note, Panel, PanelBody, Readout, tableState, Well } from '@/components/kit';
+import {
+  ConfirmDialog,
+  DataTable,
+  Note,
+  Panel,
+  PanelBody,
+  Readout,
+  tableState,
+  Well,
+} from '@/components/kit';
 
 /**
  * 部署与作业 tab — the machine's operational surface: profile deployments +
@@ -308,6 +317,7 @@ function AdaptersPanel({
   const [rows, setRows] = useState<AdapterProcessView[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [killing, setKilling] = useState<string | null>(null);
+  const [pending, setPending] = useState<AdapterProcessView | null>(null);
   const available = online && capabilities.includes('chat');
 
   const load = useCallback(async () => {
@@ -329,11 +339,12 @@ function AdaptersPanel({
     else setRows(null);
   }, [available, load]);
 
-  async function kill(sessionId: string): Promise<void> {
-    if (!window.confirm(t('machineDetail.adapterKillConfirm'))) return;
-    setKilling(sessionId);
+  /** P6 — the operator kill confirms in a designed dialog; the row holds which
+   *  process was asked about, and the ack holds the button busy while it runs. */
+  async function kill(row: AdapterProcessView): Promise<void> {
+    setKilling(row.wireSessionId);
     try {
-      await withAuthGuard(() => api.closeMachineAdapter(machineId, sessionId), logout);
+      await withAuthGuard(() => api.closeMachineAdapter(machineId, row.wireSessionId), logout);
       toast.success(t('machineDetail.adapterKilled'));
       await load();
     } catch (e) {
@@ -342,6 +353,7 @@ function AdaptersPanel({
       );
     } finally {
       setKilling(null);
+      setPending(null);
     }
   }
 
@@ -359,70 +371,98 @@ function AdaptersPanel({
 
   const count = rows?.length ?? 0;
   return (
-    <DataTable
-      columns={5}
-      label={t('machineDetail.adaptersTitle')}
-      icon={<CpuIcon />}
-      meta={
-        <Readout
-          layout="inline"
-          size="sm"
-          value={count}
-          label={t('machineDetail.adaptersFigure')}
-        />
-      }
-      actions={
-        <Button variant="ghost" size="sm" onClick={() => void load()} disabled={loading}>
-          <RefreshCwIcon className={loading ? 'size-3.5 animate-spin' : 'size-3.5'} />
-          {t('machineDetail.adaptersRefresh')}
-        </Button>
-      }
-      state={tableState({ loading: rows === null || loading, count })}
-      empty={{
-        title: t('machineDetail.adaptersEmpty'),
-        hint: t('machineDetail.adaptersEmptyHint'),
-      }}
-    >
-      <TableHeader>
-        <TableRow>
-          <TableHead>{t('machineDetail.adapterTarget')}</TableHead>
-          <TableHead>{t('machineDetail.adapterNative')}</TableHead>
-          <TableHead>{t('machineDetail.adapterUptime')}</TableHead>
-          <TableHead>PGID</TableHead>
-          <TableHead className="text-right">{t('common.actions')}</TableHead>
-        </TableRow>
-      </TableHeader>
-      <TableBody>
-        {(rows ?? []).map((a) => (
-          <TableRow key={a.wireSessionId}>
-            <TableCell>
-              <Badge variant="outline" className="font-mono text-[10px]">
-                {a.target}
-              </Badge>
-            </TableCell>
-            <TableCell className="max-w-56">
-              {a.nativeSessionId === null ? (
-                <span className="text-muted-foreground">—</span>
-              ) : (
-                <Well copy={a.nativeSessionId}>{a.nativeSessionId}</Well>
-              )}
-            </TableCell>
-            <TableCell className="nums text-sm">{adapterUptime(a.startedAt, lang)}</TableCell>
-            <TableCell className="role-data text-xs">{a.pgid}</TableCell>
-            <TableCell className="text-right">
-              <Button
-                variant="ghost"
-                size="sm"
-                disabled={killing !== null}
-                onClick={() => void kill(a.wireSessionId)}
-              >
-                {killing === a.wireSessionId ? t('common.saving') : t('machineDetail.adapterKill')}
-              </Button>
-            </TableCell>
+    <>
+      <DataTable
+        columns={5}
+        label={t('machineDetail.adaptersTitle')}
+        icon={<CpuIcon />}
+        meta={
+          <Readout
+            layout="inline"
+            size="sm"
+            value={count}
+            label={t('machineDetail.adaptersFigure')}
+          />
+        }
+        actions={
+          <Button variant="ghost" size="sm" onClick={() => void load()} disabled={loading}>
+            <RefreshCwIcon className={loading ? 'size-3.5 animate-spin' : 'size-3.5'} />
+            {t('machineDetail.adaptersRefresh')}
+          </Button>
+        }
+        state={tableState({ loading: rows === null || loading, count })}
+        empty={{
+          title: t('machineDetail.adaptersEmpty'),
+          hint: t('machineDetail.adaptersEmptyHint'),
+        }}
+      >
+        <TableHeader>
+          <TableRow>
+            <TableHead>{t('machineDetail.adapterTarget')}</TableHead>
+            <TableHead>{t('machineDetail.adapterNative')}</TableHead>
+            <TableHead>{t('machineDetail.adapterUptime')}</TableHead>
+            <TableHead>PGID</TableHead>
+            <TableHead className="text-right">{t('common.actions')}</TableHead>
           </TableRow>
-        ))}
-      </TableBody>
-    </DataTable>
+        </TableHeader>
+        <TableBody>
+          {(rows ?? []).map((a) => (
+            <TableRow key={a.wireSessionId}>
+              <TableCell>
+                <Badge variant="outline" className="font-mono text-[10px]">
+                  {a.target}
+                </Badge>
+              </TableCell>
+              <TableCell className="max-w-56">
+                {a.nativeSessionId === null ? (
+                  <span className="text-muted-foreground">—</span>
+                ) : (
+                  <Well copy={a.nativeSessionId}>{a.nativeSessionId}</Well>
+                )}
+              </TableCell>
+              <TableCell className="nums text-sm">{adapterUptime(a.startedAt, lang)}</TableCell>
+              <TableCell className="role-data text-xs">{a.pgid}</TableCell>
+              <TableCell className="text-right">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  disabled={killing !== null}
+                  onClick={() => setPending(a)}
+                >
+                  {killing === a.wireSessionId
+                    ? t('common.saving')
+                    : t('machineDetail.adapterKill')}
+                </Button>
+              </TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </DataTable>
+
+      {pending !== null ? (
+        <ConfirmDialog
+          open
+          onOpenChange={(o) => {
+            if (!o) setPending(null);
+          }}
+          title={t('machineDetail.adapterKillAction')}
+          consequence={t('machineDetail.adapterKillConsequence')}
+          impact={[
+            { label: 'target', value: pending.target },
+            ...(pending.nativeSessionId !== null
+              ? [{ label: 'session', value: pending.nativeSessionId }]
+              : []),
+            { label: 'pgid', value: String(pending.pgid) },
+          ]}
+          actionLabel={t('machineDetail.adapterKillAction')}
+          // 02-content.md §3.8 names this one of the two truly irreversible
+          // actions: the process is gone, and a process cannot be un-killed.
+          tone="danger"
+          busy={killing !== null}
+          onConfirm={() => void kill(pending)}
+        />
+      ) : null}
+    </>
   );
 }
 

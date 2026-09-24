@@ -8,6 +8,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu.js';
 import { useI18n } from '@/i18n';
+import { ConfirmDialog } from '@/components/kit';
 import { StateSignal } from '@/components/state-signal';
 import { cn } from '@/lib/utils.js';
 import type { ChatChannelView } from '@/realtime.js';
@@ -54,7 +55,9 @@ interface ChannelTabsProps {
   activeSessionId: string;
   onActivate: (channel: ChatChannelView) => void;
   onClose: (channel: ChatChannelView) => void;
-  onCleanup: (idleOnly: boolean) => void;
+  /** Runs only after the confirm dialog is answered — return the ack's promise
+   *  so the dialog can hold its confirm button busy while it runs. */
+  onCleanup: (idleOnly: boolean) => Promise<void> | void;
 }
 
 export function ChannelTabs({
@@ -68,12 +71,29 @@ export function ChannelTabs({
   // Idle-age labels advance with wall time; snapshot pushes only fire on
   // table changes. One slow tick while tabs are shown is plenty.
   const [now, setNow] = useState(() => Date.now());
+  // P6 — the confirm lives HERE, next to the menu that opens it: both chat
+  // pages render this component, so one dialog replaced two native prompts.
+  const [cleanup, setCleanup] = useState<{ idleOnly: boolean } | null>(null);
+  const [busy, setBusy] = useState(false);
   useEffect(() => {
     if (channels.length === 0) return;
     const timer = setInterval(() => setNow(Date.now()), 60_000);
     return () => clearInterval(timer);
   }, [channels.length]);
   if (channels.length === 0) return null;
+
+  const busyCount = channels.filter((ch) => ch.busy).length;
+  async function runCleanup(): Promise<void> {
+    const pending = cleanup;
+    if (pending === null) return;
+    setBusy(true);
+    try {
+      await onCleanup(pending.idleOnly);
+    } finally {
+      setBusy(false);
+      setCleanup(null);
+    }
+  }
 
   return (
     <div className="bg-sidebar/30 flex h-9 shrink-0 items-center gap-1 border-b px-2">
@@ -160,14 +180,45 @@ export function ChannelTabs({
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
-          <DropdownMenuItem onClick={() => onCleanup(false)}>
+          <DropdownMenuItem onClick={() => setCleanup({ idleOnly: false })}>
             {t('chat.tabsCleanupAll')}
           </DropdownMenuItem>
-          <DropdownMenuItem onClick={() => onCleanup(true)}>
+          <DropdownMenuItem onClick={() => setCleanup({ idleOnly: true })}>
             {t('chat.tabsCleanupIdle')}
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
+
+      {cleanup !== null ? (
+        <ConfirmDialog
+          open
+          onOpenChange={(o) => {
+            if (!o) setCleanup(null);
+          }}
+          title={
+            cleanup.idleOnly ? t('chat.tabsCleanupIdleAction') : t('chat.tabsCleanupAllAction')
+          }
+          consequence={
+            cleanup.idleOnly
+              ? t('chat.tabsCleanupIdleConsequence')
+              : t('chat.tabsCleanupConsequence')
+          }
+          impact={[
+            { label: 'channels', value: String(channels.length) },
+            { label: 'busy', value: String(busyCount) },
+          ]}
+          actionLabel={
+            cleanup.idleOnly ? t('chat.tabsCleanupIdleAction') : t('chat.tabsCleanupAllAction')
+          }
+          // Closing a channel is recoverable — reopening the conversation is one
+          // click — so this is the ordinary tier: no danger edge, no claim of
+          // irreversibility.
+          tone="default"
+          irreversible={false}
+          busy={busy}
+          onConfirm={() => void runCleanup()}
+        />
+      ) : null}
     </div>
   );
 }

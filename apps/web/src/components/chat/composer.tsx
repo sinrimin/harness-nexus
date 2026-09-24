@@ -8,6 +8,7 @@ import {
   SquareSlashIcon,
 } from 'lucide-react';
 import { useI18n } from '@/i18n';
+import { ConfirmDialog } from '@/components/kit';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -197,9 +198,12 @@ function ConfigSelect({
       <SelectTrigger
         size="sm"
         aria-label={label}
-        title={hint ?? (value === undefined
-          ? label
-          : (choices.find((c) => c.value === value)?.description ?? label))}
+        title={
+          hint ??
+          (value === undefined
+            ? label
+            : (choices.find((c) => c.value === value)?.description ?? label))
+        }
         className="text-muted-foreground hover:text-foreground h-7 max-w-40 gap-1 border-none px-1.5 text-xs font-normal shadow-none focus:ring-0 dark:hover:bg-accent/50"
       >
         <SelectValue placeholder={label} />
@@ -403,12 +407,23 @@ export function Composer({
     [];
   const modeValue = modeFromOptions?.currentValue ?? config.currentModeId;
 
+  // P6 — a mode that weakens the permission gate is confirmed in a designed
+  // dialog instead of a native prompt: the pick is held here, and only
+  // `confirmMode` writes it through.
+  const [pendingMode, setPendingMode] = useState<{ id: string; name: string } | null>(null);
   const pickMode = (modeId: string): void => {
+    const name = modeChoices.find((c) => c.value === modeId)?.name ?? modeId;
     if (DANGEROUS_MODES.has(modeId)) {
-      const name = modeChoices.find((c) => c.value === modeId)?.name ?? modeId;
-      if (!window.confirm(t('chat.modeConfirm', { name }))) return;
+      setPendingMode({ id: modeId, name });
+      return;
     }
     onConfigSet({ kind: 'mode', modeId });
+  };
+  const confirmMode = (): void => {
+    const next = pendingMode;
+    if (next === null) return;
+    setPendingMode(null);
+    onConfigSet({ kind: 'mode', modeId: next.id });
   };
 
   return (
@@ -686,6 +701,24 @@ export function Composer({
           </Button>
         )}
       </div>
+
+      {pendingMode !== null ? (
+        <ConfirmDialog
+          open
+          onOpenChange={(o) => {
+            if (!o) setPendingMode(null);
+          }}
+          title={t('chat.modeSwitchAction')}
+          consequence={t('chat.modeConsequence', { name: pendingMode.name })}
+          impact={[{ label: 'mode', value: pendingMode.id }]}
+          actionLabel={t('chat.modeSwitchAction')}
+          // Danger edge without the irreversible line: flipping the mode back
+          // restores the gate, so claiming "cannot be undone" would be false.
+          tone="danger"
+          irreversible={false}
+          onConfirm={confirmMode}
+        />
+      ) : null}
     </div>
   );
 }

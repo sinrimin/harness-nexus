@@ -43,9 +43,20 @@ const en = {
   upgradeButton: 'Upgrade',
   versionPlaceholder: 'version (optional)',
   managing: 'Working…',
-  manageConfirmInstall: 'Install {target} on this machine?',
-  manageConfirmUpgrade: 'Upgrade {target} to the latest version?',
-  manageConfirmPin: 'Pin {target} to version {version}?',
+  // P6 — the confirm dialog carries the action's own name as its title AND
+  // its confirm button ("动作名贯穿", 03-interaction.md §2), with the
+  // consequence in prose below. Never "are you sure".
+  // The title is set in the label role, which uppercases everything — so no
+  // target id here: `claude-code` must not come back as `CLAUDE-CODE`. The
+  // object is named by the impact chips and by the prose instead.
+  manageActionInstall: 'Install runtime',
+  manageActionUpgrade: 'Upgrade runtime',
+  manageActionPin: 'Pin runtime version',
+  manageConsequenceInstall:
+    'Installs {target} on this machine as a harness job. Live status appears in the deployments list.',
+  manageConsequenceUpgrade:
+    'Replaces the {target} in use with the latest published version, as a harness job.',
+  manageConsequencePin: 'Replaces the {target} in use with version {version}, as a harness job.',
   manageToast: 'Job queued — live status in the deployments list',
   manageFailed: 'Harness job failed',
   capturedToast: 'Profile "{name}" captured from {target}',
@@ -54,7 +65,8 @@ const en = {
   captureNamePlaceholder: 'e.g. baseline',
   captureButton: 'Capture as profile',
   capturing: 'Capturing…',
-  captureConfirm: 'Capture every importable artifact of this Agent into a new personal profile?',
+  captureConsequence:
+    'Reads every importable artifact of this Agent off the machine and saves it as a new personal profile.',
   detectedSource: 'detected',
   providerTitle: 'Provider config',
   providerDesc:
@@ -70,8 +82,11 @@ const en = {
   noCredentials: 'No distributable credentials — create one first.',
   applyButton: 'Apply config',
   applying: 'Applying…',
-  applyConfirm:
-    'Write the provider route into {target}’s native config on this machine (its API key included)?',
+  // The write is merge-preserving and re-appliable (design 9 W3), so this says
+  // what actually happens — the secret lands on the machine in clear — instead
+  // of claiming the step cannot be undone.
+  applyConsequence:
+    'Writes the provider route — API key included — into {target}’s native config on this machine. Unmanaged keys survive the write; the credential lands on disk in clear text.',
   applyToast: 'Apply-config job queued — live status in the deployments list',
   applyFailed: 'Apply config failed',
   // W10 provider-first flow.
@@ -146,8 +161,9 @@ const en = {
   adapterNative: 'Native session',
   adapterUptime: 'Uptime',
   adapterKill: 'Terminate',
-  adapterKillConfirm:
-    "Terminate this adapter process? Its channel closes; the agent's own session survives.",
+  adapterKillAction: 'Terminate adapter',
+  adapterKillConsequence:
+    "The adapter process exits and its channel closes on the spot. The agent's own session survives on the machine — reopening the channel resumes it.",
   adapterKilled: 'Adapter terminated',
   adaptersLoadFailed: 'Failed to load the adapter report',
   deployTitle: 'Deployments',
@@ -179,8 +195,9 @@ const en = {
   agentsHeading: 'Agent instances ({count})',
   noAgents: 'Nothing deployed on this machine yet.',
   chat: 'Chat',
-  chatConfirm:
-    'Enable remote chat? Chatting with agents on this machine runs tools and commands on it — only you can open channels.',
+  // The confirm for this switch is the Machines page's own pair
+  // (`machines.chatEnableAction` / `chatDisableAction`): one action, one set of
+  // words, wherever it is flipped.
   chatEnabled: 'Remote chat enabled',
   chatDisabled: 'Remote chat disabled',
   chatLabel: 'Remote chat',
@@ -233,9 +250,12 @@ const zh: typeof en = {
   upgradeButton: '升级',
   versionPlaceholder: '版本（可选）',
   managing: '执行中…',
-  manageConfirmInstall: '在这台机器上安装 {target}？',
-  manageConfirmUpgrade: '将 {target} 升级到最新版本？',
-  manageConfirmPin: '将 {target} 固定到版本 {version}？',
+  manageActionInstall: '安装运行时',
+  manageActionUpgrade: '升级运行时',
+  manageActionPin: '固定运行时版本',
+  manageConsequenceInstall: '以 Harness 作业的形式在这台机器上安装 {target}。实时状态见部署列表。',
+  manageConsequenceUpgrade: '以 Harness 作业的形式，把当前使用的 {target} 替换为最新发布版本。',
+  manageConsequencePin: '以 Harness 作业的形式，把当前使用的 {target} 替换为 {version} 版本。',
   manageToast: '作业已排队——实时状态见部署列表',
   manageFailed: 'Harness 作业失败',
   capturedToast: '已从 {target} 采集为配置集“{name}”',
@@ -244,7 +264,7 @@ const zh: typeof en = {
   captureNamePlaceholder: '例如：基线',
   captureButton: '采集为配置集',
   capturing: '采集中…',
-  captureConfirm: '将该代理的全部可导入工件采集为一个新的个人配置集？',
+  captureConsequence: '从机器上读取该代理的全部可导入工件，保存为一个新的个人配置集。',
   detectedSource: '检测到',
   providerTitle: 'Provider 配置',
   providerDesc: '该 Agent 使用的 LLM 路由 —— 由作业写入 Agent 工具自身的原生配置。',
@@ -259,7 +279,8 @@ const zh: typeof en = {
   noCredentials: '暂无可分发凭据 —— 请先创建。',
   applyButton: '应用配置',
   applying: '应用中…',
-  applyConfirm: '将 Provider 路由（含 API 密钥）写入这台机器上 {target} 的原生配置？',
+  applyConsequence:
+    '把 Provider 路由（含 API 密钥）写入这台机器上 {target} 的原生配置。未托管的键会保留；凭据以明文落到磁盘。',
   applyToast: '应用配置作业已排队 —— 实时状态见部署列表',
   applyFailed: '应用配置失败',
   // W10 provider-first flow.
@@ -331,7 +352,9 @@ const zh: typeof en = {
   adapterNative: '原生会话',
   adapterUptime: '运行时长',
   adapterKill: '终止',
-  adapterKillConfirm: '终止该适配器进程？对应通道将关闭；Agent 自身的会话会保留。',
+  adapterKillAction: '终止适配器',
+  adapterKillConsequence:
+    '适配器进程立即退出，对应通道当即关闭；Agent 自身的会话保留在机器上——重新打开通道即可继续。',
   adapterKilled: '适配器已终止',
   adaptersLoadFailed: '读取适配器进程失败',
   deployTitle: '部署',
@@ -362,7 +385,6 @@ const zh: typeof en = {
   agentsHeading: '代理实例（{count}）',
   noAgents: '此机器上尚未部署任何内容。',
   chat: '聊天',
-  chatConfirm: '启用远程聊天？与这台机器上的代理聊天会在其上运行工具和命令——只有你可以打开频道。',
   chatEnabled: '远程聊天已启用',
   chatDisabled: '远程聊天已禁用',
   chatLabel: '远程聊天',

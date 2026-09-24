@@ -107,12 +107,17 @@ const en = {
   tabIdleTitle: 'Idle since the last turn ended',
   tabsCleanupAll: 'Close all (busy ones finish first)',
   tabsCleanupIdle: 'Close idle only',
-  tabsCleanupIdleConfirm: 'Close every IDLE channel? Busy channels keep running untouched.',
+  // P6 — action names for the confirm dialog, which the tabs component owns
+  // (both chat pages share one dialog instead of two native prompts).
+  tabsCleanupAllAction: 'Close all channels',
+  tabsCleanupIdleAction: 'Close idle channels',
+  tabsCleanupIdleConsequence:
+    'Every channel sitting idle closes now. Channels mid-turn are left running untouched.',
 
   tabsCleanup: 'Close all',
   tabsCleanupTitle: 'Close every live channel (idle now; mid-turn channels finish first)',
-  tabsCleanupConfirm:
-    'Close all live channels? Idle channels close immediately; channels mid-turn finish the current turn, then close. The conversations stay with the agents.',
+  tabsCleanupConsequence:
+    'Idle channels close immediately; channels mid-turn finish the current turn, then close. The conversations stay with the agents.',
   tabsCleanupDone: '{closed} closed · {deferred} finishing after their turns',
   // ---- 9 W9: sender controls ----
   addMenuAria: 'Attach image or reference a file',
@@ -129,7 +134,9 @@ const en = {
   modeLabel: 'Permission mode',
   modelLabel: 'Model',
   effortLabel: 'Reasoning effort',
-  modeConfirm: 'Switch to "{name}"? This weakens the permission gate for this session.',
+  modeSwitchAction: 'Switch permission mode',
+  modeConsequence:
+    'The session runs under "{name}" from the next turn on, which weakens the permission gate — tool calls that would have been refused can run without asking.',
   configSetFailed: 'Switch failed: {error}',
   pickFile: 'Reference a file',
   pickFileDesc:
@@ -245,12 +252,14 @@ const zh: typeof en = {
   tabIdleTitle: '自上回合结束起闲置',
   tabsCleanupAll: '关闭全部（忙的收尾后关闭）',
   tabsCleanupIdle: '只关闭闲置',
-  tabsCleanupIdleConfirm: '关闭所有闲置通道？忙通道不受影响，继续运行。',
+  tabsCleanupAllAction: '关闭全部通道',
+  tabsCleanupIdleAction: '关闭闲置通道',
+  tabsCleanupIdleConsequence: '所有闲置通道立即关闭；正在输出的通道保持运行，不受影响。',
 
   tabsCleanup: '一键清理',
   tabsCleanupTitle: '关闭全部活动通道（空闲的立即关闭；输出中的先完成当前回合）',
-  tabsCleanupConfirm:
-    '关闭全部活动通道？空闲通道立即关闭；正在输出的通道会在本轮结束后关闭。对话记录保留在 Agent 内，不受影响。',
+  tabsCleanupConsequence:
+    '空闲通道立即关闭；正在输出的通道会在本轮结束后关闭。对话记录保留在 Agent 内，不受影响。',
   tabsCleanupDone: '已关闭 {closed} 个 · {deferred} 个将在本轮结束后关闭',
   // ---- 9 W9: sender controls ----
   addMenuAria: '添加图片或引用文件',
@@ -267,7 +276,9 @@ const zh: typeof en = {
   modeLabel: '权限模式',
   modelLabel: '模型',
   effortLabel: '思考级别',
-  modeConfirm: '切换到“{name}”？这会放宽本会话的权限门禁。',
+  modeSwitchAction: '切换权限模式',
+  modeConsequence:
+    '本会话从下一轮起以“{name}”运行，权限门禁随之放宽——原本会被拒绝的工具调用可能不再询问就执行。',
   configSetFailed: '切换失败：{error}',
   pickFile: '引用文件',
   pickFileDesc: '从工作区选择一个文件作为引用——Agent 会用自己的工具读取它。',

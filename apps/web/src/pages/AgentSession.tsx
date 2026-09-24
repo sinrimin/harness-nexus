@@ -953,11 +953,9 @@ export function AgentSessionPage() {
     });
   }
 
-  /** 清理 menu — close-all (busy defer) or 只清理闲置 (busy untouched, 9 W11 D6). */
+  /** 清理 menu — close-all (busy defer) or 只清理闲置 (busy untouched, 9 W11 D6).
+   *  The confirm itself lives in `ChannelTabs`. */
   async function cleanupChannels(idleOnly: boolean): Promise<void> {
-    if (!confirm(idleOnly ? t('chat.tabsCleanupIdleConfirm') : t('chat.tabsCleanupConfirm'))) {
-      return;
-    }
     const res = await emitWithAck<{ closed?: number; deferred?: number }>(
       'chat:channels.closeAll',
       { idleOnly },
@@ -1044,7 +1042,7 @@ export function AgentSessionPage() {
           activeSessionId={sessionId}
           onActivate={activateChannel}
           onClose={closeChannelTab}
-          onCleanup={(idleOnly) => void cleanupChannels(idleOnly)}
+          onCleanup={(idleOnly) => cleanupChannels(idleOnly)}
         />
         <div className="flex h-full min-h-0">
           {/* Left rail: new session + the agent's native sessions, grouped by

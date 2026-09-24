@@ -59,10 +59,8 @@ export function ChatPage() {
   // 9 W11 B — live channels as tabs (jump back into one from the cards page).
   const channels = useChatChannels();
   const navigate = useNavigate();
+  /** The confirm itself lives in `ChannelTabs` — one dialog, both pages. */
   async function cleanupChannels(idleOnly: boolean): Promise<void> {
-    if (!confirm(idleOnly ? t('chat.tabsCleanupIdleConfirm') : t('chat.tabsCleanupConfirm'))) {
-      return;
-    }
     const res = await emitWithAck<{ closed?: number; deferred?: number }>(
       'chat:channels.closeAll',
       { idleOnly },
@@ -81,7 +79,7 @@ export function ChatPage() {
         onClose={(ch) =>
           void emitWithAck('chat:session.close', { sessionId: ch.sessionId, reason: 'user' })
         }
-        onCleanup={(idleOnly) => void cleanupChannels(idleOnly)}
+        onCleanup={(idleOnly) => cleanupChannels(idleOnly)}
       />
       <PageIntro sub={t('chat.subtitle')} />
 

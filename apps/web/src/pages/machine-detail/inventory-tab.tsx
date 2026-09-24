@@ -33,6 +33,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { ConfirmDialog, Note, TableStateRow } from '@/components/kit';
 import type { InventoryEntry } from './types.js';
 
 /**
@@ -113,9 +114,11 @@ function TargetItemsCard({ entry, machineId }: { entry: InventoryEntry; machineI
           {/* A not-installed Agent leads with its absence; leftover items (if
             any) still render honestly below — files can outlive binaries. */}
           {notInstalled && items.length === 0 ? (
-            <p className="text-muted-foreground px-6 py-6 text-center text-sm">
-              {t('machineDetail.runtimeNotInstalled')}
-            </p>
+            // Degradation, not emptiness (03-interaction.md §1): the reason
+            // sits in a note where a centred sentence used to.
+            <div className="p-(--panel-pad)">
+              <Note tone="warn" title={t('machineDetail.runtimeNotInstalled')} />
+            </div>
           ) : (
             <Table>
               <TableHeader>
@@ -129,11 +132,14 @@ function TargetItemsCard({ entry, machineId }: { entry: InventoryEntry; machineI
               </TableHeader>
               <TableBody>
                 {items.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={5} className="text-muted-foreground py-6 text-center">
-                      {t('machineDetail.emptyTarget')}
-                    </TableCell>
-                  </TableRow>
+                  // P6 — the vacuum is a designed state row, not a centred
+                  // sentence: lamp sockets, the fact, and nothing else (the
+                  // action — Scan — lives in the page header).
+                  <TableStateRow
+                    state="empty"
+                    columns={5}
+                    empty={{ title: t('machineDetail.emptyTarget') }}
+                  />
                 ) : (
                   items.map((item) => (
                     <TableRow key={`${item.kind}:${item.name}`}>
@@ -194,9 +200,11 @@ function CaptureForm({ machineId, target }: { machineId: string; target: string 
   const { t } = useI18n();
   const [name, setName] = useState('');
   const [busy, setBusy] = useState(false);
+  // P6 — the confirm dialog; the button below opens it, the dialog confirms.
+  const [ask, setAsk] = useState(false);
 
   async function capture(): Promise<void> {
-    if (!window.confirm(t('machineDetail.captureConfirm'))) return;
+    setAsk(false);
     setBusy(true);
     try {
       const res = await withAuthGuard(
@@ -232,13 +240,32 @@ function CaptureForm({ machineId, target }: { machineId: string; target: string 
         </div>
         <Button
           variant="outline"
-          onClick={() => void capture()}
+          onClick={() => setAsk(true)}
           disabled={busy || name.trim() === ''}
         >
           <CameraIcon className="size-4" />
           {busy ? t('machineDetail.capturing') : t('machineDetail.captureButton')}
         </Button>
       </div>
+
+      {ask ? (
+        <ConfirmDialog
+          open
+          onOpenChange={setAsk}
+          title={t('machineDetail.captureButton')}
+          consequence={t('machineDetail.captureConsequence')}
+          impact={[
+            { label: 'target', value: target },
+            { label: 'profile', value: name.trim() },
+          ]}
+          actionLabel={t('machineDetail.captureButton')}
+          // A new profile is deletable, so this is the ordinary tier.
+          tone="default"
+          irreversible={false}
+          busy={busy}
+          onConfirm={() => void capture()}
+        />
+      ) : null}
     </>
   );
 }
