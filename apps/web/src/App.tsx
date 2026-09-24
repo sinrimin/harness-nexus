@@ -101,7 +101,7 @@ export function App() {
                 </Route>
               </Routes>
             </BrowserRouter>
-            <Toaster richColors closeButton />
+            <Toaster closeButton />
           </AuthProvider>
         </SkinProvider>
       </ThemeProvider>
