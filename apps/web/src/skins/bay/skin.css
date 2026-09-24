@@ -74,6 +74,16 @@
   --muted: #161c26;
   --background: var(--surface-inverted);
   --card: var(--surface-inverted);
+  /* …and so does the well family itself: re-pointing the material without
+     re-pointing its inks leaves `text-well-ink` at the light-theme value and
+     paints dark-on-dark (found on the account block, #23 P2). */
+  --well: var(--surface-inverted);
+  --well-edge: #2a3340;
+  --well-ink: var(--surface-inverted-ink);
+  --well-dim: var(--surface-inverted-dim);
+  --well-ok: #4fbf7f;
+  --well-warn: #e8a24c;
+  --well-fail: #e5715f;
 }
 
 /* Posture readouts (dashboard figures) get well padding; links keep routing. */
