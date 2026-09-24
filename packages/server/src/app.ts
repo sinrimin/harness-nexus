@@ -11,6 +11,7 @@ import { createJwtService } from './infra/jwt.js';
 import { registerAuthHook, requireAuth, requireAdmin } from './plugins/auth.js';
 import { registerRealtime } from './plugins/realtime.js';
 import { healthRoutes } from './modules/health.js';
+import { statusRoutes, PostureCache } from './modules/status.js';
 import { authRoutes } from './modules/auth.js';
 import { usersRoutes } from './modules/users.js';
 import { patsRoutes } from './modules/pats.js';
@@ -107,6 +108,9 @@ export async function buildApp(config: ServerConfig): Promise<FastifyInstance> {
   app.decorate('requireAdmin', requireAdmin);
   app.decorate('credentialEncryptionKey', config.credentialEncryptionKey);
   app.decorate('publicBaseUrl', config.publicBaseUrl);
+  // #23 D2 — posture aggregate cache behind the readout strip. Invalidated from
+  // the realtime plugin on machine presence transitions.
+  app.decorate('posture', new PostureCache(config.postureCacheTtlMs));
   // W10 — budget for provider model-list discovery (outbound surface #2).
   app.decorate('providerModelsTimeoutMs', config.providerModelsTimeoutMs);
 
@@ -235,6 +239,7 @@ export async function buildApp(config: ServerConfig): Promise<FastifyInstance> {
 
   await app.register(async (api) => {
     await healthRoutes(api);
+    await statusRoutes(api);
     await authRoutes(api);
     await settingsRoutes(api);
     await usersRoutes(api);

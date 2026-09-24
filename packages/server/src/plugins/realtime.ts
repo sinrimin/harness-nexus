@@ -242,6 +242,9 @@ export async function registerRealtime(
     // disconnected() found nothing to decrement) and the machine showed
     // online forever. Found via the 9 W11 C gates test (phantom presence).
     const cameOnline = presence.connected(machineId, socket.id);
+    // #23 D2 — the posture readout renders presence, so a transition must not
+    // wait out the cache window with the lamp showing the previous state.
+    app.posture.invalidate();
 
     void (async () => {
       const machine = await app.uow.machines.findById(machineId);
@@ -473,6 +476,7 @@ export async function registerRealtime(
     socket.on('disconnect', (reason: string) => {
       const wentOffline = presence.disconnected(socket.id);
       if (wentOffline === null) return;
+      app.posture.invalidate();
       inventory.failMachine(wentOffline);
       configView.failMachine(wentOffline);
       workspace.failMachine(wentOffline);

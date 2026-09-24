@@ -72,6 +72,11 @@ export interface ServerConfig {
   providerModelsTimeoutMs: number;
   /** `workspace:list` round-trip budget (Phase 9 W6 chat directory picker). */
   workspaceListTimeoutMs: number;
+  /**
+   * #23 D2 — upper bound on the posture aggregate cache, in milliseconds. The
+   * topbar readout polls it; 0 disables caching (tests).
+   */
+  postureCacheTtlMs: number;
   /** `sessions:list` round-trip budget (Phase 9 W7 native session rail; an `npx` adapter spawn is slow cold). */
   sessionsListTimeoutMs: number;
   /** 9 W11 C — `adapters:report` round-trip budget (instant daemon-side; only old daemons wait it out). */
@@ -163,6 +168,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
     runtimeConfigViewTimeoutMs: Number(env.RUNTIME_CONFIG_VIEW_TIMEOUT_MS ?? '5000'),
     providerModelsTimeoutMs: Number(env.PROVIDER_MODELS_TIMEOUT_MS ?? '10000'),
     workspaceListTimeoutMs: Number(env.WORKSPACE_TIMEOUT_MS ?? '10000'),
+    postureCacheTtlMs: Number(env.POSTURE_CACHE_TTL_MS ?? '5000'),
     sessionsListTimeoutMs: Number(env.SESSIONS_TIMEOUT_MS ?? '30000'),
     adaptersReportTimeoutMs: Number(env.ADAPTERS_REPORT_TIMEOUT_MS ?? '30000'),
     jobAckTimeoutMs: Number(env.JOB_ACK_TIMEOUT_MS ?? '60000'),
