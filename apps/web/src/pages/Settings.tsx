@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react';
 import { api } from '@/api';
 import { useAuth, withAuthGuard } from '@/auth';
 import { useI18n } from '@/i18n';
-import { AppShell } from '@/components/app-shell';
+import { PageIntro } from '@/components/kit';
+import { PageSlot } from '@/components/shell/page-slots';
 import { HarnessNexusError } from '@harness-nexus/sdk';
 import { toast } from 'sonner';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -34,11 +35,8 @@ export function SettingsPage() {
   }
 
   return (
-    <AppShell>
-      <div className="mb-8">
-        <h1 className="text-2xl font-semibold tracking-tight">{t('settings.title')}</h1>
-        <p className="text-muted-foreground mt-1 text-sm">{t('settings.subtitle')}</p>
-      </div>
+    <>
+      <PageIntro sub={<>{t('settings.subtitle')}</>} />
 
       <Card className="max-w-xl">
         <CardHeader>
@@ -71,6 +69,6 @@ export function SettingsPage() {
           </div>
         </CardContent>
       </Card>
-    </AppShell>
+    </>
   );
 }

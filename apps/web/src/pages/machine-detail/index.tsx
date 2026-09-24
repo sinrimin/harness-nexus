@@ -1,14 +1,15 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Link, useParams, useSearchParams } from 'react-router-dom';
+import { useParams, useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
-import { ArrowLeftIcon, RefreshCwIcon } from 'lucide-react';
+import { RefreshCwIcon } from 'lucide-react';
 import { api } from '@/api';
 import { useAuth, withAuthGuard } from '@/auth';
 import { useI18n } from '@/i18n';
-import { AppShell } from '@/components/app-shell';
 import { appSocket, type InventoryUpdatedEvent, type MachineStatusEvent } from '@/realtime';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Lamp, PageIntro, Well } from '@/components/kit';
+import { PageSlot } from '@/components/shell/page-slots';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   HarnessNexusError,
@@ -162,38 +163,34 @@ export function MachineDetailPage() {
   };
 
   return (
-    <AppShell>
-      <div className="mb-6">
-        <Button asChild variant="ghost" size="sm" className="-ml-2 mb-2">
-          <Link to="/machines">
-            <ArrowLeftIcon className="size-4" />
-            {t('machineDetail.back')}
-          </Link>
-        </Button>
-        <h1 className="text-2xl font-semibold tracking-tight text-wrap-balance">
-          {machine?.name ?? t('machineDetail.fallbackTitle')}
-        </h1>
-        <p className="text-muted-foreground mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
-          <span>
-            <span
-              className={`mr-1.5 inline-block size-2 rounded-full align-middle ${
-                machine?.online ? 'bg-ok' : 'bg-muted-foreground/40'
-              }`}
+    <>
+      {/* The machine's name is this page's identity, so it rides the topbar
+          (with the MESH crumb back to the list — the old back button is gone).
+          What stays here is what the name does not already say. */}
+      <PageSlot slot="title">{machine?.name ?? t('machineDetail.fallbackTitle')}</PageSlot>
+
+      <PageIntro
+        sub={
+          <>
+            <Lamp
+              state={machine?.online === true ? 'online' : 'offline'}
+              word={
+                machine?.online === true ? t('machineDetail.online') : t('machineDetail.offline')
+              }
             />
-            {machine?.online ? t('machineDetail.online') : t('machineDetail.offline')}
-          </span>
-          {machine?.hostname ? (
-            <span className="font-mono text-xs">
-              {[machine.hostname, machine.os, machine.arch].filter(Boolean).join(' · ')}
-            </span>
-          ) : null}
-          {machine?.daemonVersion ? (
-            <span className="font-mono text-xs tabular-nums">
-              {t('machineDetail.daemonVersion', { version: machine.daemonVersion })}
-            </span>
-          ) : null}
-        </p>
-      </div>
+            {machine?.hostname ? (
+              <Well variant="chip" copy={machine.hostname}>
+                {[machine.hostname, machine.os, machine.arch].filter(Boolean).join(' · ')}
+              </Well>
+            ) : null}
+            {machine?.daemonVersion ? (
+              <Well variant="chip" copy={machine.daemonVersion}>
+                {t('machineDetail.daemonVersion', { version: machine.daemonVersion })}
+              </Well>
+            ) : null}
+          </>
+        }
+      />
 
       <div className="mb-6 flex flex-wrap items-center gap-3">
         <Button onClick={() => void scan()} disabled={scanning || machine?.online !== true}>
@@ -256,6 +253,6 @@ export function MachineDetailPage() {
           />
         </TabsContent>
       </Tabs>
-    </AppShell>
+    </>
   );
 }

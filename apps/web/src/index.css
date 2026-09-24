@@ -124,6 +124,16 @@
   --readout-size-sm: 16px; /* inside a 28px nameplate the figure is not a poster */
   --readout-size-sm-dim: 11px;
 
+  /* Shell geometry (#23 P2) — the spine/plate/topbar used to be hardcoded
+   * utilities (w-60, h-14). Tokens so density is a skin decision and the two
+   * columns can never disagree about their own width. */
+  --spine-w: 72px;
+  --plate-w: 168px;
+  --shell-bar-h: 56px;
+  --shell-bar-h-sm: 48px;
+  --shell-subbar-h: 38px; /* plate brand row / readout strip — aligned bands */
+  --shell-title-size: 17px; /* the page's identity in the topbar */
+
   /* Tray: the neutral step behind table heads, list feet, sub-panels and row
    * hover — the one surface between card and muted. */
   --tray: oklch(0.955 0.005 250);

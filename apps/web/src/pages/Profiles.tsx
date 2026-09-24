@@ -10,9 +10,9 @@ import {
   PencilIcon,
 } from 'lucide-react';
 import { api } from '@/api';
+import { PageSlot } from '@/components/shell/page-slots';
 import { useAuth, withAuthGuard } from '@/auth';
 import { useI18n, type TranslationKey } from '@/i18n';
-import { AppShell } from '@/components/app-shell';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -40,7 +40,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { FormDialog } from '@/components/ui/form-dialog';
-import { CommandLine, Panel, PanelBody, Well } from '@/components/kit';
+import { CommandLine, PageIntro, Panel, PanelBody, Well } from '@/components/kit';
 import { MoreHorizontalIcon } from 'lucide-react';
 import {
   HarnessNexusError,
@@ -298,17 +298,15 @@ export function ProfilesPage() {
   }
 
   return (
-    <AppShell>
-      <div className="mb-8 flex items-start justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">{t('profiles.title')}</h1>
-          <p className="text-muted-foreground mt-1 text-sm">{t('profiles.subtitle')}</p>
-        </div>
+    <>
+      <PageSlot slot="actions">
         <Button onClick={() => setCreating(true)}>
           <PlusIcon className="size-4" />
           {t('common.create')}
         </Button>
-      </div>
+      </PageSlot>
+
+      <PageIntro sub={<>{t('profiles.subtitle')}</>} />
 
       {user && (
         <Panel
@@ -463,7 +461,7 @@ claude plugin install <profile-name>@harness-nexus-${user.username.toLowerCase()
           }}
         />
       ) : null}
-    </AppShell>
+    </>
   );
 }
 
@@ -527,68 +525,70 @@ function EditProfile({
   }
 
   return (
-    <FormDialog
-      open
-      onClose={onClose}
-      title={t('profiles.editTitle')}
-      description={t('profiles.editDesc')}
-      size="xl"
-    >
-      <form onSubmit={onSubmit} className="flex flex-col gap-4">
-        <div className="grid gap-4 sm:grid-cols-3">
-          {/* content-start: the version cell carries a hint <p>, and without
+    <>
+      <FormDialog
+        open
+        onClose={onClose}
+        title={t('profiles.editTitle')}
+        description={t('profiles.editDesc')}
+        size="xl"
+      >
+        <form onSubmit={onSubmit} className="flex flex-col gap-4">
+          <div className="grid gap-4 sm:grid-cols-3">
+            {/* content-start: the version cell carries a hint <p>, and without
               it the default align-content:stretch distributes that extra
               height into the OTHER cells' rows — pushing their inputs down
               out of the row (the #6 alignment bug). */}
-          <div className="grid content-start gap-2">
-            <Label htmlFor="prof-edit-name">{t('common.name')}</Label>
-            <Input
-              id="prof-edit-name"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              autoComplete="off"
-              spellCheck={false}
-              required
-            />
+            <div className="grid content-start gap-2">
+              <Label htmlFor="prof-edit-name">{t('common.name')}</Label>
+              <Input
+                id="prof-edit-name"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                autoComplete="off"
+                spellCheck={false}
+                required
+              />
+            </div>
+            <div className="grid content-start gap-2">
+              <Label htmlFor="prof-edit-desc">{t('common.description')}</Label>
+              <Input
+                id="prof-edit-desc"
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                placeholder={t('profiles.optional')}
+                autoComplete="off"
+              />
+            </div>
+            <div className="grid content-start gap-2">
+              <Label>{t('profiles.versionLabel')}</Label>
+              <p className="bg-muted font-mono flex h-9 items-center rounded-md px-3 text-sm">
+                {profile.version}
+              </p>
+              <p className="text-muted-foreground text-xs">{t('profiles.versionHint')}</p>
+            </div>
           </div>
-          <div className="grid content-start gap-2">
-            <Label htmlFor="prof-edit-desc">{t('common.description')}</Label>
-            <Input
-              id="prof-edit-desc"
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              placeholder={t('profiles.optional')}
-              autoComplete="off"
-            />
-          </div>
-          <div className="grid content-start gap-2">
-            <Label>{t('profiles.versionLabel')}</Label>
-            <p className="bg-muted font-mono flex h-9 items-center rounded-md px-3 text-sm">
-              {profile.version}
-            </p>
-            <p className="text-muted-foreground text-xs">{t('profiles.versionHint')}</p>
-          </div>
-        </div>
 
-        <EntryPickers
-          servers={servers}
-          resources={resources}
-          selectedServers={selectedServers}
-          selectedResources={selectedResources}
-          onToggleServer={(id) => toggleIn(setSelectedServers, id)}
-          onToggleResource={(id) => toggleIn(setSelectedResources, id)}
-        />
+          <EntryPickers
+            servers={servers}
+            resources={resources}
+            selectedServers={selectedServers}
+            selectedResources={selectedResources}
+            onToggleServer={(id) => toggleIn(setSelectedServers, id)}
+            onToggleResource={(id) => toggleIn(setSelectedResources, id)}
+          />
 
-        <div className="flex justify-end gap-2">
-          <Button type="button" variant="outline" onClick={onClose} disabled={busy}>
-            {t('common.cancel')}
-          </Button>
-          <Button type="submit" disabled={busy}>
-            {busy ? t('common.saving') : t('common.save')}
-          </Button>
-        </div>
-      </form>
-    </FormDialog>
+          <div className="flex justify-end gap-2">
+            <Button type="button" variant="outline" onClick={onClose} disabled={busy}>
+              {t('common.cancel')}
+            </Button>
+            <Button type="submit" disabled={busy}>
+              {busy ? t('common.saving') : t('common.save')}
+            </Button>
+          </div>
+        </form>
+      </FormDialog>
+    </>
   );
 }
 
@@ -639,90 +639,92 @@ function CreateProfile({ onClose, onCreated }: { onClose: () => void; onCreated:
   }
 
   return (
-    <FormDialog
-      open
-      onClose={onClose}
-      title={t('profiles.addTitle')}
-      description={t('profiles.addDesc')}
-      size="xl"
-    >
-      <form onSubmit={onSubmit} className="flex flex-col gap-4">
-        <div className="grid gap-4 sm:grid-cols-4">
-          <div className="grid gap-2">
-            <Label htmlFor="prof-name">{t('common.name')}</Label>
-            <Input
-              id="prof-name"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder={t('profiles.namePlaceholder')}
-              autoComplete="off"
-              spellCheck={false}
-              required
-            />
-          </div>
-          <div className="grid gap-2">
-            <Label htmlFor="prof-target">{t('profiles.target')}</Label>
-            <Select value={target} onValueChange={(v) => setTarget(v as AgentTarget)}>
-              <SelectTrigger id="prof-target">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {TARGETS.map((target) => (
-                  <SelectItem key={target} value={target}>
-                    {target}
+    <>
+      <FormDialog
+        open
+        onClose={onClose}
+        title={t('profiles.addTitle')}
+        description={t('profiles.addDesc')}
+        size="xl"
+      >
+        <form onSubmit={onSubmit} className="flex flex-col gap-4">
+          <div className="grid gap-4 sm:grid-cols-4">
+            <div className="grid gap-2">
+              <Label htmlFor="prof-name">{t('common.name')}</Label>
+              <Input
+                id="prof-name"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder={t('profiles.namePlaceholder')}
+                autoComplete="off"
+                spellCheck={false}
+                required
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="prof-target">{t('profiles.target')}</Label>
+              <Select value={target} onValueChange={(v) => setTarget(v as AgentTarget)}>
+                <SelectTrigger id="prof-target">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {TARGETS.map((target) => (
+                    <SelectItem key={target} value={target}>
+                      {target}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="prof-desc">{t('common.description')}</Label>
+              <Input
+                id="prof-desc"
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                placeholder={t('profiles.optional')}
+                autoComplete="off"
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="prof-scope">{t('common.scope')}</Label>
+              <Select value={scope} onValueChange={(v) => setScope(v as Scope)} disabled={!isAdmin}>
+                <SelectTrigger id="prof-scope">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="personal">{t('common.scopePersonal')}</SelectItem>
+                  <SelectItem value="global" disabled={!isAdmin}>
+                    {t('common.scopeGlobal')}
+                    {!isAdmin && t('profiles.adminSuffix')}
                   </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+                </SelectContent>
+              </Select>
+            </div>
           </div>
-          <div className="grid gap-2">
-            <Label htmlFor="prof-desc">{t('common.description')}</Label>
-            <Input
-              id="prof-desc"
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              placeholder={t('profiles.optional')}
-              autoComplete="off"
-            />
-          </div>
-          <div className="grid gap-2">
-            <Label htmlFor="prof-scope">{t('common.scope')}</Label>
-            <Select value={scope} onValueChange={(v) => setScope(v as Scope)} disabled={!isAdmin}>
-              <SelectTrigger id="prof-scope">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="personal">{t('common.scopePersonal')}</SelectItem>
-                <SelectItem value="global" disabled={!isAdmin}>
-                  {t('common.scopeGlobal')}
-                  {!isAdmin && t('profiles.adminSuffix')}
-                </SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-        </div>
 
-        <EntryPickers
-          servers={servers}
-          resources={resources}
-          selectedServers={selectedServers}
-          selectedResources={selectedResources}
-          onToggleServer={(id) => toggleIn(setSelectedServers, id)}
-          onToggleResource={(id) => toggleIn(setSelectedResources, id)}
-        />
+          <EntryPickers
+            servers={servers}
+            resources={resources}
+            selectedServers={selectedServers}
+            selectedResources={selectedResources}
+            onToggleServer={(id) => toggleIn(setSelectedServers, id)}
+            onToggleResource={(id) => toggleIn(setSelectedResources, id)}
+          />
 
-        <div className="flex justify-end gap-2">
-          <Button type="button" variant="outline" onClick={onClose} disabled={busy}>
-            {t('common.cancel')}
-          </Button>
-          <Button
-            type="submit"
-            disabled={busy || (selectedServers.size === 0 && selectedResources.size === 0)}
-          >
-            {busy ? t('profiles.creating') : t('profiles.createProfile')}
-          </Button>
-        </div>
-      </form>
-    </FormDialog>
+          <div className="flex justify-end gap-2">
+            <Button type="button" variant="outline" onClick={onClose} disabled={busy}>
+              {t('common.cancel')}
+            </Button>
+            <Button
+              type="submit"
+              disabled={busy || (selectedServers.size === 0 && selectedResources.size === 0)}
+            >
+              {busy ? t('profiles.creating') : t('profiles.createProfile')}
+            </Button>
+          </div>
+        </form>
+      </FormDialog>
+    </>
   );
 }

@@ -3,9 +3,9 @@ import { Link, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { ArrowRightIcon, BotIcon, LaptopIcon, MessageSquareIcon } from 'lucide-react';
 import { api } from '@/api';
+import { PageIntro } from '@/components/kit';
 import { useAuth, withAuthGuard } from '@/auth';
 import { useI18n, dateLocale, type Lang } from '@/i18n';
-import { AppShell } from '@/components/app-shell';
 import { appSocket, emitWithAck, type MachineStatusEvent } from '@/realtime';
 import { ChannelTabs } from '@/components/chat/channel-tabs.js';
 import { useChatChannels } from '@/components/chat/use-chat-channels.js';
@@ -94,7 +94,7 @@ export function ChatPage() {
   }
 
   return (
-    <AppShell>
+    <>
       <ChannelTabs
         channels={channels}
         activeSessionId=""
@@ -104,12 +104,7 @@ export function ChatPage() {
         }
         onCleanup={(idleOnly) => void cleanupChannels(idleOnly)}
       />
-      <div className="mb-8">
-        <h1 className="text-2xl font-semibold tracking-tight text-wrap-balance">
-          {t('chat.title')}
-        </h1>
-        <p className="text-muted-foreground mt-1 text-sm">{t('chat.subtitle')}</p>
-      </div>
+      <PageIntro sub={t('chat.subtitle')} />
 
       {machines === null ? (
         <p className="text-muted-foreground py-12 text-center text-sm">{t('common.loading')}</p>
@@ -157,7 +152,7 @@ export function ChatPage() {
           ) : null}
         </div>
       )}
-    </AppShell>
+    </>
   );
 }
 
@@ -173,47 +168,54 @@ function AgentCard({
   const { t } = useI18n();
   const blocked = !machine.online || !machine.remoteChatEnabled;
   return (
-    <Card className={blocked ? 'border-dashed' : ''}>
-      <CardContent className="flex flex-col gap-3">
-        <div className="flex items-start justify-between gap-2">
-          <div className="flex min-w-0 items-center gap-2">
-            <BotIcon className="text-muted-foreground size-4 shrink-0" />
-            <span className="truncate font-medium">{agent.name}</span>
+    <>
+      <Card className={blocked ? 'border-dashed' : ''}>
+        <CardContent className="flex flex-col gap-3">
+          <div className="flex items-start justify-between gap-2">
+            <div className="flex min-w-0 items-center gap-2">
+              <BotIcon className="text-muted-foreground size-4 shrink-0" />
+              <span className="truncate font-medium">{agent.name}</span>
+            </div>
+            <Badge variant="secondary" className="font-mono text-[10px]">
+              {agent.target}
+            </Badge>
           </div>
-          <Badge variant="secondary" className="font-mono text-[10px]">
-            {agent.target}
-          </Badge>
-        </div>
-        <div className="text-muted-foreground flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
-          <span>
-            {agent.source === 'deploy' ? t('chat.sourceDeploy') : t('chat.sourceDetected')}
-          </span>
-          <span aria-hidden>·</span>
-          <span className="truncate font-mono" title={agent.directory}>
-            {agent.directory}
-          </span>
-          <span aria-hidden>·</span>
-          <span className="tabular-nums">
-            {new Date(agent.updatedAt).toLocaleDateString(dateLocale(lang), {
-              year: 'numeric',
-              month: 'short',
-              day: 'numeric',
-            })}
-          </span>
-        </div>
-        {blocked ? (
-          <p className="text-warn text-xs">
-            {!machine.online ? t('chat.cardOffline') : t('chat.cardChatOff')}
-          </p>
-        ) : null}
-        <Button asChild variant={blocked ? 'outline' : 'default'} size="sm" className="self-start">
-          <Link to={`/chat/agents/${agent.id}`} className="gap-1.5">
-            <MessageSquareIcon className="size-3.5" />
-            {t('chat.cardEnter')}
-            <ArrowRightIcon className="size-3.5" />
-          </Link>
-        </Button>
-      </CardContent>
-    </Card>
+          <div className="text-muted-foreground flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
+            <span>
+              {agent.source === 'deploy' ? t('chat.sourceDeploy') : t('chat.sourceDetected')}
+            </span>
+            <span aria-hidden>·</span>
+            <span className="truncate font-mono" title={agent.directory}>
+              {agent.directory}
+            </span>
+            <span aria-hidden>·</span>
+            <span className="tabular-nums">
+              {new Date(agent.updatedAt).toLocaleDateString(dateLocale(lang), {
+                year: 'numeric',
+                month: 'short',
+                day: 'numeric',
+              })}
+            </span>
+          </div>
+          {blocked ? (
+            <p className="text-warn text-xs">
+              {!machine.online ? t('chat.cardOffline') : t('chat.cardChatOff')}
+            </p>
+          ) : null}
+          <Button
+            asChild
+            variant={blocked ? 'outline' : 'default'}
+            size="sm"
+            className="self-start"
+          >
+            <Link to={`/chat/agents/${agent.id}`} className="gap-1.5">
+              <MessageSquareIcon className="size-3.5" />
+              {t('chat.cardEnter')}
+              <ArrowRightIcon className="size-3.5" />
+            </Link>
+          </Button>
+        </CardContent>
+      </Card>
+    </>
   );
 }

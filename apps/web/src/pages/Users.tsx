@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
 import { api } from '@/api';
+import { PageIntro } from '@/components/kit';
+import { PageSlot } from '@/components/shell/page-slots';
 import { useAuth, withAuthGuard } from '@/auth';
 import { useI18n, dateLocale } from '@/i18n';
-import { AppShell } from '@/components/app-shell';
 import { toast } from 'sonner';
 import { HarnessNexusError, type PublicUser, type Role } from '@harness-nexus/sdk';
 import { Card, CardContent } from '@/components/ui/card';
@@ -80,23 +81,24 @@ export function UsersPage() {
   }
 
   return (
-    <AppShell>
-      <div className="mb-8 flex items-start justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">{t('users.title')}</h1>
-          <p className="text-muted-foreground mt-1 text-sm">
-            {t('users.subtitle')}{' '}
-            {users.length === 1
-              ? t('users.countOne', { count: users.length })
-              : t('users.countMany', { count: users.length })}
-            .
-          </p>
-        </div>
+    <>
+      <PageSlot slot="actions">
         <Button onClick={() => setCreating(true)}>
           <PlusIcon className="size-4" />
           {t('users.addUser')}
         </Button>
-      </div>
+      </PageSlot>
+
+      <PageIntro
+        sub={
+          <>
+            {t('users.subtitle')}{' '}
+            {users.length === 1
+              ? t('users.countOne', { count: users.length })
+              : t('users.countMany', { count: users.length })}
+          </>
+        }
+      />
 
       <Card>
         <CardContent className="px-0">
@@ -182,7 +184,7 @@ export function UsersPage() {
           }}
         />
       ) : null}
-    </AppShell>
+    </>
   );
 }
 
@@ -205,55 +207,57 @@ function CreateUser({ onClose, onCreated }: { onClose: () => void; onCreated: ()
   }
 
   return (
-    <FormDialog
-      open
-      onClose={onClose}
-      title={t('users.addUser')}
-      description={t('users.addUserDesc')}
-    >
-      <form onSubmit={submit} className="flex flex-col gap-4">
-        <div className="grid gap-4 sm:grid-cols-2">
-          <div className="grid gap-2">
-            <Label htmlFor="new-username">{t('users.username')}</Label>
-            <Input
-              id="new-username"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              autoComplete="off"
-              spellCheck={false}
-              required
-            />
+    <>
+      <FormDialog
+        open
+        onClose={onClose}
+        title={t('users.addUser')}
+        description={t('users.addUserDesc')}
+      >
+        <form onSubmit={submit} className="flex flex-col gap-4">
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="grid gap-2">
+              <Label htmlFor="new-username">{t('users.username')}</Label>
+              <Input
+                id="new-username"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                autoComplete="off"
+                spellCheck={false}
+                required
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="new-password">{t('users.password')}</Label>
+              <Input
+                id="new-password"
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+              />
+            </div>
           </div>
           <div className="grid gap-2">
-            <Label htmlFor="new-password">{t('users.password')}</Label>
-            <Input
-              id="new-password"
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-            />
+            <Label htmlFor="new-role">{t('users.role')}</Label>
+            <Select value={role} onValueChange={(v) => setRole(v as Role)}>
+              <SelectTrigger id="new-role" className="w-40">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="user">{t('common.roleUser')}</SelectItem>
+                <SelectItem value="admin">{t('common.roleAdmin')}</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
-        </div>
-        <div className="grid gap-2">
-          <Label htmlFor="new-role">{t('users.role')}</Label>
-          <Select value={role} onValueChange={(v) => setRole(v as Role)}>
-            <SelectTrigger id="new-role" className="w-40">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="user">{t('common.roleUser')}</SelectItem>
-              <SelectItem value="admin">{t('common.roleAdmin')}</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-        <div className="flex justify-end gap-2">
-          <Button type="button" variant="outline" onClick={onClose}>
-            {t('common.cancel')}
-          </Button>
-          <Button type="submit">{t('common.create')}</Button>
-        </div>
-      </form>
-    </FormDialog>
+          <div className="flex justify-end gap-2">
+            <Button type="button" variant="outline" onClick={onClose}>
+              {t('common.cancel')}
+            </Button>
+            <Button type="submit">{t('common.create')}</Button>
+          </div>
+        </form>
+      </FormDialog>
+    </>
   );
 }

@@ -27,10 +27,9 @@ import {
   type Profile,
   type Resource,
 } from '@harness-nexus/sdk';
-import { AppShell } from '@/components/app-shell';
 import { MeshTopology, type FleetNode } from '@/components/mesh-topology';
 import { Button } from '@/components/ui/button';
-import { Chip, Lamp, Readout } from '@/components/kit';
+import { Chip, Lamp, PageIntro, Readout } from '@/components/kit';
 
 /**
  * Overview — the fleet posture page. The constellation hero draws the whole
@@ -147,14 +146,11 @@ export function DashboardPage() {
   }));
 
   return (
-    <AppShell>
+    <>
       {/* Hero — the signature. The constellation IS the product: upstreams
           converge on the nexus, the nexus reaches out to the fleet. */}
       <section className="mb-6">
-        <div className="mb-3">
-          <h1 className="text-2xl font-semibold tracking-tight">{t('dashboard.title')}</h1>
-          <p className="text-muted-foreground mt-1 text-sm">{t('dashboard.subtitle')}</p>
-        </div>
+        <PageIntro sub={t('dashboard.subtitle')} className="mb-3" />
         <MeshTopology
           servers={servers ?? []}
           loading={servers === null}
@@ -290,7 +286,7 @@ export function DashboardPage() {
         {t('dashboard.footerPrefix')} <code className="font-mono">/mcp?profile=&lt;id&gt;</code>
         {t('dashboard.footerSuffix')}
       </p>
-    </AppShell>
+    </>
   );
 }
 
@@ -305,42 +301,44 @@ function FleetRow({ machine, agents }: { machine: MachineView; agents: AgentInst
   const shown = agents.slice(0, 3);
   const overflow = agents.length - shown.length;
   return (
-    <div className="hover:bg-muted/40 flex items-center gap-3 px-4 py-2.5 transition-colors">
-      <Lamp
-        state={machine.online ? 'online' : 'offline'}
-        label={machine.online ? t('dashboard.legendOnline') : t('dashboard.legendOffline')}
-      />
-      <Link
-        to={`/machines/${machine.id}`}
-        className="group/min min-w-0 flex-1"
-        title={machine.name}
-      >
-        <span className="block truncate text-sm font-medium group-hover/min:text-signal transition-colors">
-          {machine.name}
-        </span>
-        <span className="text-muted-foreground block truncate font-mono text-xs tabular-nums">
-          {machine.daemonVersion ?? '—'}
-        </span>
-      </Link>
-      <div className="flex shrink-0 flex-wrap items-center justify-end gap-1">
-        {agents.length === 0 ? (
-          <span className="text-muted-foreground text-xs">{t('dashboard.noAgents')}</span>
-        ) : (
-          <>
-            {shown.map((a) => (
-              <Chip key={a.id} to={`/chat/agents/${a.id}`} title={`${a.name} · ${a.source}`}>
-                {a.target}
-              </Chip>
-            ))}
-            {overflow > 0 ? (
-              <Chip to={`/machines/${machine.id}`} tone="muted">
-                {t('dashboard.moreAgents', { count: overflow })}
-              </Chip>
-            ) : null}
-          </>
-        )}
+    <>
+      <div className="hover:bg-muted/40 flex items-center gap-3 px-4 py-2.5 transition-colors">
+        <Lamp
+          state={machine.online ? 'online' : 'offline'}
+          label={machine.online ? t('dashboard.legendOnline') : t('dashboard.legendOffline')}
+        />
+        <Link
+          to={`/machines/${machine.id}`}
+          className="group/min min-w-0 flex-1"
+          title={machine.name}
+        >
+          <span className="block truncate text-sm font-medium group-hover/min:text-signal transition-colors">
+            {machine.name}
+          </span>
+          <span className="text-muted-foreground block truncate font-mono text-xs tabular-nums">
+            {machine.daemonVersion ?? '—'}
+          </span>
+        </Link>
+        <div className="flex shrink-0 flex-wrap items-center justify-end gap-1">
+          {agents.length === 0 ? (
+            <span className="text-muted-foreground text-xs">{t('dashboard.noAgents')}</span>
+          ) : (
+            <>
+              {shown.map((a) => (
+                <Chip key={a.id} to={`/chat/agents/${a.id}`} title={`${a.name} · ${a.source}`}>
+                  {a.target}
+                </Chip>
+              ))}
+              {overflow > 0 ? (
+                <Chip to={`/machines/${machine.id}`} tone="muted">
+                  {t('dashboard.moreAgents', { count: overflow })}
+                </Chip>
+              ) : null}
+            </>
+          )}
+        </div>
       </div>
-    </div>
+    </>
   );
 }
 
@@ -357,17 +355,19 @@ function AssetRow({
   count?: number;
 }) {
   return (
-    <Link
-      to={to}
-      className="hover:bg-muted/40 flex items-center gap-2.5 px-4 py-2.5 text-sm transition-colors"
-    >
-      <span className="text-muted-foreground">{icon}</span>
-      <span className="flex-1 truncate">{label}</span>
-      {count !== undefined ? (
-        <span className="text-muted-foreground font-mono text-xs tabular-nums">{count}</span>
-      ) : (
-        <ArrowRightIcon className="text-muted-foreground/50 size-4" />
-      )}
-    </Link>
+    <>
+      <Link
+        to={to}
+        className="hover:bg-muted/40 flex items-center gap-2.5 px-4 py-2.5 text-sm transition-colors"
+      >
+        <span className="text-muted-foreground">{icon}</span>
+        <span className="flex-1 truncate">{label}</span>
+        {count !== undefined ? (
+          <span className="text-muted-foreground font-mono text-xs tabular-nums">{count}</span>
+        ) : (
+          <ArrowRightIcon className="text-muted-foreground/50 size-4" />
+        )}
+      </Link>
+    </>
   );
 }

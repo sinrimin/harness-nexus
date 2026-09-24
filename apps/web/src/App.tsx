@@ -1,10 +1,13 @@
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, Outlet } from 'react-router-dom';
+import type { ReactNode } from 'react';
 import { AuthProvider } from '@/auth';
 import { RequireAuth, RequireAdmin } from '@/guards';
 import { I18nProvider } from '@/i18n';
 import { ThemeProvider } from '@/components/theme-provider';
 import { SkinProvider } from '@/components/skin-provider';
 import { Toaster } from '@/components/ui/sonner';
+import { AppShell } from '@/components/app-shell';
+import { ROUTES, routeById, type RouteId } from '@/nav';
 import { LoginPage } from '@/pages/Login';
 import { RegisterPage } from '@/pages/Register';
 import { DashboardPage } from '@/pages/Dashboard';
@@ -16,11 +19,45 @@ import { TokensPage } from '@/pages/Tokens';
 import { McpManagementPage } from '@/pages/McpManagement';
 import { ProfilesPage } from '@/pages/Profiles';
 import { ResourcesPage } from '@/pages/Resources';
-import { SkillHubPage } from '@/pages/SkillHub';
+import { SkillsPage } from '@/pages/Skills';
 import { MachinesPage } from '@/pages/Machines';
 import { MachineDetailPage } from '@/pages/MachineDetail';
 import { ChatPage } from '@/pages/Chat';
 import { AgentSessionPage } from '@/pages/AgentSession';
+
+/** The chrome every protected page renders inside (nav.ts holds the manifest). */
+function ShellLayout() {
+  return (
+    <AppShell>
+      <Outlet />
+    </AppShell>
+  );
+}
+
+/**
+ * Page component per route id. The id → element mapping is the one thing the
+ * manifest cannot carry (elements are code), so it lives next to the router
+ * rather than in the nav table — which stays importable by the shell alone.
+ */
+const PAGES: Record<RouteId, ReactNode> = {
+  home: <DashboardPage />,
+  chat: <ChatPage />,
+  chatSession: <AgentSessionPage />,
+  machines: <MachinesPage />,
+  machineDetail: <MachineDetailPage />,
+  skills: <SkillsPage />,
+  subAgents: <ResourcesPage fixedKind="sub_agent" />,
+  rules: <ResourcesPage fixedKind="rule" />,
+  commands: <ResourcesPage fixedKind="command" />,
+  hooks: <ResourcesPage fixedKind="hook" />,
+  profiles: <ProfilesPage />,
+  mcp: <McpManagementPage />,
+  credentials: <CredentialsPage />,
+  llmProviders: <LlmProvidersPage />,
+  tokens: <TokensPage />,
+  users: <UsersPage />,
+  settings: <SettingsPage />,
+};
 
 export function App() {
   return (
@@ -28,124 +65,43 @@ export function App() {
       <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
         <SkinProvider>
           <AuthProvider>
-          <BrowserRouter>
-            <Routes>
-              <Route path="/login" element={<LoginPage />} />
-              <Route path="/register" element={<RegisterPage />} />
-              <Route
-                path="/"
-                element={
-                  <RequireAuth>
-                    <DashboardPage />
-                  </RequireAuth>
-                }
-              />
-              <Route
-                path="/machines"
-                element={
-                  <RequireAuth>
-                    <MachinesPage />
-                  </RequireAuth>
-                }
-              />
-              <Route
-                path="/machines/:id"
-                element={
-                  <RequireAuth>
-                    <MachineDetailPage />
-                  </RequireAuth>
-                }
-              />
-              <Route
-                path="/chat"
-                element={
-                  <RequireAuth>
-                    <ChatPage />
-                  </RequireAuth>
-                }
-              />
-              <Route
-                path="/chat/agents/:agentId"
-                element={
-                  <RequireAuth>
-                    <AgentSessionPage />
-                  </RequireAuth>
-                }
-              />
-              <Route
-                path="/credentials"
-                element={
-                  <RequireAuth>
-                    <CredentialsPage />
-                  </RequireAuth>
-                }
-              />
-              <Route
-                path="/llm-providers"
-                element={
-                  <RequireAuth>
-                    <LlmProvidersPage />
-                  </RequireAuth>
-                }
-              />
-              <Route
-                path="/tokens"
-                element={
-                  <RequireAuth>
-                    <TokensPage />
-                  </RequireAuth>
-                }
-              />
-              <Route
-                path="/mcp-servers"
-                element={
-                  <RequireAuth>
-                    <McpManagementPage />
-                  </RequireAuth>
-                }
-              />
-              <Route
-                path="/profiles"
-                element={
-                  <RequireAuth>
-                    <ProfilesPage />
-                  </RequireAuth>
-                }
-              />
-              <Route
-                path="/resources"
-                element={
-                  <RequireAuth>
-                    <ResourcesPage />
-                  </RequireAuth>
-                }
-              />
-              <Route
-                path="/skills/hub"
-                element={
-                  <RequireAuth>
-                    <SkillHubPage />
-                  </RequireAuth>
-                }
-              />
-              <Route
-                path="/admin/*"
-                element={
-                  <RequireAuth>
-                    <RequireAdmin>
-                      <Routes>
-                        <Route path="users" element={<UsersPage />} />
-                        <Route path="settings" element={<SettingsPage />} />
-                        <Route path="*" element={<Navigate to="/admin/settings" replace />} />
-                      </Routes>
-                    </RequireAdmin>
-                  </RequireAuth>
-                }
-              />
-              <Route path="*" element={<Navigate to="/" replace />} />
-            </Routes>
-          </BrowserRouter>
-          <Toaster richColors closeButton />
+            <BrowserRouter>
+              <Routes>
+                <Route path="/login" element={<LoginPage />} />
+                <Route path="/register" element={<RegisterPage />} />
+                <Route
+                  element={
+                    <RequireAuth>
+                      <ShellLayout />
+                    </RequireAuth>
+                  }
+                >
+                  {ROUTES.map((route) => (
+                    <Route
+                      key={route.id}
+                      path={route.path}
+                      element={
+                        route.admin === true ? (
+                          <RequireAdmin>{PAGES[route.id]}</RequireAdmin>
+                        ) : (
+                          PAGES[route.id]
+                        )
+                      }
+                    />
+                  ))}
+                  {/* Legacy paths: /resources was one page for five kinds, and
+                      the skill hub had its own route before it became a tab. */}
+                  <Route path="/resources" element={<Navigate to="/skills" replace />} />
+                  <Route path="/skills/hub" element={<Navigate to="/skills?tab=hub" replace />} />
+                  <Route
+                    path="/admin/*"
+                    element={<Navigate to={routeById('settings').path} replace />}
+                  />
+                  <Route path="*" element={<Navigate to="/" replace />} />
+                </Route>
+              </Routes>
+            </BrowserRouter>
+            <Toaster richColors closeButton />
           </AuthProvider>
         </SkinProvider>
       </ThemeProvider>

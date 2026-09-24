@@ -1,81 +1,35 @@
 import type { ReactNode } from 'react';
-import { Link } from 'react-router-dom';
 import { cn } from '@/lib/utils';
-import { LabelText } from './text';
 
 /**
- * PageHeader — the page's identity, once (01-skeleton.md §4).
+ * PageIntro — the one line of prose a page needs under the chrome
+ * (01-skeleton.md §4/§7).
  *
- * Twelve files re-wrote the same `<h1 class="text-2xl font-semibold
- * tracking-tight">` + subtitle + right-aligned action, and one page had no
- * title at all. The header is declared here so that P2 can move the same
- * declaration into the top bar (where the page identity belongs) without
- * touching a single page: pages already only say `title / sub / actions`.
+ * The page's identity moved into the topbar in P2: the shell renders the
+ * breadcrumb trail and the `<h1>` from the route manifest, so a page no longer
+ * writes its own heading (twelve files used to, and one page had none). What
+ * is left here is the sentence that explains the page's content — prose, so it
+ * stays in the prose column (≤68ch) and never grows a title.
  */
-
-export type CrumbItem = { label: ReactNode; to?: string };
-
-type PageHeaderProps = {
-  title: ReactNode;
+export function PageIntro({
+  sub,
+  children,
+  className,
+}: {
   sub?: ReactNode;
-  actions?: ReactNode;
-  /** `▸ GROUP / PAGE` — every segment is navigable. */
-  crumbs?: CrumbItem[];
+  children?: ReactNode;
   className?: string;
-};
-
-export function PageHeader({ title, sub, actions, crumbs, className }: PageHeaderProps) {
+}) {
+  if (sub === undefined && children === undefined) return null;
   return (
-    <header
-      data-slot="page-header"
-      className={cn('mb-8 flex items-start justify-between gap-4', className)}
+    <div
+      data-slot="page-intro"
+      className={cn('mb-(--gap) flex flex-wrap items-center gap-x-3 gap-y-2', className)}
     >
-      <div className="min-w-0">
-        {crumbs !== undefined && crumbs.length > 0 ? <Breadcrumb items={crumbs} /> : null}
-        <h1 data-slot="page-title" className="font-display text-2xl font-semibold tracking-tight">
-          {title}
-        </h1>
-        {sub !== undefined ? (
-          <p className="text-muted-foreground mt-1 max-w-[68ch] text-sm">{sub}</p>
-        ) : null}
-      </div>
-      {actions !== undefined ? (
-        <div data-slot="page-actions" className="flex shrink-0 items-center gap-2">
-          {actions}
-        </div>
+      {sub !== undefined ? (
+        <p className="text-muted-foreground max-w-[68ch] text-sm">{sub}</p>
       ) : null}
-    </header>
-  );
-}
-
-/** One breadcrumb row. The `▸` is the accent's one permitted decorative use. */
-export function Breadcrumb({ items, className }: { items: CrumbItem[]; className?: string }) {
-  return (
-    <nav
-      aria-label="Breadcrumb"
-      data-slot="breadcrumb"
-      className={cn('mb-1.5 flex items-center gap-1.5', className)}
-    >
-      {items.map((item, i) => (
-        <span key={i} className="flex items-center gap-1.5">
-          {i > 0 ? (
-            <span aria-hidden="true" className="text-border role-label-sm">
-              /
-            </span>
-          ) : (
-            <span aria-hidden="true" className="text-signal role-label-sm">
-              ▸
-            </span>
-          )}
-          {item.to !== undefined && item.to !== '' ? (
-            <Link to={item.to} className="hover:text-foreground">
-              <LabelText size="sm">{item.label}</LabelText>
-            </Link>
-          ) : (
-            <LabelText size="sm">{item.label}</LabelText>
-          )}
-        </span>
-      ))}
-    </nav>
+      {children}
+    </div>
   );
 }

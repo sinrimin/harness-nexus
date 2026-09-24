@@ -1,6 +1,7 @@
 /** Skill hub page. */
 const en = {
   title: 'Skill hub',
+  tabHub: 'Skill hub',
   subtitle: 'Browse a marketplace or search across GitHub, well-known, and direct URLs.',
   // Filters.
   marketplacePlaceholder: 'Marketplace',
@@ -40,6 +41,7 @@ const en = {
 
 const zh: typeof en = {
   title: '技能中心',
+  tabHub: '技能中心',
   subtitle: '浏览市场，或跨 GitHub、well-known 与直接 URL 搜索。',
   marketplacePlaceholder: '市场',
   allCategories: '全部分类',

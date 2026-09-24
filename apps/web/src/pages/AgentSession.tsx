@@ -15,7 +15,6 @@ import {
 import { api } from '@/api';
 import { useAuth, withAuthGuard } from '@/auth';
 import { useI18n, dateLocale } from '@/i18n';
-import { AppShell } from '@/components/app-shell';
 import { StateSignal } from '@/components/state-signal';
 import {
   appSocket,
@@ -45,6 +44,7 @@ import {
   type ComposerConfig,
   type DraftFileRef,
 } from '@/components/chat/composer.js';
+import { PageSlot } from '@/components/shell/page-slots';
 import { TodoPanel } from '@/components/chat/todo-panel.js';
 import { DirPicker } from '@/components/chat/dir-picker.js';
 import { FilePicker } from '@/components/chat/file-picker.js';
@@ -158,35 +158,37 @@ function QueuedMessage({
 }) {
   const { t } = useI18n();
   return (
-    <div className="animate-in fade-in slide-in-from-bottom-1 mb-2 flex justify-end duration-200">
-      <span
-        className="bg-background inline-flex min-w-0 max-w-full items-center gap-1.5 rounded-lg border border-dashed px-2.5 py-1.5 text-xs shadow-sm"
-        title={t('chat.queuedLabel')}
-      >
-        <ClockIcon className="text-muted-foreground size-3.5 shrink-0" />
-        <span className="text-muted-foreground shrink-0">{t('chat.queuedLabel')}</span>
-        <span className="truncate font-mono">{queuedPreview(blocks)}</span>
-        <span className="bg-border mx-0.5 h-3.5 w-px shrink-0" />
-        <button
-          type="button"
-          onClick={onEdit}
-          className="text-muted-foreground hover:text-foreground shrink-0"
-          aria-label={t('chat.queuedEditAria')}
-          title={t('chat.queuedEditAria')}
+    <>
+      <div className="animate-in fade-in slide-in-from-bottom-1 mb-2 flex justify-end duration-200">
+        <span
+          className="bg-background inline-flex min-w-0 max-w-full items-center gap-1.5 rounded-lg border border-dashed px-2.5 py-1.5 text-xs shadow-sm"
+          title={t('chat.queuedLabel')}
         >
-          <PencilIcon className="size-3" />
-        </button>
-        <button
-          type="button"
-          onClick={onCancel}
-          className="text-muted-foreground hover:text-foreground shrink-0"
-          aria-label={t('chat.queuedCancelAria')}
-          title={t('chat.queuedCancelAria')}
-        >
-          <XIcon className="size-3.5" />
-        </button>
-      </span>
-    </div>
+          <ClockIcon className="text-muted-foreground size-3.5 shrink-0" />
+          <span className="text-muted-foreground shrink-0">{t('chat.queuedLabel')}</span>
+          <span className="truncate font-mono">{queuedPreview(blocks)}</span>
+          <span className="bg-border mx-0.5 h-3.5 w-px shrink-0" />
+          <button
+            type="button"
+            onClick={onEdit}
+            className="text-muted-foreground hover:text-foreground shrink-0"
+            aria-label={t('chat.queuedEditAria')}
+            title={t('chat.queuedEditAria')}
+          >
+            <PencilIcon className="size-3" />
+          </button>
+          <button
+            type="button"
+            onClick={onCancel}
+            className="text-muted-foreground hover:text-foreground shrink-0"
+            aria-label={t('chat.queuedCancelAria')}
+            title={t('chat.queuedCancelAria')}
+          >
+            <XIcon className="size-3.5" />
+          </button>
+        </span>
+      </div>
+    </>
   );
 }
 
@@ -777,20 +779,26 @@ export function AgentSessionPage() {
 
   if (loadFailed) {
     return (
-      <AppShell>
+      <>
         <div className="text-muted-foreground flex flex-col items-center gap-3 py-16 text-sm">
           <p>{t('chat.errSessionGone')}</p>
           <Button asChild variant="outline" size="sm">
             <Link to="/chat">{t('chat.backToAgents')}</Link>
           </Button>
         </div>
-      </AppShell>
+      </>
     );
   }
 
   return (
-    <AppShell variant="full">
+    <>
       <div className="flex h-full min-h-0 flex-col">
+        {/* The page's identity: which agent, on which machine. */}
+        <PageSlot slot="title">
+          {agent === null
+            ? t('chat.title')
+            : `${agent.name}${machine !== null ? ` · ${machine.name}` : ''}`}
+        </PageSlot>
         <ChannelTabs
           channels={channels}
           activeSessionId={sessionId}
@@ -1114,6 +1122,6 @@ export function AgentSessionPage() {
           onPick={(directory) => void openChannel(undefined, directory)}
         />
       ) : null}
-    </AppShell>
+    </>
   );
 }
