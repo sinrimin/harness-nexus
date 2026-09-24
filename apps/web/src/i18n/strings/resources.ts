@@ -71,6 +71,10 @@ const en = {
   hooksDesc: 'Stored as',
   hooksDescAfter: '. Only events supported by your chosen targets are offered.',
   hooksEmpty: 'No hook bindings yet. Click “Add binding”.',
+  hooksNoTargets:
+    'Pick a target first: which events can run is decided by the target, and a hook no target supports is rejected on save.',
+  hookEventUnsupported:
+    'No chosen target runs this event — the server will reject this hook as-is.',
   phMatcher: 'matcher (regex, optional) e.g. Bash|Edit',
   phHookCommand: 'shell command, e.g. ./hooks/lint.sh',
   removeBinding: 'Remove binding',
@@ -157,6 +161,8 @@ const zh: typeof en = {
   hooksDesc: '以',
   hooksDescAfter: ' 格式存储。仅提供你所选目标支持的事件。',
   hooksEmpty: '还没有钩子绑定。请点击「添加绑定」。',
+  hooksNoTargets: '请先选择目标：事件能不能跑由目标决定，没有任何目标支持的钩子在保存时会被拒绝。',
+  hookEventUnsupported: '所选目标都不会跑这个事件——保存时服务端会拒绝当前这份钩子。',
   phMatcher: 'matcher（正则，可选），例如 Bash|Edit',
   phHookCommand: 'shell 命令，例如 ./hooks/lint.sh',
   removeBinding: '移除绑定',

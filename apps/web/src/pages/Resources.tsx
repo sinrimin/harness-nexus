@@ -901,7 +901,14 @@ function HookBodyEditor({
     <>
       <div className="flex items-center justify-between">
         <Label>{t('resources.hookBindings')}</Label>
-        <Button type="button" variant="outline" size="sm" className="gap-1.5" onClick={addEntry}>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="gap-1.5"
+          disabled={availableEvents.length === 0}
+          onClick={addEntry}
+        >
           <PlusIcon className="size-4" />
           {t('resources.addBinding')}
         </Button>
@@ -910,6 +917,13 @@ function HookBodyEditor({
         {t('resources.hooksDesc')} <code className="font-mono">hooks.json</code>
         {t('resources.hooksDescAfter')}
       </p>
+      {/* Which events exist is a per-target fact (HOOK_SUPPORT), and the server
+          rejects a hook whose events NO declared target can run (409
+          HOOK_EVENT_UNSUPPORTED). Say that here rather than letting the save
+          fail with a server error. */}
+      {availableEvents.length === 0 ? (
+        <p className="text-state-warn-ink text-xs">{t('resources.hooksNoTargets')}</p>
+      ) : null}
       <div className="flex flex-col gap-3">
         {entries.length === 0 ? (
           <p className="text-muted-foreground rounded-md border border-dashed py-6 text-center text-sm">
@@ -923,7 +937,7 @@ function HookBodyEditor({
                   value={e.event}
                   onValueChange={(v) => updateEntry(i, { event: v as HookEvent })}
                 >
-                  <SelectTrigger className="w-[180px]">
+                  <SelectTrigger className="w-[180px] font-mono text-xs">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -959,6 +973,9 @@ function HookBodyEditor({
                 spellCheck={false}
                 className="font-mono text-xs"
               />
+              {availableEvents.includes(e.event) ? null : (
+                <p className="text-state-warn-ink text-xs">{t('resources.hookEventUnsupported')}</p>
+              )}
             </div>
           ))
         )}
