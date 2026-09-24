@@ -1,8 +1,18 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="29.4 36 128 128" width="32" height="32">
   <title>Harness Nexus</title>
-  <!-- hexagonal-ribbon mark on the console's dark chrome -->
-  <rect x="29.4" y="36" width="128" height="128" rx="27" fill="#0b1220" />
+  <!--
+    Hexagonal-ribbon mark on transparency: no plate behind it, so the tab strip,
+    bookmark bar or dark chrome shows through. The deep ribbon follows the
+    browser's colour scheme, using the same light/dark pair the app's brand deep
+    token carries (#142f5d in light, lifted #6c8fd6 in dark). Browsers that ignore
+    the query fall back to the mid blue, which reads on either ground.
+  -->
+  <style>
+    .deep { fill: #3e68c0; }
+    @media (prefers-color-scheme: light) { .deep { fill: #142f5d; } }
+    @media (prefers-color-scheme: dark) { .deep { fill: #6c8fd6; } }
+  </style>
   <path fill="#2E9DFD" d="M93.6 42 L144.3 71 L144.3 129 L126.9 138.2 L126.9 82.6 L94 62.8 L92.5 63 L92.5 42.6 Z"/>
   <path fill="#2776DD" d="M93.6 42 L74.9 53.4 L74.9 91.8 L93.7 81 Z"/>
-  <path fill="#6C8FD6" d="M59.7 62 L42.5 73.6 L42.5 128.9 L58.9 137.7 L93.6 116.4 L93.8 158 L110.6 148.3 L110.6 89.6 L59.7 118.2 Z"/>
+  <path class="deep" d="M59.7 62 L42.5 73.6 L42.5 128.9 L58.9 137.7 L93.6 116.4 L93.8 158 L110.6 148.3 L110.6 89.6 L59.7 118.2 Z"/>
 </svg>
