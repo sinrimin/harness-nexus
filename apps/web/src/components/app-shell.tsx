@@ -19,10 +19,14 @@ import { cn } from '@/lib/utils';
  * The console shell (01-skeleton.md §1).
  *
  * Three columns on desktop — spine (72px, the numbered section address) +
- * plate (168px, entries and counts) + content — and a full-width topbar. The
- * two left columns together are exactly the 240px the old `w-60` sidebar used,
- * so the upgrade costs no content width; below 900px the plate folds into the
- * drawer and the spine lies down into the bay strip.
+ * plate (168px, entries and counts) + content — and the two left columns are
+ * exactly the 240px the old `w-60` sidebar used, so the upgrade costs no
+ * content width. The chrome column runs the FULL height and carries the brand
+ * at the very top (theme-designs/01-bay/theme.css: `.chrome` holds
+ * `spine-head` + `brand` at `--top-h`, and `.topbar` lives in `.col`, i.e. it
+ * starts to the brand's RIGHT — the brand owns the top-left corner, the page
+ * bar is not a band above it). Below 900px the chrome folds into the drawer
+ * and the spine lies down into the bay strip.
  *
  * Everything the shell needs about the current page comes from the route
  * manifest (`nav.ts`) — the nav list, the breadcrumb trail, the title, and
@@ -42,7 +46,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const panes = route?.layout === 'panes';
 
   return (
-    <div className="bg-background text-foreground relative flex h-svh flex-col overflow-hidden">
+    <div className="bg-background text-foreground relative flex h-svh overflow-hidden">
       {/* Skip link — first focusable element, jumps to the content frame. */}
       <a
         href="#main"
@@ -51,35 +55,18 @@ export function AppShell({ children }: { children: ReactNode }) {
         {t('app.skipToContent')}
       </a>
 
-      <Topbar
-        route={route}
-        isAdmin={isAdmin}
-        titleRef={ref('title')}
-        actionsRef={ref('actions')}
-        titleClaimed={slots.claims.title === true}
-        leading={
-          <MobileNav>
-            <Plate
-              activeRouteId={route?.id}
-              isAdmin={isAdmin}
-              posture={posture}
-              className="px-0 py-0"
-            />
-          </MobileNav>
-        }
-      />
-
-      <div className="flex min-h-0 flex-1">
+      {/* Chrome (desktop ≥900) — full height, brand at the top: spine (section
+          addresses) + plate (entries with counts, account block). */}
+      <div data-region="chrome" className="hidden shrink-0 min-[900px]:flex">
         <Spine activeGroup={route?.group ?? 'nav'} isAdmin={isAdmin} />
 
-        {/* Plate (desktop ≥900) — brand, entries with counts, account block. */}
         <aside
           data-region="plate"
-          className="bg-sidebar text-sidebar-foreground hidden w-(--plate-w) shrink-0 flex-col overflow-hidden border-r min-[900px]:flex"
+          className="bg-sidebar text-sidebar-foreground flex w-(--plate-w) shrink-0 flex-col overflow-hidden border-r"
         >
           <div
             data-region="brand"
-            className="flex h-(--shell-subbar-h) shrink-0 items-center border-b px-4"
+            className="flex h-(--shell-bar-h) shrink-0 items-center border-b px-4"
           >
             <Link to="/" aria-label={t('app.brandHome')}>
               <Brand size={20} />
@@ -90,30 +77,47 @@ export function AppShell({ children }: { children: ReactNode }) {
             <UserBlock />
           </div>
         </aside>
+      </div>
 
-        {/* Content column — the only column that scrolls (or, for `panes`
-            pages, the column that holds panes which scroll themselves). */}
-        <div className="flex min-w-0 flex-1 flex-col">
-          <BayStrip activeGroup={route?.group ?? 'nav'} isAdmin={isAdmin} />
-          {/* Readout strip: its own band so the topbar is not asked to hold a
-              page identity AND four figures AND the toggles in 56px. */}
-          <ReadoutStrip posture={posture} />
-          <main
-            id="main"
-            data-region="main"
-            className={cn('min-h-0 flex-1', panes ? 'overflow-hidden' : 'overflow-y-auto')}
+      {/* Content column — the only column that scrolls (or, for `panes` pages,
+          the column that holds panes which scroll themselves). */}
+      <div className="flex min-w-0 flex-1 flex-col">
+        <Topbar
+          route={route}
+          isAdmin={isAdmin}
+          titleRef={ref('title')}
+          actionsRef={ref('actions')}
+          titleClaimed={slots.claims.title === true}
+          leading={
+            <MobileNav>
+              <Plate
+                activeRouteId={route?.id}
+                isAdmin={isAdmin}
+                posture={posture}
+                className="px-0 py-0"
+              />
+            </MobileNav>
+          }
+        />
+        <BayStrip activeGroup={route?.group ?? 'nav'} isAdmin={isAdmin} />
+        {/* Readout strip: its own band so the topbar is not asked to hold a
+            page identity AND four figures AND the toggles in 56px. */}
+        <ReadoutStrip posture={posture} />
+        <main
+          id="main"
+          data-region="main"
+          className={cn('min-h-0 flex-1', panes ? 'overflow-hidden' : 'overflow-y-auto')}
+        >
+          <div
+            className={cn(
+              panes
+                ? 'flex h-full min-h-0 flex-col'
+                : 'w-full px-[18px] pt-[18px] pb-11 max-[640px]:px-0 max-[640px]:pt-4',
+            )}
           >
-            <div
-              className={cn(
-                panes
-                  ? 'flex h-full min-h-0 flex-col'
-                  : 'w-full px-[18px] pt-[18px] pb-11 max-[640px]:px-0 max-[640px]:pt-4',
-              )}
-            >
-              <PageSlotsProvider value={slots}>{children}</PageSlotsProvider>
-            </div>
-          </main>
-        </div>
+            <PageSlotsProvider value={slots}>{children}</PageSlotsProvider>
+          </div>
+        </main>
       </div>
     </div>
   );

@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom';
 import { useI18n } from '@/i18n';
+import { BrandMark } from '@/components/brand-mark';
 import { Lamp } from '@/components/kit';
 import { groupLanding, visibleGroups, type NavGroupId } from '@/nav';
 import { cn } from '@/lib/utils';
@@ -30,12 +31,21 @@ export function Spine({
     <nav
       data-region="spine"
       aria-label={t('app.primaryNav')}
-      className={cn(
-        'bg-sidebar text-sidebar-foreground hidden w-(--spine-w) shrink-0 flex-col border-r',
-        'min-[900px]:flex',
+className={cn(
+        'bg-sidebar text-sidebar-foreground flex w-(--spine-w) shrink-0 flex-col border-r',
         className,
       )}
     >
+      {/* Head band — shares the topbar's height so the spine starts at the
+          very top of the window and the bays line up under it
+          (theme-designs/01-bay: `.spine-head`). BAY's engraved 「HN / RACK 6U」
+          plate is P7; Signal carries the mark. */}
+      <div
+        data-slot="spine-head"
+        className="flex h-(--shell-bar-h) shrink-0 items-center justify-center border-b"
+      >
+        <BrandMark size={18} />
+      </div>
       {groups.map((group) => {
         const landing = groupLanding(group.id, isAdmin);
         if (!landing) return null;
