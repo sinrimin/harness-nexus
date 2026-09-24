@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import {
   GlobeIcon,
@@ -13,9 +13,24 @@ import {
 import { api } from '@/api';
 import { useAuth, withAuthGuard } from '@/auth';
 import { useI18n } from '@/i18n';
-import { PageIntro } from '@/components/kit';
+import {
+  ConfirmDialog,
+  DataTable,
+  FilterBar,
+  FilterSelect,
+  PageIntro,
+  SortSelect,
+  TableSearch,
+  tableState,
+} from '@/components/kit';
+import {
+  effectiveSort,
+  matchesQuery,
+  sortRows,
+  useListQuery,
+  type ListQuerySpec,
+} from '@/lib/list-query';
 import { PageSlot } from '@/components/shell/page-slots';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
@@ -55,6 +70,12 @@ type Scope = 'global' | 'personal';
 
 const API_KINDS: ProviderApiKind[] = ['openai-chat', 'openai-responses', 'anthropic'];
 
+/** The list's vocabulary (07-p3-list-pages.md §5). */
+const PROVIDER_SPEC: ListQuerySpec = {
+  filters: { api: API_KINDS, scope: ['personal', 'global'] },
+  sort: ['name', '-updated'],
+};
+
 /**
  * LLM provider management (Phase 9 W10) — cc-switch-style reusable routes.
  * The provider is the ROUTE; the API key lives in the referenced credential.
@@ -63,16 +84,20 @@ export function LlmProvidersPage() {
   const { logout, user } = useAuth();
   const { t } = useI18n();
   const [items, setItems] = useState<LlmProviderView[] | null>(null);
+  const [error, setError] = useState<unknown>(null);
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState<LlmProviderView | null>(null);
   const [modelsOf, setModelsOf] = useState<LlmProviderView | null>(null);
+  const [pending, setPending] = useState<LlmProviderView | null>(null);
+  const [busy, setBusy] = useState(false);
   const isAdmin = user?.role === 'admin';
 
   async function refresh() {
     try {
       setItems(await withAuthGuard(() => api.listLlmProviders(), logout));
+      setError(null);
     } catch (e) {
-      toast.error(e instanceof HarnessNexusError ? e.message : t('llmProviders.loadFailed'));
+      setError(e);
     }
   }
 
@@ -80,14 +105,43 @@ export function LlmProvidersPage() {
     void refresh();
   }, []);
 
-  async function remove(p: LlmProviderView) {
-    if (!confirm(t('llmProviders.confirmDelete', { name: p.name }))) return;
+  const query = useListQuery(PROVIDER_SPEC);
+  const visible = useMemo(() => {
+    if (items === null) return null;
+    const rows = items.filter(
+      (p) =>
+        matchesQuery(query.q, [p.name, p.baseUrl, p.credentialName, p.api]) &&
+        (query.filters['api'] === null || p.api === query.filters['api']) &&
+        (query.filters['scope'] === null || p.scope === query.filters['scope']),
+    );
+    return sortRows(rows, effectiveSort(PROVIDER_SPEC, query), (p, key) =>
+      key === 'name' ? p.name : (p.updatedAt ?? p.createdAt ?? null),
+    );
+  }, [items, query.q, query.filters, query.sort]);
+
+  const apiLabels = useMemo(() => Object.fromEntries(API_KINDS.map((api) => [api, api])), []);
+  const scopeLabels = useMemo(
+    () => ({ personal: t('common.scopePersonal'), global: t('common.scopeGlobal') }),
+    [t],
+  );
+  const sortLabels = useMemo(
+    () => ({ name: t('common.sortName'), '-updated': t('common.sortUpdated') }),
+    [t],
+  );
+
+  async function confirmRemove() {
+    const p = pending;
+    if (p === null) return;
+    setBusy(true);
     try {
       await withAuthGuard(() => api.deleteLlmProvider(p.id), logout);
       toast.success(t('llmProviders.deletedToast'));
+      setPending(null);
       await refresh();
     } catch (e) {
       toast.error(e instanceof HarnessNexusError ? e.message : t('common.deleteFailed'));
+    } finally {
+      setBusy(false);
     }
   }
 
@@ -108,101 +162,137 @@ export function LlmProvidersPage() {
         }
       />
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-base">
-            <PlugZapIcon className="size-4" />
-            {t('llmProviders.storedTitle')}
-          </CardTitle>
-          <CardDescription>{t('llmProviders.storedDesc')}</CardDescription>
-        </CardHeader>
-        <CardContent className="px-0">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="pl-6">{t('common.name')}</TableHead>
-                <TableHead>{t('llmProviders.apiLabel')}</TableHead>
-                <TableHead>{t('llmProviders.baseUrlHeader')}</TableHead>
-                <TableHead>{t('llmProviders.credentialHeader')}</TableHead>
-                <TableHead>{t('common.scope')}</TableHead>
-                <TableHead className="pr-6 text-right">{t('common.actions')}</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {items === null ? (
-                <TableRow>
-                  <TableCell colSpan={6} className="text-muted-foreground py-8 text-center">
-                    {t('common.loading')}
-                  </TableCell>
-                </TableRow>
-              ) : items.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={6} className="text-muted-foreground py-8 text-center">
-                    {t('llmProviders.empty')}
-                  </TableCell>
-                </TableRow>
-              ) : (
-                items.map((p) => (
-                  <TableRow key={p.id}>
-                    <TableCell className="pl-6 font-medium">{p.name}</TableCell>
-                    <TableCell>
-                      <Badge variant="outline" className="font-mono text-[10px]">
-                        {p.api}
-                      </Badge>
-                    </TableCell>
-                    <TableCell
-                      className="max-w-64 truncate font-mono text-xs"
-                      title={p.baseUrl ?? undefined}
+      <DataTable
+        columns={6}
+        label={t('llmProviders.storedTitle')}
+        icon={<PlugZapIcon />}
+        state={tableState({
+          error,
+          loading: items === null,
+          count: visible?.length ?? 0,
+          filtered: query.active,
+        })}
+        error={error}
+        onRetry={() => void refresh()}
+        onClearFilters={query.clear}
+        toolbar={
+          <FilterBar query={query} shown={visible?.length} total={items?.length}>
+            <TableSearch query={query} placeholder={t('llmProviders.searchPlaceholder')} />
+            <FilterSelect
+              query={query}
+              spec={PROVIDER_SPEC}
+              name="api"
+              allLabel={t('llmProviders.allApis')}
+              labels={apiLabels}
+            />
+            <FilterSelect
+              query={query}
+              spec={PROVIDER_SPEC}
+              name="scope"
+              allLabel={t('common.allScopes')}
+              labels={scopeLabels}
+            />
+            <SortSelect
+              query={query}
+              spec={PROVIDER_SPEC}
+              label={t('common.sortLabel')}
+              labels={sortLabels}
+            />
+          </FilterBar>
+        }
+        empty={{
+          title: t('llmProviders.empty'),
+          hint: t('llmProviders.emptyHint'),
+          action: (
+            <Button onClick={() => setCreating(true)}>
+              <PlusIcon className="size-4" />
+              {t('common.create')}
+            </Button>
+          ),
+        }}
+      >
+        <TableHeader>
+          <TableRow>
+            <TableHead>{t('common.name')}</TableHead>
+            <TableHead>{t('llmProviders.apiLabel')}</TableHead>
+            <TableHead>{t('llmProviders.baseUrlHeader')}</TableHead>
+            <TableHead>{t('llmProviders.credentialHeader')}</TableHead>
+            <TableHead>{t('common.scope')}</TableHead>
+            <TableHead className="text-right">{t('common.actions')}</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {visible?.map((p) => (
+            <TableRow key={p.id}>
+              <TableCell className="font-medium">{p.name}</TableCell>
+              <TableCell>
+                <Badge variant="outline" className="font-mono text-[10px]">
+                  {p.api}
+                </Badge>
+              </TableCell>
+              <TableCell className="max-w-64 truncate font-mono text-xs">
+                {p.baseUrl ?? t('llmProviders.baseUrlPlaceholder')}
+              </TableCell>
+              <TableCell className="font-mono text-xs">{p.credentialName}</TableCell>
+              <TableCell>
+                <Badge variant={p.scope === 'global' ? 'default' : 'secondary'} className="gap-1">
+                  {p.scope === 'global' ? (
+                    <GlobeIcon className="size-3" />
+                  ) : (
+                    <UserIcon className="size-3" />
+                  )}
+                  {p.scope === 'global' ? t('common.scopeGlobal') : t('common.scopePersonal')}
+                </Badge>
+              </TableCell>
+              <TableCell className="text-right">
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="ghost" size="icon" className="size-8">
+                      <MoreHorizontalIcon className="size-4" />
+                      <span className="sr-only">{t('common.openMenu')}</span>
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem onClick={() => setModelsOf(p)}>
+                      <RefreshCwIcon /> {t('llmProviders.fetchModels')}
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => setEditing(p)}>
+                      <PencilIcon /> {t('llmProviders.editButton')}
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem
+                      variant="destructive"
+                      disabled={p.scope === 'global' && !isAdmin}
+                      onClick={() => setPending(p)}
                     >
-                      {p.baseUrl ?? t('llmProviders.baseUrlPlaceholder')}
-                    </TableCell>
-                    <TableCell className="font-mono text-xs">{p.credentialName}</TableCell>
-                    <TableCell>
-                      <Badge
-                        variant={p.scope === 'global' ? 'default' : 'secondary'}
-                        className="gap-1"
-                      >
-                        {p.scope === 'global' ? (
-                          <GlobeIcon className="size-3" />
-                        ) : (
-                          <UserIcon className="size-3" />
-                        )}
-                        {p.scope === 'global' ? t('common.scopeGlobal') : t('common.scopePersonal')}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="pr-6 text-right">
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="icon" className="size-8">
-                            <MoreHorizontalIcon className="size-4" />
-                            <span className="sr-only">{t('common.openMenu')}</span>
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem onClick={() => setModelsOf(p)}>
-                            <RefreshCwIcon /> {t('llmProviders.fetchModels')}
-                          </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => setEditing(p)}>
-                            <PencilIcon /> {t('llmProviders.editButton')}
-                          </DropdownMenuItem>
-                          <DropdownMenuSeparator />
-                          <DropdownMenuItem
-                            variant="destructive"
-                            disabled={p.scope === 'global' && !isAdmin}
-                            onClick={() => remove(p)}
-                          >
-                            <TrashIcon /> {t('common.delete')}
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </TableCell>
-                  </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
+                      <TrashIcon /> {t('common.delete')}
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </DataTable>
+
+      {pending !== null ? (
+        <ConfirmDialog
+          open
+          onOpenChange={(o) => {
+            if (!o) setPending(null);
+          }}
+          title={t('llmProviders.deleteAction')}
+          consequence={t('llmProviders.deleteConsequence')}
+          impact={[
+            { label: 'provider', value: pending.name },
+            { label: 'api', value: pending.api },
+            { label: 'credential', value: pending.credentialName },
+          ]}
+          actionLabel={t('llmProviders.deleteAction')}
+          busy={busy}
+          onConfirm={() => void confirmRemove()}
+        />
+      ) : null}
 
       {creating ? (
         <ProviderForm

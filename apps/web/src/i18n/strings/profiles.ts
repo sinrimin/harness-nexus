@@ -16,10 +16,16 @@ const en = {
   installNoteAfter: '. Install, update, and uninstall are then handled by Claude Code itself.',
   // Profiles table.
   cardDesc: 'Personal profiles are yours; global ones are shared by an admin.',
+  searchPlaceholder: 'Search name, description or target',
+  allTargets: 'Any target',
+  emptyHint: 'Create one here, or add MCP servers and resources to an existing profile.',
   target: 'Target',
   entries: 'Entries',
   noProfiles: 'No profiles yet.',
-  confirmDelete: 'Delete profile "{name}"?',
+  // Action name = dialog title = confirm button (03-interaction.md §9).
+  deleteAction: 'Delete profile',
+  deleteConsequence:
+    'The profile stops resolving at its install URL; the resources it referenced are untouched.',
   deleted: 'Profile deleted',
   loadFailed: 'Failed to load profiles',
   // Create form.
@@ -65,10 +71,14 @@ const zh: typeof en = {
   manageTokens: '管理令牌',
   installNoteAfter: '。安装、更新与卸载随后均由 Claude Code 自行处理。',
   cardDesc: '个人配置集归你所有；全局配置集由管理员共享。',
+  searchPlaceholder: '搜索名称、描述或目标',
+  allTargets: '全部目标',
+  emptyHint: '在此新建，或向已有配置集中添加 MCP 服务与资源。',
   target: '目标',
   entries: '条目',
   noProfiles: '还没有配置集。',
-  confirmDelete: '确定删除配置集 {name} 吗？',
+  deleteAction: '删除配置集',
+  deleteConsequence: '该配置集在其安装 URL 上不再可解析；它引用的资源不受影响。',
   deleted: '已删除配置集',
   loadFailed: '加载配置集失败',
   addTitle: '添加配置集',

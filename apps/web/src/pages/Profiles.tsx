@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import {
   LayersIcon,
@@ -13,7 +13,6 @@ import { api } from '@/api';
 import { PageSlot } from '@/components/shell/page-slots';
 import { useAuth, withAuthGuard } from '@/auth';
 import { useI18n, type TranslationKey } from '@/i18n';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
@@ -40,7 +39,27 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { FormDialog } from '@/components/ui/form-dialog';
-import { CommandLine, PageIntro, Panel, PanelBody, Well } from '@/components/kit';
+import {
+  CommandLine,
+  ConfirmDialog,
+  DataTable,
+  FilterBar,
+  FilterSelect,
+  PageIntro,
+  Panel,
+  PanelBody,
+  SortSelect,
+  TableSearch,
+  Well,
+  tableState,
+} from '@/components/kit';
+import {
+  effectiveSort,
+  matchesQuery,
+  sortRows,
+  useListQuery,
+  type ListQuerySpec,
+} from '@/lib/list-query';
 import { MoreHorizontalIcon } from 'lucide-react';
 import {
   HarnessNexusError,
@@ -250,6 +269,12 @@ const TARGETS: AgentTarget[] = [
 
 /** Non-mcp resource kinds a profile entry can reference (Phase 3.5). */
 const RESOURCE_KINDS: NonMcpKind[] = ['skill', 'rule', 'command', 'sub_agent', 'hook'];
+
+/** The list's vocabulary (07-p3-list-pages.md §5). */
+const PROFILE_SPEC: ListQuerySpec = {
+  filters: { target: TARGETS, scope: ['personal', 'global'] },
+  sort: ['-updated', 'name'],
+};
 /**
  * The kind domain a `{resourceId, kind}` entry accepts — 'mcp' is excluded
  * (MCP servers enter via the mcpServerId arm). Safe to assert: kind:'mcp'
@@ -270,15 +295,19 @@ export function ProfilesPage() {
   const { logout, user } = useAuth();
   const { t } = useI18n();
   const [items, setItems] = useState<Profile[] | null>(null);
+  const [error, setError] = useState<unknown>(null);
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState<Profile | null>(null);
+  const [pending, setPending] = useState<Profile | null>(null);
+  const [busy, setBusy] = useState(false);
   const isAdmin = user?.role === 'admin';
 
   async function refresh() {
     try {
       setItems(await withAuthGuard(() => api.listProfiles(), logout));
+      setError(null);
     } catch (e) {
-      toast.error(e instanceof HarnessNexusError ? e.message : t('profiles.loadFailed'));
+      setError(e);
     }
   }
 
@@ -286,14 +315,46 @@ export function ProfilesPage() {
     void refresh();
   }, []);
 
-  async function remove(p: Profile) {
-    if (!confirm(t('profiles.confirmDelete', { name: p.name }))) return;
+  const query = useListQuery(PROFILE_SPEC);
+  const visible = useMemo(() => {
+    if (items === null) return null;
+    const rows = items.filter(
+      (p) =>
+        matchesQuery(query.q, [p.name, p.description, p.target]) &&
+        (query.filters['target'] === null || p.target === query.filters['target']) &&
+        (query.filters['scope'] === null || p.scope === query.filters['scope']),
+    );
+    return sortRows(rows, effectiveSort(PROFILE_SPEC, query), (p, key) =>
+      key === 'name' ? p.name : p.updatedAt,
+    );
+  }, [items, query.q, query.filters, query.sort]);
+
+  const targetLabels = useMemo(
+    () => Object.fromEntries(TARGETS.map((target) => [target, target])),
+    [],
+  );
+  const scopeLabels = useMemo(
+    () => ({ personal: t('common.scopePersonal'), global: t('common.scopeGlobal') }),
+    [t],
+  );
+  const sortLabels = useMemo(
+    () => ({ '-updated': t('common.sortUpdated'), name: t('common.sortName') }),
+    [t],
+  );
+
+  async function confirmRemove() {
+    const p = pending;
+    if (p === null) return;
+    setBusy(true);
     try {
       await withAuthGuard(() => api.deleteProfile(p.id), logout);
       toast.success(t('profiles.deleted'));
+      setPending(null);
       await refresh();
     } catch (e) {
       toast.error(e instanceof HarnessNexusError ? e.message : t('common.deleteFailed'));
+    } finally {
+      setBusy(false);
     }
   }
 
@@ -339,107 +400,144 @@ claude plugin install <profile-name>@harness-nexus-${user.username.toLowerCase()
         </Panel>
       )}
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-base">
-            <LayersIcon className="size-4" />
-            {t('profiles.title')}
-          </CardTitle>
-          <CardDescription>{t('profiles.cardDesc')}</CardDescription>
-        </CardHeader>
-        <CardContent className="px-0">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="pl-6">{t('common.name')}</TableHead>
-                <TableHead>{t('profiles.target')}</TableHead>
-                <TableHead>{t('profiles.entries')}</TableHead>
-                <TableHead>{t('common.scope')}</TableHead>
-                <TableHead className="pr-6 text-right">{t('common.actions')}</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {items === null ? (
-                <TableRow>
-                  <TableCell colSpan={5} className="text-muted-foreground py-8 text-center">
-                    {t('common.loading')}
-                  </TableCell>
-                </TableRow>
-              ) : items.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={5} className="text-muted-foreground py-8 text-center">
-                    {t('profiles.noProfiles')}
-                  </TableCell>
-                </TableRow>
-              ) : (
-                items.map((p) => (
-                  <TableRow key={p.id}>
-                    <TableCell className="pl-6">
-                      <div className="font-medium">
-                        {p.name}{' '}
-                        <span className="text-muted-foreground font-mono text-[10px]">
-                          v{p.version}
-                        </span>
-                      </div>
-                      {p.description && (
-                        <div className="text-muted-foreground mt-0.5 text-xs">{p.description}</div>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      {/* Neutral Badge: target encodes intent, not connection state
-                          (Signal system reserves --signal for liveness). */}
-                      <Badge variant="secondary" className="font-mono text-[11px]">
-                        {p.target}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-muted-foreground tabular-nums">
-                      {p.entries.length}
-                    </TableCell>
-                    <TableCell>
-                      <Badge
-                        variant={p.scope === 'global' ? 'default' : 'secondary'}
-                        className="gap-1"
-                      >
-                        {p.scope === 'global' ? (
-                          <GlobeIcon className="size-3" />
-                        ) : (
-                          <UserIcon className="size-3" />
-                        )}
-                        {p.scope === 'global' ? t('common.scopeGlobal') : t('common.scopePersonal')}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="pr-6 text-right">
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="icon" className="size-8">
-                            <MoreHorizontalIcon className="size-4" />
-                            <span className="sr-only">{t('common.openMenu')}</span>
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem
-                            disabled={p.scope === 'global' && !isAdmin}
-                            onClick={() => setEditing(p)}
-                          >
-                            <PencilIcon /> {t('common.edit')}
-                          </DropdownMenuItem>
-                          <DropdownMenuItem
-                            variant="destructive"
-                            disabled={p.scope === 'global' && !isAdmin}
-                            onClick={() => remove(p)}
-                          >
-                            <TrashIcon /> {t('common.delete')}
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </TableCell>
-                  </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
+      <DataTable
+        columns={5}
+        label={t('profiles.title')}
+        icon={<LayersIcon />}
+        state={tableState({
+          error,
+          loading: items === null,
+          count: visible?.length ?? 0,
+          filtered: query.active,
+        })}
+        error={error}
+        onRetry={() => void refresh()}
+        onClearFilters={query.clear}
+        toolbar={
+          <FilterBar query={query} shown={visible?.length} total={items?.length}>
+            <TableSearch query={query} placeholder={t('profiles.searchPlaceholder')} />
+            <FilterSelect
+              query={query}
+              spec={PROFILE_SPEC}
+              name="target"
+              allLabel={t('profiles.allTargets')}
+              labels={targetLabels}
+            />
+            <FilterSelect
+              query={query}
+              spec={PROFILE_SPEC}
+              name="scope"
+              allLabel={t('common.allScopes')}
+              labels={scopeLabels}
+            />
+            <SortSelect
+              query={query}
+              spec={PROFILE_SPEC}
+              label={t('common.sortLabel')}
+              labels={sortLabels}
+            />
+          </FilterBar>
+        }
+        empty={{
+          title: t('profiles.noProfiles'),
+          hint: t('profiles.emptyHint'),
+          action: (
+            <Button onClick={() => setCreating(true)}>
+              <PlusIcon className="size-4" />
+              {t('common.create')}
+            </Button>
+          ),
+        }}
+      >
+        <TableHeader>
+          <TableRow>
+            <TableHead>{t('common.name')}</TableHead>
+            <TableHead>{t('profiles.target')}</TableHead>
+            <TableHead>{t('profiles.entries')}</TableHead>
+            <TableHead>{t('common.scope')}</TableHead>
+            <TableHead className="text-right">{t('common.actions')}</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {visible?.map((p) => (
+            <TableRow key={p.id}>
+              <TableCell>
+                <div className="font-medium">
+                  {p.name}{' '}
+                  <span className="text-muted-foreground font-mono text-[10px]">v{p.version}</span>
+                </div>
+                {p.description && (
+                  <div className="text-muted-foreground mt-0.5 text-xs">{p.description}</div>
+                )}
+              </TableCell>
+              <TableCell>
+                {/* Neutral Badge: target encodes intent, not connection state
+                    (Signal system reserves --signal for liveness). */}
+                <Badge variant="secondary" className="font-mono text-[11px]">
+                  {p.target}
+                </Badge>
+              </TableCell>
+              <TableCell className="text-muted-foreground tabular-nums">
+                {p.entries.length}
+              </TableCell>
+              <TableCell>
+                <Badge variant={p.scope === 'global' ? 'default' : 'secondary'} className="gap-1">
+                  {p.scope === 'global' ? (
+                    <GlobeIcon className="size-3" />
+                  ) : (
+                    <UserIcon className="size-3" />
+                  )}
+                  {p.scope === 'global' ? t('common.scopeGlobal') : t('common.scopePersonal')}
+                </Badge>
+              </TableCell>
+              <TableCell className="text-right">
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="ghost" size="icon" className="size-8">
+                      <MoreHorizontalIcon className="size-4" />
+                      <span className="sr-only">{t('common.openMenu')}</span>
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem
+                      disabled={p.scope === 'global' && !isAdmin}
+                      onClick={() => setEditing(p)}
+                    >
+                      <PencilIcon /> {t('common.edit')}
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      variant="destructive"
+                      disabled={p.scope === 'global' && !isAdmin}
+                      onClick={() => setPending(p)}
+                    >
+                      <TrashIcon /> {t('common.delete')}
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </DataTable>
+
+      {pending !== null ? (
+        <ConfirmDialog
+          open
+          onOpenChange={(o) => {
+            if (!o) setPending(null);
+          }}
+          title={t('profiles.deleteAction')}
+          consequence={t('profiles.deleteConsequence')}
+          impact={[
+            { label: 'profile', value: pending.name },
+            { label: 'target', value: pending.target },
+            { label: 'entries', value: pending.entries.length },
+          ]}
+          actionLabel={t('profiles.deleteAction')}
+          busy={busy}
+          onConfirm={() => void confirmRemove()}
+        />
+      ) : null}
 
       {creating ? (
         <CreateProfile
