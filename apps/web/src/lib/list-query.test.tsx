@@ -116,6 +116,20 @@ describe('clearListQuery', () => {
     const next = clearListQuery(spec, url('tab=hub&ch=abc&q=abc&kind=skill&scope=global'));
     expect(next.toString()).toBe('tab=hub&ch=abc');
   });
+
+  it('keeps the page\u2019s own pointer (\u00a73.10): ?highlight is not a list param', () => {
+    // The skills page sets `?highlight=<key>` when the hub hands a saved skill
+    // over. Clearing the list's filters must not throw that pointer away — the
+    // two vocabularies share a URL and nothing else (09-p4-resource-kinds.md §5).
+    const next = clearListQuery(spec, url('q=abc&scope=global&highlight=skill%3Anew'));
+    expect(next.toString()).toBe('highlight=skill%3Anew');
+  });
+
+  it('never writes or drops a param it does not declare', () => {
+    const written = writeListQuery(spec, url('highlight=skill%3Anew'), { q: 'pdf' });
+    expect(written.get('highlight')).toBe('skill:new');
+    expect(written.get('q')).toBe('pdf');
+  });
 });
 
 describe('effectiveSort', () => {
