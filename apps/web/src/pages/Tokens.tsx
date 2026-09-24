@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import {
   KeyRoundIcon,
@@ -9,22 +9,32 @@ import {
   MoreHorizontalIcon,
 } from 'lucide-react';
 import { api } from '@/api';
-import { PageIntro, Well } from '@/components/kit';
+import {
+  ConfirmDialog,
+  DataTable,
+  FilterBar,
+  FilterSelect,
+  PageIntro,
+  SortSelect,
+  TableSearch,
+  Well,
+  tableState,
+} from '@/components/kit';
+import {
+  effectiveSort,
+  matchesQuery,
+  sortRows,
+  useListQuery,
+  type ListQuerySpec,
+} from '@/lib/list-query';
 import { useAuth, withAuthGuard } from '@/auth';
 import { useI18n, dateLocale } from '@/i18n';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { PageSlot } from '@/components/shell/page-slots';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
+import { TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -47,18 +57,39 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { FormDialog } from '@/components/ui/form-dialog';
 import { HarnessNexusError, type PatView } from '@harness-nexus/sdk';
+
+/** The list's vocabulary (07-p3-list-pages.md §5). */
+const TOKEN_SPEC: ListQuerySpec = {
+  filters: { kind: ['api', 'marketplace'] },
+  sort: ['-created', 'name'],
+};
+
+/**
+ * A token's purpose is carried by its scopes, not by a field (pats.ts:
+ * `kind: 'marketplace'` becomes `scopes: ['marketplace']`). So the filter reads
+ * the same fact the Scope column shows.
+ */
+function tokenKind(p: PatView): 'api' | 'marketplace' {
+  return p.scopes.includes('marketplace') ? 'marketplace' : 'api';
+}
 
 export function TokensPage() {
   const { logout } = useAuth();
   const { t, lang } = useI18n();
   const [items, setItems] = useState<PatView[] | null>(null);
+  const [error, setError] = useState<unknown>(null);
+  const [creating, setCreating] = useState(false);
+  const [pending, setPending] = useState<PatView | null>(null);
+  const [busy, setBusy] = useState(false);
 
   async function refresh() {
     try {
       setItems(await withAuthGuard(() => api.listPats(), logout));
+      setError(null);
     } catch (e) {
-      toast.error(e instanceof HarnessNexusError ? e.message : t('tokens.loadFailed'));
+      setError(e);
     }
   }
 
@@ -66,19 +97,53 @@ export function TokensPage() {
     void refresh();
   }, []);
 
-  async function revoke(p: PatView) {
-    if (!confirm(t('tokens.confirmRevoke', { name: p.name }))) return;
+  const query = useListQuery(TOKEN_SPEC);
+  const visible = useMemo(() => {
+    if (items === null) return null;
+    const rows = items.filter(
+      (p) =>
+        matchesQuery(query.q, [p.name, p.prefix, p.scopes]) &&
+        (query.filters['kind'] === null || tokenKind(p) === query.filters['kind']),
+    );
+    return sortRows(rows, effectiveSort(TOKEN_SPEC, query), (p, key) =>
+      key === 'name' ? p.name : p.createdAt,
+    );
+  }, [items, query.q, query.filters, query.sort]);
+
+  const kindLabels = useMemo(
+    () => ({ api: t('tokens.kindApi'), marketplace: t('tokens.kindMarketplace') }),
+    [t],
+  );
+  const sortLabels = useMemo(
+    () => ({ '-created': t('tokens.sortNewest'), name: t('common.sortName') }),
+    [t],
+  );
+
+  async function confirmRevoke() {
+    const p = pending;
+    if (p === null) return;
+    setBusy(true);
     try {
       await withAuthGuard(() => api.revokePat(p.id), logout);
       toast.success(t('tokens.revokedToast'));
+      setPending(null);
       await refresh();
     } catch (e) {
       toast.error(e instanceof HarnessNexusError ? e.message : t('tokens.revokeFailed'));
+    } finally {
+      setBusy(false);
     }
   }
 
   return (
     <>
+      <PageSlot slot="actions">
+        <Button onClick={() => setCreating(true)} className="gap-1.5">
+          <PlusIcon className="size-4" />
+          <span className="hidden sm:inline">{t('tokens.createButton')}</span>
+        </Button>
+      </PageSlot>
+
       <PageIntro
         sub={
           <>
@@ -93,117 +158,157 @@ export function TokensPage() {
         }
       />
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-base">
-            <KeyRoundIcon className="size-4" />
-            {t('tokens.listTitle')}
-          </CardTitle>
-          <CardDescription>{t('tokens.listDesc')}</CardDescription>
-        </CardHeader>
-        <CardContent className="px-0">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="pl-6">{t('common.name')}</TableHead>
-                <TableHead>{t('tokens.prefix')}</TableHead>
-                <TableHead>{t('tokens.scopes')}</TableHead>
-                <TableHead>{t('tokens.expires')}</TableHead>
-                <TableHead>{t('tokens.lastUsed')}</TableHead>
-                <TableHead>{t('tokens.created')}</TableHead>
-                <TableHead className="pr-6 text-right">{t('common.actions')}</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {items === null ? (
-                <TableRow>
-                  <TableCell colSpan={7} className="text-muted-foreground py-8 text-center">
-                    {t('common.loading')}
-                  </TableCell>
-                </TableRow>
-              ) : items.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={7} className="text-muted-foreground py-8 text-center">
-                    {t('tokens.empty')}
-                  </TableCell>
-                </TableRow>
-              ) : (
-                items.map((p) => (
-                  <TableRow key={p.id}>
-                    <TableCell className="pl-6 font-medium">{p.name}</TableCell>
-                    <TableCell className="font-mono text-xs tabular-nums">{p.prefix}…</TableCell>
-                    <TableCell>
-                      {p.scopes.length === 0 ? (
-                        <span className="text-muted-foreground">—</span>
-                      ) : (
-                        <div className="flex flex-wrap gap-1">
-                          {p.scopes.map((s) => (
-                            <Badge key={s} variant="secondary" className="font-mono text-[10px]">
-                              {s}
-                            </Badge>
-                          ))}
-                        </div>
-                      )}
-                    </TableCell>
-                    <TableCell className="text-muted-foreground tabular-nums">
-                      {p.expiresAt ? (
-                        new Date(p.expiresAt).toLocaleDateString(dateLocale(lang), {
-                          year: 'numeric',
-                          month: 'short',
-                          day: 'numeric',
-                        })
-                      ) : (
-                        <span className="text-muted-foreground">{t('tokens.never')}</span>
-                      )}
-                    </TableCell>
-                    <TableCell className="text-muted-foreground tabular-nums">
-                      {p.lastUsedAt ? (
-                        new Date(p.lastUsedAt).toLocaleDateString(dateLocale(lang), {
-                          year: 'numeric',
-                          month: 'short',
-                          day: 'numeric',
-                        })
-                      ) : (
-                        <span className="text-muted-foreground">{t('tokens.never')}</span>
-                      )}
-                    </TableCell>
-                    <TableCell className="text-muted-foreground tabular-nums">
-                      {new Date(p.createdAt).toLocaleDateString(dateLocale(lang), {
-                        year: 'numeric',
-                        month: 'short',
-                        day: 'numeric',
-                      })}
-                    </TableCell>
-                    <TableCell className="pr-6 text-right">
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="icon" className="size-8">
-                            <MoreHorizontalIcon className="size-4" />
-                            <span className="sr-only">{t('common.openMenu')}</span>
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem variant="destructive" onClick={() => revoke(p)}>
-                            <TrashIcon /> {t('tokens.revoke')}
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </TableCell>
-                  </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
+      <DataTable
+        columns={7}
+        label={t('tokens.listTitle')}
+        icon={<KeyRoundIcon />}
+        state={tableState({
+          error,
+          loading: items === null,
+          count: visible?.length ?? 0,
+          filtered: query.active,
+        })}
+        error={error}
+        onRetry={() => void refresh()}
+        onClearFilters={query.clear}
+        toolbar={
+          <FilterBar query={query} shown={visible?.length} total={items?.length}>
+            <TableSearch query={query} placeholder={t('tokens.searchPlaceholder')} />
+            <FilterSelect
+              query={query}
+              spec={TOKEN_SPEC}
+              name="kind"
+              allLabel={t('tokens.allKinds')}
+              labels={kindLabels}
+            />
+            <SortSelect
+              query={query}
+              spec={TOKEN_SPEC}
+              label={t('common.sortLabel')}
+              labels={sortLabels}
+            />
+          </FilterBar>
+        }
+        empty={{
+          title: t('tokens.empty'),
+          hint: t('tokens.emptyHint'),
+          action: (
+            <Button onClick={() => setCreating(true)} className="gap-1.5">
+              <PlusIcon className="size-4" />
+              {t('tokens.createButton')}
+            </Button>
+          ),
+        }}
+      >
+        <TableHeader>
+          <TableRow>
+            <TableHead>{t('common.name')}</TableHead>
+            <TableHead>{t('tokens.prefix')}</TableHead>
+            <TableHead>{t('tokens.scopes')}</TableHead>
+            <TableHead>{t('tokens.expires')}</TableHead>
+            <TableHead>{t('tokens.lastUsed')}</TableHead>
+            <TableHead>{t('tokens.created')}</TableHead>
+            <TableHead className="text-right">{t('common.actions')}</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {visible?.map((p) => (
+            <TableRow key={p.id}>
+              <TableCell className="font-medium">{p.name}</TableCell>
+              <TableCell className="font-mono text-xs tabular-nums">{p.prefix}…</TableCell>
+              <TableCell>
+                {p.scopes.length === 0 ? (
+                  <span className="text-muted-foreground">—</span>
+                ) : (
+                  <div className="flex flex-wrap gap-1">
+                    {p.scopes.map((s) => (
+                      <Badge key={s} variant="secondary" className="font-mono text-[10px]">
+                        {s}
+                      </Badge>
+                    ))}
+                  </div>
+                )}
+              </TableCell>
+              <TableCell className="text-muted-foreground tabular-nums">
+                {p.expiresAt ? (
+                  new Date(p.expiresAt).toLocaleDateString(dateLocale(lang), {
+                    year: 'numeric',
+                    month: 'short',
+                    day: 'numeric',
+                  })
+                ) : (
+                  <span className="text-muted-foreground">{t('tokens.never')}</span>
+                )}
+              </TableCell>
+              <TableCell className="text-muted-foreground tabular-nums">
+                {p.lastUsedAt ? (
+                  new Date(p.lastUsedAt).toLocaleDateString(dateLocale(lang), {
+                    year: 'numeric',
+                    month: 'short',
+                    day: 'numeric',
+                  })
+                ) : (
+                  <span className="text-muted-foreground">{t('tokens.never')}</span>
+                )}
+              </TableCell>
+              <TableCell className="text-muted-foreground tabular-nums">
+                {new Date(p.createdAt).toLocaleDateString(dateLocale(lang), {
+                  year: 'numeric',
+                  month: 'short',
+                  day: 'numeric',
+                })}
+              </TableCell>
+              <TableCell className="text-right">
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="ghost" size="icon" className="size-8">
+                      <MoreHorizontalIcon className="size-4" />
+                      <span className="sr-only">{t('common.openMenu')}</span>
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem variant="destructive" onClick={() => setPending(p)}>
+                      <TrashIcon /> {t('tokens.revoke')}
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </DataTable>
 
-      <CreateToken onCreated={refresh} />
+      {creating ? (
+        <CreateToken onClose={() => setCreating(false)} onCreated={() => void refresh()} />
+      ) : null}
+
+      {pending !== null ? (
+        <ConfirmDialog
+          open
+          onOpenChange={(o) => {
+            if (!o) setPending(null);
+          }}
+          title={t('tokens.revokeAction')}
+          consequence={t('tokens.revokeConsequence')}
+          impact={[
+            { label: 'token', value: pending.name },
+            { label: 'prefix', value: pending.prefix },
+            { label: 'kind', value: tokenKind(pending) },
+          ]}
+          // Tier 2: a revoked token cannot be restored — the reader types its
+          // name (03-interaction.md §2).
+          confirmPhrase={pending.name}
+          actionLabel={t('tokens.revokeAction')}
+          busy={busy}
+          onConfirm={() => void confirmRevoke()}
+        />
+      ) : null}
     </>
   );
 }
 
-/** Renders the create form and the one-shot token reveal dialog. */
-function CreateToken({ onCreated }: { onCreated: () => void }) {
+/** The create form in a dialog, plus the one-shot token reveal dialog. */
+function CreateToken({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
   const { logout } = useAuth();
   const { t } = useI18n();
   const [name, setName] = useState('');
@@ -231,6 +336,9 @@ function CreateToken({ onCreated }: { onCreated: () => void }) {
       setCopied(null);
       setName('');
       setExpiresLocal('');
+      // The form dialog closes itself (the reveal takes over below); the page
+      // stays mounted until the reader dismisses the token, because the token
+      // exists nowhere else.
       onCreated();
     } catch (e) {
       toast.error(e instanceof HarnessNexusError ? e.message : t('common.createFailed'));
@@ -251,65 +359,66 @@ function CreateToken({ onCreated }: { onCreated: () => void }) {
 
   return (
     <>
-      <Card className="mt-6">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-base">
-            <PlusIcon className="size-4" />
-            {t('tokens.newTitle')}
-          </CardTitle>
-          <CardDescription>{t('tokens.newDesc')}</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <form onSubmit={onSubmit} className="flex flex-col gap-4">
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-              <div className="grid gap-2">
-                <Label htmlFor="pat-name">{t('common.name')}</Label>
-                <Input
-                  id="pat-name"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  placeholder={t('tokens.namePlaceholder')}
-                  autoComplete="off"
-                  spellCheck={false}
-                  required
-                />
-              </div>
-              <div className="grid gap-2">
-                <Label htmlFor="pat-kind">{t('tokens.purpose')}</Label>
-                <Select value={kind} onValueChange={(v) => setKind(v as 'api' | 'marketplace')}>
-                  <SelectTrigger id="pat-kind">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="api">{t('tokens.kindApi')}</SelectItem>
-                    <SelectItem value="marketplace">{t('tokens.kindMarketplace')}</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="grid gap-2">
-                <Label htmlFor="pat-expires">{t('tokens.expiresOptional')}</Label>
-                <Input
-                  id="pat-expires"
-                  type="datetime-local"
-                  value={expiresLocal}
-                  onChange={(e) => setExpiresLocal(e.target.value)}
-                />
-              </div>
+      {/* One dialog at a time: the form until the token exists, then the
+          reveal. Both live here so the token never leaves this component. */}
+      <FormDialog
+        open={createdToken === null}
+        onClose={onClose}
+        title={t('tokens.newTitle')}
+        description={t('tokens.newDesc')}
+      >
+        <form onSubmit={onSubmit} className="flex flex-col gap-4">
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="grid gap-2">
+              <Label htmlFor="pat-name">{t('common.name')}</Label>
+              <Input
+                id="pat-name"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder={t('tokens.namePlaceholder')}
+                autoComplete="off"
+                spellCheck={false}
+                required
+              />
             </div>
-            {kind === 'marketplace' && (
-              <p className="text-muted-foreground text-sm">
-                {t('tokens.note1')}
-                <code className="font-mono">claude-code</code> {t('tokens.note2')}
-              </p>
-            )}
-            <div>
-              <Button type="submit" disabled={busy}>
-                {busy ? t('tokens.creating') : t('tokens.createButton')}
-              </Button>
+            <div className="grid gap-2">
+              <Label htmlFor="pat-kind">{t('tokens.purpose')}</Label>
+              <Select value={kind} onValueChange={(v) => setKind(v as 'api' | 'marketplace')}>
+                <SelectTrigger id="pat-kind">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="api">{t('tokens.kindApi')}</SelectItem>
+                  <SelectItem value="marketplace">{t('tokens.kindMarketplace')}</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
-          </form>
-        </CardContent>
-      </Card>
+          </div>
+          <div className="grid gap-2">
+            <Label htmlFor="pat-expires">{t('tokens.expiresOptional')}</Label>
+            <Input
+              id="pat-expires"
+              type="datetime-local"
+              value={expiresLocal}
+              onChange={(e) => setExpiresLocal(e.target.value)}
+            />
+          </div>
+          {kind === 'marketplace' && (
+            <p className="text-muted-foreground text-sm">
+              {t('tokens.note1')}
+              <code className="font-mono">claude-code</code> {t('tokens.note2')}
+            </p>
+          )}
+          <div className="flex justify-end gap-2">
+            <Button type="button" variant="outline" onClick={onClose}>
+              {t('common.cancel')}
+            </Button>
+            <Button type="submit" disabled={busy}>
+              {busy ? t('tokens.creating') : t('tokens.createButton')}
+            </Button>
+          </div>
+        </form>
+      </FormDialog>
 
       <Dialog
         open={createdToken !== null}
@@ -317,6 +426,7 @@ function CreateToken({ onCreated }: { onCreated: () => void }) {
           if (!o) {
             setCreatedToken(null);
             setCreatedAddCommand(null);
+            onClose();
           }
         }}
       >
@@ -381,6 +491,7 @@ function CreateToken({ onCreated }: { onCreated: () => void }) {
               onClick={() => {
                 setCreatedToken(null);
                 setCreatedAddCommand(null);
+                onClose();
               }}
             >
               {t('common.done')}

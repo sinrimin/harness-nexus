@@ -7,8 +7,8 @@
  * here. Each primitive replaced at least two existing hand-rolled copies
  * before it was allowed in.
  *
- * Not here on purpose: `TableToolbar`/search (P3 wires filters to the URL, and
- * a slot nobody uses is a slot that lies about the design).
+ * Not here on purpose: nothing today — the toolbar landed with the URL
+ * contract it was waiting for (`FilterBar`/`TableSearch`, 07-p3-list-pages.md).
  */
 export { LabelText, DataText } from './text';
 export { Panel, PanelHeader, PanelBody } from './panel';
@@ -17,6 +17,7 @@ export { Lamp, type LampSize } from './lamp';
 export { Readout } from './readout';
 export { Field } from './field';
 export { DataTable, TableStateRow, tableState, type TableState } from './table';
+export { FilterBar, TableSearch, FilterSelect, SortSelect } from './filter-bar';
 export { EmptyState } from './empty-state';
 export { Skeleton, SkeletonRows, useDelayedVisible } from './skeleton';
 export { Note, errorParts, type NoteTone } from './note';

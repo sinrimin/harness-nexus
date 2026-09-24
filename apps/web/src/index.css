@@ -625,5 +625,14 @@
   z-index: 10;
 }
 
+/* Touch targets on the list toolbar (03-interaction.md §7): the shell's
+   controls sit at 36px for a mouse, which is under a fingertip. Coarse pointers
+   get 40px, and no skin has to know about it. */
+@media (pointer: coarse) {
+  [data-slot='filter-bar'] :is([data-slot='input'], [data-slot='select-trigger']) {
+    height: 2.5rem;
+  }
+}
+
 /* The copies that are still `ui/table` outside the kit (unchanged pages) keep
  * their own look; nothing here reaches them. */

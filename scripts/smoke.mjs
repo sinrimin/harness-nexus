@@ -328,6 +328,40 @@ r = await req('PATCH', `/api/profiles/${profileId}`, {
 expect('non-target PATCH succeeds', r.status, 200);
 expect('patched name applied', r.json.profile.name, 'daily-renamed');
 expect('target unchanged after patch', r.json.profile.target, 'claude-code');
+// #18: the version is server-assigned and the bump IS the marketplace publish
+// switch, so a name-only edit must leave it alone.
+expect('name-only PATCH keeps the version', r.json.profile.version, '0.1');
+
+log('\n--- [#18] versions are server-assigned; only an entries change bumps ---');
+r = await req('POST', '/api/profiles', {
+  token: userToken,
+  body: {
+    name: 'versioning',
+    target: 'claude-code',
+    scope: 'personal',
+    version: '1.1.0',
+    entries: [],
+  },
+});
+expect('create with a client-sent version → 0.1', r.json.profile.version, '0.1');
+const versioningProfileId = r.json.profile.id;
+r = await req('PATCH', `/api/profiles/${versioningProfileId}`, {
+  token: userToken,
+  body: { version: '1.1.0' },
+});
+expect('client-sent version on PATCH is ignored', r.json.profile.version, '0.1');
+r = await req('PATCH', `/api/profiles/${versioningProfileId}`, {
+  token: userToken,
+  body: { entries: [{ mcpServerId: demoServerId }] },
+});
+expect('changed entries bump the version', r.json.profile.version, '0.2');
+r = await req('PATCH', `/api/profiles/${versioningProfileId}`, {
+  token: userToken,
+  body: { entries: [{ mcpServerId: demoServerId }] },
+});
+expect('unchanged entries keep the version', r.json.profile.version, '0.2');
+r = await req('DELETE', `/api/profiles/${versioningProfileId}`, { token: userToken });
+expect('versioning profile cleaned up', r.status, 200);
 
 log('\n--- [2.2] mcp-servers status endpoint (200) ---');
 r = await req('GET', '/api/mcp-servers/status', { token: userToken });
@@ -1123,10 +1157,32 @@ expect('missing profile param 400', r.status, 400);
 
 log('\n--- [8 C3] fixture HOME + REAL daemon (dist) enrollment ---');
 const { spawn } = await import('node:child_process');
-const { mkdtempSync, mkdirSync, writeFileSync, rmSync, accessSync, readFileSync, statSync, chmodSync } =
-  await import('node:fs');
+const {
+  mkdtempSync,
+  mkdirSync,
+  writeFileSync,
+  rmSync,
+  accessSync,
+  readFileSync,
+  statSync,
+  chmodSync,
+  readdirSync,
+} = await import('node:fs');
 const { tmpdir } = await import('node:os');
 const pathMod = await import('node:path');
+// Rig hygiene: every run below leaves `hnx-smoke-*` directories behind (fixture
+// HOME, CLI shims, synthetic projects) — a dozen of them had piled up in /tmp.
+// Sweep the previous runs' directories here, at the start; files are left
+// alone, because that is where run LOGS live.
+for (const entry of readdirSync(tmpdir())) {
+  if (!entry.startsWith('hnx-smoke-')) continue;
+  const stale = pathMod.join(tmpdir(), entry);
+  try {
+    if (statSync(stale).isDirectory()) rmSync(stale, { recursive: true, force: true });
+  } catch {
+    /* another run still owns it */
+  }
+}
 const fixtureHome = mkdtempSync(pathMod.join(tmpdir(), 'hnx-smoke-c3-'));
 const fw = (rel, content) => {
   const file = pathMod.join(fixtureHome, rel);
@@ -1627,7 +1683,9 @@ expect(
   c4DeployRow.directory,
   pathMod.join(c4Home, '.hermes'),
 );
-expect('instance carries profile version', c4DeployRow.profileVersion, '1.0.0');
+// The body above still sends `version: '1.0.0'` — #18 ignores it, so the
+// deployed instance carries the server-assigned initial version.
+expect('instance carries profile version', c4DeployRow.profileVersion, '0.1');
 expect('deploy-bundle secret-free (machine PAT path worked — job succeeded)', true, true);
 
 const pluginDir = pathMod.join(c4Home, '.hermes', 'plugins', 'c4-deploy');
@@ -1674,8 +1732,11 @@ log('\n--- [#6] claude-code marketplace deploy via a FAKE claude shim ---');
 // The executor drives `claude plugin …` headless — here that CLI is a shim on
 // the daemon's PATH recording argv and maintaining CC's own state files under
 // the fixture HOME (same trick as the [9 W2] fake npm). Two jobs: fresh
-// install (1.0.0), then one-click update (2.0.0) — the version bump on the
-// profile is what publishes the update.
+// install (installed 1.0.0), then one-click update (the shim reports 2.0.0).
+// The second job stands in for the post-bump deploy: since #18 the version
+// bump (entries change) is what publishes an update, and this profile has no
+// entries to change — the daemon's update/install choice reads CC's own
+// state, so re-running the job is the same code path.
 r = await req('POST', '/api/profiles', {
   token: userToken,
   body: { name: 'c4-cc', target: 'claude-code', scope: 'personal', entries: [] },
@@ -1685,7 +1746,7 @@ r = await req('PATCH', `/api/profiles/${ccProfileId}`, {
   token: userToken,
   body: { version: '1.1.0' },
 });
-expect('profile version editable (publish switch)', r.json.profile.version, '1.1.0');
+expect('client-sent version ignored (#18)', r.json.profile.version, '0.1');
 
 r = await req('POST', '/api/machines', { token: userToken, body: { name: 'c4-cc-box' } });
 const c4CcMachineId = r.json.machine.id;
@@ -1786,7 +1847,15 @@ expect('headless install flag', ccArgv.includes(`plugin install c4-cc@${ccMp} -y
 r = await req('GET', `/api/marketplace/${c4CcToken}/marketplace.json`, { token: null });
 expect('machine PAT accepted by emitter', r.status, 200);
 expect('catalog is the owner marketplace', r.json.name, ccMp);
-expect('unknown token 404s', (await req('GET', '/api/marketplace/hnpat_nope0000000000000000/marketplace.json', { token: null })).status, 404);
+expect(
+  'unknown token 404s',
+  (
+    await req('GET', '/api/marketplace/hnpat_nope0000000000000000/marketplace.json', {
+      token: null,
+    })
+  ).status,
+  404,
+);
 
 // [#7] The /mcp outlet also accepts the machine PAT (the hnx mcp serve shim's
 // passthrough path for server-dialed entries) — an initialize gets THROUGH
@@ -1852,7 +1921,13 @@ await req('DELETE', `/api/machines/${c4CcMachineId}`, { token: userToken });
 rmSync(ccShimDir, { recursive: true, force: true });
 rmSync(pathMod.join(c4Home, '.claude'), { recursive: true, force: true });
 if (c4CcErr.includes('Error:')) {
-  log(`(c4-cc daemon stderr note): ${c4CcErr.split('\n').filter((l) => l.includes('Error:')).slice(0, 3).join(' | ')}`);
+  log(
+    `(c4-cc daemon stderr note): ${c4CcErr
+      .split('\n')
+      .filter((l) => l.includes('Error:'))
+      .slice(0, 3)
+      .join(' | ')}`,
+  );
 }
 
 c4Daemon.kill('SIGTERM');

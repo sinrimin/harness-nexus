@@ -22,10 +22,16 @@ const en = {
   status: 'Status',
   loading: 'Loading…',
   refresh: 'Refresh',
+  // Sort vocabulary — shared by the list pages (07-p3-list-pages.md §4): the
+  // label states the direction, so `<key>` and `-<key>` never look alike.
+  sortName: 'Name (A–Z)',
+  sortUpdated: 'Recently updated',
+  sortLabel: 'Sort by',
   // Scope vocabulary (rendered from `scope` values on records).
   scope: 'Scope',
   scopeGlobal: 'global',
   scopePersonal: 'personal',
+  allScopes: 'All scopes',
   // Role vocabulary.
   roleAdmin: 'admin',
   roleUser: 'user',
@@ -55,9 +61,13 @@ const zh: typeof en = {
   status: '状态',
   loading: '加载中…',
   refresh: '刷新',
+  sortName: '名称（A–Z）',
+  sortUpdated: '最近更新',
+  sortLabel: '排序方式',
   scope: '作用域',
   scopeGlobal: '全局',
   scopePersonal: '个人',
+  allScopes: '全部作用域',
   roleAdmin: '管理员',
   roleUser: '用户',
   updateFailed: '更新失败',

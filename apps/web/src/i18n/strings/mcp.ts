@@ -17,13 +17,24 @@ const en = {
   dialSite: 'Dial site',
   transport: 'Transport',
   empty: 'No MCP servers configured yet.',
-  // Row lifecycle toasts/confirms (delete lives on the page, connect/disconnect on the row).
+  emptyHint:
+    'Add a server here, or point a profile at one and let hnx mcp serve dial it from the machine.',
+  // List toolbar (07-p3-list-pages.md §4).
+  searchPlaceholder: 'Search name, endpoint or transport',
+  allTransports: 'Any transport',
+  allDialSites: 'Any dial site',
+  // Row lifecycle toasts/confirms (the page owns both dialogs).
   loadFailed: 'Failed to load MCP servers',
-  confirmDelete: 'Delete MCP server "{name}"?',
+  // Action name = dialog title = confirm button (03-interaction.md §9).
+  deleteAction: 'Delete MCP server',
+  deleteConsequence:
+    'It leaves this list now; profiles that still reference it show the entry greyed and strip it when they are saved. Deleting it a second time removes it for good.',
   deletedSoftToast:
     'Removed. Profiles still listing it show the entry greyed; saving them strips it.',
   deletedHardToast: 'MCP server permanently deleted',
-  confirmDisconnect: 'Disconnect "{name}"? It will stay configured but go offline.',
+  disconnectAction: 'Disconnect',
+  disconnectConsequence:
+    'The pool drops the connection and its tools stop being aggregated. The server stays configured — connect it again whenever you like.',
   connectingToast: 'Connecting to "{name}"…',
   disconnectedToast: '"{name}" disconnected',
   connectFailed: 'Connect failed',
@@ -119,12 +130,20 @@ const zh: typeof en = {
   dialSite: '拨号端',
   transport: '传输',
   empty: '尚未配置任何 MCP 服务器。',
-  // 行生命周期提示与确认（删除在页面级，连接/断开在行级）。
+  emptyHint: '在此添加服务器，或让配置集指向它、由机器上的 hnx mcp serve 拨号。',
+  searchPlaceholder: '搜索名称、端点或传输',
+  allTransports: '全部传输',
+  allDialSites: '全部拨号端',
+  // 行生命周期提示与确认（两个确认框都由页面持有）。
   loadFailed: '加载 MCP 服务器失败',
-  confirmDelete: '删除 MCP 服务器“{name}”？',
+  deleteAction: '删除 MCP 服务器',
+  deleteConsequence:
+    '它会立即从本列表移除；仍引用它的配置集会灰显该条目，保存时自动剔除。再次删除才会彻底移除。',
   deletedSoftToast: '已移除。仍引用它的配置集会灰显该条目，保存后自动剔除。',
   deletedHardToast: 'MCP 服务器已彻底删除',
-  confirmDisconnect: '断开“{name}”？该服务器将保留配置但转为离线。',
+  disconnectAction: '断开',
+  disconnectConsequence:
+    '连接池会丢弃该连接，它的工具不再被聚合。服务器仍保留配置——随时可以重新连接。',
   connectingToast: '正在连接“{name}”…',
   disconnectedToast: '“{name}”已断开',
   connectFailed: '连接失败',

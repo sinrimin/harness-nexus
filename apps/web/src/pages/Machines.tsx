@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
 import { LaptopIcon, MoreHorizontalIcon, PlusIcon, TrashIcon } from 'lucide-react';
@@ -32,16 +32,37 @@ import {
   DataTable,
   DataText,
   Field,
+  FilterBar,
+  FilterSelect,
   LabelText,
   Lamp,
   Note,
   PageIntro,
   Readout,
+  SortSelect,
+  TableSearch,
   Well,
   tableState,
 } from '@/components/kit';
+import {
+  effectiveSort,
+  matchesQuery,
+  sortRows,
+  useListQuery,
+  type ListQuerySpec,
+} from '@/lib/list-query';
 import { PageSlot } from '@/components/shell/page-slots';
 import { HarnessNexusError, type MachineView } from '@harness-nexus/sdk';
+
+/**
+ * The list's vocabulary (07-p3-list-pages.md §5). `-status` rather than
+ * `status`: when you sort a fleet by status you want the ones that are *up*
+ * first (the comparator puts `true` after `false` ascending).
+ */
+const MACHINE_SPEC: ListQuerySpec = {
+  filters: { status: ['online', 'offline'] },
+  sort: ['-lastSeen', 'name', '-status'],
+};
 
 /**
  * Machines (Phase 8 C1). Enrollment creates the machine + its machine token
@@ -142,7 +163,39 @@ export function MachinesPage() {
   const total = items?.length ?? 0;
   const offlineCount = total - onlineCount;
 
-  const state = tableState({ error, loading: items === null, count: total });
+  const query = useListQuery(MACHINE_SPEC);
+  const visible = useMemo(() => {
+    if (items === null) return null;
+    const rows = items.filter(
+      (m) =>
+        matchesQuery(query.q, [m.name, m.hostname, m.os, m.arch, m.daemonVersion, m.id]) &&
+        (query.filters['status'] === null ||
+          (query.filters['status'] === 'online') === m.online),
+    );
+    return sortRows(rows, effectiveSort(MACHINE_SPEC, query), (m, key) =>
+      key === 'name' ? m.name : key === 'status' ? m.online : m.lastSeenAt,
+    );
+  }, [items, query.q, query.filters, query.sort]);
+
+  const statusLabels = useMemo(
+    () => ({ online: t('machines.online'), offline: t('machines.offline') }),
+    [t],
+  );
+  const sortLabels = useMemo(
+    () => ({
+      '-lastSeen': t('machines.sortLastSeen'),
+      name: t('common.sortName'),
+      '-status': t('machines.sortStatus'),
+    }),
+    [t],
+  );
+
+  const state = tableState({
+    error,
+    loading: items === null,
+    count: visible?.length ?? 0,
+    filtered: query.active,
+  });
 
   return (
     <>
@@ -193,6 +246,25 @@ export function MachinesPage() {
         state={state}
         error={error}
         onRetry={() => void refresh()}
+        onClearFilters={query.clear}
+        toolbar={
+          <FilterBar query={query} shown={visible?.length} total={items?.length}>
+            <TableSearch query={query} placeholder={t('machines.searchPlaceholder')} />
+            <FilterSelect
+              query={query}
+              spec={MACHINE_SPEC}
+              name="status"
+              allLabel={t('machines.allStatuses')}
+              labels={statusLabels}
+            />
+            <SortSelect
+              query={query}
+              spec={MACHINE_SPEC}
+              label={t('common.sortLabel')}
+              labels={sortLabels}
+            />
+          </FilterBar>
+        }
         empty={{
           title: t('machines.empty'),
           hint: t('machines.emptyHint'),
@@ -216,7 +288,7 @@ export function MachinesPage() {
           </TableRow>
         </TableHeader>
         <TableBody>
-          {items?.map((m) => (
+          {visible?.map((m) => (
             <MachineRow key={m.id} machine={m} onAsk={setPending} />
           ))}
         </TableBody>

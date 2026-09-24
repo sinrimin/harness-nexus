@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import {
   ServerIcon,
@@ -18,9 +18,24 @@ import {
 import { api } from '@/api';
 import { useAuth, withAuthGuard } from '@/auth';
 import { useI18n } from '@/i18n';
-import { PageIntro, Well } from '@/components/kit';
+import {
+  ConfirmDialog,
+  DataTable,
+  FilterBar,
+  FilterSelect,
+  PageIntro,
+  TableSearch,
+  Well,
+  tableState,
+} from '@/components/kit';
+import {
+  effectiveSort,
+  matchesQuery,
+  sortRows,
+  useListQuery,
+  type ListQuerySpec,
+} from '@/lib/list-query';
 import { PageSlot } from '@/components/shell/page-slots';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from '@/components/ui/collapsible';
@@ -71,8 +86,25 @@ import {
 type Scope = 'global' | 'personal';
 type TransportType = 'sse' | 'streamable-http' | 'stdio';
 
+/**
+ * The list's vocabulary (07-p3-list-pages.md §5). `dial` is derived the same way
+ * the row derives it (`resolveDialSite` — `auto` resolved from the credential's
+ * distributability), so the filter and the badge never disagree.
+ */
+const MCP_SPEC: ListQuerySpec = {
+  filters: {
+    transport: ['sse', 'streamable-http', 'stdio'],
+    scope: ['personal', 'global'],
+    dial: ['server', 'client'],
+  },
+  sort: ['name'],
+};
+
 /** Status poll interval for the live connection state (Phase 2.4). */
 const STATUS_POLL_MS = 5000;
+
+/** The three `transport.type` values, for the toolbar's vocabulary. */
+const TRANSPORT_TYPES: TransportType[] = ['stdio', 'sse', 'streamable-http'];
 
 /**
  * Status → color token map. Color encodes connection STATE ONLY (Signal design
@@ -100,12 +132,20 @@ export function McpManagementPage() {
   const { logout, user } = useAuth();
   const { t } = useI18n();
   const [items, setItems] = useState<McpServer[] | null>(null);
+  const [error, setError] = useState<unknown>(null);
   const [statuses, setStatuses] = useState<Map<string, McpServerStatus>>(new Map());
   // name → distributable, for deriving `auto` dial sites client-side (display
   // only; the server derives authoritatively).
   const [distributable, setDistributable] = useState<Map<string, boolean>>(new Map());
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState<McpServer | null>(null);
+  // One dialog for both destructive actions: the row asks, the page confirms
+  // (03-interaction.md §2 — the action's own name, never a bare "are you sure").
+  const [pending, setPending] = useState<{
+    action: 'delete' | 'disconnect';
+    server: McpServer;
+  } | null>(null);
+  const [busy, setBusy] = useState(false);
   const isAdmin = user?.role === 'admin';
 
   const refresh = useCallback(async () => {
@@ -115,11 +155,12 @@ export function McpManagementPage() {
         api.listCredentials().catch(() => [] as CredentialView[]),
       ]);
       setItems(servers);
+      setError(null);
       const map = new Map<string, boolean>();
       for (const c of creds) if (!map.has(c.name)) map.set(c.name, c.distributable);
       setDistributable(map);
     } catch (e) {
-      toast.error(e instanceof HarnessNexusError ? e.message : t('mcp.loadFailed'));
+      setError(e);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- t is stable per language; dep array kept as-is
   }, [logout]);
@@ -148,7 +189,6 @@ export function McpManagementPage() {
   }, [refresh, refreshStatuses]);
 
   async function remove(s: McpServer) {
-    if (!confirm(t('mcp.confirmDelete', { name: s.name }))) return;
     try {
       const res = await withAuthGuard(() => api.deleteMcpServer(s.id), logout);
       toast.success(res.mode === 'soft' ? t('mcp.deletedSoftToast') : t('mcp.deletedHardToast'));
@@ -158,6 +198,59 @@ export function McpManagementPage() {
       toast.error(e instanceof HarnessNexusError ? e.message : t('common.deleteFailed'));
     }
   }
+
+  async function disconnect(s: McpServer) {
+    try {
+      await withAuthGuard(() => api.disconnectMcpServer(s.id), logout);
+      await refreshStatuses();
+      toast.success(t('mcp.disconnectedToast', { name: s.name }));
+    } catch (e) {
+      toast.error(e instanceof HarnessNexusError ? e.message : t('mcp.disconnectFailed'));
+    }
+  }
+
+  async function confirmPending() {
+    const subject = pending;
+    if (subject === null) return;
+    setBusy(true);
+    try {
+      if (subject.action === 'delete') await remove(subject.server);
+      else await disconnect(subject.server);
+      setPending(null);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const siteOf = (s: McpServer): 'server' | 'client' =>
+    resolveDialSite(s, (name) => distributable.get(name) === true);
+
+  const query = useListQuery(MCP_SPEC);
+  const visible = useMemo(() => {
+    if (items === null) return null;
+    const rows = items.filter(
+      (s) =>
+        matchesQuery(query.q, [s.name, endpointOf(s), s.transport.type, s.dialSite]) &&
+        (query.filters['transport'] === null || s.transport.type === query.filters['transport']) &&
+        (query.filters['scope'] === null || s.scope === query.filters['scope']) &&
+        (query.filters['dial'] === null || siteOf(s) === query.filters['dial']),
+    );
+    return sortRows(rows, effectiveSort(MCP_SPEC, query), (s) => s.name);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- siteOf reads `distributable`, which is refreshed with `items`
+  }, [items, distributable, query.q, query.filters, query.sort]);
+
+  const scopeLabels = useMemo(
+    () => ({ personal: t('common.scopePersonal'), global: t('common.scopeGlobal') }),
+    [t],
+  );
+  const dialLabels = useMemo(
+    () => ({ server: t('mcp.dialServer'), client: t('mcp.dialClient') }),
+    [t],
+  );
+  const transportLabels = useMemo(
+    () => Object.fromEntries(TRANSPORT_TYPES.map((type) => [type, type])),
+    [],
+  );
 
   return (
     <>
@@ -188,58 +281,114 @@ export function McpManagementPage() {
         }
       />
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-base">
-            <ServerIcon className="size-4" />
-            {t('mcp.serversTitle')}
-          </CardTitle>
-          <CardDescription>{t('mcp.serversDesc')}</CardDescription>
-        </CardHeader>
-        <CardContent className="px-0">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="pl-6 w-[34%]">{t('common.name')}</TableHead>
-                <TableHead>{t('mcp.dialSite')}</TableHead>
-                <TableHead>{t('common.status')}</TableHead>
-                <TableHead>{t('mcp.transport')}</TableHead>
-                <TableHead>{t('common.scope')}</TableHead>
-                <TableHead className="pr-6 text-right">{t('common.actions')}</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {items === null ? (
-                <TableRow>
-                  <TableCell colSpan={6} className="text-muted-foreground py-8 text-center">
-                    {t('common.loading')}
-                  </TableCell>
-                </TableRow>
-              ) : items.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={6} className="text-muted-foreground py-8 text-center">
-                    {t('mcp.empty')}
-                  </TableCell>
-                </TableRow>
-              ) : (
-                items.map((s) => (
-                  <ServerRow
-                    key={s.id}
-                    server={s}
-                    site={resolveDialSite(s, (name) => distributable.get(name) === true)}
-                    status={statuses.get(s.id)}
-                    isAdmin={isAdmin}
-                    onRemoved={remove}
-                    onEdited={setEditing}
-                    onStatusChange={refreshStatuses}
-                    logout={logout}
-                  />
-                ))
-              )}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
+      <DataTable
+        columns={6}
+        label={t('mcp.serversTitle')}
+        icon={<ServerIcon />}
+        state={tableState({
+          error,
+          loading: items === null,
+          count: visible?.length ?? 0,
+          filtered: query.active,
+        })}
+        error={error}
+        onRetry={() => void refresh()}
+        onClearFilters={query.clear}
+        toolbar={
+          <FilterBar query={query} shown={visible?.length} total={items?.length}>
+            <TableSearch query={query} placeholder={t('mcp.searchPlaceholder')} />
+            <FilterSelect
+              query={query}
+              spec={MCP_SPEC}
+              name="transport"
+              allLabel={t('mcp.allTransports')}
+              labels={transportLabels}
+            />
+            <FilterSelect
+              query={query}
+              spec={MCP_SPEC}
+              name="dial"
+              allLabel={t('mcp.allDialSites')}
+              labels={dialLabels}
+            />
+            <FilterSelect
+              query={query}
+              spec={MCP_SPEC}
+              name="scope"
+              allLabel={t('common.allScopes')}
+              labels={scopeLabels}
+            />
+          </FilterBar>
+        }
+        empty={{
+          title: t('mcp.empty'),
+          hint: t('mcp.emptyHint'),
+          action: (
+            <Button onClick={() => setCreating(true)}>
+              <PlusIcon className="size-4" />
+              {t('mcp.addServer')}
+            </Button>
+          ),
+        }}
+      >
+        <TableHeader>
+          <TableRow>
+            <TableHead className="w-[34%]">{t('common.name')}</TableHead>
+            <TableHead>{t('mcp.dialSite')}</TableHead>
+            <TableHead>{t('common.status')}</TableHead>
+            <TableHead>{t('mcp.transport')}</TableHead>
+            <TableHead>{t('common.scope')}</TableHead>
+            <TableHead className="text-right">{t('common.actions')}</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {visible?.map((s) => (
+            <ServerRow
+              key={s.id}
+              server={s}
+              site={siteOf(s)}
+              status={statuses.get(s.id)}
+              isAdmin={isAdmin}
+              onAsk={(action, subject) => setPending({ action, server: subject })}
+              onEdited={setEditing}
+              onStatusChange={refreshStatuses}
+              logout={logout}
+            />
+          ))}
+        </TableBody>
+      </DataTable>
+
+      {pending !== null ? (
+        <ConfirmDialog
+          open
+          onOpenChange={(o) => {
+            if (!o) setPending(null);
+          }}
+          title={
+            pending.action === 'delete' ? t('mcp.deleteAction') : t('mcp.disconnectAction')
+          }
+          consequence={
+            pending.action === 'delete' ? t('mcp.deleteConsequence') : t('mcp.disconnectConsequence')
+          }
+          impact={[
+            { label: 'server', value: pending.server.name },
+            { label: 'transport', value: pending.server.transport.type },
+            ...(endpointOf(pending.server) !== ''
+              ? [{ label: 'endpoint', value: endpointOf(pending.server) }]
+              : []),
+          ]}
+          // Both actions are tier 1: a disconnect keeps the configuration, and
+          // the first delete only hides the row (its second delete removes the
+          // record). Only the machine-remove / token-revoke class, which destroys
+          // a credential on the spot, asks the reader to type a name.
+          irreversible={false}
+          actionLabel={
+            pending.action === 'delete' ? t('mcp.deleteAction') : t('mcp.disconnectAction')
+          }
+          busy={busy}
+          onConfirm={() => void confirmPending()}
+        />
+      ) : null}
 
       {creating ? (
         <McpServerDialog
@@ -277,7 +426,7 @@ function ServerRow({
   site,
   status,
   isAdmin,
-  onRemoved,
+  onAsk,
   onEdited,
   onStatusChange,
   logout,
@@ -287,7 +436,8 @@ function ServerRow({
   site: 'client' | 'server';
   status: McpServerStatus | undefined;
   isAdmin: boolean;
-  onRemoved: (s: McpServer) => void;
+  /** The row asks; the page's ConfirmDialog is what actually acts. */
+  onAsk: (action: 'delete' | 'disconnect', server: McpServer) => void;
   onEdited: (s: McpServer) => void;
   onStatusChange: () => Promise<void>;
   logout: () => void;
@@ -312,17 +462,6 @@ function ServerRow({
       toast.error(e instanceof HarnessNexusError ? e.message : t('mcp.connectFailed'));
     } finally {
       setPendingConnect(false);
-    }
-  }
-
-  async function disconnect() {
-    if (!confirm(t('mcp.confirmDisconnect', { name: server.name }))) return;
-    try {
-      await withAuthGuard(() => api.disconnectMcpServer(server.id), logout);
-      await onStatusChange();
-      toast.success(t('mcp.disconnectedToast', { name: server.name }));
-    } catch (e) {
-      toast.error(e instanceof HarnessNexusError ? e.message : t('mcp.disconnectFailed'));
     }
   }
 
@@ -359,7 +498,7 @@ function ServerRow({
             variant="ghost"
             size="sm"
             className="text-muted-foreground h-8"
-            onClick={disconnect}
+            onClick={() => onAsk('disconnect', server)}
           >
             <PlugZapIcon className="size-4" />
             {t('mcp.disconnect')}
@@ -374,14 +513,14 @@ function ServerRow({
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
             {isServerDialed && isConnected ? (
-              <DropdownMenuItem onClick={disconnect}>
+              <DropdownMenuItem onClick={() => onAsk('disconnect', server)}>
                 <PlugZapIcon /> {t('mcp.disconnect')}
               </DropdownMenuItem>
             ) : null}
             <DropdownMenuItem
               variant="destructive"
               disabled={server.scope === 'global' && !isAdmin}
-              onClick={() => onRemoved(server)}
+              onClick={() => onAsk('delete', server)}
             >
               <TrashIcon /> {t('common.delete')}
             </DropdownMenuItem>
@@ -448,7 +587,7 @@ function ServerRow({
                     variant="ghost"
                     size="sm"
                     className="text-muted-foreground h-8"
-                    onClick={disconnect}
+                    onClick={() => onAsk('disconnect', server)}
                   >
                     <PlugZapIcon className="size-4" />
                     {t('mcp.disconnect')}
@@ -482,7 +621,7 @@ function ServerRow({
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end">
                     {isConnected ? (
-                      <DropdownMenuItem onClick={disconnect}>
+                      <DropdownMenuItem onClick={() => onAsk('disconnect', server)}>
                         <PlugZapIcon /> {t('mcp.disconnect')}
                       </DropdownMenuItem>
                     ) : null}
@@ -495,7 +634,7 @@ function ServerRow({
                     <DropdownMenuItem
                       variant="destructive"
                       disabled={server.scope === 'global' && !isAdmin}
-                      onClick={() => onRemoved(server)}
+                      onClick={() => onAsk('delete', server)}
                     >
                       <TrashIcon /> {t('common.delete')}
                     </DropdownMenuItem>

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import {
   GlobeIcon,
@@ -36,15 +36,35 @@ import {
   DataTable,
   DataText,
   Field,
+  FilterBar,
+  FilterSelect,
   PageIntro,
   Readout,
+  TableSearch,
   Well,
   tableState,
 } from '@/components/kit';
+import {
+  effectiveSort,
+  matchesQuery,
+  sortRows,
+  useListQuery,
+  type ListQuerySpec,
+} from '@/lib/list-query';
 import { PageSlot } from '@/components/shell/page-slots';
 import { HarnessNexusError, type CredentialView } from '@harness-nexus/sdk';
 
 type Scope = 'global' | 'personal';
+
+/**
+ * The list's vocabulary (07-p3-list-pages.md §5). No `sort`: a credential list
+ * has one meaningful order (by name), and a select with a single option is a
+ * control that pretends to offer a choice.
+ */
+const CREDENTIAL_SPEC: ListQuerySpec = {
+  filters: { scope: ['personal', 'global'] },
+  sort: ['name'],
+};
 
 /**
  * Credentials (Phase 2.1) — outbound secrets referenced by name.
@@ -94,6 +114,22 @@ export function CredentialsPage() {
   const total = items?.length ?? 0;
   const globalCount = items?.filter((c) => c.scope === 'global').length ?? 0;
 
+  const query = useListQuery(CREDENTIAL_SPEC);
+  const visible = useMemo(() => {
+    if (items === null) return null;
+    const rows = items.filter(
+      (c) =>
+        matchesQuery(query.q, [c.name, c.scope]) &&
+        (query.filters['scope'] === null || c.scope === query.filters['scope']),
+    );
+    return sortRows(rows, effectiveSort(CREDENTIAL_SPEC, query), (c) => c.name);
+  }, [items, query.q, query.filters, query.sort]);
+
+  const scopeLabels = useMemo(
+    () => ({ personal: t('common.scopePersonal'), global: t('common.scopeGlobal') }),
+    [t],
+  );
+
   return (
     <>
       <PageSlot slot="actions">
@@ -130,9 +166,27 @@ export function CredentialsPage() {
             />
           )
         }
-        state={tableState({ error, loading: items === null, count: total })}
+        state={tableState({
+          error,
+          loading: items === null,
+          count: visible?.length ?? 0,
+          filtered: query.active,
+        })}
         error={error}
         onRetry={() => void refresh()}
+        onClearFilters={query.clear}
+        toolbar={
+          <FilterBar query={query} shown={visible?.length} total={items?.length}>
+            <TableSearch query={query} placeholder={t('credentials.searchPlaceholder')} />
+            <FilterSelect
+              query={query}
+              spec={CREDENTIAL_SPEC}
+              name="scope"
+              allLabel={t('common.allScopes')}
+              labels={scopeLabels}
+            />
+          </FilterBar>
+        }
         empty={{
           title: t('credentials.empty'),
           hint: t('credentials.emptyHint'),
@@ -154,7 +208,7 @@ export function CredentialsPage() {
           </TableRow>
         </TableHeader>
         <TableBody>
-          {items?.map((c) => {
+          {visible?.map((c) => {
             const placeholder = `\${cred:${c.name}}`;
             return (
               <TableRow key={c.id}>
