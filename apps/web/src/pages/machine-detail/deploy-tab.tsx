@@ -54,16 +54,18 @@ export function DeployTab({
   capabilities: string[];
 }) {
   return (
-    <div className="flex flex-col gap-6">
-      <DeploymentsCard
-        machineId={machineId}
-        online={online}
-        jobs={jobs}
-        agents={agents}
-        onChanged={onChanged}
-      />
-      <AdaptersCard machineId={machineId} online={online} capabilities={capabilities} />
-    </div>
+    <>
+      <div className="flex flex-col gap-6">
+        <DeploymentsCard
+          machineId={machineId}
+          online={online}
+          jobs={jobs}
+          agents={agents}
+          onChanged={onChanged}
+        />
+        <AdaptersCard machineId={machineId} online={online} capabilities={capabilities} />
+      </div>
+    </>
   );
 }
 
@@ -96,10 +98,12 @@ function jobDetailText(job: JobView, t: ReturnType<typeof useI18n>['t']): string
 
 function JobStatusBadge({ status }: { status: string }) {
   return (
-    <span className="inline-flex items-center gap-2">
-      <StateSignal state={JOB_STATUS_SIGNAL[status] ?? 'inactive'} />
-      <span className="font-mono text-xs tabular-nums">{status}</span>
-    </span>
+    <>
+      <span className="inline-flex items-center gap-2">
+        <StateSignal state={JOB_STATUS_SIGNAL[status] ?? 'inactive'} />
+        <span className="font-mono text-xs tabular-nums">{status}</span>
+      </span>
+    </>
   );
 }
 
@@ -174,143 +178,145 @@ function DeploymentsCard({
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2 text-base">
-          <RocketIcon className="size-4" />
-          {t('machineDetail.deployTitle')}
-        </CardTitle>
-        <CardDescription>{t('machineDetail.deployDesc')}</CardDescription>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-4">
-        <div className="flex flex-wrap items-end gap-3">
-          <div className="grid min-w-64 gap-2">
-            <Label htmlFor="deploy-profile">{t('machineDetail.profileLabel')}</Label>
-            <Select value={profileId} onValueChange={setProfileId}>
-              <SelectTrigger id="deploy-profile" className="font-mono text-xs">
-                <SelectValue placeholder={t('machineDetail.pickProfile')} />
-              </SelectTrigger>
-              <SelectContent>
-                {(profiles ?? []).map((p) => (
-                  <SelectItem key={p.id} value={p.id} className="font-mono text-xs">
-                    {p.name} (
-                    {p.target === 'claude-code'
-                      ? `claude-code · ${t('machineDetail.viaMarketplace')}`
-                      : p.target}
-                    )
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <Button onClick={() => void deploy()} disabled={busy || profileId === ''}>
+    <>
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-base">
             <RocketIcon className="size-4" />
-            {busy
-              ? t('machineDetail.creating')
-              : online
-                ? t('machineDetail.deploy')
-                : t('machineDetail.queueDeploy')}
-          </Button>
-          <p className="text-muted-foreground pb-2 text-sm">
-            {profiles !== null && profiles.length === 0 ? t('machineDetail.noDeployable') : null}
-          </p>
-        </div>
+            {t('machineDetail.deployTitle')}
+          </CardTitle>
+          <CardDescription>{t('machineDetail.deployDesc')}</CardDescription>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-4">
+          <div className="flex flex-wrap items-end gap-3">
+            <div className="grid min-w-64 gap-2">
+              <Label htmlFor="deploy-profile">{t('machineDetail.profileLabel')}</Label>
+              <Select value={profileId} onValueChange={setProfileId}>
+                <SelectTrigger id="deploy-profile" className="font-mono text-xs">
+                  <SelectValue placeholder={t('machineDetail.pickProfile')} />
+                </SelectTrigger>
+                <SelectContent>
+                  {(profiles ?? []).map((p) => (
+                    <SelectItem key={p.id} value={p.id} className="font-mono text-xs">
+                      {p.name} (
+                      {p.target === 'claude-code'
+                        ? `claude-code · ${t('machineDetail.viaMarketplace')}`
+                        : p.target}
+                      )
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <Button onClick={() => void deploy()} disabled={busy || profileId === ''}>
+              <RocketIcon className="size-4" />
+              {busy
+                ? t('machineDetail.creating')
+                : online
+                  ? t('machineDetail.deploy')
+                  : t('machineDetail.queueDeploy')}
+            </Button>
+            <p className="text-muted-foreground pb-2 text-sm">
+              {profiles !== null && profiles.length === 0 ? t('machineDetail.noDeployable') : null}
+            </p>
+          </div>
 
-        <div className="overflow-hidden rounded-md border">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="pl-4">{t('machineDetail.job')}</TableHead>
-                <TableHead>{t('common.status')}</TableHead>
-                <TableHead>{t('machineDetail.detail')}</TableHead>
-                <TableHead className="pr-4 text-right">{t('common.actions')}</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {jobs === null ? (
+          <div className="overflow-hidden rounded-md border">
+            <Table>
+              <TableHeader>
                 <TableRow>
-                  <TableCell colSpan={4} className="text-muted-foreground py-6 text-center">
-                    {t('machineDetail.loadingJobs')}
-                  </TableCell>
+                  <TableHead className="pl-4">{t('machineDetail.job')}</TableHead>
+                  <TableHead>{t('common.status')}</TableHead>
+                  <TableHead>{t('machineDetail.detail')}</TableHead>
+                  <TableHead className="pr-4 text-right">{t('common.actions')}</TableHead>
                 </TableRow>
-              ) : jobs.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={4} className="text-muted-foreground py-6 text-center">
-                    {t('machineDetail.noJobs')}
-                  </TableCell>
-                </TableRow>
-              ) : (
-                jobs.map((job) => (
-                  <TableRow key={job.id}>
-                    <TableCell className="pl-4">
-                      <span className="flex items-center gap-2">
-                        <Badge variant="outline" className="font-mono text-[10px]">
-                          {job.type}
-                        </Badge>
-                        <span className="text-muted-foreground font-mono text-xs">
-                          {new Date(job.createdAt).toLocaleString(dateLocale(lang))}
-                        </span>
-                      </span>
-                    </TableCell>
-                    <TableCell>
-                      <JobStatusBadge status={job.status} />
-                    </TableCell>
-                    <TableCell className="max-w-[24rem] truncate text-muted-foreground text-xs">
-                      {jobDetailText(job, t)}
-                    </TableCell>
-                    <TableCell className="pr-4 text-right">
-                      {job.status === 'queued' ? (
-                        <Button variant="ghost" size="sm" onClick={() => void cancel(job)}>
-                          <SquareIcon className="size-4" />
-                          {t('common.cancel')}
-                        </Button>
-                      ) : null}
+              </TableHeader>
+              <TableBody>
+                {jobs === null ? (
+                  <TableRow>
+                    <TableCell colSpan={4} className="text-muted-foreground py-6 text-center">
+                      {t('machineDetail.loadingJobs')}
                     </TableCell>
                   </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
-        </div>
+                ) : jobs.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={4} className="text-muted-foreground py-6 text-center">
+                      {t('machineDetail.noJobs')}
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  jobs.map((job) => (
+                    <TableRow key={job.id}>
+                      <TableCell className="pl-4">
+                        <span className="flex items-center gap-2">
+                          <Badge variant="outline" className="font-mono text-[10px]">
+                            {job.type}
+                          </Badge>
+                          <span className="text-muted-foreground font-mono text-xs">
+                            {new Date(job.createdAt).toLocaleString(dateLocale(lang))}
+                          </span>
+                        </span>
+                      </TableCell>
+                      <TableCell>
+                        <JobStatusBadge status={job.status} />
+                      </TableCell>
+                      <TableCell className="max-w-[24rem] truncate text-muted-foreground text-xs">
+                        {jobDetailText(job, t)}
+                      </TableCell>
+                      <TableCell className="pr-4 text-right">
+                        {job.status === 'queued' ? (
+                          <Button variant="ghost" size="sm" onClick={() => void cancel(job)}>
+                            <SquareIcon className="size-4" />
+                            {t('common.cancel')}
+                          </Button>
+                        ) : null}
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
+          </div>
 
-        <div>
-          <p className="mb-2 text-sm font-medium">
-            {t('machineDetail.agentsHeading', { count: agents.length })}
-          </p>
-          {agents.length === 0 ? (
-            <p className="text-muted-foreground text-sm">{t('machineDetail.noAgents')}</p>
-          ) : (
-            <ul className="flex flex-col gap-1">
-              {agents.map((a) => (
-                <li key={a.id} className="flex flex-wrap items-center gap-2 text-sm">
-                  <span className="font-medium">{a.name}</span>
-                  <Badge variant="outline" className="font-mono text-[10px]">
-                    {a.target}
-                  </Badge>
-                  {a.source === 'detected' ? (
-                    <Badge variant="secondary" className="text-[10px]">
-                      {t('machineDetail.detectedSource')}
+          <div>
+            <p className="mb-2 text-sm font-medium">
+              {t('machineDetail.agentsHeading', { count: agents.length })}
+            </p>
+            {agents.length === 0 ? (
+              <p className="text-muted-foreground text-sm">{t('machineDetail.noAgents')}</p>
+            ) : (
+              <ul className="flex flex-col gap-1">
+                {agents.map((a) => (
+                  <li key={a.id} className="flex flex-wrap items-center gap-2 text-sm">
+                    <span className="font-medium">{a.name}</span>
+                    <Badge variant="outline" className="font-mono text-[10px]">
+                      {a.target}
                     </Badge>
-                  ) : null}
-                  <span className="text-muted-foreground font-mono text-xs">{a.directory}</span>
-                  {a.profileVersion ? (
-                    <span className="text-muted-foreground font-mono text-xs tabular-nums">
-                      v{a.profileVersion}
-                    </span>
-                  ) : null}
-                  <Button asChild variant="ghost" size="sm" className="ml-auto">
-                    <Link to={`/chat/agents/${a.id}`}>
-                      <MessageSquareIcon className="size-4" />
-                      {t('machineDetail.chat')}
-                    </Link>
-                  </Button>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-      </CardContent>
-    </Card>
+                    {a.source === 'detected' ? (
+                      <Badge variant="secondary" className="text-[10px]">
+                        {t('machineDetail.detectedSource')}
+                      </Badge>
+                    ) : null}
+                    <span className="text-muted-foreground font-mono text-xs">{a.directory}</span>
+                    {a.profileVersion ? (
+                      <span className="text-muted-foreground font-mono text-xs tabular-nums">
+                        v{a.profileVersion}
+                      </span>
+                    ) : null}
+                    <Button asChild variant="ghost" size="sm" className="ml-auto">
+                      <Link to={`/chat/agents/${a.id}`}>
+                        <MessageSquareIcon className="size-4" />
+                        {t('machineDetail.chat')}
+                      </Link>
+                    </Button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+    </>
   );
 }
 
@@ -382,96 +388,98 @@ function AdaptersCard({
   }
 
   return (
-    <Card>
-      <CardHeader className="flex flex-row items-start justify-between gap-2">
-        <div>
-          <CardTitle className="flex items-center gap-2 text-base">
-            <CpuIcon className="size-4" />
-            {t('machineDetail.adaptersTitle')}
-          </CardTitle>
-          <CardDescription>{t('machineDetail.adaptersDesc')}</CardDescription>
-        </div>
-        {available ? (
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => void load()}
-            disabled={loading}
-            className="shrink-0"
-          >
-            <RefreshCwIcon className={loading ? 'size-4 animate-spin' : 'size-4'} />
-            {t('machineDetail.adaptersRefresh')}
-          </Button>
-        ) : null}
-      </CardHeader>
-      <CardContent>
-        {!available ? (
-          <p className="text-muted-foreground py-6 text-center text-sm">
-            {t('machineDetail.adaptersOffline')}
-          </p>
-        ) : (
-          <div className="overflow-hidden rounded-md border">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="pl-4">{t('machineDetail.adapterTarget')}</TableHead>
-                  <TableHead>{t('machineDetail.adapterNative')}</TableHead>
-                  <TableHead>{t('machineDetail.adapterUptime')}</TableHead>
-                  <TableHead>PGID</TableHead>
-                  <TableHead className="pr-4 text-right">{t('common.actions')}</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {rows === null || loading ? (
+    <>
+      <Card>
+        <CardHeader className="flex flex-row items-start justify-between gap-2">
+          <div>
+            <CardTitle className="flex items-center gap-2 text-base">
+              <CpuIcon className="size-4" />
+              {t('machineDetail.adaptersTitle')}
+            </CardTitle>
+            <CardDescription>{t('machineDetail.adaptersDesc')}</CardDescription>
+          </div>
+          {available ? (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => void load()}
+              disabled={loading}
+              className="shrink-0"
+            >
+              <RefreshCwIcon className={loading ? 'size-4 animate-spin' : 'size-4'} />
+              {t('machineDetail.adaptersRefresh')}
+            </Button>
+          ) : null}
+        </CardHeader>
+        <CardContent>
+          {!available ? (
+            <p className="text-muted-foreground py-6 text-center text-sm">
+              {t('machineDetail.adaptersOffline')}
+            </p>
+          ) : (
+            <div className="overflow-hidden rounded-md border">
+              <Table>
+                <TableHeader>
                   <TableRow>
-                    <TableCell colSpan={5} className="text-muted-foreground py-6 text-center">
-                      {t('machineDetail.adaptersLoading')}
-                    </TableCell>
+                    <TableHead className="pl-4">{t('machineDetail.adapterTarget')}</TableHead>
+                    <TableHead>{t('machineDetail.adapterNative')}</TableHead>
+                    <TableHead>{t('machineDetail.adapterUptime')}</TableHead>
+                    <TableHead>PGID</TableHead>
+                    <TableHead className="pr-4 text-right">{t('common.actions')}</TableHead>
                   </TableRow>
-                ) : rows.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={5} className="text-muted-foreground py-6 text-center">
-                      {t('machineDetail.adaptersEmpty')}
-                    </TableCell>
-                  </TableRow>
-                ) : (
-                  rows.map((a) => (
-                    <TableRow key={a.wireSessionId}>
-                      <TableCell className="pl-4">
-                        <Badge variant="outline" className="font-mono text-[10px]">
-                          {a.target}
-                        </Badge>
-                      </TableCell>
-                      <TableCell
-                        className="max-w-56 truncate font-mono text-xs"
-                        title={a.nativeSessionId ?? ''}
-                      >
-                        {a.nativeSessionId ?? '—'}
-                      </TableCell>
-                      <TableCell className="nums text-sm">
-                        {adapterUptime(a.startedAt, lang)}
-                      </TableCell>
-                      <TableCell className="nums font-mono text-xs">{a.pgid}</TableCell>
-                      <TableCell className="pr-4 text-right">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          disabled={killing !== null}
-                          onClick={() => void kill(a.wireSessionId)}
-                        >
-                          {killing === a.wireSessionId
-                            ? t('common.saving')
-                            : t('machineDetail.adapterKill')}
-                        </Button>
+                </TableHeader>
+                <TableBody>
+                  {rows === null || loading ? (
+                    <TableRow>
+                      <TableCell colSpan={5} className="text-muted-foreground py-6 text-center">
+                        {t('machineDetail.adaptersLoading')}
                       </TableCell>
                     </TableRow>
-                  ))
-                )}
-              </TableBody>
-            </Table>
-          </div>
-        )}
-      </CardContent>
-    </Card>
+                  ) : rows.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={5} className="text-muted-foreground py-6 text-center">
+                        {t('machineDetail.adaptersEmpty')}
+                      </TableCell>
+                    </TableRow>
+                  ) : (
+                    rows.map((a) => (
+                      <TableRow key={a.wireSessionId}>
+                        <TableCell className="pl-4">
+                          <Badge variant="outline" className="font-mono text-[10px]">
+                            {a.target}
+                          </Badge>
+                        </TableCell>
+                        <TableCell
+                          className="max-w-56 truncate font-mono text-xs"
+                          title={a.nativeSessionId ?? ''}
+                        >
+                          {a.nativeSessionId ?? '—'}
+                        </TableCell>
+                        <TableCell className="nums text-sm">
+                          {adapterUptime(a.startedAt, lang)}
+                        </TableCell>
+                        <TableCell className="nums font-mono text-xs">{a.pgid}</TableCell>
+                        <TableCell className="pr-4 text-right">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            disabled={killing !== null}
+                            onClick={() => void kill(a.wireSessionId)}
+                          >
+                            {killing === a.wireSessionId
+                              ? t('common.saving')
+                              : t('machineDetail.adapterKill')}
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  )}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </>
   );
 }

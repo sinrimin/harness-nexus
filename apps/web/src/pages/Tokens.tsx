@@ -9,9 +9,9 @@ import {
   MoreHorizontalIcon,
 } from 'lucide-react';
 import { api } from '@/api';
+import { PageIntro, Well } from '@/components/kit';
 import { useAuth, withAuthGuard } from '@/auth';
 import { useI18n, dateLocale } from '@/i18n';
-import { AppShell } from '@/components/app-shell';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -78,19 +78,20 @@ export function TokensPage() {
   }
 
   return (
-    <AppShell>
-      <div className="mb-8">
-        <h1 className="text-2xl font-semibold tracking-tight">{t('tokens.title')}</h1>
-        <p className="text-muted-foreground mt-1 text-sm">
-          {t('tokens.subtitle1')}
-          <code className="font-mono">hnpat_…</code>
-          {t('tokens.subtitle2')}
-          <strong>{t('tokens.subtitleMarketplace')}</strong>
-          {t('tokens.subtitle3')}
-          <strong>{t('tokens.subtitleOnce')}</strong>
-          {t('tokens.subtitle4')}
-        </p>
-      </div>
+    <>
+      <PageIntro
+        sub={
+          <>
+            {t('tokens.subtitle1')}
+            <Well variant="chip" copy="hnpat_">
+              {'hnpat_…'}
+            </Well>
+            {t('tokens.subtitle2')} <strong>{t('tokens.subtitleMarketplace')}</strong>
+            {t('tokens.subtitle3')} <strong>{t('tokens.subtitleOnce')}</strong>
+            {t('tokens.subtitle4')}
+          </>
+        }
+      />
 
       <Card>
         <CardHeader>
@@ -197,7 +198,7 @@ export function TokensPage() {
       </Card>
 
       <CreateToken onCreated={refresh} />
-    </AppShell>
+    </>
   );
 }
 

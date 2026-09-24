@@ -13,7 +13,8 @@ import {
 import { api } from '@/api';
 import { useAuth, withAuthGuard } from '@/auth';
 import { useI18n } from '@/i18n';
-import { AppShell } from '@/components/app-shell';
+import { PageIntro } from '@/components/kit';
+import { PageSlot } from '@/components/shell/page-slots';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -91,19 +92,21 @@ export function LlmProvidersPage() {
   }
 
   return (
-    <AppShell>
-      <div className="mb-8 flex items-start justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">{t('llmProviders.title')}</h1>
-          <p className="text-muted-foreground mt-1 text-sm">
-            {t('llmProviders.subtitle1')} {t('llmProviders.subtitle2')}
-          </p>
-        </div>
+    <>
+      <PageSlot slot="actions">
         <Button onClick={() => setCreating(true)}>
           <PlusIcon className="size-4" />
           {t('common.create')}
         </Button>
-      </div>
+      </PageSlot>
+
+      <PageIntro
+        sub={
+          <>
+            {t('llmProviders.subtitle1')} {t('llmProviders.subtitle2')}
+          </>
+        }
+      />
 
       <Card>
         <CardHeader>
@@ -223,7 +226,7 @@ export function LlmProvidersPage() {
       {modelsOf !== null ? (
         <ModelsDialog provider={modelsOf} onClose={() => setModelsOf(null)} />
       ) : null}
-    </AppShell>
+    </>
   );
 }
 
@@ -307,110 +310,116 @@ function ProviderForm({
   }
 
   return (
-    <FormDialog
-      open
-      onClose={onClose}
-      title={existing !== undefined ? t('llmProviders.editTitle') : t('llmProviders.addTitle')}
-      description={t('llmProviders.addDesc')}
-    >
-      <form onSubmit={onSubmit} className="flex flex-col gap-4">
-        {/* Two-column grid — row heights stay even (no in-cell hints); the
+    <>
+      <FormDialog
+        open
+        onClose={onClose}
+        title={existing !== undefined ? t('llmProviders.editTitle') : t('llmProviders.addTitle')}
+        description={t('llmProviders.addDesc')}
+      >
+        <form onSubmit={onSubmit} className="flex flex-col gap-4">
+          {/* Two-column grid — row heights stay even (no in-cell hints); the
             credential select spans the full last row in create mode so long
             mono names never truncate. */}
-        <div className="grid gap-4 sm:grid-cols-2">
-          <div className="grid gap-2">
-            <Label htmlFor="llmp-name">{t('common.name')}</Label>
-            <Input
-              id="llmp-name"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="e.g. team-gateway"
-              autoComplete="off"
-              spellCheck={false}
-              required
-            />
-          </div>
-          <div className="grid gap-2">
-            <Label htmlFor="llmp-api">{t('llmProviders.apiLabel')}</Label>
-            <Select value={apiKind} onValueChange={(v) => setApiKind(v as ProviderApiKind)}>
-              <SelectTrigger id="llmp-api" className="font-mono text-xs">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {API_KINDS.map((k) => (
-                  <SelectItem key={k} value={k} className="font-mono text-xs">
-                    {k}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="grid gap-2">
-            <Label htmlFor="llmp-url">{t('llmProviders.baseUrlLabel')}</Label>
-            <Input
-              id="llmp-url"
-              value={baseUrl}
-              onChange={(e) => setBaseUrl(e.target.value)}
-              placeholder={t('llmProviders.baseUrlPlaceholder')}
-              className="font-mono text-xs"
-              autoComplete="off"
-              spellCheck={false}
-              inputMode="url"
-            />
-          </div>
-          {existing === undefined ? (
+          <div className="grid gap-4 sm:grid-cols-2">
             <div className="grid gap-2">
-              <Label htmlFor="llmp-scope">{t('common.scope')}</Label>
-              <Select value={scope} onValueChange={(v) => setScope(v as Scope)} disabled={!isAdmin}>
-                <SelectTrigger id="llmp-scope">
+              <Label htmlFor="llmp-name">{t('common.name')}</Label>
+              <Input
+                id="llmp-name"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="e.g. team-gateway"
+                autoComplete="off"
+                spellCheck={false}
+                required
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="llmp-api">{t('llmProviders.apiLabel')}</Label>
+              <Select value={apiKind} onValueChange={(v) => setApiKind(v as ProviderApiKind)}>
+                <SelectTrigger id="llmp-api" className="font-mono text-xs">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="personal">{t('common.scopePersonal')}</SelectItem>
-                  <SelectItem value="global" disabled={!isAdmin}>
-                    {t('common.scopeGlobal')}
-                    {!isAdmin ? t('credentials.adminSuffix') : ''}
-                  </SelectItem>
+                  {API_KINDS.map((k) => (
+                    <SelectItem key={k} value={k} className="font-mono text-xs">
+                      {k}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
-          ) : null}
-          <div className="grid gap-2 sm:col-span-2">
-            <Label htmlFor="llmp-cred">{t('llmProviders.credentialLabel')}</Label>
-            <Select value={credentialName} onValueChange={setCredentialName}>
-              <SelectTrigger id="llmp-cred" className="font-mono text-xs">
-                <SelectValue placeholder={t('llmProviders.pickCredential')} />
-              </SelectTrigger>
-              <SelectContent>
-                {(creds ?? []).map((c) => (
-                  <SelectItem key={c.id} value={c.name} className="font-mono text-xs">
-                    {c.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <div className="grid gap-2">
+              <Label htmlFor="llmp-url">{t('llmProviders.baseUrlLabel')}</Label>
+              <Input
+                id="llmp-url"
+                value={baseUrl}
+                onChange={(e) => setBaseUrl(e.target.value)}
+                placeholder={t('llmProviders.baseUrlPlaceholder')}
+                className="font-mono text-xs"
+                autoComplete="off"
+                spellCheck={false}
+                inputMode="url"
+              />
+            </div>
+            {existing === undefined ? (
+              <div className="grid gap-2">
+                <Label htmlFor="llmp-scope">{t('common.scope')}</Label>
+                <Select
+                  value={scope}
+                  onValueChange={(v) => setScope(v as Scope)}
+                  disabled={!isAdmin}
+                >
+                  <SelectTrigger id="llmp-scope">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="personal">{t('common.scopePersonal')}</SelectItem>
+                    <SelectItem value="global" disabled={!isAdmin}>
+                      {t('common.scopeGlobal')}
+                      {!isAdmin ? t('credentials.adminSuffix') : ''}
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            ) : null}
+            <div className="grid gap-2 sm:col-span-2">
+              <Label htmlFor="llmp-cred">{t('llmProviders.credentialLabel')}</Label>
+              <Select value={credentialName} onValueChange={setCredentialName}>
+                <SelectTrigger id="llmp-cred" className="font-mono text-xs">
+                  <SelectValue placeholder={t('llmProviders.pickCredential')} />
+                </SelectTrigger>
+                <SelectContent>
+                  {(creds ?? []).map((c) => (
+                    <SelectItem key={c.id} value={c.name} className="font-mono text-xs">
+                      {c.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
           </div>
-        </div>
-        <p className="text-muted-foreground text-xs">{t('llmProviders.apiHint')}</p>
-        {creds !== null && creds.length === 0 ? (
-          <p className="text-muted-foreground text-xs">{t('llmProviders.noCredentials')}</p>
-        ) : null}
-        <div className="flex justify-end gap-2">
-          <Button type="button" variant="outline" onClick={onClose} disabled={busy}>
-            {t('common.cancel')}
-          </Button>
-          <Button type="submit" disabled={busy || credentialName === ''}>
-            {busy
-              ? existing !== undefined
-                ? t('llmProviders.saving')
-                : t('llmProviders.creating')
-              : existing !== undefined
-                ? t('llmProviders.saveButton')
-                : t('llmProviders.createButton')}
-          </Button>
-        </div>
-      </form>
-    </FormDialog>
+          <p className="text-muted-foreground text-xs">{t('llmProviders.apiHint')}</p>
+          {creds !== null && creds.length === 0 ? (
+            <p className="text-muted-foreground text-xs">{t('llmProviders.noCredentials')}</p>
+          ) : null}
+          <div className="flex justify-end gap-2">
+            <Button type="button" variant="outline" onClick={onClose} disabled={busy}>
+              {t('common.cancel')}
+            </Button>
+            <Button type="submit" disabled={busy || credentialName === ''}>
+              {busy
+                ? existing !== undefined
+                  ? t('llmProviders.saving')
+                  : t('llmProviders.creating')
+                : existing !== undefined
+                  ? t('llmProviders.saveButton')
+                  : t('llmProviders.createButton')}
+            </Button>
+          </div>
+        </form>
+      </FormDialog>
+    </>
   );
 }
 
@@ -447,37 +456,39 @@ function ModelsDialog({ provider, onClose }: { provider: LlmProviderView; onClos
   }, [provider.id]);
 
   return (
-    <FormDialog
-      open
-      onClose={onClose}
-      title={t('llmProviders.fetchModelsTitle', { name: provider.name })}
-      description={t('llmProviders.fetchModelsDesc')}
-    >
-      {models === null ? (
-        <p className="text-muted-foreground py-6 text-center text-sm">
-          {failed ? t('llmProviders.fetchModelsFailed') : t('llmProviders.fetchingModels')}
-        </p>
-      ) : models.length === 0 ? (
-        <p className="text-muted-foreground py-6 text-center text-sm">
-          {t('llmProviders.fetchModelsEmpty')}
-        </p>
-      ) : (
-        <div className="flex flex-col gap-2">
-          <p className="text-muted-foreground text-xs">
-            {t('llmProviders.fetchedCount', { count: models.length })}
+    <>
+      <FormDialog
+        open
+        onClose={onClose}
+        title={t('llmProviders.fetchModelsTitle', { name: provider.name })}
+        description={t('llmProviders.fetchModelsDesc')}
+      >
+        {models === null ? (
+          <p className="text-muted-foreground py-6 text-center text-sm">
+            {failed ? t('llmProviders.fetchModelsFailed') : t('llmProviders.fetchingModels')}
           </p>
-          <ul className="border-border max-h-72 divide-y overflow-y-auto rounded-md border">
-            {models.map((m) => (
-              <li key={m.id} className="flex items-baseline justify-between gap-3 px-3 py-1.5">
-                <span className="font-mono text-xs">{m.id}</span>
-                {m.name !== undefined ? (
-                  <span className="text-muted-foreground truncate text-xs">{m.name}</span>
-                ) : null}
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-    </FormDialog>
+        ) : models.length === 0 ? (
+          <p className="text-muted-foreground py-6 text-center text-sm">
+            {t('llmProviders.fetchModelsEmpty')}
+          </p>
+        ) : (
+          <div className="flex flex-col gap-2">
+            <p className="text-muted-foreground text-xs">
+              {t('llmProviders.fetchedCount', { count: models.length })}
+            </p>
+            <ul className="border-border max-h-72 divide-y overflow-y-auto rounded-md border">
+              {models.map((m) => (
+                <li key={m.id} className="flex items-baseline justify-between gap-3 px-3 py-1.5">
+                  <span className="font-mono text-xs">{m.id}</span>
+                  {m.name !== undefined ? (
+                    <span className="text-muted-foreground truncate text-xs">{m.name}</span>
+                  ) : null}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </FormDialog>
+    </>
   );
 }

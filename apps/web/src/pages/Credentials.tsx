@@ -11,7 +11,6 @@ import {
 import { api } from '@/api';
 import { useAuth, withAuthGuard } from '@/auth';
 import { useI18n } from '@/i18n';
-import { AppShell } from '@/components/app-shell';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
@@ -37,11 +36,12 @@ import {
   DataTable,
   DataText,
   Field,
-  PageHeader,
+  PageIntro,
   Readout,
   Well,
   tableState,
 } from '@/components/kit';
+import { PageSlot } from '@/components/shell/page-slots';
 import { HarnessNexusError, type CredentialView } from '@harness-nexus/sdk';
 
 type Scope = 'global' | 'personal';
@@ -95,9 +95,15 @@ export function CredentialsPage() {
   const globalCount = items?.filter((c) => c.scope === 'global').length ?? 0;
 
   return (
-    <AppShell>
-      <PageHeader
-        title={t('credentials.title')}
+    <>
+      <PageSlot slot="actions">
+        <Button onClick={() => setCreating(true)}>
+          <PlusIcon className="size-4" />
+          {t('common.create')}
+        </Button>
+      </PageSlot>
+
+      <PageIntro
         sub={
           <>
             {t('credentials.subtitle1')}{' '}
@@ -106,12 +112,6 @@ export function CredentialsPage() {
             </Well>{' '}
             {t('credentials.subtitle2')}
           </>
-        }
-        actions={
-          <Button onClick={() => setCreating(true)}>
-            <PlusIcon className="size-4" />
-            {t('common.create')}
-          </Button>
         }
       />
 
@@ -229,7 +229,7 @@ export function CredentialsPage() {
           onConfirm={() => void confirmRemove()}
         />
       ) : null}
-    </AppShell>
+    </>
   );
 }
 
@@ -270,81 +270,83 @@ function CreateCredential({ onClose, onCreated }: { onClose: () => void; onCreat
   }
 
   return (
-    <FormDialog
-      open
-      onClose={onClose}
-      title={t('credentials.addTitle')}
-      description={t('credentials.addDesc')}
-    >
-      <form onSubmit={onSubmit} className="flex flex-col gap-4">
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          <Field label={t('common.name')} htmlFor="cred-name" required>
-            <Input
-              id="cred-name"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder={t('credentials.namePlaceholder')}
-              autoComplete="off"
-              spellCheck={false}
-              required
-            />
-          </Field>
-          <Field label={t('credentials.secret')} htmlFor="cred-secret" required>
-            <Input
-              id="cred-secret"
-              value={secret}
-              onChange={(e) => setSecret(e.target.value)}
-              placeholder={t('credentials.secretPlaceholder')}
-              required
-              autoComplete="new-password"
-              spellCheck={false}
-            />
-          </Field>
-          <Field label={t('common.scope')} htmlFor="cred-scope">
-            <Select value={scope} onValueChange={(v) => setScope(v as Scope)} disabled={!isAdmin}>
-              <SelectTrigger id="cred-scope">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="personal">{t('common.scopePersonal')}</SelectItem>
-                <SelectItem value="global" disabled={!isAdmin}>
-                  {t('common.scopeGlobal')}
-                  {!isAdmin && t('credentials.adminSuffix')}
-                </SelectItem>
-              </SelectContent>
-            </Select>
-          </Field>
-        </div>
-        {scope === 'global' && isAdmin ? (
-          <div className="flex items-center gap-3">
-            <Switch
-              id="cred-distributable"
-              checked={distributable}
-              onCheckedChange={setDistributable}
-              aria-label={t('credentials.distributableAria')}
-            />
-            <Label htmlFor="cred-distributable" className="flex-wrap font-normal">
-              {t('credentials.distributableLabel1')}{' '}
-              <Well variant="chip" copy="hnx mcp serve">
-                hnx mcp serve
-              </Well>{' '}
-              {t('credentials.distributableLabel2')}{' '}
-              <Well variant="chip" copy="/mcp">
-                /mcp
-              </Well>{' '}
-              {t('credentials.distributableLabel3')}
-            </Label>
+    <>
+      <FormDialog
+        open
+        onClose={onClose}
+        title={t('credentials.addTitle')}
+        description={t('credentials.addDesc')}
+      >
+        <form onSubmit={onSubmit} className="flex flex-col gap-4">
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            <Field label={t('common.name')} htmlFor="cred-name" required>
+              <Input
+                id="cred-name"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder={t('credentials.namePlaceholder')}
+                autoComplete="off"
+                spellCheck={false}
+                required
+              />
+            </Field>
+            <Field label={t('credentials.secret')} htmlFor="cred-secret" required>
+              <Input
+                id="cred-secret"
+                value={secret}
+                onChange={(e) => setSecret(e.target.value)}
+                placeholder={t('credentials.secretPlaceholder')}
+                required
+                autoComplete="new-password"
+                spellCheck={false}
+              />
+            </Field>
+            <Field label={t('common.scope')} htmlFor="cred-scope">
+              <Select value={scope} onValueChange={(v) => setScope(v as Scope)} disabled={!isAdmin}>
+                <SelectTrigger id="cred-scope">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="personal">{t('common.scopePersonal')}</SelectItem>
+                  <SelectItem value="global" disabled={!isAdmin}>
+                    {t('common.scopeGlobal')}
+                    {!isAdmin && t('credentials.adminSuffix')}
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            </Field>
           </div>
-        ) : null}
-        <div className="flex justify-end gap-2">
-          <Button type="button" variant="outline" onClick={onClose} disabled={busy}>
-            {t('common.cancel')}
-          </Button>
-          <Button type="submit" disabled={busy}>
-            {busy ? t('credentials.creating') : t('credentials.createButton')}
-          </Button>
-        </div>
-      </form>
-    </FormDialog>
+          {scope === 'global' && isAdmin ? (
+            <div className="flex items-center gap-3">
+              <Switch
+                id="cred-distributable"
+                checked={distributable}
+                onCheckedChange={setDistributable}
+                aria-label={t('credentials.distributableAria')}
+              />
+              <Label htmlFor="cred-distributable" className="flex-wrap font-normal">
+                {t('credentials.distributableLabel1')}{' '}
+                <Well variant="chip" copy="hnx mcp serve">
+                  hnx mcp serve
+                </Well>{' '}
+                {t('credentials.distributableLabel2')}{' '}
+                <Well variant="chip" copy="/mcp">
+                  /mcp
+                </Well>{' '}
+                {t('credentials.distributableLabel3')}
+              </Label>
+            </div>
+          ) : null}
+          <div className="flex justify-end gap-2">
+            <Button type="button" variant="outline" onClick={onClose} disabled={busy}>
+              {t('common.cancel')}
+            </Button>
+            <Button type="submit" disabled={busy}>
+              {busy ? t('credentials.creating') : t('credentials.createButton')}
+            </Button>
+          </div>
+        </form>
+      </FormDialog>
+    </>
   );
 }

@@ -17,9 +17,14 @@
   gap: 1rem;
 }
 
-/* Bezel header strip: the engraved label plate across the panel's top. */
+/* Bezel header strip: the engraved label plate across the panel's top.
+ * Only the VERTICAL offset is cancelled: the kit's Card carries `py-6` and no
+ * horizontal padding — the header/content supply their own `px-6` — so a
+ * negative inline margin would push the plate past the panel on both sides.
+ * Under the old max-w-6xl frame that overhang had slack; with the full-width
+ * frame it lands outside the content column and the column scrolls sideways. */
 [data-skin='bay'] [data-surface='panel'] > [data-slot='card-header'] {
-  margin: -1.5rem -1.5rem 0; /* counteract the card's py-6/px-6 to go full-bleed */
+  margin: -1.5rem 0 0;
   padding: 0.5rem 1.25rem;
   border-bottom: 1px solid var(--border);
   background: #e9edf2;
@@ -74,6 +79,16 @@
   --muted: #161c26;
   --background: var(--surface-inverted);
   --card: var(--surface-inverted);
+  /* …and so does the well family itself: re-pointing the material without
+     re-pointing its inks leaves `text-well-ink` at the light-theme value and
+     paints dark-on-dark (found on the account block, #23 P2). */
+  --well: var(--surface-inverted);
+  --well-edge: #2a3340;
+  --well-ink: var(--surface-inverted-ink);
+  --well-dim: var(--surface-inverted-dim);
+  --well-ok: #4fbf7f;
+  --well-warn: #e8a24c;
+  --well-fail: #e5715f;
 }
 
 /* Posture readouts (dashboard figures) get well padding; links keep routing. */

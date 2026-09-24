@@ -18,7 +18,8 @@ import {
 import { api } from '@/api';
 import { useAuth, withAuthGuard } from '@/auth';
 import { useI18n } from '@/i18n';
-import { AppShell } from '@/components/app-shell';
+import { PageIntro, Well } from '@/components/kit';
+import { PageSlot } from '@/components/shell/page-slots';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -159,27 +160,33 @@ export function McpManagementPage() {
   }
 
   return (
-    <AppShell>
-      <div className="mb-8 flex items-start justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">{t('mcp.title')}</h1>
-          <p className="text-muted-foreground mt-1 text-sm">
-            {t('mcp.subtitleLead')}{' '}
-            <span className="font-medium">{t('mcp.subtitleServerWord')}</span>
-            {t('mcp.subtitleServerText')}
-            <code className="font-mono">/mcp</code>
-            {t('mcp.subtitleServerAfter')}
-            <span className="font-medium">{t('mcp.subtitleClientWord')}</span>
-            {t('mcp.subtitleClientText')}
-            <code className="font-mono">hnx mcp serve</code>
-            {t('mcp.subtitleClientAfter')}
-          </p>
-        </div>
+    <>
+      <PageSlot slot="actions">
         <Button onClick={() => setCreating(true)}>
           <PlusIcon className="size-4" />
           {t('mcp.addServer')}
         </Button>
-      </div>
+      </PageSlot>
+
+      <PageIntro
+        sub={
+          <>
+            {t('mcp.subtitleLead')}{' '}
+            <strong className="font-medium">{t('mcp.subtitleServerWord')}</strong>
+            {t('mcp.subtitleServerText')}
+            <Well variant="chip" copy="/mcp">
+              /mcp
+            </Well>
+            {t('mcp.subtitleServerAfter')}{' '}
+            <strong className="font-medium">{t('mcp.subtitleClientWord')}</strong>
+            {t('mcp.subtitleClientText')}
+            <Well variant="chip" copy="hnx mcp serve">
+              hnx mcp serve
+            </Well>
+            {t('mcp.subtitleClientAfter')}
+          </>
+        }
+      />
 
       <Card>
         <CardHeader>
@@ -253,7 +260,7 @@ export function McpManagementPage() {
           }}
         />
       ) : null}
-    </AppShell>
+    </>
   );
 }
 
@@ -387,122 +394,126 @@ function ServerRow({
   // ---- client-dialed row: plain, non-expandable, neutral status ----
   if (!isServerDialed) {
     return (
-      <TableRow>
-        <TableCell className="pl-6 font-medium">{server.name}</TableCell>
-        <TableCell>{dialSiteCell}</TableCell>
-        <TableCell>
-          <Badge variant="outline" className="font-mono text-[10px]">
-            {t('mcp.dialedByShim')}
-          </Badge>
-        </TableCell>
-        <TableCell>{transportCell}</TableCell>
-        <TableCell>{scopeCell}</TableCell>
-        {actionsCell}
-      </TableRow>
+      <>
+        <TableRow>
+          <TableCell className="pl-6 font-medium">{server.name}</TableCell>
+          <TableCell>{dialSiteCell}</TableCell>
+          <TableCell>
+            <Badge variant="outline" className="font-mono text-[10px]">
+              {t('mcp.dialedByShim')}
+            </Badge>
+          </TableCell>
+          <TableCell>{transportCell}</TableCell>
+          <TableCell>{scopeCell}</TableCell>
+          {actionsCell}
+        </TableRow>
+      </>
     );
   }
 
   // ---- server-dialed row: expandable when connected ----
   return (
-    <Collapsible asChild open={open} onOpenChange={setOpen}>
-      <>
-        <TableRow data-state={open ? 'open' : 'closed'}>
-          <TableCell className="pl-6 font-medium">
-            <div className="flex items-center gap-2">
-              {/* The trigger is the chevron + name; only meaningful when connected. */}
-              <CollapsibleTrigger asChild>
-                <button
-                  type="button"
-                  className="text-muted-foreground hover:text-foreground flex items-center gap-1 disabled:opacity-30"
-                  disabled={!isConnected}
-                  aria-label={open ? t('mcp.collapseTools') : t('mcp.expandTools')}
-                >
-                  <ChevronRightIcon
-                    className={`size-4 transition-transform ${open ? 'rotate-90' : ''}`}
-                  />
-                </button>
-              </CollapsibleTrigger>
-              <span>{server.name}</span>
-            </div>
-          </TableCell>
-          <TableCell>{dialSiteCell}</TableCell>
-          <TableCell>
-            <StatusBadge status={connState} detail={status?.detail} toolCount={toolCount} />
-          </TableCell>
-          <TableCell>{transportCell}</TableCell>
-          <TableCell>{scopeCell}</TableCell>
-          <TableCell className="pr-6 text-right">
-            <div className="flex items-center justify-end gap-1">
-              {isConnected ? (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="text-muted-foreground h-8"
-                  onClick={disconnect}
-                >
-                  <PlugZapIcon className="size-4" />
-                  {t('mcp.disconnect')}
-                </Button>
-              ) : (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="h-8"
-                  disabled={isConnecting}
-                  onClick={connect}
-                >
-                  {isConnecting ? (
-                    <LoaderIcon className="size-4 animate-spin" />
-                  ) : (
-                    <PlugIcon className="size-4" />
-                  )}
-                  {isConnecting
-                    ? t('mcp.connecting')
-                    : connState === 'error'
-                      ? t('mcp.reconnect')
-                      : t('mcp.connect')}
-                </Button>
-              )}
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" size="icon" className="size-8">
-                    <MoreHorizontalIcon className="size-4" />
-                    <span className="sr-only">{t('common.openMenu')}</span>
+    <>
+      <Collapsible asChild open={open} onOpenChange={setOpen}>
+        <>
+          <TableRow data-state={open ? 'open' : 'closed'}>
+            <TableCell className="pl-6 font-medium">
+              <div className="flex items-center gap-2">
+                {/* The trigger is the chevron + name; only meaningful when connected. */}
+                <CollapsibleTrigger asChild>
+                  <button
+                    type="button"
+                    className="text-muted-foreground hover:text-foreground flex items-center gap-1 disabled:opacity-30"
+                    disabled={!isConnected}
+                    aria-label={open ? t('mcp.collapseTools') : t('mcp.expandTools')}
+                  >
+                    <ChevronRightIcon
+                      className={`size-4 transition-transform ${open ? 'rotate-90' : ''}`}
+                    />
+                  </button>
+                </CollapsibleTrigger>
+                <span>{server.name}</span>
+              </div>
+            </TableCell>
+            <TableCell>{dialSiteCell}</TableCell>
+            <TableCell>
+              <StatusBadge status={connState} detail={status?.detail} toolCount={toolCount} />
+            </TableCell>
+            <TableCell>{transportCell}</TableCell>
+            <TableCell>{scopeCell}</TableCell>
+            <TableCell className="pr-6 text-right">
+              <div className="flex items-center justify-end gap-1">
+                {isConnected ? (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="text-muted-foreground h-8"
+                    onClick={disconnect}
+                  >
+                    <PlugZapIcon className="size-4" />
+                    {t('mcp.disconnect')}
                   </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end">
-                  {isConnected ? (
-                    <DropdownMenuItem onClick={disconnect}>
-                      <PlugZapIcon /> {t('mcp.disconnect')}
+                ) : (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-8"
+                    disabled={isConnecting}
+                    onClick={connect}
+                  >
+                    {isConnecting ? (
+                      <LoaderIcon className="size-4 animate-spin" />
+                    ) : (
+                      <PlugIcon className="size-4" />
+                    )}
+                    {isConnecting
+                      ? t('mcp.connecting')
+                      : connState === 'error'
+                        ? t('mcp.reconnect')
+                        : t('mcp.connect')}
+                  </Button>
+                )}
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="ghost" size="icon" className="size-8">
+                      <MoreHorizontalIcon className="size-4" />
+                      <span className="sr-only">{t('common.openMenu')}</span>
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    {isConnected ? (
+                      <DropdownMenuItem onClick={disconnect}>
+                        <PlugZapIcon /> {t('mcp.disconnect')}
+                      </DropdownMenuItem>
+                    ) : null}
+                    <DropdownMenuItem
+                      disabled={server.scope === 'global' && !isAdmin}
+                      onClick={() => onEdited(server)}
+                    >
+                      <PencilIcon /> {t('common.edit')}
                     </DropdownMenuItem>
-                  ) : null}
-                  <DropdownMenuItem
-                    disabled={server.scope === 'global' && !isAdmin}
-                    onClick={() => onEdited(server)}
-                  >
-                    <PencilIcon /> {t('common.edit')}
-                  </DropdownMenuItem>
-                  <DropdownMenuItem
-                    variant="destructive"
-                    disabled={server.scope === 'global' && !isAdmin}
-                    onClick={() => onRemoved(server)}
-                  >
-                    <TrashIcon /> {t('common.delete')}
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            </div>
-          </TableCell>
-        </TableRow>
-        <CollapsibleContent asChild>
-          <TableRow className="hover:bg-transparent">
-            <TableCell colSpan={6} className="bg-muted/30 px-6 py-4">
-              <ToolList serverId={server.id} serverName={server.name} logout={logout} />
+                    <DropdownMenuItem
+                      variant="destructive"
+                      disabled={server.scope === 'global' && !isAdmin}
+                      onClick={() => onRemoved(server)}
+                    >
+                      <TrashIcon /> {t('common.delete')}
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
             </TableCell>
           </TableRow>
-        </CollapsibleContent>
-      </>
-    </Collapsible>
+          <CollapsibleContent asChild>
+            <TableRow className="hover:bg-transparent">
+              <TableCell colSpan={6} className="bg-muted/30 px-6 py-4">
+                <ToolList serverId={server.id} serverName={server.name} logout={logout} />
+              </TableCell>
+            </TableRow>
+          </CollapsibleContent>
+        </>
+      </Collapsible>
+    </>
   );
 }
 
@@ -525,24 +536,26 @@ function StatusBadge({
   const dotClass = STATUS_DOT_CLASS[resolved];
   const label = resolved;
   return (
-    <div className="flex items-center gap-2">
-      <Badge variant="secondary" className="gap-1.5 font-mono text-[10px]">
-        <span className={`inline-block size-2 rounded-full ${dotClass}`} aria-hidden="true" />
-        {label}
-      </Badge>
-      {resolved === 'connected' ? (
-        <Badge variant="outline" className="nums font-mono text-[10px]">
-          {toolCount === 1
-            ? t('mcp.toolOne', { count: toolCount })
-            : t('mcp.toolMany', { count: toolCount })}
+    <>
+      <div className="flex items-center gap-2">
+        <Badge variant="secondary" className="gap-1.5 font-mono text-[10px]">
+          <span className={`inline-block size-2 rounded-full ${dotClass}`} aria-hidden="true" />
+          {label}
         </Badge>
-      ) : null}
-      {resolved === 'error' && detail ? (
-        <span className="text-muted-foreground truncate text-xs" title={detail}>
-          {detail}
-        </span>
-      ) : null}
-    </div>
+        {resolved === 'connected' ? (
+          <Badge variant="outline" className="nums font-mono text-[10px]">
+            {toolCount === 1
+              ? t('mcp.toolOne', { count: toolCount })
+              : t('mcp.toolMany', { count: toolCount })}
+          </Badge>
+        ) : null}
+        {resolved === 'error' && detail ? (
+          <span className="text-muted-foreground truncate text-xs" title={detail}>
+            {detail}
+          </span>
+        ) : null}
+      </div>
+    </>
   );
 }
 
@@ -601,34 +614,36 @@ function ToolList({
   }
 
   return (
-    <div>
-      <div className="mb-2 flex items-center gap-2">
-        <span className="text-muted-foreground text-xs font-medium">
-          {tools ? t('mcp.toolsHeaderCount', { count: tools.length }) : t('mcp.toolsHeader')}
-        </span>
-        <Button
-          variant="ghost"
-          size="sm"
-          className="text-muted-foreground h-7"
-          disabled={refreshing}
-          onClick={refresh}
-        >
-          <RefreshCwIcon className={`size-3.5 ${refreshing ? 'animate-spin' : ''}`} />
-          {t('mcp.refresh')}
-        </Button>
+    <>
+      <div>
+        <div className="mb-2 flex items-center gap-2">
+          <span className="text-muted-foreground text-xs font-medium">
+            {tools ? t('mcp.toolsHeaderCount', { count: tools.length }) : t('mcp.toolsHeader')}
+          </span>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="text-muted-foreground h-7"
+            disabled={refreshing}
+            onClick={refresh}
+          >
+            <RefreshCwIcon className={`size-3.5 ${refreshing ? 'animate-spin' : ''}`} />
+            {t('mcp.refresh')}
+          </Button>
+        </div>
+        {tools === null ? (
+          <p className="text-muted-foreground text-xs">{t('mcp.loadingTools')}</p>
+        ) : tools.length === 0 ? (
+          <p className="text-muted-foreground text-xs">{t('mcp.noTools')}</p>
+        ) : (
+          <ul className="flex flex-col gap-1">
+            {tools.map((tool) => (
+              <ToolRow key={tool.name} tool={tool} />
+            ))}
+          </ul>
+        )}
       </div>
-      {tools === null ? (
-        <p className="text-muted-foreground text-xs">{t('mcp.loadingTools')}</p>
-      ) : tools.length === 0 ? (
-        <p className="text-muted-foreground text-xs">{t('mcp.noTools')}</p>
-      ) : (
-        <ul className="flex flex-col gap-1">
-          {tools.map((tool) => (
-            <ToolRow key={tool.name} tool={tool} />
-          ))}
-        </ul>
-      )}
-    </div>
+    </>
   );
 }
 
@@ -638,47 +653,49 @@ function ToolRow({ tool }: { tool: McpToolInfo }) {
   const [open, setOpen] = useState(false);
   const params = extractParams(tool.inputSchema);
   return (
-    <li>
-      <Collapsible open={open} onOpenChange={setOpen}>
-        <div className="flex items-center gap-2">
-          <CollapsibleTrigger asChild>
-            <button
-              type="button"
-              className="text-muted-foreground hover:text-foreground flex items-center gap-1 text-left"
-            >
-              <ChevronRightIcon
-                className={`size-3.5 transition-transform ${open ? 'rotate-90' : ''}`}
-              />
-              <code className="text-foreground text-xs font-medium">{tool.name}</code>
-            </button>
-          </CollapsibleTrigger>
-          {tool.description ? (
-            <span className="text-muted-foreground truncate text-xs" title={tool.description}>
-              — {tool.description}
-            </span>
-          ) : null}
-        </div>
-        <CollapsibleContent>
-          <div className="ml-5 mt-1">
-            {params.length === 0 ? (
-              <p className="text-muted-foreground text-xs">{t('mcp.noParams')}</p>
-            ) : (
-              <ul className="flex flex-col gap-0.5">
-                {params.map((p) => (
-                  <li key={p.name} className="nums text-xs">
-                    <code className="text-foreground">{p.name}</code>
-                    <span className="text-muted-foreground"> : {p.type}</span>
-                    {p.required ? (
-                      <span className="text-warn ml-2 font-medium">{t('mcp.required')}</span>
-                    ) : null}
-                  </li>
-                ))}
-              </ul>
-            )}
+    <>
+      <li>
+        <Collapsible open={open} onOpenChange={setOpen}>
+          <div className="flex items-center gap-2">
+            <CollapsibleTrigger asChild>
+              <button
+                type="button"
+                className="text-muted-foreground hover:text-foreground flex items-center gap-1 text-left"
+              >
+                <ChevronRightIcon
+                  className={`size-3.5 transition-transform ${open ? 'rotate-90' : ''}`}
+                />
+                <code className="text-foreground text-xs font-medium">{tool.name}</code>
+              </button>
+            </CollapsibleTrigger>
+            {tool.description ? (
+              <span className="text-muted-foreground truncate text-xs" title={tool.description}>
+                — {tool.description}
+              </span>
+            ) : null}
           </div>
-        </CollapsibleContent>
-      </Collapsible>
-    </li>
+          <CollapsibleContent>
+            <div className="ml-5 mt-1">
+              {params.length === 0 ? (
+                <p className="text-muted-foreground text-xs">{t('mcp.noParams')}</p>
+              ) : (
+                <ul className="flex flex-col gap-0.5">
+                  {params.map((p) => (
+                    <li key={p.name} className="nums text-xs">
+                      <code className="text-foreground">{p.name}</code>
+                      <span className="text-muted-foreground"> : {p.type}</span>
+                      {p.required ? (
+                        <span className="text-warn ml-2 font-medium">{t('mcp.required')}</span>
+                      ) : null}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </CollapsibleContent>
+        </Collapsible>
+      </li>
+    </>
   );
 }
 
@@ -883,186 +900,188 @@ function McpServerDialog({
   }
 
   return (
-    <FormDialog
-      open
-      onClose={onClose}
-      title={editing ? t('mcp.editServer') : t('mcp.addServer')}
-      description={
-        dialSite === 'server'
-          ? t('mcp.descServer')
-          : dialSite === 'client'
-            ? t('mcp.descClient')
-            : t('mcp.descAuto')
-      }
-      size="lg"
-    >
-      <form onSubmit={onSubmit} className="flex flex-col gap-4">
-        <div className="flex justify-end">
-          <Button type="button" variant="outline" size="sm" onClick={() => setImportOpen(true)}>
-            <FileJsonIcon className="size-4" />
-            {t('mcp.importJson')}
-          </Button>
-        </div>
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          {/* content-start on every cell: the scope cell grows an edit-mode
+    <>
+      <FormDialog
+        open
+        onClose={onClose}
+        title={editing ? t('mcp.editServer') : t('mcp.addServer')}
+        description={
+          dialSite === 'server'
+            ? t('mcp.descServer')
+            : dialSite === 'client'
+              ? t('mcp.descClient')
+              : t('mcp.descAuto')
+        }
+        size="lg"
+      >
+        <form onSubmit={onSubmit} className="flex flex-col gap-4">
+          <div className="flex justify-end">
+            <Button type="button" variant="outline" size="sm" onClick={() => setImportOpen(true)}>
+              <FileJsonIcon className="size-4" />
+              {t('mcp.importJson')}
+            </Button>
+          </div>
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            {/* content-start on every cell: the scope cell grows an edit-mode
               hint <p>, and without it align-content:stretch distributes that
               extra height into the OTHER cells' rows — pushing their inputs
               around (the same alignment bug the Profiles edit dialog fixed). */}
-          <div className="grid content-start gap-2">
-            <Label htmlFor="mcp-name">{t('common.name')}</Label>
-            <Input
-              id="mcp-name"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder={t('mcp.namePlaceholder')}
-              autoComplete="off"
-              spellCheck={false}
-              required
-            />
+            <div className="grid content-start gap-2">
+              <Label htmlFor="mcp-name">{t('common.name')}</Label>
+              <Input
+                id="mcp-name"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder={t('mcp.namePlaceholder')}
+                autoComplete="off"
+                spellCheck={false}
+                required
+              />
+            </div>
+            <div className="grid content-start gap-2">
+              <Label htmlFor="mcp-dial-site">{t('mcp.dialSite')}</Label>
+              <Select value={dialSite} onValueChange={(v) => setDialSite(v as DialSite)}>
+                <SelectTrigger id="mcp-dial-site">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="auto">{t('mcp.dialSiteAuto')}</SelectItem>
+                  <SelectItem value="client">{t('mcp.dialSiteClient')}</SelectItem>
+                  <SelectItem value="server" disabled={isStdio}>
+                    {t('mcp.dialSiteServer')}
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid content-start gap-2">
+              <Label htmlFor="mcp-type">{t('mcp.transport')}</Label>
+              <Select value={type} onValueChange={(v) => onTypeChange(v as TransportType)}>
+                <SelectTrigger id="mcp-type">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="streamable-http">streamable-http</SelectItem>
+                  <SelectItem value="sse">sse</SelectItem>
+                  <SelectItem value="stdio" disabled={dialSite === 'server'}>
+                    {t('mcp.transportStdio')}
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid content-start gap-2">
+              <Label htmlFor="mcp-scope">{t('common.scope')}</Label>
+              <Select
+                value={scope}
+                onValueChange={(v) => setScope(v as Scope)}
+                disabled={!isAdmin || editing}
+              >
+                <SelectTrigger id="mcp-scope">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="personal">{t('common.scopePersonal')}</SelectItem>
+                  <SelectItem value="global" disabled={!isAdmin}>
+                    {t('common.scopeGlobal')}
+                    {!isAdmin ? t('mcp.adminSuffix') : ''}
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+              {editing ? (
+                <p className="text-muted-foreground text-xs">{t('mcp.scopeImmutable')}</p>
+              ) : null}
+            </div>
           </div>
-          <div className="grid content-start gap-2">
-            <Label htmlFor="mcp-dial-site">{t('mcp.dialSite')}</Label>
-            <Select value={dialSite} onValueChange={(v) => setDialSite(v as DialSite)}>
-              <SelectTrigger id="mcp-dial-site">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="auto">{t('mcp.dialSiteAuto')}</SelectItem>
-                <SelectItem value="client">{t('mcp.dialSiteClient')}</SelectItem>
-                <SelectItem value="server" disabled={isStdio}>
-                  {t('mcp.dialSiteServer')}
-                </SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="grid content-start gap-2">
-            <Label htmlFor="mcp-type">{t('mcp.transport')}</Label>
-            <Select value={type} onValueChange={(v) => onTypeChange(v as TransportType)}>
-              <SelectTrigger id="mcp-type">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="streamable-http">streamable-http</SelectItem>
-                <SelectItem value="sse">sse</SelectItem>
-                <SelectItem value="stdio" disabled={dialSite === 'server'}>
-                  {t('mcp.transportStdio')}
-                </SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="grid content-start gap-2">
-            <Label htmlFor="mcp-scope">{t('common.scope')}</Label>
-            <Select
-              value={scope}
-              onValueChange={(v) => setScope(v as Scope)}
-              disabled={!isAdmin || editing}
-            >
-              <SelectTrigger id="mcp-scope">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="personal">{t('common.scopePersonal')}</SelectItem>
-                <SelectItem value="global" disabled={!isAdmin}>
-                  {t('common.scopeGlobal')}
-                  {!isAdmin ? t('mcp.adminSuffix') : ''}
-                </SelectItem>
-              </SelectContent>
-            </Select>
-            {editing ? (
-              <p className="text-muted-foreground text-xs">{t('mcp.scopeImmutable')}</p>
-            ) : null}
-          </div>
-        </div>
 
-        {isStdio ? (
-          <>
-            <div className="grid gap-4 sm:grid-cols-2">
+          {isStdio ? (
+            <>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="grid gap-2">
+                  <Label htmlFor="mcp-command">{t('mcp.command')}</Label>
+                  <Input
+                    id="mcp-command"
+                    value={command}
+                    onChange={(e) => setCommand(e.target.value)}
+                    placeholder={t('mcp.commandPlaceholder')}
+                    autoComplete="off"
+                    spellCheck={false}
+                    required
+                  />
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="mcp-args">{t('mcp.args')}</Label>
+                  <Input
+                    id="mcp-args"
+                    value={args}
+                    onChange={(e) => setArgs(e.target.value)}
+                    placeholder={t('mcp.argsPlaceholder')}
+                    autoComplete="off"
+                    spellCheck={false}
+                  />
+                </div>
+              </div>
               <div className="grid gap-2">
-                <Label htmlFor="mcp-command">{t('mcp.command')}</Label>
+                <Label htmlFor="mcp-env">{t('mcp.env')}</Label>
+                <Textarea
+                  id="mcp-env"
+                  value={envJson}
+                  onChange={(e) => setEnvJson(e.target.value)}
+                  className="font-mono text-xs"
+                  rows={3}
+                  spellCheck={false}
+                  placeholder='{"API_KEY": "${cred:context7-key}"}'
+                />
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="grid gap-2">
+                <Label htmlFor="mcp-url">{t('mcp.url')}</Label>
                 <Input
-                  id="mcp-command"
-                  value={command}
-                  onChange={(e) => setCommand(e.target.value)}
-                  placeholder={t('mcp.commandPlaceholder')}
+                  id="mcp-url"
+                  value={url}
+                  onChange={(e) => setUrl(e.target.value)}
+                  placeholder="https://mcp.example.com/mcp"
+                  inputMode="url"
                   autoComplete="off"
                   spellCheck={false}
                   required
                 />
               </div>
               <div className="grid gap-2">
-                <Label htmlFor="mcp-args">{t('mcp.args')}</Label>
-                <Input
-                  id="mcp-args"
-                  value={args}
-                  onChange={(e) => setArgs(e.target.value)}
-                  placeholder={t('mcp.argsPlaceholder')}
-                  autoComplete="off"
+                <Label htmlFor="mcp-headers">{t('mcp.headers')}</Label>
+                <Textarea
+                  id="mcp-headers"
+                  value={headersJson}
+                  onChange={(e) => setHeadersJson(e.target.value)}
+                  className="font-mono text-xs"
+                  rows={3}
                   spellCheck={false}
                 />
               </div>
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="mcp-env">{t('mcp.env')}</Label>
-              <Textarea
-                id="mcp-env"
-                value={envJson}
-                onChange={(e) => setEnvJson(e.target.value)}
-                className="font-mono text-xs"
-                rows={3}
-                spellCheck={false}
-                placeholder='{"API_KEY": "${cred:context7-key}"}'
-              />
-            </div>
-          </>
-        ) : (
-          <>
-            <div className="grid gap-2">
-              <Label htmlFor="mcp-url">{t('mcp.url')}</Label>
-              <Input
-                id="mcp-url"
-                value={url}
-                onChange={(e) => setUrl(e.target.value)}
-                placeholder="https://mcp.example.com/mcp"
-                inputMode="url"
-                autoComplete="off"
-                spellCheck={false}
-                required
-              />
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="mcp-headers">{t('mcp.headers')}</Label>
-              <Textarea
-                id="mcp-headers"
-                value={headersJson}
-                onChange={(e) => setHeadersJson(e.target.value)}
-                className="font-mono text-xs"
-                rows={3}
-                spellCheck={false}
-              />
-            </div>
-          </>
-        )}
+            </>
+          )}
 
-        <PlaceholderChips creds={creds} />
+          <PlaceholderChips creds={creds} />
 
-        <div className="flex justify-end gap-2">
-          <Button type="button" variant="outline" onClick={onClose} disabled={busy}>
-            {t('common.cancel')}
-          </Button>
-          <Button type="submit" disabled={busy}>
-            {busy
-              ? editing
-                ? t('common.saving')
-                : t('mcp.adding')
-              : editing
-                ? t('common.save')
-                : t('mcp.addServer')}
-          </Button>
-        </div>
-      </form>
+          <div className="flex justify-end gap-2">
+            <Button type="button" variant="outline" onClick={onClose} disabled={busy}>
+              {t('common.cancel')}
+            </Button>
+            <Button type="submit" disabled={busy}>
+              {busy
+                ? editing
+                  ? t('common.saving')
+                  : t('mcp.adding')
+                : editing
+                  ? t('common.save')
+                  : t('mcp.addServer')}
+            </Button>
+          </div>
+        </form>
 
-      <ImportJsonDialog open={importOpen} onOpenChange={setImportOpen} onImport={applyImport} />
-    </FormDialog>
+        <ImportJsonDialog open={importOpen} onOpenChange={setImportOpen} onImport={applyImport} />
+      </FormDialog>
+    </>
   );
 }
 
@@ -1071,25 +1090,27 @@ function PlaceholderChips({ creds }: { creds: CredentialView[] }) {
   const { t } = useI18n();
   if (creds.length === 0) return null;
   return (
-    <div className="flex flex-wrap items-center gap-2">
-      <span className="text-muted-foreground text-xs">{t('mcp.availablePlaceholders')}</span>
-      {creds.map((c) => (
-        <button
-          key={c.id}
-          type="button"
-          className="bg-muted font-mono text-muted-foreground hover:bg-accent rounded px-2 py-0.5 text-[11px] transition-colors"
-          onClick={() => {
-            void navigator.clipboard.writeText(`\${cred:${c.name}}`);
-            toast.success(t('mcp.copiedPlaceholder', { name: c.name }));
-          }}
-          title={t('mcp.copyPlaceholder', { name: c.name })}
-        >
-          {'${cred:'}
-          {c.name}
-          {'}'}
-        </button>
-      ))}
-    </div>
+    <>
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-muted-foreground text-xs">{t('mcp.availablePlaceholders')}</span>
+        {creds.map((c) => (
+          <button
+            key={c.id}
+            type="button"
+            className="bg-muted font-mono text-muted-foreground hover:bg-accent rounded px-2 py-0.5 text-[11px] transition-colors"
+            onClick={() => {
+              void navigator.clipboard.writeText(`\${cred:${c.name}}`);
+              toast.success(t('mcp.copiedPlaceholder', { name: c.name }));
+            }}
+            title={t('mcp.copyPlaceholder', { name: c.name })}
+          >
+            {'${cred:'}
+            {c.name}
+            {'}'}
+          </button>
+        ))}
+      </div>
+    </>
   );
 }
 
@@ -1143,40 +1164,42 @@ function ImportJsonDialog({
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-lg">
-        <DialogHeader>
-          <DialogTitle>{t('mcp.importTitle')}</DialogTitle>
-          <DialogDescription>
-            {t('mcp.importDescLead')}
-            <code className="font-mono">{'{ "mcpServers": { "name": {...} } }'}</code>
-            {t('mcp.importDescMid')}
-            <code className="font-mono">command</code>
-            {t('mcp.importDescArrowDirect')}
-            <code className="font-mono">serverUrl</code>
-            {t('mcp.importDescArrowProxy')}
-          </DialogDescription>
-        </DialogHeader>
-        <Textarea
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          className="font-mono text-xs"
-          rows={10}
-          spellCheck={false}
-          placeholder={
-            '{\n  "mcpServers": {\n    "context7": {\n      "serverUrl": "https://mcp.context7.com/mcp",\n      "headers": { "CONTEXT7_API_KEY": "${cred:context7-key}" }\n    }\n  }\n}'
-          }
-          autoFocus
-        />
-        <DialogFooter>
-          <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
-            {t('common.cancel')}
-          </Button>
-          <Button type="button" onClick={onParse}>
-            {t('mcp.parse')}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+    <>
+      <Dialog open={open} onOpenChange={onOpenChange}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>{t('mcp.importTitle')}</DialogTitle>
+            <DialogDescription>
+              {t('mcp.importDescLead')}
+              <code className="font-mono">{'{ "mcpServers": { "name": {...} } }'}</code>
+              {t('mcp.importDescMid')}
+              <code className="font-mono">command</code>
+              {t('mcp.importDescArrowDirect')}
+              <code className="font-mono">serverUrl</code>
+              {t('mcp.importDescArrowProxy')}
+            </DialogDescription>
+          </DialogHeader>
+          <Textarea
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            className="font-mono text-xs"
+            rows={10}
+            spellCheck={false}
+            placeholder={
+              '{\n  "mcpServers": {\n    "context7": {\n      "serverUrl": "https://mcp.context7.com/mcp",\n      "headers": { "CONTEXT7_API_KEY": "${cred:context7-key}" }\n    }\n  }\n}'
+            }
+            autoFocus
+          />
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+              {t('common.cancel')}
+            </Button>
+            <Button type="button" onClick={onParse}>
+              {t('mcp.parse')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }

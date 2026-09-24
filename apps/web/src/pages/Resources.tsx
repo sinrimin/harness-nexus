@@ -13,7 +13,9 @@ import {
 import { api } from '@/api';
 import { useAuth, withAuthGuard } from '@/auth';
 import { useI18n, dateLocale, type TranslationKey } from '@/i18n';
-import { AppShell } from '@/components/app-shell';
+import { PageIntro, Well } from '@/components/kit';
+import { PageSlot } from '@/components/shell/page-slots';
+import type { ResourcePageKind } from '@/nav';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -99,12 +101,23 @@ const KINDS: {
 
 const TARGETS: AgentTarget[] = ['claude-code', 'zcode', 'hermes', 'pi', 'generic'];
 
-export function ResourcesPage() {
+/** The kind's label key for the page intro; the all-kinds case never renders it. */
+function kindLabelKey(kind: ResourcePageKind | undefined): TranslationKey {
+  return KINDS.find((k) => k.value === kind)?.labelKey ?? 'resources.title';
+}
+
+/**
+ * One kind per page (#23 P2, README §5.3). A kind page fixes the filter and
+ * hides the kind selector: the route is the address, so the kind is not a
+ * per-visit decision any more. P4 gives each kind its own columns and editor;
+ * until then every kind page is the same table with its kind nailed down.
+ */
+export function ResourcesPage({ fixedKind }: { fixedKind?: ResourcePageKind }) {
   const { logout, user } = useAuth();
   const { t, lang } = useI18n();
   const isAdmin = user?.role === 'admin';
   const [items, setItems] = useState<Resource[] | null>(null);
-  const [kindFilter, setKindFilter] = useState<ResourceKind | 'all'>('all');
+  const [kindFilter, setKindFilter] = useState<ResourceKind | 'all'>(fixedKind ?? 'all');
   const [scopeFilter, setScopeFilter] = useState<Scope | 'all'>('all');
   // The resource being edited, or 'new' to open the create dialog, or null.
   const [editing, setEditing] = useState<Resource | 'new' | null>(null);
@@ -157,14 +170,27 @@ export function ResourcesPage() {
   }
 
   return (
-    <AppShell>
-      <div className="mb-8">
-        <h1 className="text-2xl font-semibold tracking-tight">{t('resources.title')}</h1>
-        <p className="text-muted-foreground mt-1 text-sm">
-          {t('resources.subtitle')} <code className="font-mono">kind:key</code>
-          {t('resources.subtitleAfter')}
-        </p>
-      </div>
+    <>
+      <PageSlot slot="actions">
+        <Button onClick={() => setEditing('new')} className="gap-1.5">
+          <PlusIcon className="size-4" />
+          <span className="hidden sm:inline">
+            {fixedKind === 'skill' ? t('resources.newSkill') : t('resources.newResource')}
+          </span>
+        </Button>
+      </PageSlot>
+
+      <PageIntro
+        sub={
+          <>
+            {t('resources.subtitleKind', { kind: t(kindLabelKey(fixedKind)) })}{' '}
+            <Well variant="chip" copy="kind:key">
+              kind:key
+            </Well>
+            {t('resources.subtitleAfter')}
+          </>
+        }
+      />
 
       <Card>
         <CardHeader>
@@ -177,22 +203,24 @@ export function ResourcesPage() {
               <CardDescription>{t('resources.storedDesc')}</CardDescription>
             </div>
             <div className="flex items-center gap-2">
-              <Select
-                value={kindFilter}
-                onValueChange={(v) => setKindFilter(v as ResourceKind | 'all')}
-              >
-                <SelectTrigger id="filter-kind" className="w-[140px]">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">{t('resources.allKinds')}</SelectItem>
-                  {KINDS.map((k) => (
-                    <SelectItem key={k.value} value={k.value}>
-                      {t(k.labelKey)}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              {fixedKind === undefined ? (
+                <Select
+                  value={kindFilter}
+                  onValueChange={(v) => setKindFilter(v as ResourceKind | 'all')}
+                >
+                  <SelectTrigger id="filter-kind" className="w-[140px]">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">{t('resources.allKinds')}</SelectItem>
+                    {KINDS.map((k) => (
+                      <SelectItem key={k.value} value={k.value}>
+                        {t(k.labelKey)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              ) : null}
               <Select value={scopeFilter} onValueChange={(v) => setScopeFilter(v as Scope | 'all')}>
                 <SelectTrigger id="filter-scope" className="w-[130px]">
                   <SelectValue />
@@ -203,10 +231,6 @@ export function ResourcesPage() {
                   <SelectItem value="global">{t('common.scopeGlobal')}</SelectItem>
                 </SelectContent>
               </Select>
-              <Button onClick={() => setEditing('new')} className="gap-1.5">
-                <PlusIcon className="size-4" />
-                <span className="hidden sm:inline">{t('resources.newResource')}</span>
-              </Button>
             </div>
           </div>
         </CardHeader>
@@ -301,21 +325,25 @@ export function ResourcesPage() {
       {editing !== null ? (
         <ResourceEditor
           existing={editing === 'new' ? null : editing}
+          {...(fixedKind !== undefined ? { lockedKind: fixedKind } : {})}
           onClose={() => setEditing(null)}
           onSaved={refresh}
         />
       ) : null}
-    </AppShell>
+    </>
   );
 }
 
 /** Create/edit Dialog shared by all kinds. 4.2/4.3 produce inline-markdown bodies. */
 function ResourceEditor({
   existing,
+  lockedKind,
   onClose,
   onSaved,
 }: {
   existing: Resource | null;
+  /** A kind page's kind — the editor opens on it and shows it as a fact. */
+  lockedKind?: ResourceKind;
   onClose: () => void;
   onSaved: () => void;
 }) {
@@ -324,7 +352,7 @@ function ResourceEditor({
   const isAdmin = user?.role === 'admin';
   const isCreate = existing === null;
 
-  const [kind, setKind] = useState<ResourceKind>(existing?.kind ?? 'sub_agent');
+  const [kind, setKind] = useState<ResourceKind>(existing?.kind ?? lockedKind ?? 'sub_agent');
   const [key, setKey] = useState(existing?.key ?? '');
   const [name, setName] = useState(existing?.name ?? '');
   const [description, setDescription] = useState(existing?.description ?? '');
@@ -385,170 +413,179 @@ function ResourceEditor({
   }
 
   return (
-    <FormDialog
-      open
-      onClose={onClose}
-      size={kind === 'skill' ? 'xl' : 'lg'}
-      title={
-        isCreate ? t('resources.newResource') : t('resources.editTitle', { name: existing!.name })
-      }
-      description={
-        <>
-          {t('resources.editorDesc', { body: t(kindMeta.bodyLabelKey).toLowerCase() })}{' '}
-          <code className="font-mono">{`${kind}:${key || '…'}`}</code>
-          {t('resources.editorDescAfter')}
-        </>
-      }
-      footer={
-        <>
-          <Button type="button" variant="ghost" onClick={onClose}>
-            {t('common.cancel')}
-          </Button>
-          <Button type="button" disabled={busy} onClick={onSubmit}>
-            {busy
-              ? t('common.saving')
-              : isCreate
-                ? t('resources.createResource')
-                : t('resources.saveChanges')}
-          </Button>
-        </>
-      }
-    >
-      <form onSubmit={onSubmit} className="grid gap-4">
-        <div className="grid gap-4 sm:grid-cols-2">
-          <div className="grid gap-2">
-            <Label htmlFor="res-kind">{t('resources.kind')}</Label>
-            <Select
-              value={kind}
-              onValueChange={(v) => setKind(v as ResourceKind)}
-              disabled={!isCreate}
-            >
-              <SelectTrigger id="res-kind">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {KINDS.map((k) => (
-                  <SelectItem key={k.value} value={k.value}>
-                    {t(k.labelKey)}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="grid gap-2">
-            <Label htmlFor="res-scope">{t('common.scope')}</Label>
-            <Select
-              value={scope}
-              onValueChange={(v) => setScope(v as Scope)}
-              disabled={!isCreate || !isAdmin}
-            >
-              <SelectTrigger id="res-scope">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="personal">{t('common.scopePersonal')}</SelectItem>
-                <SelectItem value="global" disabled={!isAdmin}>
-                  {t('common.scopeGlobal')}
-                  {!isAdmin && t('resources.adminSuffix')}
-                </SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-        </div>
-
-        <div className="grid gap-4 sm:grid-cols-2">
-          <div className="grid gap-2">
-            <Label htmlFor="res-key">{t('resources.key')}</Label>
-            <Input
-              id="res-key"
-              value={key}
-              onChange={(e) => setKey(e.target.value)}
-              placeholder={`${kind}:my-asset`}
-              autoComplete="off"
-              spellCheck={false}
-              required
-            />
-          </div>
-          <div className="grid gap-2">
-            <Label htmlFor="res-name">{t('common.name')}</Label>
-            <Input
-              id="res-name"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder={t('resources.phName')}
-              autoComplete="off"
-              required
-            />
-          </div>
-        </div>
-
-        <div className="grid gap-4 sm:grid-cols-2">
-          <div className="grid gap-2">
-            <Label htmlFor="res-version">{t('resources.version')}</Label>
-            <Input
-              id="res-version"
-              value={version}
-              onChange={(e) => setVersion(e.target.value)}
-              placeholder="1.0.0"
-              autoComplete="off"
-              spellCheck={false}
-            />
-          </div>
-          <div className="grid gap-2">
-            <Label htmlFor="res-desc">{t('common.description')}</Label>
-            <Input
-              id="res-desc"
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              placeholder={t('resources.phDescription')}
-              autoComplete="off"
-            />
-          </div>
-        </div>
-
-        <div className="grid gap-2">
-          <Label>{t('resources.targets')}</Label>
-          <div className="flex flex-wrap gap-2">
-            {TARGETS.map((target) => (
-              <label
-                key={target}
-                className="flex cursor-pointer items-center gap-1.5 rounded-md border px-2.5 py-1 text-xs"
+    <>
+      <FormDialog
+        open
+        onClose={onClose}
+        size={kind === 'skill' ? 'xl' : 'lg'}
+        title={
+          isCreate ? t('resources.newResource') : t('resources.editTitle', { name: existing!.name })
+        }
+        description={
+          <>
+            {t('resources.editorDesc', { body: t(kindMeta.bodyLabelKey).toLowerCase() })}{' '}
+            <code className="font-mono">{`${kind}:${key || '…'}`}</code>
+            {t('resources.editorDescAfter')}
+          </>
+        }
+        footer={
+          <>
+            <Button type="button" variant="ghost" onClick={onClose}>
+              {t('common.cancel')}
+            </Button>
+            <Button type="button" disabled={busy} onClick={onSubmit}>
+              {busy
+                ? t('common.saving')
+                : isCreate
+                  ? t('resources.createResource')
+                  : t('resources.saveChanges')}
+            </Button>
+          </>
+        }
+      >
+        <form onSubmit={onSubmit} className="grid gap-4">
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="grid gap-2">
+              <Label htmlFor="res-kind">{t('resources.kind')}</Label>
+              {lockedKind !== undefined ? (
+                // The page owns the kind; the editor states it rather than asking.
+                <div>
+                  <Badge variant="secondary">{t(kindMeta.labelKey)}</Badge>
+                </div>
+              ) : (
+                <Select
+                  value={kind}
+                  onValueChange={(v) => setKind(v as ResourceKind)}
+                  disabled={!isCreate}
+                >
+                  <SelectTrigger id="res-kind">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {KINDS.map((k) => (
+                      <SelectItem key={k.value} value={k.value}>
+                        {t(k.labelKey)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="res-scope">{t('common.scope')}</Label>
+              <Select
+                value={scope}
+                onValueChange={(v) => setScope(v as Scope)}
+                disabled={!isCreate || !isAdmin}
               >
-                <input
-                  type="checkbox"
-                  checked={targets.includes(target)}
-                  onChange={() => toggleTarget(target)}
-                  className="size-3.5"
-                />
-                <span className="font-mono">{target}</span>
-              </label>
-            ))}
+                <SelectTrigger id="res-scope">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="personal">{t('common.scopePersonal')}</SelectItem>
+                  <SelectItem value="global" disabled={!isAdmin}>
+                    {t('common.scopeGlobal')}
+                    {!isAdmin && t('resources.adminSuffix')}
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
           </div>
-        </div>
 
-        <div className="grid gap-2">
-          {kind === 'hook' ? (
-            <HookBodyEditor body={body} setBody={setBody} targets={targets} />
-          ) : (
-            <>
-              <Label htmlFor="res-body">{t(kindMeta.bodyLabelKey)}</Label>
-              <Textarea
-                id="res-body"
-                value={body}
-                onChange={(e) => setBody(e.target.value)}
-                placeholder={t(kindMeta.bodyPlaceholderKey)}
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="grid gap-2">
+              <Label htmlFor="res-key">{t('resources.key')}</Label>
+              <Input
+                id="res-key"
+                value={key}
+                onChange={(e) => setKey(e.target.value)}
+                placeholder={`${kind}:my-asset`}
+                autoComplete="off"
                 spellCheck={false}
-                className="min-h-48 font-mono text-xs"
+                required
               />
-            </>
-          )}
-        </div>
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="res-name">{t('common.name')}</Label>
+              <Input
+                id="res-name"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder={t('resources.phName')}
+                autoComplete="off"
+                required
+              />
+            </div>
+          </div>
 
-        {kind === 'skill' ? (
-          <SkillBundleEditor files={bundleFiles} setFiles={setBundleFiles} />
-        ) : null}
-      </form>
-    </FormDialog>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="grid gap-2">
+              <Label htmlFor="res-version">{t('resources.version')}</Label>
+              <Input
+                id="res-version"
+                value={version}
+                onChange={(e) => setVersion(e.target.value)}
+                placeholder="1.0.0"
+                autoComplete="off"
+                spellCheck={false}
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="res-desc">{t('common.description')}</Label>
+              <Input
+                id="res-desc"
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                placeholder={t('resources.phDescription')}
+                autoComplete="off"
+              />
+            </div>
+          </div>
+
+          <div className="grid gap-2">
+            <Label>{t('resources.targets')}</Label>
+            <div className="flex flex-wrap gap-2">
+              {TARGETS.map((target) => (
+                <label
+                  key={target}
+                  className="flex cursor-pointer items-center gap-1.5 rounded-md border px-2.5 py-1 text-xs"
+                >
+                  <input
+                    type="checkbox"
+                    checked={targets.includes(target)}
+                    onChange={() => toggleTarget(target)}
+                    className="size-3.5"
+                  />
+                  <span className="font-mono">{target}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+
+          <div className="grid gap-2">
+            {kind === 'hook' ? (
+              <HookBodyEditor body={body} setBody={setBody} targets={targets} />
+            ) : (
+              <>
+                <Label htmlFor="res-body">{t(kindMeta.bodyLabelKey)}</Label>
+                <Textarea
+                  id="res-body"
+                  value={body}
+                  onChange={(e) => setBody(e.target.value)}
+                  placeholder={t(kindMeta.bodyPlaceholderKey)}
+                  spellCheck={false}
+                  className="min-h-48 font-mono text-xs"
+                />
+              </>
+            )}
+          </div>
+
+          {kind === 'skill' ? (
+            <SkillBundleEditor files={bundleFiles} setFiles={setBundleFiles} />
+          ) : null}
+        </form>
+      </FormDialog>
+    </>
   );
 }
 
@@ -771,89 +808,91 @@ function SkillBundleEditor({
   }
 
   return (
-    <div className="grid gap-2">
-      <div className="flex items-center justify-between">
-        <Label>{t('resources.extraFiles')}</Label>
-        <span className="text-muted-foreground text-xs">
-          {paths.length === 0
-            ? t('resources.singleFile')
-            : t('resources.extraCount', { count: paths.length })}
-        </span>
-      </div>
-      <p className="text-muted-foreground text-xs">
-        {t('resources.bundleDescA')} <code className="font-mono">references/foo.md</code>{' '}
-        {t('resources.bundleDescB')} <code className="font-mono">scripts/run.sh</code>
-        {t('resources.bundleDescC')}
-      </p>
-
-      {paths.length > 0 ? (
-        <div className="flex flex-col gap-3 sm:flex-row">
-          {/* File list */}
-          <div className="bg-muted/40 flex flex-col rounded-md border p-2 sm:w-56 sm:shrink-0">
-            {paths.map((p) => (
-              <button
-                key={p}
-                type="button"
-                onClick={() => setActivePath(p)}
-                className={cn(
-                  'flex items-center justify-between rounded px-2 py-1.5 text-left font-mono text-xs transition-colors',
-                  activePath === p ? 'bg-accent text-accent-foreground' : 'hover:bg-accent/60',
-                )}
-              >
-                <span className="truncate">{p}</span>
-                <TrashIcon
-                  className="text-muted-foreground hover:text-destructive size-3.5 shrink-0"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    removeFile(p);
-                  }}
-                />
-              </button>
-            ))}
-          </div>
-          {/* Active file editor */}
-          {activePath ? (
-            <Textarea
-              key={activePath}
-              value={files[activePath]}
-              onChange={(e) => updateContent(activePath, e.target.value)}
-              placeholder={t('resources.fileContent', { path: activePath })}
-              spellCheck={false}
-              className="min-h-48 flex-1 font-mono text-xs"
-            />
-          ) : (
-            <div className="text-muted-foreground flex flex-1 items-center justify-center rounded-md border border-dashed py-8 text-sm">
-              {t('resources.selectFile')}
-            </div>
-          )}
+    <>
+      <div className="grid gap-2">
+        <div className="flex items-center justify-between">
+          <Label>{t('resources.extraFiles')}</Label>
+          <span className="text-muted-foreground text-xs">
+            {paths.length === 0
+              ? t('resources.singleFile')
+              : t('resources.extraCount', { count: paths.length })}
+          </span>
         </div>
-      ) : null}
+        <p className="text-muted-foreground text-xs">
+          {t('resources.bundleDescA')} <code className="font-mono">references/foo.md</code>{' '}
+          {t('resources.bundleDescB')} <code className="font-mono">scripts/run.sh</code>
+          {t('resources.bundleDescC')}
+        </p>
 
-      <div className="flex items-center gap-2">
-        <Input
-          value={newPath}
-          onChange={(e) => setNewPath(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') {
-              e.preventDefault();
-              addFile();
-            }
-          }}
-          placeholder="references/notes.md"
-          spellCheck={false}
-          className="font-mono text-xs"
-        />
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          className="gap-1.5 shrink-0"
-          onClick={addFile}
-        >
-          <PlusIcon className="size-4" />
-          {t('resources.addFile')}
-        </Button>
+        {paths.length > 0 ? (
+          <div className="flex flex-col gap-3 sm:flex-row">
+            {/* File list */}
+            <div className="bg-muted/40 flex flex-col rounded-md border p-2 sm:w-56 sm:shrink-0">
+              {paths.map((p) => (
+                <button
+                  key={p}
+                  type="button"
+                  onClick={() => setActivePath(p)}
+                  className={cn(
+                    'flex items-center justify-between rounded px-2 py-1.5 text-left font-mono text-xs transition-colors',
+                    activePath === p ? 'bg-accent text-accent-foreground' : 'hover:bg-accent/60',
+                  )}
+                >
+                  <span className="truncate">{p}</span>
+                  <TrashIcon
+                    className="text-muted-foreground hover:text-destructive size-3.5 shrink-0"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      removeFile(p);
+                    }}
+                  />
+                </button>
+              ))}
+            </div>
+            {/* Active file editor */}
+            {activePath ? (
+              <Textarea
+                key={activePath}
+                value={files[activePath]}
+                onChange={(e) => updateContent(activePath, e.target.value)}
+                placeholder={t('resources.fileContent', { path: activePath })}
+                spellCheck={false}
+                className="min-h-48 flex-1 font-mono text-xs"
+              />
+            ) : (
+              <div className="text-muted-foreground flex flex-1 items-center justify-center rounded-md border border-dashed py-8 text-sm">
+                {t('resources.selectFile')}
+              </div>
+            )}
+          </div>
+        ) : null}
+
+        <div className="flex items-center gap-2">
+          <Input
+            value={newPath}
+            onChange={(e) => setNewPath(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                addFile();
+              }
+            }}
+            placeholder="references/notes.md"
+            spellCheck={false}
+            className="font-mono text-xs"
+          />
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="gap-1.5 shrink-0"
+            onClick={addFile}
+          >
+            <PlusIcon className="size-4" />
+            {t('resources.addFile')}
+          </Button>
+        </div>
       </div>
-    </div>
+    </>
   );
 }

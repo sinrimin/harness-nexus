@@ -10,7 +10,6 @@ import {
 import { api } from '@/api';
 import { useAuth, withAuthGuard } from '@/auth';
 import { useI18n } from '@/i18n';
-import { AppShell } from '@/components/app-shell';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -93,8 +92,12 @@ interface HubRow {
  * Trust is computed client-side (`resolveTrustTier`); the server recomputes
  * authoritatively at save time. The badge uses neutral variants — `--signal`
  * is reserved for liveness per the Signal design system.
+ *
+ * A PANEL since #23 P2: it renders as the Skill hub tab of the Skills page and
+ * owns no page chrome — the tab row above it and the shell's topbar carry the
+ * identity.
  */
-export function SkillHubPage() {
+export function SkillHubPanel() {
   const { logout } = useAuth();
   const { t } = useI18n();
   const [marketplaces, setMarketplaces] = useState<{ id: string }[] | null>(null);
@@ -161,7 +164,7 @@ export function SkillHubPage() {
   }, [rows]);
 
   return (
-    <AppShell>
+    <>
       <Card>
         <CardHeader>
           <div className="flex flex-wrap items-center justify-between gap-3">
@@ -277,7 +280,7 @@ export function SkillHubPage() {
           }}
         />
       ) : null}
-    </AppShell>
+    </>
   );
 }
 
@@ -324,42 +327,44 @@ function pluginToRow(p: MarketplacePlugin): HubRow {
 function HubRowView({ row, onSave }: { row: HubRow; onSave: () => void }) {
   const { t } = useI18n();
   return (
-    <TableRow>
-      <TableCell className="pl-6">
-        <div className="flex flex-col gap-0.5">
-          <div className="flex items-center gap-1.5 font-medium">{row.name}</div>
-          <div className="text-muted-foreground line-clamp-2 max-w-xl text-xs">
-            {row.description}
+    <>
+      <TableRow>
+        <TableCell className="pl-6">
+          <div className="flex flex-col gap-0.5">
+            <div className="flex items-center gap-1.5 font-medium">{row.name}</div>
+            <div className="text-muted-foreground line-clamp-2 max-w-xl text-xs">
+              {row.description}
+            </div>
           </div>
-        </div>
-      </TableCell>
-      <TableCell>
-        {row.category ? (
-          <Badge variant="outline" className="font-mono text-[10px]">
-            {row.category}
-          </Badge>
-        ) : (
-          <span className="text-muted-foreground text-xs">—</span>
-        )}
-      </TableCell>
-      <TableCell>
-        <span className="text-muted-foreground font-mono text-[11px]">{row.sourceKind}</span>
-      </TableCell>
-      <TableCell>
-        <TrustBadge tier={row.tier} />
-      </TableCell>
-      <TableCell className="pr-6 text-right">
-        {row.pluginSource ? (
-          <Button variant="outline" size="sm" onClick={onSave} className="gap-1.5">
-            {t('skillHub.saveAsSkill')}
-          </Button>
-        ) : (
-          <span className="text-muted-foreground text-xs" title={t('skillHub.archiveTooltip')}>
-            —
-          </span>
-        )}
-      </TableCell>
-    </TableRow>
+        </TableCell>
+        <TableCell>
+          {row.category ? (
+            <Badge variant="outline" className="font-mono text-[10px]">
+              {row.category}
+            </Badge>
+          ) : (
+            <span className="text-muted-foreground text-xs">—</span>
+          )}
+        </TableCell>
+        <TableCell>
+          <span className="text-muted-foreground font-mono text-[11px]">{row.sourceKind}</span>
+        </TableCell>
+        <TableCell>
+          <TrustBadge tier={row.tier} />
+        </TableCell>
+        <TableCell className="pr-6 text-right">
+          {row.pluginSource ? (
+            <Button variant="outline" size="sm" onClick={onSave} className="gap-1.5">
+              {t('skillHub.saveAsSkill')}
+            </Button>
+          ) : (
+            <span className="text-muted-foreground text-xs" title={t('skillHub.archiveTooltip')}>
+              —
+            </span>
+          )}
+        </TableCell>
+      </TableRow>
+    </>
   );
 }
 
@@ -372,17 +377,21 @@ function TrustBadge({ tier }: { tier: TrustTier }) {
   const { t } = useI18n();
   if (tier === 'trusted') {
     return (
-      <Badge variant="default" className="gap-1 text-[10px]">
-        <ShieldCheckIcon className="size-3" />
-        {t('skillHub.trusted')}
-      </Badge>
+      <>
+        <Badge variant="default" className="gap-1 text-[10px]">
+          <ShieldCheckIcon className="size-3" />
+          {t('skillHub.trusted')}
+        </Badge>
+      </>
     );
   }
   return (
-    <Badge variant="secondary" className="gap-1 text-[10px]">
-      <StateSignal state="neutral" aria-hidden className="size-1.5" />
-      {t('skillHub.community')}
-    </Badge>
+    <>
+      <Badge variant="secondary" className="gap-1 text-[10px]">
+        <StateSignal state="neutral" aria-hidden className="size-1.5" />
+        {t('skillHub.community')}
+      </Badge>
+    </>
   );
 }
 
@@ -443,101 +452,104 @@ function SavePluginDialog({
   }
 
   return (
-    <Dialog open onOpenChange={(o) => (o ? null : onClose())}>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle>{t('skillHub.dialogTitle')}</DialogTitle>
-          <DialogDescription>
-            {t('skillHub.dialogDescLead')} <span className="font-mono">{`skill:${row.name}`}</span>
-            {t('skillHub.dialogDescTail')}
-          </DialogDescription>
-        </DialogHeader>
+    <>
+      <Dialog open onOpenChange={(o) => (o ? null : onClose())}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>{t('skillHub.dialogTitle')}</DialogTitle>
+            <DialogDescription>
+              {t('skillHub.dialogDescLead')}{' '}
+              <span className="font-mono">{`skill:${row.name}`}</span>
+              {t('skillHub.dialogDescTail')}
+            </DialogDescription>
+          </DialogHeader>
 
-        {showWarn ? (
-          <div className="flex items-start gap-2 rounded-md border border-warn/40 bg-warn/10 p-2.5 text-xs">
-            <TriangleAlertIcon className="mt-0.5 size-4 shrink-0 text-warn" />
-            <div>
-              <span className="font-medium text-warn">{t('skillHub.warnLead')}</span>{' '}
-              <span className="text-muted-foreground">{t('skillHub.warnBody')}</span>
+          {showWarn ? (
+            <div className="flex items-start gap-2 rounded-md border border-warn/40 bg-warn/10 p-2.5 text-xs">
+              <TriangleAlertIcon className="mt-0.5 size-4 shrink-0 text-warn" />
+              <div>
+                <span className="font-medium text-warn">{t('skillHub.warnLead')}</span>{' '}
+                <span className="text-muted-foreground">{t('skillHub.warnBody')}</span>
+              </div>
             </div>
-          </div>
-        ) : null}
-
-        <div className="grid gap-4">
-          <div className="grid gap-2">
-            <Label htmlFor="skill-key">{t('skillHub.key')}</Label>
-            <Input
-              id="skill-key"
-              value={key}
-              onChange={(e) => setKey(e.target.value)}
-              spellCheck={false}
-              className="font-mono"
-            />
-          </div>
-
-          <div className="grid gap-2">
-            <Label>{t('common.scope')}</Label>
-            <Select value={scope} onValueChange={(v) => setScope(v as Scope)}>
-              <SelectTrigger id="skill-scope" className="w-full">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="personal">{t('common.scopePersonal')}</SelectItem>
-                <SelectItem value="global" disabled={!isAdmin}>
-                  {t('common.scopeGlobal')}
-                  {isAdmin ? '' : t('skillHub.adminOnly')}
-                </SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="grid gap-2">
-            <Label>{t('skillHub.targets')}</Label>
-            <div className="flex flex-wrap gap-2">
-              {TARGETS.map((t) => (
-                <label
-                  key={t}
-                  className="flex cursor-pointer items-center gap-1.5 rounded-md border px-2.5 py-1 text-xs"
-                >
-                  <input
-                    type="checkbox"
-                    checked={targets.includes(t)}
-                    onChange={() => toggleTarget(t)}
-                    className="size-3.5"
-                  />
-                  <span className="font-mono">{t}</span>
-                </label>
-              ))}
-            </div>
-          </div>
-        </div>
-
-        <DialogFooter>
-          {/* Third-party catalog data — scheme-check before it reaches an href
-              (React already blocks javascript:, this is defense in depth). */}
-          {row.homepage && /^https?:\/\//i.test(row.homepage) ? (
-            <a
-              href={row.homepage}
-              target="_blank"
-              rel="noreferrer"
-              className="text-muted-foreground hover:text-foreground mr-auto inline-flex items-center gap-1 text-xs"
-            >
-              <ExternalLinkIcon className="size-3" />
-              {t('skillHub.homepage')}
-            </a>
           ) : null}
-          <Button type="button" variant="ghost" onClick={onClose}>
-            {t('common.cancel')}
-          </Button>
-          <Button
-            type="button"
-            disabled={busy || (scope === 'global' && !isAdmin)}
-            onClick={onSubmit}
-          >
-            {busy ? t('common.saving') : t('skillHub.saveSkill')}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+
+          <div className="grid gap-4">
+            <div className="grid gap-2">
+              <Label htmlFor="skill-key">{t('skillHub.key')}</Label>
+              <Input
+                id="skill-key"
+                value={key}
+                onChange={(e) => setKey(e.target.value)}
+                spellCheck={false}
+                className="font-mono"
+              />
+            </div>
+
+            <div className="grid gap-2">
+              <Label>{t('common.scope')}</Label>
+              <Select value={scope} onValueChange={(v) => setScope(v as Scope)}>
+                <SelectTrigger id="skill-scope" className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="personal">{t('common.scopePersonal')}</SelectItem>
+                  <SelectItem value="global" disabled={!isAdmin}>
+                    {t('common.scopeGlobal')}
+                    {isAdmin ? '' : t('skillHub.adminOnly')}
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="grid gap-2">
+              <Label>{t('skillHub.targets')}</Label>
+              <div className="flex flex-wrap gap-2">
+                {TARGETS.map((t) => (
+                  <label
+                    key={t}
+                    className="flex cursor-pointer items-center gap-1.5 rounded-md border px-2.5 py-1 text-xs"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={targets.includes(t)}
+                      onChange={() => toggleTarget(t)}
+                      className="size-3.5"
+                    />
+                    <span className="font-mono">{t}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          <DialogFooter>
+            {/* Third-party catalog data — scheme-check before it reaches an href
+              (React already blocks javascript:, this is defense in depth). */}
+            {row.homepage && /^https?:\/\//i.test(row.homepage) ? (
+              <a
+                href={row.homepage}
+                target="_blank"
+                rel="noreferrer"
+                className="text-muted-foreground hover:text-foreground mr-auto inline-flex items-center gap-1 text-xs"
+              >
+                <ExternalLinkIcon className="size-3" />
+                {t('skillHub.homepage')}
+              </a>
+            ) : null}
+            <Button type="button" variant="ghost" onClick={onClose}>
+              {t('common.cancel')}
+            </Button>
+            <Button
+              type="button"
+              disabled={busy || (scope === 'global' && !isAdmin)}
+              onClick={onSubmit}
+            >
+              {busy ? t('common.saving') : t('skillHub.saveSkill')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }

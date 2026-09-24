@@ -5,7 +5,6 @@ import { LaptopIcon, MoreHorizontalIcon, PlusIcon, TrashIcon } from 'lucide-reac
 import { api } from '@/api';
 import { useAuth, withAuthGuard } from '@/auth';
 import { useI18n, dateLocale } from '@/i18n';
-import { AppShell } from '@/components/app-shell';
 import { appSocket, type MachineStatusEvent } from '@/realtime';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -36,11 +35,12 @@ import {
   LabelText,
   Lamp,
   Note,
-  PageHeader,
+  PageIntro,
   Readout,
   Well,
   tableState,
 } from '@/components/kit';
+import { PageSlot } from '@/components/shell/page-slots';
 import { HarnessNexusError, type MachineView } from '@harness-nexus/sdk';
 
 /**
@@ -145,9 +145,15 @@ export function MachinesPage() {
   const state = tableState({ error, loading: items === null, count: total });
 
   return (
-    <AppShell>
-      <PageHeader
-        title={t('machines.title')}
+    <>
+      <PageSlot slot="actions">
+        <Button onClick={() => setEnrolling(true)}>
+          <PlusIcon className="size-4" />
+          {t('machines.enrollButton')}
+        </Button>
+      </PageSlot>
+
+      <PageIntro
         sub={
           <>
             {t('machines.subtitleA')}{' '}
@@ -156,12 +162,6 @@ export function MachinesPage() {
             </Well>{' '}
             {t('machines.subtitleB')}
           </>
-        }
-        actions={
-          <Button onClick={() => setEnrolling(true)}>
-            <PlusIcon className="size-4" />
-            {t('machines.enrollButton')}
-          </Button>
         }
       />
 
@@ -274,7 +274,7 @@ export function MachinesPage() {
           onConfirm={() => void confirmPending()}
         />
       ) : null}
-    </AppShell>
+    </>
   );
 }
 
@@ -289,84 +289,88 @@ function MachineRow({
   const host = [machine.hostname, machine.os, machine.arch].filter(Boolean).join(' · ');
 
   return (
-    <TableRow>
-      <TableCell className="font-medium">
-        <Link to={`/machines/${machine.id}`} className="hover:underline">
-          {machine.name}
-        </Link>
-      </TableCell>
-      <TableCell className="text-muted-foreground">
-        {host === '' ? (
-          <DataText size="sm" tone="dim">
-            —
-          </DataText>
-        ) : (
-          <Well copy={host}>{host}</Well>
-        )}
-      </TableCell>
-      <TableCell>
-        {machine.daemonVersion ? (
-          <span className="flex items-center gap-1">
-            <DataText size="sm" className="shrink-0">
-              {machine.daemonVersion}
+    <>
+      <TableRow>
+        <TableCell className="font-medium">
+          <Link to={`/machines/${machine.id}`} className="hover:underline">
+            {machine.name}
+          </Link>
+        </TableCell>
+        <TableCell className="text-muted-foreground">
+          {host === '' ? (
+            <DataText size="sm" tone="dim">
+              —
             </DataText>
-            {/* A daemon reports a dozen capabilities; the list shows the first
-             * few and lets the rest be counted — the full set belongs to the
-             * machine's own page, not to a table column. */}
-            {machine.capabilities.slice(0, 3).map((c) => (
-              <Well key={c} variant="chip">
-                {c}
-              </Well>
-            ))}
-            {machine.capabilities.length > 3 ? (
-              <Chip to={`/machines/${machine.id}`} tone="muted">
-                +{machine.capabilities.length - 3}
-              </Chip>
-            ) : null}
-          </span>
-        ) : (
+          ) : (
+            <Well copy={host}>{host}</Well>
+          )}
+        </TableCell>
+        <TableCell>
+          {machine.daemonVersion ? (
+            <span className="flex items-center gap-1">
+              <DataText size="sm" className="shrink-0">
+                {machine.daemonVersion}
+              </DataText>
+              {/* A daemon reports a dozen capabilities; the list shows the first
+               * few and lets the rest be counted — the full set belongs to the
+               * machine's own page, not to a table column. */}
+              {machine.capabilities.slice(0, 3).map((c) => (
+                <Well key={c} variant="chip">
+                  {c}
+                </Well>
+              ))}
+              {machine.capabilities.length > 3 ? (
+                <Chip to={`/machines/${machine.id}`} tone="muted">
+                  +{machine.capabilities.length - 3}
+                </Chip>
+              ) : null}
+            </span>
+          ) : (
+            <DataText size="sm" tone="dim">
+              {t('machines.neverConnected')}
+            </DataText>
+          )}
+        </TableCell>
+        <TableCell>
+          <Lamp
+            state={machine.online ? 'online' : 'offline'}
+            word={machine.online ? t('machines.online') : t('machines.offline')}
+          />
+        </TableCell>
+        <TableCell>
+          <Switch
+            checked={machine.remoteChatEnabled}
+            onCheckedChange={(v) => onAsk({ action: 'chat', machine, next: v })}
+            aria-label={t('machines.toggleChatAria', { name: machine.name })}
+          />
+        </TableCell>
+        <TableCell>
           <DataText size="sm" tone="dim">
-            {t('machines.neverConnected')}
+            {machine.lastSeenAt
+              ? new Date(machine.lastSeenAt).toLocaleString(dateLocale(lang))
+              : '—'}
           </DataText>
-        )}
-      </TableCell>
-      <TableCell>
-        <Lamp
-          state={machine.online ? 'online' : 'offline'}
-          word={machine.online ? t('machines.online') : t('machines.offline')}
-        />
-      </TableCell>
-      <TableCell>
-        <Switch
-          checked={machine.remoteChatEnabled}
-          onCheckedChange={(v) => onAsk({ action: 'chat', machine, next: v })}
-          aria-label={t('machines.toggleChatAria', { name: machine.name })}
-        />
-      </TableCell>
-      <TableCell>
-        <DataText size="sm" tone="dim">
-          {machine.lastSeenAt ? new Date(machine.lastSeenAt).toLocaleString(dateLocale(lang)) : '—'}
-        </DataText>
-      </TableCell>
-      <TableCell className="text-right">
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon" className="size-8">
-              <MoreHorizontalIcon className="size-4" />
-              <span className="sr-only">{t('common.openMenu')}</span>
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuItem
-              variant="destructive"
-              onClick={() => onAsk({ action: 'remove', machine })}
-            >
-              <TrashIcon /> {t('machines.removeAction')}
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      </TableCell>
-    </TableRow>
+        </TableCell>
+        <TableCell className="text-right">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="icon" className="size-8">
+                <MoreHorizontalIcon className="size-4" />
+                <span className="sr-only">{t('common.openMenu')}</span>
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem
+                variant="destructive"
+                onClick={() => onAsk({ action: 'remove', machine })}
+              >
+                <TrashIcon /> {t('machines.removeAction')}
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </TableCell>
+      </TableRow>
+    </>
   );
 }
 
@@ -400,38 +404,40 @@ function EnrollCard({
   }
 
   return (
-    <FormDialog
-      open
-      onClose={onClose}
-      title={t('machines.enrollTitle')}
-      description={t('machines.enrollDescA')}
-    >
-      <form onSubmit={onSubmit} className="flex flex-col gap-4">
-        <CommandLine
-          command="hnx enroll --server <url> --token <your-pat>"
-          note={t('machines.enrollDescB')}
-        />
-        <Field label={t('common.name')} htmlFor="machine-name" required>
-          <Input
-            id="machine-name"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder={t('machines.namePlaceholder')}
-            autoComplete="off"
-            spellCheck={false}
-            required
+    <>
+      <FormDialog
+        open
+        onClose={onClose}
+        title={t('machines.enrollTitle')}
+        description={t('machines.enrollDescA')}
+      >
+        <form onSubmit={onSubmit} className="flex flex-col gap-4">
+          <CommandLine
+            command="hnx enroll --server <url> --token <your-pat>"
+            note={t('machines.enrollDescB')}
           />
-        </Field>
-        <div className="flex justify-end gap-2">
-          <Button type="button" variant="outline" onClick={onClose} disabled={busy}>
-            {t('common.cancel')}
-          </Button>
-          <Button type="submit" disabled={busy}>
-            {busy ? t('machines.enrolling') : t('machines.enrollButton')}
-          </Button>
-        </div>
-      </form>
-    </FormDialog>
+          <Field label={t('common.name')} htmlFor="machine-name" required>
+            <Input
+              id="machine-name"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder={t('machines.namePlaceholder')}
+              autoComplete="off"
+              spellCheck={false}
+              required
+            />
+          </Field>
+          <div className="flex justify-end gap-2">
+            <Button type="button" variant="outline" onClick={onClose} disabled={busy}>
+              {t('common.cancel')}
+            </Button>
+            <Button type="submit" disabled={busy}>
+              {busy ? t('machines.enrolling') : t('machines.enrollButton')}
+            </Button>
+          </div>
+        </form>
+      </FormDialog>
+    </>
   );
 }
 
@@ -449,42 +455,44 @@ function RevealDialog({
   const command = `hnx daemon --server ${window.location.origin} --token ${reveal.token} --machine-id ${reveal.machine.id}`;
 
   return (
-    <Dialog open onOpenChange={(o) => (o ? undefined : onClose())}>
-      <DialogContent
-        showCloseButton={false}
-        data-surface="panel"
-        className="gap-0 overflow-hidden p-0 sm:max-w-xl"
-      >
-        <DialogHeader className="h-(--panel-head-h) flex-row items-center border-b px-3">
-          <DialogTitle className="role-label text-foreground">
-            {t('machines.revealTitle')}
-          </DialogTitle>
-        </DialogHeader>
+    <>
+      <Dialog open onOpenChange={(o) => (o ? undefined : onClose())}>
+        <DialogContent
+          showCloseButton={false}
+          data-surface="panel"
+          className="gap-0 overflow-hidden p-0 sm:max-w-xl"
+        >
+          <DialogHeader className="h-(--panel-head-h) flex-row items-center border-b px-3">
+            <DialogTitle className="role-label text-foreground">
+              {t('machines.revealTitle')}
+            </DialogTitle>
+          </DialogHeader>
 
-        <div className="flex flex-col gap-3 p-(--panel-pad)">
-          <DialogDescription className="text-sm">
-            {t('machines.revealDescA')} <strong>{reveal.machine.name}</strong>{' '}
-            {t('machines.revealDescB')}
-          </DialogDescription>
+          <div className="flex flex-col gap-3 p-(--panel-pad)">
+            <DialogDescription className="text-sm">
+              {t('machines.revealDescA')} <strong>{reveal.machine.name}</strong>{' '}
+              {t('machines.revealDescB')}
+            </DialogDescription>
 
-          <Note tone="warn">{t('machines.revealWarning')}</Note>
+            <Note tone="warn">{t('machines.revealWarning')}</Note>
 
-          <CommandLine command={command} />
+            <CommandLine command={command} />
 
-          <div className="flex flex-col gap-1.5">
-            <LabelText size="sm">{t('machines.tokenLabel')}</LabelText>
-            <Well variant="code" copy={reveal.token}>
-              {reveal.token}
-            </Well>
+            <div className="flex flex-col gap-1.5">
+              <LabelText size="sm">{t('machines.tokenLabel')}</LabelText>
+              <Well variant="code" copy={reveal.token}>
+                {reveal.token}
+              </Well>
+            </div>
           </div>
-        </div>
 
-        <DialogFooter className="flex-row justify-end border-t px-3 py-2">
-          <Button type="button" onClick={onClose}>
-            {t('common.done')}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+          <DialogFooter className="flex-row justify-end border-t px-3 py-2">
+            <Button type="button" onClick={onClose}>
+              {t('common.done')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }

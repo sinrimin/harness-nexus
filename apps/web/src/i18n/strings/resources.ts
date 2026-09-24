@@ -1,8 +1,11 @@
 /** Resources page. */
 const en = {
   title: 'Resources',
-  subtitle: 'Versioned assets (sub-agents, rules) that profiles reference by',
+  subtitleKind: 'Versioned {kind} assets that profiles reference by',
   subtitleAfter: '. Personal ones are yours; global ones are shared by an admin.',
+  tabMine: 'My skills',
+  legacyRedirect: 'Resources now live on their own kind pages.',
+  newSkill: 'New skill',
   storedTitle: 'Stored resources',
   storedDesc: 'Filter by kind or scope to narrow the list.',
   allKinds: 'All kinds',
@@ -71,8 +74,11 @@ const en = {
 
 const zh: typeof en = {
   title: '资源',
-  subtitle: '供各配置集通过以下句柄引用的版本化资产（子代理、规则等）：',
+  subtitleKind: '供各配置集通过以下句柄引用的版本化{kind}资产：',
   subtitleAfter: '。个人资源归你自己所有；全局资源由管理员共享。',
+  tabMine: '我的技能',
+  legacyRedirect: '资源已按种类拆分为独立页面。',
+  newSkill: '新建技能',
   storedTitle: '已存储的资源',
   storedDesc: '按类型或作用域筛选以缩小列表范围。',
   allKinds: '全部类型',

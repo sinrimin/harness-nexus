@@ -22,6 +22,6 @@ export { Skeleton, SkeletonRows, useDelayedVisible } from './skeleton';
 export { Note, errorParts, type NoteTone } from './note';
 export { CommandLine, commandPlaceholders, markPlaceholders } from './command-line';
 export { ConfirmDialog } from './confirm-dialog';
-export { PageHeader, Breadcrumb, type CrumbItem } from './page-header';
+export { PageIntro } from './page-intro';
 export { Chip } from './chip';
 export { Region } from './region';

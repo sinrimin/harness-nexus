@@ -79,14 +79,19 @@ const BASELINE_DIR = path.join(REPO_ROOT, 'docs', 'dev', 'ui-baselines');
 const CURRENT_DIR = path.join(REPO_ROOT, 'docs', 'dev', 'ui-snap-current');
 const LOGS_DIR = path.join(REPO_ROOT, 'docs', 'dev', 'ui-snap-logs');
 
+// Route matrix follows the #23 P2 information architecture: one destination
+// per kind (the old `/resources?kind=` container is gone), and the skill hub is
+// the `?tab=hub` state of /skills. `/hooks` stands in for the four kind pages
+// whose bodies are identical until P4.
 const ALL_ROUTES = [
   '/login',
   '/',
   '/machines',
   '/chat',
+  '/skills',
+  '/hooks',
   '/mcp-servers',
   '/profiles',
-  '/resources',
   '/credentials',
   '/llm-providers',
   '/tokens',
@@ -745,14 +750,22 @@ async function captureShot(browser, { route, skin, mode, viewport, token }) {
     // frames once more so a late font swap cannot land after the gate.
     const skinFamilies = SKIN_FONT_FAMILIES[skin] ?? SKIN_FONT_FAMILIES.signal;
     await page.evaluate(async (families) => {
+      // The gate's clock must be `performance.now()`: INIT_SCRIPT freezes
+      // `Date`, and a `Date.now()` deadline therefore NEVER arrives — a page
+      // that does not use one of the families (the login page has no mono
+      // text, and Chrome's FontFaceSet.check() reports a face as unavailable
+      // until it is actually fetched) spun here until the CDP protocol
+      // timeout killed the whole run. Fixed 2026-09-24; see test-rig.md.
       const check = () =>
         families.every((f) => document.fonts.check(`16px "${f}"`)) &&
         document.fonts.status === 'loaded';
-      const deadline = Date.now() + 10_000;
-      while (Date.now() < deadline) {
+      const started = performance.now();
+      while (performance.now() - started < 10_000) {
         if (check()) return true;
         await new Promise((r) => setTimeout(r, 100));
       }
+      // Not used on this page — nothing to wait for; the visuals-only settle
+      // gate below still guards a late swap.
       return false;
     }, skinFamilies);
     await settle();

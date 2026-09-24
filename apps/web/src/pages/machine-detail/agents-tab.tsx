@@ -77,32 +77,38 @@ export function AgentsTab({
   const { t } = useI18n();
   if (inventory === null) {
     return (
-      <p className="text-muted-foreground py-8 text-center text-sm">
-        {t('machineDetail.loadingInventory')}
-      </p>
+      <>
+        <p className="text-muted-foreground py-8 text-center text-sm">
+          {t('machineDetail.loadingInventory')}
+        </p>
+      </>
     );
   }
   if (inventory.length === 0) {
     return (
-      <Card>
-        <CardContent className="text-muted-foreground py-8 text-center text-sm">
-          {t('machineDetail.emptyInventory')}
-        </CardContent>
-      </Card>
+      <>
+        <Card>
+          <CardContent className="text-muted-foreground py-8 text-center text-sm">
+            {t('machineDetail.emptyInventory')}
+          </CardContent>
+        </Card>
+      </>
     );
   }
   return (
-    <div className="flex flex-col gap-6">
-      {inventory.map((entry) => (
-        <AgentRuntimeCard
-          key={entry.target}
-          entry={entry}
-          machineId={machineId}
-          machine={machine}
-          onChanged={onChanged}
-        />
-      ))}
-    </div>
+    <>
+      <div className="flex flex-col gap-6">
+        {inventory.map((entry) => (
+          <AgentRuntimeCard
+            key={entry.target}
+            entry={entry}
+            machineId={machineId}
+            machine={machine}
+            onChanged={onChanged}
+          />
+        ))}
+      </div>
+    </>
   );
 }
 
@@ -123,40 +129,46 @@ function AgentRuntimeCard({
   const items = entry.agents.flatMap((a) => a.items);
   const notInstalled = entry.runtime !== null && !entry.runtime.installed;
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex flex-wrap items-center gap-2 text-base">
-          <LaptopIcon className="size-4" />
-          <span className="font-mono">{entry.target}</span>
-          {agent?.profileApplied ? (
-            <Badge variant="secondary" className="text-[10px]">
-              {t('machineDetail.profileApplied')}
-            </Badge>
-          ) : null}
-          <span className="ml-auto flex flex-wrap items-center gap-3">
-            <RuntimeStatus runtime={entry.runtime} />
-            <ViewConfigButton machineId={machineId} target={entry.target} runtime={entry.runtime} />
-            <RuntimeManage machineId={machineId} target={entry.target} runtime={entry.runtime} />
-          </span>
-        </CardTitle>
-        <CardDescription>
-          {notInstalled ? `${t('machineDetail.runtimeNotInstalled')} · ` : ''}
-          {t('machineDetail.itemsReported', {
-            count: items.length,
-            time: new Date(entry.reportedAt).toLocaleString(dateLocale(lang)),
-          })}
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="px-0">
-        <PrewarmToggle
-          machineId={machineId}
-          target={entry.target}
-          machine={machine}
-          onChanged={onChanged}
-        />
-        <ProviderConfigForm machineId={machineId} target={entry.target} runtime={entry.runtime} />
-      </CardContent>
-    </Card>
+    <>
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex flex-wrap items-center gap-2 text-base">
+            <LaptopIcon className="size-4" />
+            <span className="font-mono">{entry.target}</span>
+            {agent?.profileApplied ? (
+              <Badge variant="secondary" className="text-[10px]">
+                {t('machineDetail.profileApplied')}
+              </Badge>
+            ) : null}
+            <span className="ml-auto flex flex-wrap items-center gap-3">
+              <RuntimeStatus runtime={entry.runtime} />
+              <ViewConfigButton
+                machineId={machineId}
+                target={entry.target}
+                runtime={entry.runtime}
+              />
+              <RuntimeManage machineId={machineId} target={entry.target} runtime={entry.runtime} />
+            </span>
+          </CardTitle>
+          <CardDescription>
+            {notInstalled ? `${t('machineDetail.runtimeNotInstalled')} · ` : ''}
+            {t('machineDetail.itemsReported', {
+              count: items.length,
+              time: new Date(entry.reportedAt).toLocaleString(dateLocale(lang)),
+            })}
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="px-0">
+          <PrewarmToggle
+            machineId={machineId}
+            target={entry.target}
+            machine={machine}
+            onChanged={onChanged}
+          />
+          <ProviderConfigForm machineId={machineId} target={entry.target} runtime={entry.runtime} />
+        </CardContent>
+      </Card>
+    </>
   );
 }
 
@@ -234,30 +246,36 @@ function RuntimeStatus({ runtime }: { runtime: RuntimeInfoView | null }) {
   const { t } = useI18n();
   if (runtime === null) {
     return (
-      <span className="text-muted-foreground text-xs">{t('machineDetail.runtimeNotProbed')}</span>
+      <>
+        <span className="text-muted-foreground text-xs">{t('machineDetail.runtimeNotProbed')}</span>
+      </>
     );
   }
   if (!runtime.installed) {
     return (
-      <span className="text-muted-foreground text-sm">
-        {t('machineDetail.runtimeNotInstalled')}
-      </span>
+      <>
+        <span className="text-muted-foreground text-sm">
+          {t('machineDetail.runtimeNotInstalled')}
+        </span>
+      </>
     );
   }
   return (
-    <span className="flex flex-wrap items-center gap-2">
-      {runtime.version ? (
-        <span className="font-mono text-xs tabular-nums">{runtime.version}</span>
-      ) : null}
-      {runtime.installMethod ? (
-        <Badge variant="outline" className="font-mono text-[10px]">
-          {runtime.installMethod}
-        </Badge>
-      ) : null}
-      {runtime.binPath ? (
-        <span className="text-muted-foreground font-mono text-xs">{runtime.binPath}</span>
-      ) : null}
-    </span>
+    <>
+      <span className="flex flex-wrap items-center gap-2">
+        {runtime.version ? (
+          <span className="font-mono text-xs tabular-nums">{runtime.version}</span>
+        ) : null}
+        {runtime.installMethod ? (
+          <Badge variant="outline" className="font-mono text-[10px]">
+            {runtime.installMethod}
+          </Badge>
+        ) : null}
+        {runtime.binPath ? (
+          <span className="text-muted-foreground font-mono text-xs">{runtime.binPath}</span>
+        ) : null}
+      </span>
+    </>
   );
 }
 
@@ -316,24 +334,26 @@ function RuntimeManage({
   }
 
   return (
-    <span className="flex items-center gap-2">
-      <Input
-        aria-label={t('machineDetail.versionPlaceholder')}
-        value={version}
-        onChange={(e) => setVersion(e.target.value)}
-        placeholder={t('machineDetail.versionPlaceholder')}
-        className="h-8 w-36 font-mono text-xs"
-        autoComplete="off"
-        spellCheck={false}
-      />
-      <Button size="sm" onClick={() => void manage()} disabled={busy}>
-        {busy
-          ? t('machineDetail.managing')
-          : installed
-            ? t('machineDetail.upgradeButton')
-            : t('machineDetail.installButton')}
-      </Button>
-    </span>
+    <>
+      <span className="flex items-center gap-2">
+        <Input
+          aria-label={t('machineDetail.versionPlaceholder')}
+          value={version}
+          onChange={(e) => setVersion(e.target.value)}
+          placeholder={t('machineDetail.versionPlaceholder')}
+          className="h-8 w-36 font-mono text-xs"
+          autoComplete="off"
+          spellCheck={false}
+        />
+        <Button size="sm" onClick={() => void manage()} disabled={busy}>
+          {busy
+            ? t('machineDetail.managing')
+            : installed
+              ? t('machineDetail.upgradeButton')
+              : t('machineDetail.installButton')}
+        </Button>
+      </span>
+    </>
   );
 }
 
@@ -466,12 +486,14 @@ function ReadonlyField({
   children: ReactNode;
 }) {
   return (
-    <div className={cn('grid min-w-0 gap-2', className)}>
-      <span className="text-sm leading-none font-medium select-none">{label}</span>
-      <div title={title} className="bg-muted/50 flex h-9 items-center rounded-md border px-3">
-        <span className="truncate font-mono text-xs">{children}</span>
+    <>
+      <div className={cn('grid min-w-0 gap-2', className)}>
+        <span className="text-sm leading-none font-medium select-none">{label}</span>
+        <div title={title} className="bg-muted/50 flex h-9 items-center rounded-md border px-3">
+          <span className="truncate font-mono text-xs">{children}</span>
+        </div>
       </div>
-    </div>
+    </>
   );
 }
 
@@ -629,51 +651,94 @@ function ProviderConfigForm({
   const needBaseUrlNote = selectedProvider !== null && selectedProvider.baseUrl === null;
 
   return (
-    <div className="flex flex-col gap-3 border-t px-6 pt-4">
-      <div>
-        <p className="text-sm font-medium">{t('machineDetail.providerTitle')}</p>
-        <p className="text-muted-foreground text-xs">{t('machineDetail.providerDesc')}</p>
-      </div>
-      <div className="flex flex-wrap items-end gap-3">
-        <div className="grid min-w-52 gap-2">
-          <Label htmlFor={`pc-provider-${target}`}>{t('machineDetail.providerPickLabel')}</Label>
-          <Select
-            value={providerId}
-            onValueChange={(v) => {
-              setProviderId(v);
-              setFetched(null);
-              setExtraModels([]);
-            }}
-          >
-            <SelectTrigger id={`pc-provider-${target}`}>
-              <SelectValue placeholder={t('machineDetail.pickProvider')} />
-            </SelectTrigger>
-            <SelectContent>
-              {usableProviders.map((p) => (
-                <SelectItem key={p.id} value={p.id}>
-                  {p.name}
-                </SelectItem>
-              ))}
-              <SelectItem value={MANUAL_PROVIDER}>{t('machineDetail.manualOption')}</SelectItem>
-            </SelectContent>
-          </Select>
+    <>
+      <div className="flex flex-col gap-3 border-t px-6 pt-4">
+        <div>
+          <p className="text-sm font-medium">{t('machineDetail.providerTitle')}</p>
+          <p className="text-muted-foreground text-xs">{t('machineDetail.providerDesc')}</p>
         </div>
+        <div className="flex flex-wrap items-end gap-3">
+          <div className="grid min-w-52 gap-2">
+            <Label htmlFor={`pc-provider-${target}`}>{t('machineDetail.providerPickLabel')}</Label>
+            <Select
+              value={providerId}
+              onValueChange={(v) => {
+                setProviderId(v);
+                setFetched(null);
+                setExtraModels([]);
+              }}
+            >
+              <SelectTrigger id={`pc-provider-${target}`}>
+                <SelectValue placeholder={t('machineDetail.pickProvider')} />
+              </SelectTrigger>
+              <SelectContent>
+                {usableProviders.map((p) => (
+                  <SelectItem key={p.id} value={p.id}>
+                    {p.name}
+                  </SelectItem>
+                ))}
+                <SelectItem value={MANUAL_PROVIDER}>{t('machineDetail.manualOption')}</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
 
-        {selectedProvider !== null ? (
-          <>
-            {selectedProvider.baseUrl !== null ? (
-              <ReadonlyField
-                label={t('machineDetail.baseUrlLabel')}
-                className="min-w-52 max-w-full"
-                title={selectedProvider.baseUrl}
-              >
-                {selectedProvider.baseUrl}
+          {selectedProvider !== null ? (
+            <>
+              {selectedProvider.baseUrl !== null ? (
+                <ReadonlyField
+                  label={t('machineDetail.baseUrlLabel')}
+                  className="min-w-52 max-w-full"
+                  title={selectedProvider.baseUrl}
+                >
+                  {selectedProvider.baseUrl}
+                </ReadonlyField>
+              ) : (
+                <div className="grid min-w-52 gap-2">
+                  <Label htmlFor={`pc-url2-${target}`}>{t('machineDetail.baseUrlLabel')}</Label>
+                  <Input
+                    id={`pc-url2-${target}`}
+                    value={baseUrl}
+                    onChange={(e) => setBaseUrl(e.target.value)}
+                    placeholder={t('machineDetail.baseUrlPlaceholder')}
+                    className="font-mono text-xs"
+                    autoComplete="off"
+                    spellCheck={false}
+                    inputMode="url"
+                  />
+                </div>
+              )}
+              <ReadonlyField label={t('machineDetail.apiLabel')} className="min-w-36">
+                {selectedProvider.api}
               </ReadonlyField>
-            ) : (
-              <div className="grid min-w-52 gap-2">
-                <Label htmlFor={`pc-url2-${target}`}>{t('machineDetail.baseUrlLabel')}</Label>
+              <ReadonlyField
+                label={t('machineDetail.credentialLabel')}
+                className="min-w-44"
+                title={selectedProvider.credentialName}
+              >
+                {selectedProvider.credentialName}
+              </ReadonlyField>
+            </>
+          ) : null}
+
+          {manual ? (
+            <>
+              <div className="grid min-w-44 gap-2">
+                <Label htmlFor={`pc-label-${target}`}>
+                  {t('machineDetail.providerLabelLabel')}
+                </Label>
                 <Input
-                  id={`pc-url2-${target}`}
+                  id={`pc-label-${target}`}
+                  value={providerLabel}
+                  onChange={(e) => setProviderLabel(e.target.value)}
+                  placeholder={t('machineDetail.providerLabelPlaceholder')}
+                  autoComplete="off"
+                  spellCheck={false}
+                />
+              </div>
+              <div className="grid min-w-52 gap-2">
+                <Label htmlFor={`pc-url-${target}`}>{t('machineDetail.baseUrlLabel')}</Label>
+                <Input
+                  id={`pc-url-${target}`}
                   value={baseUrl}
                   onChange={(e) => setBaseUrl(e.target.value)}
                   placeholder={t('machineDetail.baseUrlPlaceholder')}
@@ -683,205 +748,168 @@ function ProviderConfigForm({
                   inputMode="url"
                 />
               </div>
-            )}
-            <ReadonlyField label={t('machineDetail.apiLabel')} className="min-w-36">
-              {selectedProvider.api}
-            </ReadonlyField>
-            <ReadonlyField
-              label={t('machineDetail.credentialLabel')}
-              className="min-w-44"
-              title={selectedProvider.credentialName}
-            >
-              {selectedProvider.credentialName}
-            </ReadonlyField>
-          </>
-        ) : null}
-
-        {manual ? (
-          <>
-            <div className="grid min-w-44 gap-2">
-              <Label htmlFor={`pc-label-${target}`}>{t('machineDetail.providerLabelLabel')}</Label>
-              <Input
-                id={`pc-label-${target}`}
-                value={providerLabel}
-                onChange={(e) => setProviderLabel(e.target.value)}
-                placeholder={t('machineDetail.providerLabelPlaceholder')}
-                autoComplete="off"
-                spellCheck={false}
-              />
-            </div>
-            <div className="grid min-w-52 gap-2">
-              <Label htmlFor={`pc-url-${target}`}>{t('machineDetail.baseUrlLabel')}</Label>
-              <Input
-                id={`pc-url-${target}`}
-                value={baseUrl}
-                onChange={(e) => setBaseUrl(e.target.value)}
-                placeholder={t('machineDetail.baseUrlPlaceholder')}
-                className="font-mono text-xs"
-                autoComplete="off"
-                spellCheck={false}
-                inputMode="url"
-              />
-            </div>
-            {apiOptions.length > 1 ? (
-              <div className="grid min-w-24 gap-2">
-                <Label htmlFor={`pc-api-${target}`}>{t('machineDetail.apiLabel')}</Label>
-                <Select value={apiFlavor} onValueChange={setApiFlavor}>
-                  <SelectTrigger id={`pc-api-${target}`} className="font-mono text-xs">
-                    <SelectValue />
+              {apiOptions.length > 1 ? (
+                <div className="grid min-w-24 gap-2">
+                  <Label htmlFor={`pc-api-${target}`}>{t('machineDetail.apiLabel')}</Label>
+                  <Select value={apiFlavor} onValueChange={setApiFlavor}>
+                    <SelectTrigger id={`pc-api-${target}`} className="font-mono text-xs">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {apiOptions.map((a) => (
+                        <SelectItem key={a} value={a} className="font-mono text-xs">
+                          {a}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              ) : (
+                // Single-flavor target — same read-only h-9 cell as the preset
+                // arm, so the row heights match (was a tiny standalone badge).
+                <ReadonlyField label={t('machineDetail.apiLabel')} className="min-w-36">
+                  {apiOptions[0]}
+                </ReadonlyField>
+              )}
+              <div className="grid min-w-44 gap-2">
+                <Label htmlFor={`pc-cred-${target}`}>{t('machineDetail.credentialLabel')}</Label>
+                <Select value={credentialName} onValueChange={setCredentialName}>
+                  <SelectTrigger id={`pc-cred-${target}`} className="font-mono text-xs">
+                    <SelectValue placeholder={t('machineDetail.pickCredential')} />
                   </SelectTrigger>
                   <SelectContent>
-                    {apiOptions.map((a) => (
-                      <SelectItem key={a} value={a} className="font-mono text-xs">
-                        {a}
+                    {(creds ?? []).map((c) => (
+                      <SelectItem key={c.id} value={c.name} className="font-mono text-xs">
+                        {c.name}
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
               </div>
-            ) : (
-              // Single-flavor target — same read-only h-9 cell as the preset
-              // arm, so the row heights match (was a tiny standalone badge).
-              <ReadonlyField label={t('machineDetail.apiLabel')} className="min-w-36">
-                {apiOptions[0]}
-              </ReadonlyField>
-            )}
-            <div className="grid min-w-44 gap-2">
-              <Label htmlFor={`pc-cred-${target}`}>{t('machineDetail.credentialLabel')}</Label>
-              <Select value={credentialName} onValueChange={setCredentialName}>
-                <SelectTrigger id={`pc-cred-${target}`} className="font-mono text-xs">
-                  <SelectValue placeholder={t('machineDetail.pickCredential')} />
-                </SelectTrigger>
-                <SelectContent>
-                  {(creds ?? []).map((c) => (
-                    <SelectItem key={c.id} value={c.name} className="font-mono text-xs">
-                      {c.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+            </>
+          ) : null}
+
+          <div className="grid min-w-44 gap-2">
+            <Label htmlFor={`pc-model-${target}`}>{t('machineDetail.modelDefaultLabel')}</Label>
+            <div className="flex gap-2">
+              <Input
+                id={`pc-model-${target}`}
+                value={model}
+                onChange={(e) => setModel(e.target.value)}
+                className="font-mono text-xs"
+                autoComplete="off"
+                spellCheck={false}
+              />
+              {fetched !== null && fetched.length > 0 ? (
+                <FetchedModelMenu fetched={fetched} onPick={setModel} />
+              ) : null}
+              <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                className="shrink-0"
+                disabled={fetching || (manual && credentialName === '')}
+                onClick={() => void fetchModels()}
+                title={t('machineDetail.fetchModels')}
+                aria-label={t('machineDetail.fetchModels')}
+              >
+                <RefreshCwIcon className={fetching ? 'animate-spin' : ''} />
+              </Button>
             </div>
-          </>
+          </div>
+          <Button onClick={() => void apply()} disabled={!ready}>
+            {busy ? t('machineDetail.applying') : t('machineDetail.applyButton')}
+          </Button>
+        </div>
+
+        {needBaseUrlNote && managedTarget === 'deepseek' ? (
+          <p className="text-warn text-xs">{t('machineDetail.baseUrlNeeded')}</p>
+        ) : null}
+        {providers !== null && usableProviders.length === 0 && manual ? (
+          <p className="text-muted-foreground text-xs">{t('machineDetail.noProviders')}</p>
+        ) : null}
+        {providerGone ? (
+          <p className="text-warn text-xs">{t('machineDetail.providerGone')}</p>
+        ) : null}
+        {manual && creds !== null && creds.length === 0 ? (
+          <p className="text-muted-foreground text-xs">{t('machineDetail.noCredentials')}</p>
         ) : null}
 
-        <div className="grid min-w-44 gap-2">
-          <Label htmlFor={`pc-model-${target}`}>{t('machineDetail.modelDefaultLabel')}</Label>
-          <div className="flex gap-2">
-            <Input
-              id={`pc-model-${target}`}
-              value={model}
-              onChange={(e) => setModel(e.target.value)}
-              className="font-mono text-xs"
-              autoComplete="off"
-              spellCheck={false}
-            />
-            {fetched !== null && fetched.length > 0 ? (
-              <FetchedModelMenu fetched={fetched} onPick={setModel} />
-            ) : null}
-            <Button
-              type="button"
-              variant="outline"
-              size="icon"
-              className="shrink-0"
-              disabled={fetching || (manual && credentialName === '')}
-              onClick={() => void fetchModels()}
-              title={t('machineDetail.fetchModels')}
-              aria-label={t('machineDetail.fetchModels')}
-            >
-              <RefreshCwIcon className={fetching ? 'animate-spin' : ''} />
-            </Button>
-          </div>
-        </div>
-        <Button onClick={() => void apply()} disabled={!ready}>
-          {busy ? t('machineDetail.applying') : t('machineDetail.applyButton')}
-        </Button>
-      </div>
-
-      {needBaseUrlNote && managedTarget === 'deepseek' ? (
-        <p className="text-warn text-xs">{t('machineDetail.baseUrlNeeded')}</p>
-      ) : null}
-      {providers !== null && usableProviders.length === 0 && manual ? (
-        <p className="text-muted-foreground text-xs">{t('machineDetail.noProviders')}</p>
-      ) : null}
-      {providerGone ? <p className="text-warn text-xs">{t('machineDetail.providerGone')}</p> : null}
-      {manual && creds !== null && creds.length === 0 ? (
-        <p className="text-muted-foreground text-xs">{t('machineDetail.noCredentials')}</p>
-      ) : null}
-
-      {/* 9 W13 — cc-switch-style extra models: rows are freely editable
+        {/* 9 W13 — cc-switch-style extra models: rows are freely editable
           inputs (fetching is optional; some gateways expose no /models), a
           fetched list turns into per-row pick dropdowns, and any row can be
           promoted to the default (the old default swaps into the rows). */}
-      <div className="flex flex-col gap-2">
-        <div className="flex items-center gap-2">
-          <span className="text-sm leading-none font-medium">
-            {t('machineDetail.extraModelsTitle')}
-          </span>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            className="h-7 px-2 text-xs"
-            onClick={() => setExtraModels((prev) => [...prev, ''])}
-          >
-            <PlusIcon className="size-3.5" />
-            {t('machineDetail.extraModelsAdd')}
-          </Button>
-        </div>
-        {extraModels.map((m, i) => (
-          <div key={i} className="flex max-w-2xl items-center gap-2">
-            <Input
-              value={m}
-              onChange={(e) =>
-                setExtraModels((prev) => prev.map((x, j) => (j === i ? e.target.value : x)))
-              }
-              placeholder={t('machineDetail.extraModelsPlaceholder')}
-              className="h-9 font-mono text-xs"
-              autoComplete="off"
-              spellCheck={false}
-            />
-            {fetched !== null && fetched.length > 0 ? (
-              <FetchedModelMenu
-                fetched={fetched}
-                onPick={(id) => setExtraModels((prev) => prev.map((x, j) => (j === i ? id : x)))}
-              />
-            ) : null}
+        <div className="flex flex-col gap-2">
+          <div className="flex items-center gap-2">
+            <span className="text-sm leading-none font-medium">
+              {t('machineDetail.extraModelsTitle')}
+            </span>
             <Button
               type="button"
-              variant="ghost"
+              variant="outline"
               size="sm"
-              className="text-muted-foreground h-9 shrink-0 px-2 text-xs hover:text-foreground"
-              disabled={m.trim() === '' || m.trim() === model.trim()}
-              onClick={() => {
-                const id = m.trim();
-                const old = model.trim();
-                setModel(id);
-                setExtraModels((prev) => {
-                  const kept = prev.filter((_, j) => j !== i);
-                  if (old !== '' && old !== id && !kept.some((x) => x.trim() === old)) {
-                    kept.push(old);
-                  }
-                  return kept;
-                });
-              }}
+              className="h-7 px-2 text-xs"
+              onClick={() => setExtraModels((prev) => [...prev, ''])}
             >
-              {t('machineDetail.extraModelsMakeDefault')}
-            </Button>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              className="text-muted-foreground size-8 shrink-0 hover:text-danger"
-              onClick={() => setExtraModels((prev) => prev.filter((_, j) => j !== i))}
-              aria-label={t('machineDetail.extraModelsRemove', { model: m === '' ? '…' : m })}
-            >
-              <XIcon className="size-3.5" />
+              <PlusIcon className="size-3.5" />
+              {t('machineDetail.extraModelsAdd')}
             </Button>
           </div>
-        ))}
-        <p className="text-muted-foreground text-xs">{t('machineDetail.extraModelsHint')}</p>
+          {extraModels.map((m, i) => (
+            <div key={i} className="flex max-w-2xl items-center gap-2">
+              <Input
+                value={m}
+                onChange={(e) =>
+                  setExtraModels((prev) => prev.map((x, j) => (j === i ? e.target.value : x)))
+                }
+                placeholder={t('machineDetail.extraModelsPlaceholder')}
+                className="h-9 font-mono text-xs"
+                autoComplete="off"
+                spellCheck={false}
+              />
+              {fetched !== null && fetched.length > 0 ? (
+                <FetchedModelMenu
+                  fetched={fetched}
+                  onPick={(id) => setExtraModels((prev) => prev.map((x, j) => (j === i ? id : x)))}
+                />
+              ) : null}
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="text-muted-foreground h-9 shrink-0 px-2 text-xs hover:text-foreground"
+                disabled={m.trim() === '' || m.trim() === model.trim()}
+                onClick={() => {
+                  const id = m.trim();
+                  const old = model.trim();
+                  setModel(id);
+                  setExtraModels((prev) => {
+                    const kept = prev.filter((_, j) => j !== i);
+                    if (old !== '' && old !== id && !kept.some((x) => x.trim() === old)) {
+                      kept.push(old);
+                    }
+                    return kept;
+                  });
+                }}
+              >
+                {t('machineDetail.extraModelsMakeDefault')}
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="text-muted-foreground size-8 shrink-0 hover:text-danger"
+                onClick={() => setExtraModels((prev) => prev.filter((_, j) => j !== i))}
+                aria-label={t('machineDetail.extraModelsRemove', { model: m === '' ? '…' : m })}
+              >
+                <XIcon className="size-3.5" />
+              </Button>
+            </div>
+          ))}
+          <p className="text-muted-foreground text-xs">{t('machineDetail.extraModelsHint')}</p>
+        </div>
       </div>
-    </div>
+    </>
   );
 }
 
@@ -900,26 +928,28 @@ function FetchedModelMenu({
   const { t } = useI18n();
   if (fetched.length === 0) return null;
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button
-          type="button"
-          variant="outline"
-          size="icon"
-          className="shrink-0"
-          title={t('machineDetail.extraModelsPick')}
-          aria-label={t('machineDetail.extraModelsPick')}
-        >
-          <ChevronDownIcon className="size-4" />
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="start" className="max-h-72 overflow-y-auto">
-        {fetched.map((m) => (
-          <DropdownMenuItem key={m.id} onClick={() => onPick(m.id)} className="font-mono text-xs">
-            {m.name !== undefined && m.name !== m.id ? `${m.id} — ${m.name}` : m.id}
-          </DropdownMenuItem>
-        ))}
-      </DropdownMenuContent>
-    </DropdownMenu>
+    <>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button
+            type="button"
+            variant="outline"
+            size="icon"
+            className="shrink-0"
+            title={t('machineDetail.extraModelsPick')}
+            aria-label={t('machineDetail.extraModelsPick')}
+          >
+            <ChevronDownIcon className="size-4" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="start" className="max-h-72 overflow-y-auto">
+          {fetched.map((m) => (
+            <DropdownMenuItem key={m.id} onClick={() => onPick(m.id)} className="font-mono text-xs">
+              {m.name !== undefined && m.name !== m.id ? `${m.id} — ${m.name}` : m.id}
+            </DropdownMenuItem>
+          ))}
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </>
   );
 }

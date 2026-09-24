@@ -1,12 +1,6 @@
-import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react';
 import { useTheme } from 'next-themes';
-import {
-  DEFAULT_SKIN,
-  getSkin,
-  isSkinId,
-  type SkinId,
-  type SkinManifest,
-} from '@/skins/registry';
+import { DEFAULT_SKIN, getSkin, isSkinId, type SkinId, type SkinManifest } from '@/skins/registry';
 
 /**
  * Skin axis of the theme system (the light/dark axis stays with next-themes).
@@ -39,14 +33,23 @@ export function SkinProvider({ children }: { children: ReactNode }) {
   const [skin, setSkinState] = useState<SkinId>(readStoredSkin);
   const { resolvedTheme, setTheme } = useTheme();
 
-  useEffect(() => {
-    const manifest = getSkin(skin);
-    document.documentElement.dataset.skin = skin;
+  // Persistence belongs to the setter, NOT to the apply-effect below: that
+  // effect re-runs whenever the light/dark axis resolves, and writing the
+  // in-memory skin from there clobbered a value set from outside React
+  // (another tab, or a screenshot rig priming localStorage before navigating)
+  // — the reason ui-snap could never capture a non-default skin.
+  const setSkin = useCallback((id: SkinId) => {
+    setSkinState(id);
     try {
-      localStorage.setItem(STORAGE_KEY, skin);
+      localStorage.setItem(STORAGE_KEY, id);
     } catch {
       // Private mode etc. — the in-memory choice still applies.
     }
+  }, []);
+
+  useEffect(() => {
+    const manifest = getSkin(skin);
+    document.documentElement.dataset.skin = skin;
     void manifest.load();
     if (manifest.modes.length === 1) {
       const only = manifest.modes[0];
@@ -57,7 +60,7 @@ export function SkinProvider({ children }: { children: ReactNode }) {
   const value: SkinContextValue = {
     skin,
     manifest: getSkin(skin),
-    setSkin: setSkinState,
+    setSkin,
   };
 
   return <SkinContext.Provider value={value}>{children}</SkinContext.Provider>;
