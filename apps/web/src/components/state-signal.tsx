@@ -83,6 +83,35 @@ type StateSignalProps = Omit<ComponentProps<'span'>, 'children'> & {
   pulse?: boolean;
 };
 
+/**
+ * The 18 state words collapse to five tones, and that five-tone table is what
+ * the kit's `Lamp` renders: colour carries the tone, the word carries the
+ * state. Keeping the tone table here (next to the state union) means a new
+ * state can never be added without deciding its tone.
+ */
+export type SignalTone = 'ok' | 'warn' | 'fail' | 'live' | 'off';
+
+export const SIGNAL_TONE: Record<SignalState, SignalTone> = {
+  online: 'ok',
+  connected: 'ok',
+  succeeded: 'ok',
+  completed: 'ok',
+  busy: 'ok',
+  running: 'warn',
+  connecting: 'warn',
+  error: 'warn',
+  warn: 'warn',
+  failed: 'fail',
+  live: 'live',
+  idle: 'off',
+  offline: 'off',
+  configured: 'off',
+  neutral: 'off',
+  cancelled: 'off',
+  queued: 'off',
+  inactive: 'off',
+};
+
 export function StateSignal({ state, label, pulse, className, ...props }: StateSignalProps) {
   return (
     <span
