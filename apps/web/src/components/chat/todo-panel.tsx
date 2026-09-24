@@ -23,7 +23,9 @@ function StatusGlyph({ status }: { status: PlanEntry['status'] }) {
     );
   }
   if (status === 'in_progress') {
-    return <span className="mt-0.5 size-3.5 shrink-0 animate-pulse rounded-full bg-warn" />;
+    // A step that is running right now: the same breathing motion as every
+    // other live thing (03-interaction.md §6 has exactly four motions).
+    return <span className="lamp-breath mt-0.5 size-3.5 shrink-0 rounded-full bg-warn" />;
   }
   return (
     <span className="border-muted-foreground/50 mt-0.5 size-3.5 shrink-0 rounded-full border border-dashed" />

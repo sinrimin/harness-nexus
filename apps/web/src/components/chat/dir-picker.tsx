@@ -209,9 +209,10 @@ export function DirPicker({
                 'hover:bg-accent flex w-full items-center gap-1.5 rounded px-1.5 py-1 text-left',
                 selected === baseWorkspace && 'bg-accent',
               )}
-              title={baseWorkspace}
             >
               <FolderIcon className="size-3.5 shrink-0" />
+              {/* No `title` here (P6): the full path is already printed on the
+                  right, so the tooltip was a second copy of a visible value. */}
               <span className="truncate">{rootName === '' ? baseWorkspace : rootName}</span>
               <span className="text-muted-foreground/60 ml-auto shrink-0">{baseWorkspace}</span>
             </button>

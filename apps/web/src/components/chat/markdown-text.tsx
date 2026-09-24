@@ -95,7 +95,7 @@ export const MarkdownText = memo(function MarkdownText({ text, streaming }: Mark
       </ReactMarkdown>
       {streaming ? (
         <span
-          className="bg-signal ml-0.5 inline-block h-4 w-[2px] translate-y-0.5 animate-pulse"
+          className="bg-signal lamp-breath ml-0.5 inline-block h-4 w-[2px] translate-y-0.5"
           aria-hidden
         />
       ) : null}
