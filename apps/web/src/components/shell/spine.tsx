@@ -1,6 +1,5 @@
 import { Link } from 'react-router-dom';
 import { useI18n } from '@/i18n';
-import { BrandMark } from '@/components/brand-mark';
 import { Lamp } from '@/components/kit';
 import { groupLanding, visibleGroups, type NavGroupId } from '@/nav';
 import { cn } from '@/lib/utils';
@@ -38,14 +37,11 @@ className={cn(
     >
       {/* Head band — shares the topbar's height so the spine starts at the
           very top of the window and the bays line up under it
-          (theme-designs/01-bay: `.spine-head`). BAY's engraved 「HN / RACK 6U」
-          plate is P7; Signal carries the mark. */}
-      <div
-        data-slot="spine-head"
-        className="flex h-(--shell-bar-h) shrink-0 items-center justify-center border-b"
-      >
-        <BrandMark size={18} />
-      </div>
+          (theme-designs/01-bay: `.spine-head`). Deliberately EMPTY: the brand
+          lives once, in the plate (mark + wordmark), and two marks side by side
+          is just a double logo. BAY engraves its 「HN / RACK 6U」 plate here in
+          P7 — the slot exists so the skin can, without touching the layout. */}
+      <div data-slot="spine-head" className="h-(--shell-bar-h) shrink-0 border-b" />
       {groups.map((group) => {
         const landing = groupLanding(group.id, isAdmin);
         if (!landing) return null;
