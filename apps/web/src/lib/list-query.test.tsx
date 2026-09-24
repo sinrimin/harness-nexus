@@ -61,6 +61,18 @@ describe('readListQuery', () => {
     const query = readListQuery(spec, url('kind=skill&transport=stdio'));
     expect(query.filters).toEqual({ kind: 'skill', scope: null });
   });
+
+  // The default is declared as an *encoding* ('-updated'), so the vocabulary is
+  // the keys: a page whose default is descending must still read `-updated`
+  // back. (Found in the deployed walk — `?sort=-created` was silently dropped
+  // because 'created' is not a literal member of ['username', '-created'].)
+  it('reads a key whose declared default is descending', () => {
+    const descending: ListQuerySpec = { sort: ['-created', 'name'] };
+    expect(readListQuery(descending, url('sort=-created')).sort).toBe('-created');
+    expect(readListQuery(descending, url('sort=created')).sort).toBe('created');
+    expect(readListQuery(descending, url('sort=-created')).active).toBe(true);
+    expect(writeListQuery(descending, url(''), { sort: '-created' }).get('sort')).toBe('-created');
+  });
 });
 
 describe('writeListQuery', () => {

@@ -60,6 +60,16 @@ export function encodeSort(key: string, desc: boolean): string {
   return desc ? `-${key}` : key;
 }
 
+/**
+ * The sortable keys, without the direction prefix. `sort` is declared as
+ * encodings (`'-created'`, `'name'`) so the first entry can state the default
+ * direction — but a URL may carry either direction of any declared key, so the
+ * vocabulary is the *keys*.
+ */
+function declaredSortKeys(spec: ListQuerySpec): string[] {
+  return (spec.sort ?? []).map((entry) => parseSort(entry)?.key ?? entry);
+}
+
 export function readListQuery(spec: ListQuerySpec, params: URLSearchParams): ParsedListQuery {
   const q = (params.get(SEARCH_PARAM) ?? '').trim();
   let active = q !== '';
@@ -74,7 +84,7 @@ export function readListQuery(spec: ListQuerySpec, params: URLSearchParams): Par
 
   const parsed = parseSort(params.get(SORT_PARAM));
   const sort =
-    parsed !== null && (spec.sort ?? []).includes(parsed.key)
+    parsed !== null && declaredSortKeys(spec).includes(parsed.key)
       ? encodeSort(parsed.key, parsed.desc)
       : null;
   if (sort !== null) active = true;
@@ -110,7 +120,7 @@ export function writeListQuery(
 
   if (patch.sort !== undefined) {
     const parsed = patch.sort === null ? null : parseSort(patch.sort);
-    if (parsed === null || !(spec.sort ?? []).includes(parsed.key)) next.delete(SORT_PARAM);
+    if (parsed === null || !declaredSortKeys(spec).includes(parsed.key)) next.delete(SORT_PARAM);
     else next.set(SORT_PARAM, encodeSort(parsed.key, parsed.desc));
   }
 
