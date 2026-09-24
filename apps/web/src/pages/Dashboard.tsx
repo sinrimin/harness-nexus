@@ -15,7 +15,8 @@ import {
 import { useAuth, withAuthGuard } from '@/auth';
 import { api } from '@/api';
 import { useI18n } from '@/i18n';
-import { appSocket, type MachineStatusEvent } from '@/realtime';
+import { useMachineStatus } from '@/components/shell/use-presence.js';
+import { patchMachineList } from '@/lib/machine-presence.js';
 import {
   HarnessNexusError,
   type AgentInstanceView,
@@ -105,28 +106,7 @@ export function DashboardPage() {
   }, [logout]);
 
   // Live presence: flip machine dots/rows in place on machine:status pushes.
-  useEffect(() => {
-    const socket = appSocket();
-    const onStatus = (e: MachineStatusEvent): void => {
-      setMachines(
-        (prev) =>
-          prev?.map((m) =>
-            m.id === e.machineId
-              ? {
-                  ...m,
-                  online: e.online,
-                  lastSeenAt: e.lastSeenAt,
-                  ...(e.daemonVersion !== undefined ? { daemonVersion: e.daemonVersion } : {}),
-                }
-              : m,
-          ) ?? prev,
-      );
-    };
-    socket.on('machine:status', onStatus);
-    return () => {
-      socket.off('machine:status', onStatus);
-    };
-  }, []);
+  useMachineStatus((e) => setMachines((prev) => patchMachineList(prev, e)));
 
   if (!user) return null;
 

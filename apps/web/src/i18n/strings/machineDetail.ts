@@ -18,6 +18,10 @@ const en = {
   tabInventory: 'Inventory',
   tabDeploy: 'Deployments & jobs',
   loading: 'Loading…',
+  // The identity panel's nameplate (P5 — the label word plus the last-seen
+  // figure on its right; the page's own h1 already carries the machine name).
+  machineLabel: 'Machine',
+  lastSeenInline: 'last seen {time}',
   metaTitle: 'Machine information',
   metaDesc: 'Identity and daemon capabilities of this machine.',
   metaHostname: 'Hostname',
@@ -171,7 +175,11 @@ const en = {
   chatEnabled: 'Remote chat enabled',
   chatDisabled: 'Remote chat disabled',
   chatLabel: 'Remote chat',
+  // Both settings state their cost (P5): chat runs tools on this machine, and
+  // the workspace is where a new session starts.
+  chatHint: 'Chatting with an agent on this machine runs tools and commands on it.',
   baseWorkspace: 'Base workspace',
+  baseWorkspaceHint: 'Where a new chat session may pick its working directory. Empty means unset.',
   baseWorkspaceSaved: 'Base workspace saved',
 };
 
@@ -194,6 +202,8 @@ const zh: typeof en = {
   tabInventory: '清单',
   tabDeploy: '部署与作业',
   loading: '加载中…',
+  machineLabel: '机器',
+  lastSeenInline: '最后在线 {time}',
   metaTitle: '机器信息',
   metaDesc: '这台机器的身份与守护进程能力。',
   metaHostname: '主机名',
@@ -339,7 +349,9 @@ const zh: typeof en = {
   chatEnabled: '远程聊天已启用',
   chatDisabled: '远程聊天已禁用',
   chatLabel: '远程聊天',
+  chatHint: '与这台机器上的代理聊天会在其上运行工具和命令。',
   baseWorkspace: '基础工作区',
+  baseWorkspaceHint: '新会话可以在这之下挑选工作目录。留空表示未设置。',
   baseWorkspaceSaved: '基础工作区已保存',
 };
 

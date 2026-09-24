@@ -1,19 +1,25 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { toast } from 'sonner';
 import { api } from '@/api';
 import { useAuth, withAuthGuard } from '@/auth';
 import { useI18n, dateLocale } from '@/i18n';
 import { HarnessNexusError, type MachineView } from '@harness-nexus/sdk';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
+import { Field, LabelText, Panel, PanelBody, Skeleton, Well } from '@/components/kit';
 
 /**
- * 概览 tab — machine identity + the two machine-level settings that used to
- * cram the page header toolbar (base workspace, remote chat). Identity data
- * only; liveness color stays on the always-visible page header.
+ * 概览 tab — machine identity + the two machine-level settings (P5).
+ *
+ * Identity is a definition list (02-content.md §3.6): `dt` in the prose role at
+ * a fixed 138px/104px, `dd` always a `Well` — host, platform, version and
+ * timestamps are protocol material, so bare right-aligned text lost the one
+ * thing a reader does with them (copy the exact string). Capabilities are names
+ * of things, which the device table maps to `Well chip`, not to a `Badge`.
+ *
+ * Settings say what they COST: remote chat is remote code execution and the
+ * description says so.
  */
 export function OverviewTab({
   machine,
@@ -25,83 +31,98 @@ export function OverviewTab({
   const { t, lang } = useI18n();
   if (machine === null) {
     return (
-      <>
-        <p className="text-muted-foreground py-8 text-center text-sm">
-          {t('machineDetail.loading')}
-        </p>
-      </>
+      <div className="grid gap-(--gap) lg:grid-cols-[minmax(280px,340px)_minmax(0,1fr)]">
+        <Panel label={t('machineDetail.metaTitle')} density="compact">
+          <PanelBody className="grid gap-2.5">
+            <Skeleton className="h-4 w-full" />
+            <Skeleton className="h-4 w-5/6" />
+            <Skeleton className="h-4 w-2/3" />
+          </PanelBody>
+        </Panel>
+      </div>
     );
   }
-  const rows: { label: string; value: string; mono?: boolean }[] = [
-    { label: t('machineDetail.metaHostname'), value: machine.hostname || '—', mono: true },
+  const rows: { label: string; value: string | null; copy?: boolean }[] = [
+    { label: t('machineDetail.metaHostname'), value: machine.hostname || null, copy: true },
     {
       label: t('machineDetail.metaPlatform'),
-      value: [machine.os, machine.arch].filter(Boolean).join(' · ') || '—',
-      mono: true,
+      value: [machine.os, machine.arch].filter(Boolean).join(' · ') || null,
     },
-    { label: t('machineDetail.metaDaemon'), value: machine.daemonVersion ?? '—', mono: true },
+    { label: t('machineDetail.metaDaemon'), value: machine.daemonVersion ?? null, copy: true },
     {
       label: t('machineDetail.metaLastSeen'),
       value:
         machine.lastSeenAt === null
-          ? '—'
+          ? null
           : new Date(machine.lastSeenAt).toLocaleString(dateLocale(lang)),
     },
   ];
   return (
-    <>
-      <div className="flex flex-col gap-6">
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">{t('machineDetail.metaTitle')}</CardTitle>
-            <CardDescription>{t('machineDetail.metaDesc')}</CardDescription>
-          </CardHeader>
-          <CardContent className="grid gap-x-8 gap-y-3 sm:grid-cols-2">
+    <div className="grid items-start gap-(--gap) lg:grid-cols-[minmax(280px,340px)_minmax(0,1fr)]">
+      <Panel label={t('machineDetail.metaTitle')} density="compact">
+        <PanelBody>
+          <dl className="grid gap-2.5">
             {rows.map((r) => (
-              <div
-                key={r.label}
-                className="flex items-baseline justify-between gap-4 border-b pb-2 last:border-b-0 sm:border-b-0 sm:border-t sm:pt-2.5 first:sm:border-t-0 first:sm:pt-0"
-              >
-                <span className="text-muted-foreground shrink-0 text-xs">{r.label}</span>
-                <span
-                  className={`text-right text-sm ${r.mono === true ? 'font-mono text-xs' : ''}`}
-                >
-                  {r.value}
-                </span>
-              </div>
+              <MetaRow key={r.label} label={r.label} copy={r.copy}>
+                {r.value}
+              </MetaRow>
             ))}
-            <div className="flex items-baseline justify-between gap-4 sm:col-span-2">
-              <span className="text-muted-foreground shrink-0 text-xs">
-                {t('machineDetail.metaCapabilities')}
-              </span>
-              <span className="flex flex-wrap justify-end gap-1.5">
-                {machine.capabilities.length === 0 ? (
-                  <span className="text-muted-foreground text-sm">—</span>
-                ) : (
-                  machine.capabilities.map((c) => (
-                    <Badge key={c} variant="outline" className="font-mono text-[10px]">
+            <MetaRow label={t('machineDetail.metaCapabilities')}>
+              {machine.capabilities.length === 0 ? null : (
+                <span className="flex flex-wrap gap-1.5">
+                  {machine.capabilities.map((c) => (
+                    <Well key={c} variant="chip">
                       {c}
-                    </Badge>
-                  ))
-                )}
-              </span>
-            </div>
-          </CardContent>
-        </Card>
+                    </Well>
+                  ))}
+                </span>
+              )}
+            </MetaRow>
+          </dl>
+        </PanelBody>
+      </Panel>
 
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">{t('machineDetail.settingsTitle')}</CardTitle>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-4">
-            <BaseWorkspaceField machine={machine} onChanged={onChanged} />
-            <div className="border-t pt-4">
-              <RemoteChatToggle machine={machine} onChanged={onChanged} />
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-    </>
+      <Panel label={t('machineDetail.settingsTitle')} density="compact">
+        <PanelBody className="flex flex-col gap-5">
+          <BaseWorkspaceField machine={machine} onChanged={onChanged} />
+          <RemoteChatToggle machine={machine} onChanged={onChanged} />
+        </PanelBody>
+      </Panel>
+    </div>
+  );
+}
+
+/**
+ * One `dt`/`dd` pair: label column fixed (104px on a phone, 138px from `sm`),
+ * value always a Well. `copy` is for the two values a reader pastes elsewhere
+ * (hostname, daemon version).
+ */
+function MetaRow({
+  label,
+  copy,
+  children,
+}: {
+  label: string;
+  copy?: boolean;
+  children: ReactNode;
+}) {
+  return (
+    <div className="grid grid-cols-[104px_minmax(0,1fr)] items-baseline gap-2 sm:grid-cols-[138px_minmax(0,1fr)]">
+      <dt>
+        <LabelText>{label}</LabelText>
+      </dt>
+      <dd className="min-w-0">
+        {children === null || children === undefined ? (
+          <span className="text-muted-foreground">—</span>
+        ) : typeof children === 'string' ? (
+          // Every read-only value is a Well (01-skeleton.md §7.3); `copy` is the
+          // extra affordance for the two strings a reader pastes elsewhere.
+          <Well copy={copy === true ? children : undefined}>{children}</Well>
+        ) : (
+          children
+        )}
+      </dd>
+    </div>
   );
 }
 
@@ -144,23 +165,31 @@ function BaseWorkspaceField({
 
   const dirty = value.trim() !== (machine.baseWorkspace ?? '');
   return (
-    <>
-      <label className="text-muted-foreground flex flex-wrap items-center gap-2 text-sm">
-        <span className="w-40 shrink-0">{t('machineDetail.baseWorkspace')}</span>
-        <Input
-          value={value}
-          onChange={(e) => setValue(e.target.value)}
-          placeholder="/home/user/projects"
-          autoComplete="off"
-          spellCheck={false}
-          className="h-8 w-64 font-mono text-xs"
-          aria-label={t('machineDetail.baseWorkspace')}
-        />
-        <Button variant="outline" size="sm" disabled={!dirty || busy} onClick={() => void save()}>
+    <Field
+      label={t('machineDetail.baseWorkspace')}
+      htmlFor="machine-base-workspace"
+      hint={t('machineDetail.baseWorkspaceHint')}
+      aside={
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={!dirty || busy}
+          onClick={() => void save()}
+        >
           {busy ? t('common.saving') : t('common.save')}
         </Button>
-      </label>
-    </>
+      }
+    >
+      <Input
+        id="machine-base-workspace"
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        placeholder="/home/user/projects"
+        autoComplete="off"
+        spellCheck={false}
+        className="h-8 font-mono text-xs"
+      />
+    </Field>
   );
 }
 
@@ -181,11 +210,17 @@ function RemoteChatToggle({ machine, onChanged }: { machine: MachineView; onChan
     }
   }
   return (
-    <>
-      <label className="text-muted-foreground flex items-center gap-2 text-sm">
-        <Switch checked={machine.remoteChatEnabled} onCheckedChange={(v) => void toggle(v)} />
-        {t('machineDetail.chatLabel')}
-      </label>
-    </>
+    <Field
+      label={t('machineDetail.chatLabel')}
+      aside={
+        <Switch
+          checked={machine.remoteChatEnabled}
+          onCheckedChange={(v) => void toggle(v)}
+          aria-label={t('machineDetail.chatLabel')}
+        />
+      }
+    >
+      <p className="text-muted-foreground text-xs">{t('machineDetail.chatHint')}</p>
+    </Field>
   );
 }

@@ -6,7 +6,9 @@ import { api } from '@/api';
 import { PageIntro } from '@/components/kit';
 import { useAuth, withAuthGuard } from '@/auth';
 import { useI18n, dateLocale, type Lang } from '@/i18n';
-import { appSocket, emitWithAck, type MachineStatusEvent } from '@/realtime';
+import { emitWithAck } from '@/realtime';
+import { useMachineStatus } from '@/components/shell/use-presence.js';
+import { patchMachineList } from '@/lib/machine-presence.js';
 import { ChannelTabs } from '@/components/chat/channel-tabs.js';
 import { useChatChannels } from '@/components/chat/use-chat-channels.js';
 import { Badge } from '@/components/ui/badge';
@@ -45,28 +47,7 @@ export function ChatPage() {
   }, [logout]);
 
   // Live presence patch — the same pattern as the Machines page.
-  useEffect(() => {
-    const socket = appSocket();
-    const onStatus = (e: MachineStatusEvent): void => {
-      setMachines(
-        (prev) =>
-          prev?.map((m) =>
-            m.id === e.machineId
-              ? {
-                  ...m,
-                  online: e.online,
-                  lastSeenAt: e.lastSeenAt,
-                  ...(e.daemonVersion !== undefined ? { daemonVersion: e.daemonVersion } : {}),
-                }
-              : m,
-          ) ?? prev,
-      );
-    };
-    socket.on('machine:status', onStatus);
-    return () => {
-      socket.off('machine:status', onStatus);
-    };
-  }, []);
+  useMachineStatus((e) => setMachines((prev) => patchMachineList(prev, e)));
 
   const groups = useMemo(
     () =>
