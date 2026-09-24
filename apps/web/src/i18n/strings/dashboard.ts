@@ -55,6 +55,15 @@ const en = {
   agentOne: '{count} agent',
   agentMany: '{count} agents',
   noMachinesNode: 'no machines yet',
+  // P5: the posture window, the list renderer, and the enroll command.
+  postureTitle: 'Posture',
+  cliTitle: 'CLI',
+  cliNote:
+    'The enroll PAT is yours; the machine token it returns is shown once, and `hnx daemon` reads it from the machine afterwards.',
+  upstreamSide: 'Upstream MCP',
+  fleetSide: 'Machines',
+  connectedFigure: '{count} of {total} connected',
+  onlineFigure: '{count} of {total} online',
 };
 
 const zh: typeof en = {
@@ -112,6 +121,14 @@ const zh: typeof en = {
   agentOne: '{count} 个 Agent',
   agentMany: '{count} 个 Agent',
   noMachinesNode: '暂无机器',
+  postureTitle: '姿态',
+  cliTitle: '命令行',
+  cliNote:
+    '注册用的访问令牌是你自己的；返回的机器令牌只显示一次，之后 `hnx daemon` 从这台机器上读取。',
+  upstreamSide: '上游 MCP',
+  fleetSide: '机器',
+  connectedFigure: '{count}/{total} 已连接',
+  onlineFigure: '{count}/{total} 在线',
 };
 
 export const dashboardStrings = { en, zh };

@@ -3,15 +3,15 @@ import { Link, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { ArrowRightIcon, BotIcon, LaptopIcon, MessageSquareIcon } from 'lucide-react';
 import { api } from '@/api';
-import { PageIntro } from '@/components/kit';
+import { EmptyState, Lamp, Note, PageIntro, Panel, PanelBody, Well } from '@/components/kit';
 import { useAuth, withAuthGuard } from '@/auth';
 import { useI18n, dateLocale, type Lang } from '@/i18n';
-import { appSocket, emitWithAck, type MachineStatusEvent } from '@/realtime';
+import { emitWithAck } from '@/realtime';
+import { useMachineStatus } from '@/components/shell/use-presence.js';
+import { patchMachineList } from '@/lib/machine-presence.js';
 import { ChannelTabs } from '@/components/chat/channel-tabs.js';
 import { useChatChannels } from '@/components/chat/use-chat-channels.js';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
 import type { AgentInstanceView, MachineView } from '@harness-nexus/sdk';
 
 /**
@@ -45,28 +45,7 @@ export function ChatPage() {
   }, [logout]);
 
   // Live presence patch — the same pattern as the Machines page.
-  useEffect(() => {
-    const socket = appSocket();
-    const onStatus = (e: MachineStatusEvent): void => {
-      setMachines(
-        (prev) =>
-          prev?.map((m) =>
-            m.id === e.machineId
-              ? {
-                  ...m,
-                  online: e.online,
-                  lastSeenAt: e.lastSeenAt,
-                  ...(e.daemonVersion !== undefined ? { daemonVersion: e.daemonVersion } : {}),
-                }
-              : m,
-          ) ?? prev,
-      );
-    };
-    socket.on('machine:status', onStatus);
-    return () => {
-      socket.off('machine:status', onStatus);
-    };
-  }, []);
+  useMachineStatus((e) => setMachines((prev) => patchMachineList(prev, e)));
 
   const groups = useMemo(
     () =>
@@ -109,43 +88,54 @@ export function ChatPage() {
       {machines === null ? (
         <p className="text-muted-foreground py-12 text-center text-sm">{t('common.loading')}</p>
       ) : groups.length === 0 ? (
-        <div className="text-muted-foreground flex flex-col items-center gap-3 py-16 text-sm">
-          <MessageSquareIcon className="size-8" />
-          <p>{machines.length === 0 ? t('chat.noMachines') : t('chat.noAgentsAtAll')}</p>
-          {machines.length === 0 ? (
-            <Button asChild variant="outline" size="sm">
-              <Link to="/machines">{t('app.navMachines')}</Link>
-            </Button>
-          ) : null}
-        </div>
+        <EmptyState
+          title={machines.length === 0 ? t('chat.noMachines') : t('chat.noAgentsAtAll')}
+          action={
+            machines.length === 0 ? (
+              <Button asChild variant="outline" size="sm">
+                <Link to="/machines">{t('app.navMachines')}</Link>
+              </Button>
+            ) : undefined
+          }
+        />
       ) : (
-        <div className="flex flex-col gap-8">
+        <div className="flex flex-col gap-(--gap)">
           {groups.map(({ machine, agents }) => (
-            <section key={machine.id} aria-label={machine.name}>
-              <div className="mb-3 flex items-center gap-2">
-                <LaptopIcon className="text-muted-foreground size-4" />
+            <Panel
+              key={machine.id}
+              label={t('chat.machineGroupLabel')}
+              icon={<LaptopIcon />}
+              meta={
+                <>
+                  <Lamp
+                    state={machine.online ? 'online' : 'offline'}
+                    word={machine.online ? t('machines.online') : t('machines.offline')}
+                  />
+                  <span className="nums">{t('chat.agentsCount', { count: agents.length })}</span>
+                </>
+              }
+              density="compact"
+            >
+              <PanelBody variant="flush">
+                {/* The machine's NAME is an identity, so it is prose (600), not a
+                    nameplate label — the label role uppercases, and `A97BB4E68E22`
+                    is a different string from the machine's name. */}
                 <Link
                   to={`/machines/${machine.id}`}
-                  className="text-sm font-medium hover:underline"
+                  className="border-border hover:text-signal flex items-center gap-2 border-b px-(--panel-pad) py-2 text-sm font-semibold transition-colors"
                 >
                   {machine.name}
+                  <span className="text-muted-foreground role-data-sm font-normal">
+                    {machine.daemonVersion ?? '—'}
+                  </span>
                 </Link>
-                <span
-                  className={`inline-block size-2 rounded-full ${
-                    machine.online ? 'bg-ok' : 'bg-muted-foreground/40'
-                  }`}
-                  aria-label={machine.online ? t('machines.online') : t('machines.offline')}
-                />
-                <span className="text-muted-foreground text-xs tabular-nums">
-                  {t('chat.agentsCount', { count: agents.length })}
-                </span>
-              </div>
-              <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-                {agents.map((agent) => (
-                  <AgentCard key={agent.id} agent={agent} machine={machine} lang={lang} />
-                ))}
-              </div>
-            </section>
+                <div className="grid gap-(--gap) p-(--panel-pad) sm:grid-cols-2 xl:grid-cols-3">
+                  {agents.map((agent) => (
+                    <AgentCard key={agent.id} agent={agent} machine={machine} lang={lang} />
+                  ))}
+                </div>
+              </PanelBody>
+            </Panel>
           ))}
           {totalAgents === 0 ? (
             <p className="text-muted-foreground text-sm">{t('chat.noAgentsAtAll')}</p>
@@ -168,54 +158,37 @@ function AgentCard({
   const { t } = useI18n();
   const blocked = !machine.online || !machine.remoteChatEnabled;
   return (
-    <>
-      <Card className={blocked ? 'border-dashed' : ''}>
-        <CardContent className="flex flex-col gap-3">
-          <div className="flex items-start justify-between gap-2">
-            <div className="flex min-w-0 items-center gap-2">
-              <BotIcon className="text-muted-foreground size-4 shrink-0" />
-              <span className="truncate font-medium">{agent.name}</span>
-            </div>
-            <Badge variant="secondary" className="font-mono text-[10px]">
-              {agent.target}
-            </Badge>
-          </div>
-          <div className="text-muted-foreground flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
-            <span>
-              {agent.source === 'deploy' ? t('chat.sourceDeploy') : t('chat.sourceDetected')}
-            </span>
-            <span aria-hidden>·</span>
-            <span className="truncate font-mono" title={agent.directory}>
-              {agent.directory}
-            </span>
-            <span aria-hidden>·</span>
-            <span className="tabular-nums">
-              {new Date(agent.updatedAt).toLocaleDateString(dateLocale(lang), {
-                year: 'numeric',
-                month: 'short',
-                day: 'numeric',
-              })}
-            </span>
-          </div>
-          {blocked ? (
-            <p className="text-warn text-xs">
-              {!machine.online ? t('chat.cardOffline') : t('chat.cardChatOff')}
-            </p>
-          ) : null}
-          <Button
-            asChild
-            variant={blocked ? 'outline' : 'default'}
-            size="sm"
-            className="self-start"
-          >
-            <Link to={`/chat/agents/${agent.id}`} className="gap-1.5">
-              <MessageSquareIcon className="size-3.5" />
-              {t('chat.cardEnter')}
-              <ArrowRightIcon className="size-3.5" />
-            </Link>
-          </Button>
-        </CardContent>
-      </Card>
-    </>
+    <Panel
+      label={agent.target}
+      icon={<BotIcon />}
+      meta={agent.source === 'deploy' ? t('chat.sourceDeploy') : t('chat.sourceDetected')}
+      density="compact"
+      className={blocked ? 'border-dashed' : undefined}
+    >
+      <PanelBody className="flex flex-col gap-3">
+        {/* The agent's name is its identity → prose (02-content.md §4), while the
+            target above is an enum and belongs in the nameplate. */}
+        <span className="truncate text-sm font-semibold">{agent.name}</span>
+        <Well copy={agent.directory}>{agent.directory}</Well>
+        <span className="text-muted-foreground role-data-sm">
+          {new Date(agent.updatedAt).toLocaleDateString(dateLocale(lang), {
+            year: 'numeric',
+            month: 'short',
+            day: 'numeric',
+          })}
+        </span>
+        {/* A blocked card says why — visible, not hidden (Phase 9 W6). */}
+        {blocked ? (
+          <Note tone="warn">{!machine.online ? t('chat.cardOffline') : t('chat.cardChatOff')}</Note>
+        ) : null}
+        <Button asChild variant={blocked ? 'outline' : 'default'} size="sm" className="self-start">
+          <Link to={`/chat/agents/${agent.id}`} className="gap-1.5">
+            <MessageSquareIcon className="size-3.5" />
+            {t('chat.cardEnter')}
+            <ArrowRightIcon className="size-3.5" />
+          </Link>
+        </Button>
+      </PanelBody>
+    </Panel>
   );
 }

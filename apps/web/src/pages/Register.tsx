@@ -5,12 +5,16 @@ import { useI18n } from '@/i18n';
 import { api } from '@/api';
 import { HarnessNexusError } from '@harness-nexus/sdk';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Field, Note, Panel, PanelBody } from '@/components/kit';
 import { Brand } from '@/components/brand-mark';
 
+/**
+ * Create an account (P5, same pass as sign-in): panel material, the brand
+ * area, `Field` geometry, and errors as `Note`s — the registration switch being
+ * closed is a state, not a failure, so it gets a neutral note rather than the
+ * destructive Alert this page used to raise.
+ */
 export function RegisterPage() {
   const { register, user } = useAuth();
   const { t } = useI18n();
@@ -62,25 +66,16 @@ export function RegisterPage() {
   return (
     <div className="bg-background flex min-h-svh flex-col items-center justify-center gap-6 p-4">
       <Brand size={30} />
-      <Card className="w-full max-w-sm">
-        <CardHeader>
-          <CardTitle className="text-xl">{t('register.createAccount')}</CardTitle>
-          <CardDescription>{t('register.subtitle')}</CardDescription>
-        </CardHeader>
-        <CardContent>
-          {closed && (
-            <Alert variant="destructive" className="mb-4">
-              <AlertDescription>{t('register.closed')}</AlertDescription>
-            </Alert>
-          )}
+      <Panel className="w-full max-w-sm">
+        <PanelBody variant="wide" className="flex flex-col gap-5">
+          <div>
+            <h1 className="text-lg font-semibold">{t('register.createAccount')}</h1>
+            <p className="text-muted-foreground mt-1 text-sm">{t('register.subtitle')}</p>
+          </div>
+          {closed ? <Note title={t('register.closed')} /> : null}
           <form onSubmit={onSubmit} className="flex flex-col gap-4">
-            {error && (
-              <Alert variant="destructive">
-                <AlertDescription>{error}</AlertDescription>
-              </Alert>
-            )}
-            <div className="grid gap-2">
-              <Label htmlFor="username">{t('register.username')}</Label>
+            {error !== null ? <Note tone="fail">{error}</Note> : null}
+            <Field label={t('register.username')} htmlFor="username" required>
               <Input
                 id="username"
                 value={username}
@@ -90,9 +85,13 @@ export function RegisterPage() {
                 spellCheck={false}
                 required
               />
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="password">{t('register.password')}</Label>
+            </Field>
+            <Field
+              label={t('register.password')}
+              htmlFor="password"
+              hint={t('register.minChars')}
+              required
+            >
               <Input
                 id="password"
                 type="password"
@@ -102,10 +101,8 @@ export function RegisterPage() {
                 autoComplete="new-password"
                 required
               />
-              <p className="text-muted-foreground text-xs">{t('register.minChars')}</p>
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="email">{t('register.emailOptional')}</Label>
+            </Field>
+            <Field label={t('register.emailOptional')} htmlFor="email">
               <Input
                 id="email"
                 type="email"
@@ -114,19 +111,19 @@ export function RegisterPage() {
                 disabled={closed}
                 autoComplete="email"
               />
-            </div>
+            </Field>
             <Button type="submit" disabled={busy || closed} className="w-full">
               {busy ? t('register.creating') : t('register.register')}
             </Button>
             <p className="text-muted-foreground text-center text-sm">
               {t('register.haveAccount')}{' '}
-              <Link to="/login" className="text-primary underline-offset-4 hover:underline">
+              <Link to="/login" className="text-signal underline-offset-4 hover:underline">
                 {t('register.signInLink')}
               </Link>
             </p>
           </form>
-        </CardContent>
-      </Card>
+        </PanelBody>
+      </Panel>
     </div>
   );
 }

@@ -5,7 +5,8 @@ import { LaptopIcon, MoreHorizontalIcon, PlusIcon, TrashIcon } from 'lucide-reac
 import { api } from '@/api';
 import { useAuth, withAuthGuard } from '@/auth';
 import { useI18n, dateLocale } from '@/i18n';
-import { appSocket, type MachineStatusEvent } from '@/realtime';
+import { patchMachineList } from '@/lib/machine-presence.js';
+import { useMachineStatus } from '@/components/shell/use-presence.js';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
@@ -105,28 +106,7 @@ export function MachinesPage() {
   }, [refresh]);
 
   // Live presence: patch rows in place on machine:status pushes.
-  useEffect(() => {
-    const socket = appSocket();
-    const onStatus = (e: MachineStatusEvent): void => {
-      setItems(
-        (prev) =>
-          prev?.map((m) =>
-            m.id === e.machineId
-              ? {
-                  ...m,
-                  online: e.online,
-                  lastSeenAt: e.lastSeenAt,
-                  ...(e.daemonVersion !== undefined ? { daemonVersion: e.daemonVersion } : {}),
-                }
-              : m,
-          ) ?? prev,
-      );
-    };
-    socket.on('machine:status', onStatus);
-    return () => {
-      socket.off('machine:status', onStatus);
-    };
-  }, []);
+  useMachineStatus((e) => setItems((prev) => patchMachineList(prev, e)));
 
   async function confirmPending(): Promise<void> {
     if (pending === null) return;

@@ -4,12 +4,18 @@ import { useAuth } from '@/auth';
 import { useI18n } from '@/i18n';
 import { HarnessNexusError } from '@harness-nexus/sdk';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Note } from '@/components/kit';
+import { Field, Note, Panel, PanelBody } from '@/components/kit';
 import { Brand } from '@/components/brand-mark';
 
+/**
+ * Sign in (P5: panel material + the brand area; fields through the kit's
+ * `Field`, and the failure is a `Note` — the device every other error surface
+ * uses).
+ *
+ * This route renders OUTSIDE the shell (no topbar), so the heading here is the
+ * page's own `<h1>` — not a panel nameplate.
+ */
 export function LoginPage() {
   const { login } = useAuth();
   const { t } = useI18n();
@@ -47,16 +53,15 @@ export function LoginPage() {
   return (
     <div className="bg-background flex min-h-svh flex-col items-center justify-center gap-6 p-4">
       <Brand size={30} />
-      <Card className="w-full max-w-sm">
-        <CardHeader>
-          <CardTitle className="text-xl">{t('login.welcomeBack')}</CardTitle>
-          <CardDescription>{t('login.signInSubtitle')}</CardDescription>
-        </CardHeader>
-        <CardContent>
+      <Panel className="w-full max-w-sm">
+        <PanelBody variant="wide" className="flex flex-col gap-5">
+          <div>
+            <h1 className="text-lg font-semibold">{t('login.welcomeBack')}</h1>
+            <p className="text-muted-foreground mt-1 text-sm">{t('login.signInSubtitle')}</p>
+          </div>
           <form onSubmit={onSubmit} className="flex flex-col gap-4">
             {error !== null ? <Note tone="fail">{error}</Note> : null}
-            <div className="grid gap-2">
-              <Label htmlFor="username">{t('login.username')}</Label>
+            <Field label={t('login.username')} htmlFor="username" required>
               <Input
                 id="username"
                 value={username}
@@ -65,9 +70,8 @@ export function LoginPage() {
                 spellCheck={false}
                 required
               />
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="password">{t('login.password')}</Label>
+            </Field>
+            <Field label={t('login.password')} htmlFor="password" required>
               <Input
                 id="password"
                 type="password"
@@ -76,19 +80,19 @@ export function LoginPage() {
                 autoComplete="current-password"
                 required
               />
-            </div>
+            </Field>
             <Button type="submit" disabled={busy} className="w-full">
               {busy ? t('login.signingIn') : t('login.signIn')}
             </Button>
             <p className="text-muted-foreground text-center text-sm">
               {t('login.noAccount')}{' '}
-              <Link to="/register" className="text-primary underline-offset-4 hover:underline">
+              <Link to="/register" className="text-signal underline-offset-4 hover:underline">
                 {t('login.registerLink')}
               </Link>
             </p>
           </form>
-        </CardContent>
-      </Card>
+        </PanelBody>
+      </Panel>
     </div>
   );
 }

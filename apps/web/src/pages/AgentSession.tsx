@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { toast } from 'sonner';
 import {
   ArrowLeftIcon,
+  ListIcon,
   BotIcon,
   ChevronRightIcon,
   ClockIcon,
@@ -35,6 +36,7 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import { Dialog as DialogPrimitive } from 'radix-ui';
 import { ChatStream } from '@/components/chat/chat-stream.js';
 import { ChannelTabs } from '@/components/chat/channel-tabs.js';
 import { useChatChannels } from '@/components/chat/use-chat-channels.js';
@@ -192,6 +194,238 @@ function QueuedMessage({
   );
 }
 
+/**
+ * The session rail: new session + the agent's native sessions grouped by cwd.
+ *
+ * Rendered TWICE (P5): as the left column from `md` up, and inside the phone's
+ * drawer below it — before this the rail was `hidden md:flex` with no
+ * alternative, so a phone could not reach a session that already existed.
+ *
+ * The rail is pure presentation over data the page owns: every callback is
+ * passed in, and the live-channel overlay (`channelByNative`) is the page's
+ * map, not a second subscription.
+ */
+function SessionRail({
+  rail,
+  groups,
+  collapsedCwds,
+  nativeSessionId,
+  firstPromptText,
+  machine,
+  channelByNative,
+  onToggleCwd,
+  onOpenChannel,
+  onNewSession,
+  onRefresh,
+  showBack,
+}: {
+  rail: RailState;
+  groups: SessionGroup[];
+  collapsedCwds: Set<string>;
+  nativeSessionId: string | null;
+  firstPromptText: string | null;
+  machine: AgentInstanceMachineView | null;
+  channelByNative: Map<string, ChatChannelView>;
+  onToggleCwd: (cwd: string) => void;
+  onOpenChannel: (
+    rejoinId?: string,
+    directory?: string,
+    resume?: { sessionId: string; cwd: string },
+  ) => Promise<void>;
+  onNewSession: () => void;
+  onRefresh: () => void;
+  /** The drawer keeps no back-to-list button: closing it IS the way back. */
+  showBack?: boolean;
+}) {
+  const { t, lang } = useI18n();
+  return (
+    <>
+      <div className="flex items-center gap-2 border-b px-3 py-2.5">
+        {showBack === true ? (
+          <Button asChild variant="ghost" size="sm" className="gap-1.5 px-2">
+            <Link to="/chat">
+              <ArrowLeftIcon className="size-3.5" />
+              <span className="text-xs">{t('chat.backToAgents')}</span>
+            </Link>
+          </Button>
+        ) : null}
+        <span className="min-w-0 flex-1" />
+        <Button
+          variant="ghost"
+          size="icon"
+          className="size-7"
+          title={t('common.refresh')}
+          onClick={() => void onRefresh()}
+        >
+          <RefreshCwIcon className="size-3.5" />
+        </Button>
+      </div>
+      <div className="border-b p-3">
+        <Button
+          className="w-full"
+          size="sm"
+          onClick={() => onNewSession()}
+          disabled={machine === null || !machine.online || !machine.remoteChatEnabled}
+        >
+          <PlusIcon className="size-4" />
+          {t('chat.newSession')}
+        </Button>
+        <p className="text-muted-foreground mt-1.5 text-center text-[11px]">
+          {t('chat.disconnectHint')}
+        </p>
+      </div>
+      <div className="min-h-0 flex-1 overflow-y-auto p-2">
+        {rail.state === 'loading' ? (
+          <p className="text-muted-foreground px-2 py-4 text-xs">{t('common.loading')}</p>
+        ) : rail.state === 'offline' ? (
+          <p className="text-muted-foreground px-2 py-4 text-xs">{t('chat.sessionsOffline')}</p>
+        ) : rail.state === 'daemon-old' ? (
+          <p className="text-muted-foreground px-2 py-4 text-xs">{t('chat.sessionsDaemonOld')}</p>
+        ) : rail.state === 'error' ? (
+          <p className="text-muted-foreground px-2 py-4 text-xs">{rail.message}</p>
+        ) : !rail.supported && rail.sessions.length === 0 ? (
+          <p className="text-muted-foreground px-2 py-4 text-xs">{t('chat.sessionsUnsupported')}</p>
+        ) : (
+          <>
+            {/* 9 W13 — even where the agent keeps no listable native
+                      history (opencode), live channels are real, rejoinable
+                      rows: render them instead of hiding the rail. */}
+            {!rail.supported ? (
+              <p className="text-muted-foreground px-2 pt-2 text-[11px]">
+                {t('chat.sessionsUnsupportedPartial')}
+              </p>
+            ) : null}
+            {groups.length === 0 ? (
+              <p className="text-muted-foreground px-2 py-4 text-xs">{t('chat.noSessions')}</p>
+            ) : (
+              groups.map((group) => {
+                // #13 — folders COLLAPSE (ZCode-style); per-cwd state,
+                // default open.
+                const collapsed = collapsedCwds.has(group.cwd);
+                return (
+                  <div key={group.cwd} className="mb-1">
+                    {/* Folder header: click toggles; hover reveals the
+                            new-session button which starts a channel with
+                            THIS cwd — no picker round-trip. */}
+                    <div className="group/folder text-muted-foreground flex items-center gap-1 px-1.5 py-1 text-[11px] font-medium">
+                      <button
+                        type="button"
+                        className="flex min-w-0 flex-1 items-center gap-1.5 text-left hover:text-foreground"
+                        title={group.cwd}
+                        onClick={() => onToggleCwd(group.cwd)}
+                      >
+                        <ChevronRightIcon
+                          className={cn(
+                            'size-3 shrink-0 transition-transform',
+                            !collapsed && 'rotate-90',
+                          )}
+                        />
+                        <FolderIcon className="size-3 shrink-0" />
+                        <span className="truncate">{cwdBasename(group.cwd)}</span>
+                      </button>
+                      <button
+                        type="button"
+                        className="hover:text-foreground shrink-0 opacity-0 group-hover/folder:opacity-100"
+                        title={t('chat.newSessionHere', { dir: cwdBasename(group.cwd) })}
+                        aria-label={t('chat.newSessionHere', { dir: cwdBasename(group.cwd) })}
+                        onClick={() => void onOpenChannel(undefined, group.cwd)}
+                      >
+                        <PlusIcon className="size-3.5" />
+                      </button>
+                    </div>
+                    {!collapsed
+                      ? group.sessions.map((s) => {
+                          const active = s.sessionId === nativeSessionId;
+                          const stale = s.staleReason !== undefined;
+                          // Live truth ONLY (#13 fix): the listing's
+                          // `openChannelId` stamp is a moment-in-time
+                          // snapshot that goes stale the moment a channel
+                          // closes elsewhere (the user-wide `chat:channels`
+                          // push is already realtime for every window), so
+                          // consulting it left a dead blue dot on the row.
+                          // The channel map IS the open state.
+                          const attached = channelByNative.get(s.sessionId);
+                          // #12 — RUNNING is the attached channel's live busy
+                          // flag: a green dot, never gated on the row merely
+                          // being viewed.
+                          const running = attached?.busy === true;
+                          return (
+                            <button
+                              key={s.sessionId}
+                              type="button"
+                              disabled={stale && !active}
+                              onClick={() => {
+                                if (active || stale) return;
+                                // With a live channel this is a REJOIN;
+                                // without one (fresh page, or after a
+                                // server restart — channels are
+                                // server-memory only) it is a fresh RESUME
+                                // of the same native session. Both keep the
+                                // row's promise: open this conversation
+                                // (#22 — the no-channel case used to be a
+                                // silent no-op).
+                                if (attached !== undefined) {
+                                  void onOpenChannel(attached.sessionId, undefined, {
+                                    sessionId: s.sessionId,
+                                    cwd: s.cwd,
+                                  });
+                                } else {
+                                  void onOpenChannel(undefined, undefined, {
+                                    sessionId: s.sessionId,
+                                    cwd: s.cwd,
+                                  });
+                                }
+                              }}
+                              className={cn(
+                                'flex w-full items-center gap-1 rounded-md py-1 pl-4 pr-1.5 text-left text-xs',
+                                active
+                                  ? 'bg-accent'
+                                  : stale
+                                    ? 'cursor-default'
+                                    : 'hover:bg-accent/60',
+                                stale && !active && 'opacity-50',
+                              )}
+                              title={
+                                stale
+                                  ? t('chat.staleModel', { model: s.model ?? '?' })
+                                  : attached !== undefined && !active
+                                    ? t('chat.channelOpenHint')
+                                    : (s.title ?? s.cwd)
+                              }
+                            >
+                              {/* The status gutter: green running, blue
+                                      opened, empty otherwise (#12/#13). */}
+                              <span className="flex w-2 shrink-0 justify-center">
+                                <StateSignal
+                                  state={
+                                    running ? 'busy' : attached !== undefined ? 'live' : 'idle'
+                                  }
+                                  className="size-1.5"
+                                />
+                              </span>
+                              <span className="min-w-0 flex-1 truncate">
+                                {s.title ??
+                                  (s.sessionId === nativeSessionId ? firstPromptText : undefined) ??
+                                  t('chat.untitled')}
+                              </span>
+                              <span className="text-muted-foreground shrink-0 text-[10px] tabular-nums">
+                                {relativeTime(s.updatedAt, dateLocale(lang))}
+                              </span>
+                            </button>
+                          );
+                        })
+                      : null}
+                  </div>
+                );
+              })
+            )}
+          </>
+        )}
+      </div>
+    </>
+  );
+}
+
 export function AgentSessionPage() {
   const { agentId = '' } = useParams();
   const navigate = useNavigate();
@@ -200,6 +434,9 @@ export function AgentSessionPage() {
   const { t, lang } = useI18n();
   const [agent, setAgent] = useState<AgentInstanceView | null>(null);
   const [machine, setMachine] = useState<AgentInstanceMachineView | null>(null);
+  // Phone-only drawer holding the same rail (P5) — the rail is `hidden md:flex`
+  // and used to have no narrow-screen alternative at all.
+  const [railOpen, setRailOpen] = useState(false);
   const [loadFailed, setLoadFailed] = useState(false);
   const [rail, setRail] = useState<RailState>({ state: 'loading' });
   const [sessionId, setSessionId] = useState('');
@@ -446,6 +683,7 @@ export function AgentSessionPage() {
     resume?: { sessionId: string; cwd: string },
   ): Promise<void> {
     if (agentId === '') return;
+    setRailOpen(false);
     setError(null);
     // 9 W11: an open NEVER closes other channels. The pre-tab
     // leave-before-enter (free the CHAT_MAX_SESSIONS_PER_MACHINE slot before
@@ -780,7 +1018,9 @@ export function AgentSessionPage() {
   // The page's identity: which agent, on which machine. Published to the topbar
   // (a string — `page-slots.tsx` explains why it is not a portal).
   usePageTitle(
-    agent === null ? t('chat.title') : `${agent.name}${machine !== null ? ` · ${machine.name}` : ''}`,
+    agent === null
+      ? t('chat.title')
+      : `${agent.name}${machine !== null ? ` · ${machine.name}` : ''}`,
   );
 
   if (loadFailed) {
@@ -807,207 +1047,70 @@ export function AgentSessionPage() {
           onCleanup={(idleOnly) => void cleanupChannels(idleOnly)}
         />
         <div className="flex h-full min-h-0">
-          {/* Left rail: new session + the agent's native sessions, grouped by cwd */}
+          {/* Left rail: new session + the agent's native sessions, grouped by
+              cwd. Below md it would leave the phone with NO way to reach a
+              session, so the same content ships as a drawer opened from the
+              session bar (P5). */}
           <aside className="bg-sidebar/40 hidden w-72 shrink-0 flex-col border-r md:flex">
-            <div className="flex items-center gap-2 border-b px-3 py-2.5">
-              <Button asChild variant="ghost" size="sm" className="gap-1.5 px-2">
-                <Link to="/chat">
-                  <ArrowLeftIcon className="size-3.5" />
-                  <span className="text-xs">{t('chat.backToAgents')}</span>
-                </Link>
-              </Button>
-              <span className="min-w-0 flex-1" />
-              <Button
-                variant="ghost"
-                size="icon"
-                className="size-7"
-                title={t('common.refresh')}
-                onClick={() => void refreshSessions(true)}
-              >
-                <RefreshCwIcon className="size-3.5" />
-              </Button>
-            </div>
-            <div className="border-b p-3">
-              <Button
-                className="w-full"
-                size="sm"
-                onClick={() => setPickerOpen(true)}
-                disabled={machine === null || !machine.online || !machine.remoteChatEnabled}
-              >
-                <PlusIcon className="size-4" />
-                {t('chat.newSession')}
-              </Button>
-              <p className="text-muted-foreground mt-1.5 text-center text-[11px]">
-                {t('chat.disconnectHint')}
-              </p>
-            </div>
-            <div className="min-h-0 flex-1 overflow-y-auto p-2">
-              {rail.state === 'loading' ? (
-                <p className="text-muted-foreground px-2 py-4 text-xs">{t('common.loading')}</p>
-              ) : rail.state === 'offline' ? (
-                <p className="text-muted-foreground px-2 py-4 text-xs">
-                  {t('chat.sessionsOffline')}
-                </p>
-              ) : rail.state === 'daemon-old' ? (
-                <p className="text-muted-foreground px-2 py-4 text-xs">
-                  {t('chat.sessionsDaemonOld')}
-                </p>
-              ) : rail.state === 'error' ? (
-                <p className="text-muted-foreground px-2 py-4 text-xs">{rail.message}</p>
-              ) : !rail.supported && rail.sessions.length === 0 ? (
-                <p className="text-muted-foreground px-2 py-4 text-xs">
-                  {t('chat.sessionsUnsupported')}
-                </p>
-              ) : (
-                <>
-                  {/* 9 W13 — even where the agent keeps no listable native
-                      history (opencode), live channels are real, rejoinable
-                      rows: render them instead of hiding the rail. */}
-                  {!rail.supported ? (
-                    <p className="text-muted-foreground px-2 pt-2 text-[11px]">
-                      {t('chat.sessionsUnsupportedPartial')}
-                    </p>
-                  ) : null}
-                  {groups.length === 0 ? (
-                    <p className="text-muted-foreground px-2 py-4 text-xs">
-                      {t('chat.noSessions')}
-                    </p>
-                  ) : (
-                    groups.map((group) => {
-                      // #13 — folders COLLAPSE (ZCode-style); per-cwd state,
-                      // default open.
-                      const collapsed = collapsedCwds.has(group.cwd);
-                      return (
-                        <div key={group.cwd} className="mb-1">
-                          {/* Folder header: click toggles; hover reveals the
-                            new-session button which starts a channel with
-                            THIS cwd — no picker round-trip. */}
-                          <div className="group/folder text-muted-foreground flex items-center gap-1 px-1.5 py-1 text-[11px] font-medium">
-                            <button
-                              type="button"
-                              className="flex min-w-0 flex-1 items-center gap-1.5 text-left hover:text-foreground"
-                              title={group.cwd}
-                              onClick={() => toggleCwd(group.cwd)}
-                            >
-                              <ChevronRightIcon
-                                className={cn(
-                                  'size-3 shrink-0 transition-transform',
-                                  !collapsed && 'rotate-90',
-                                )}
-                              />
-                              <FolderIcon className="size-3 shrink-0" />
-                              <span className="truncate">{cwdBasename(group.cwd)}</span>
-                            </button>
-                            <button
-                              type="button"
-                              className="hover:text-foreground shrink-0 opacity-0 group-hover/folder:opacity-100"
-                              title={t('chat.newSessionHere', { dir: cwdBasename(group.cwd) })}
-                              aria-label={t('chat.newSessionHere', { dir: cwdBasename(group.cwd) })}
-                              onClick={() => void openChannel(undefined, group.cwd)}
-                            >
-                              <PlusIcon className="size-3.5" />
-                            </button>
-                          </div>
-                          {!collapsed
-                            ? group.sessions.map((s) => {
-                                const active = s.sessionId === nativeSessionId;
-                                const stale = s.staleReason !== undefined;
-                                // Live truth ONLY (#13 fix): the listing's
-                                // `openChannelId` stamp is a moment-in-time
-                                // snapshot that goes stale the moment a channel
-                                // closes elsewhere (the user-wide `chat:channels`
-                                // push is already realtime for every window), so
-                                // consulting it left a dead blue dot on the row.
-                                // The channel map IS the open state.
-                                const attached = channelByNative.get(s.sessionId);
-                                // #12 — RUNNING is the attached channel's live busy
-                                // flag: a green dot, never gated on the row merely
-                                // being viewed.
-                                const running = attached?.busy === true;
-                                return (
-                                  <button
-                                    key={s.sessionId}
-                                    type="button"
-                                    disabled={stale && !active}
-                                    onClick={() => {
-                                      if (active || stale) return;
-                                      // With a live channel this is a REJOIN;
-                                      // without one (fresh page, or after a
-                                      // server restart — channels are
-                                      // server-memory only) it is a fresh RESUME
-                                      // of the same native session. Both keep the
-                                      // row's promise: open this conversation
-                                      // (#22 — the no-channel case used to be a
-                                      // silent no-op).
-                                      if (attached !== undefined) {
-                                        void openChannel(attached.sessionId, undefined, {
-                                          sessionId: s.sessionId,
-                                          cwd: s.cwd,
-                                        });
-                                      } else {
-                                        void openChannel(undefined, undefined, {
-                                          sessionId: s.sessionId,
-                                          cwd: s.cwd,
-                                        });
-                                      }
-                                    }}
-                                    className={cn(
-                                      'flex w-full items-center gap-1 rounded-md py-1 pl-4 pr-1.5 text-left text-xs',
-                                      active
-                                        ? 'bg-accent'
-                                        : stale
-                                          ? 'cursor-default'
-                                          : 'hover:bg-accent/60',
-                                      stale && !active && 'opacity-50',
-                                    )}
-                                    title={
-                                      stale
-                                        ? t('chat.staleModel', { model: s.model ?? '?' })
-                                        : attached !== undefined && !active
-                                          ? t('chat.channelOpenHint')
-                                          : (s.title ?? s.cwd)
-                                    }
-                                  >
-                                    {/* The status gutter: green running, blue
-                                      opened, empty otherwise (#12/#13). */}
-                                    <span className="flex w-2 shrink-0 justify-center">
-                                      <StateSignal
-                                        state={
-                                          running
-                                            ? 'busy'
-                                            : attached !== undefined
-                                              ? 'live'
-                                              : 'idle'
-                                        }
-                                        className="size-1.5"
-                                      />
-                                    </span>
-                                    <span className="min-w-0 flex-1 truncate">
-                                      {s.title ??
-                                        (s.sessionId === nativeSessionId
-                                          ? firstPromptText
-                                          : undefined) ??
-                                        t('chat.untitled')}
-                                    </span>
-                                    <span className="text-muted-foreground shrink-0 text-[10px] tabular-nums">
-                                      {relativeTime(s.updatedAt, dateLocale(lang))}
-                                    </span>
-                                  </button>
-                                );
-                              })
-                            : null}
-                        </div>
-                      );
-                    })
-                  )}
-                </>
-              )}
-            </div>
+            <SessionRail
+              rail={rail}
+              groups={groups}
+              collapsedCwds={collapsedCwds}
+              nativeSessionId={nativeSessionId}
+              firstPromptText={firstPromptText ?? null}
+              machine={machine}
+              channelByNative={channelByNative}
+              onToggleCwd={toggleCwd}
+              onOpenChannel={openChannel}
+              onNewSession={() => setPickerOpen(true)}
+              onRefresh={() => void refreshSessions(true)}
+              showBack
+            />
           </aside>
+
+          {/* The phone's rail: the same component, in a drawer. Radix traps
+              focus and Esc closes it; opening a session closes it too, so a tap
+              does one thing. */}
+          <DialogPrimitive.Root open={railOpen} onOpenChange={setRailOpen}>
+            <DialogPrimitive.Portal>
+              <DialogPrimitive.Overlay className="bg-scrim/45 absolute inset-0 z-40 md:hidden" />
+              <DialogPrimitive.Content
+                className="bg-background text-foreground absolute inset-y-0 left-0 z-50 flex w-72 max-w-[85vw] flex-col border-r shadow-lg md:hidden"
+                aria-description={t('chat.railOpen')}
+              >
+                <SessionRail
+                  rail={rail}
+                  groups={groups}
+                  collapsedCwds={collapsedCwds}
+                  nativeSessionId={nativeSessionId}
+                  firstPromptText={firstPromptText ?? null}
+                  machine={machine}
+                  channelByNative={channelByNative}
+                  onToggleCwd={toggleCwd}
+                  onOpenChannel={openChannel}
+                  onNewSession={() => {
+                    setRailOpen(false);
+                    setPickerOpen(true);
+                  }}
+                  onRefresh={() => void refreshSessions(true)}
+                />
+              </DialogPrimitive.Content>
+            </DialogPrimitive.Portal>
+          </DialogPrimitive.Root>
 
           {/* Right: toolbar + stream + composer */}
           <section className="flex min-w-0 flex-1 flex-col">
-            <div className="flex h-12 shrink-0 items-center gap-2 border-b px-4">
+            <div className="flex h-12 shrink-0 items-center gap-2 border-b px-3 md:px-4">
+              {/* Below md the rail is a drawer, so the session list needs a door. */}
+              <Button
+                variant="ghost"
+                size="icon"
+                className="size-8 shrink-0 md:hidden"
+                aria-label={t('chat.railOpen')}
+                onClick={() => setRailOpen(true)}
+              >
+                <ListIcon className="size-4" />
+              </Button>
               <BotIcon className="text-muted-foreground size-4 shrink-0" />
               <span className="truncate text-sm font-medium">{agent?.name ?? t('chat.title')}</span>
               {agent !== null ? (

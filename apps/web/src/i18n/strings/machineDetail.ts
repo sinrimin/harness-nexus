@@ -18,6 +18,10 @@ const en = {
   tabInventory: 'Inventory',
   tabDeploy: 'Deployments & jobs',
   loading: 'Loading…',
+  // The identity panel's nameplate (P5 — the label word plus the last-seen
+  // figure on its right; the page's own h1 already carries the machine name).
+  machineLabel: 'Machine',
+  lastSeenInline: 'last seen {time}',
   metaTitle: 'Machine information',
   metaDesc: 'Identity and daemon capabilities of this machine.',
   metaHostname: 'Hostname',
@@ -162,6 +166,15 @@ const en = {
   detail: 'Detail',
   loadingJobs: 'Loading jobs…',
   noJobs: 'No jobs yet.',
+  // Panel nameplate figures + the empty states as a designed row (P5).
+  jobsFigure: 'jobs',
+  agentsFigure: 'agents',
+  adaptersFigure: 'processes',
+  noJobsTitle: 'No deploy jobs yet',
+  noJobsHint: 'Deploy a profile below — it queues while the daemon is offline.',
+  agentsTitle: 'Agent instances',
+  agentDirectory: 'Directory',
+  adaptersEmptyHint: 'An adapter appears here while a chat channel is open.',
   waitingDaemon: 'waiting for daemon',
   agentsHeading: 'Agent instances ({count})',
   noAgents: 'Nothing deployed on this machine yet.',
@@ -171,7 +184,11 @@ const en = {
   chatEnabled: 'Remote chat enabled',
   chatDisabled: 'Remote chat disabled',
   chatLabel: 'Remote chat',
+  // Both settings state their cost (P5): chat runs tools on this machine, and
+  // the workspace is where a new session starts.
+  chatHint: 'Chatting with an agent on this machine runs tools and commands on it.',
   baseWorkspace: 'Base workspace',
+  baseWorkspaceHint: 'Where a new chat session may pick its working directory. Empty means unset.',
   baseWorkspaceSaved: 'Base workspace saved',
 };
 
@@ -194,6 +211,8 @@ const zh: typeof en = {
   tabInventory: '清单',
   tabDeploy: '部署与作业',
   loading: '加载中…',
+  machineLabel: '机器',
+  lastSeenInline: '最后在线 {time}',
   metaTitle: '机器信息',
   metaDesc: '这台机器的身份与守护进程能力。',
   metaHostname: '主机名',
@@ -331,6 +350,14 @@ const zh: typeof en = {
   detail: '详情',
   loadingJobs: '作业加载中…',
   noJobs: '暂无作业。',
+  jobsFigure: '作业',
+  agentsFigure: '代理',
+  adaptersFigure: '进程',
+  noJobsTitle: '还没有部署作业',
+  noJobsHint: '在下面部署一个配置集——守护进程离线时会排队。',
+  agentsTitle: '代理实例',
+  agentDirectory: '目录',
+  adaptersEmptyHint: '有聊天通道打开时，适配器才会出现在这里。',
   waitingDaemon: '等待守护进程',
   agentsHeading: '代理实例（{count}）',
   noAgents: '此机器上尚未部署任何内容。',
@@ -339,7 +366,9 @@ const zh: typeof en = {
   chatEnabled: '远程聊天已启用',
   chatDisabled: '远程聊天已禁用',
   chatLabel: '远程聊天',
+  chatHint: '与这台机器上的代理聊天会在其上运行工具和命令。',
   baseWorkspace: '基础工作区',
+  baseWorkspaceHint: '新会话可以在这之下挑选工作目录。留空表示未设置。',
   baseWorkspaceSaved: '基础工作区已保存',
 };
 
