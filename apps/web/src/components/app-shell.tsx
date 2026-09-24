@@ -40,7 +40,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const isAdmin = user?.role === 'admin';
   const route = matchRoute(location.pathname);
   const { posture } = usePosture();
-  const { value: slots, ref } = usePageSlots();
+  const { value: slots, actionsRef } = usePageSlots();
   // `panes` hands scrolling to the page (chat: rail + stream + composer);
   // `flow` is the default content frame.
   const panes = route?.layout === 'panes';
@@ -85,8 +85,8 @@ export function AppShell({ children }: { children: ReactNode }) {
         <Topbar
           route={route}
           isAdmin={isAdmin}
-          titleRef={ref('title')}
-          actionsRef={ref('actions')}
+          title={slots.title}
+          actionsRef={actionsRef}
           titleClaimed={slots.claims.title === true}
           leading={
             <MobileNav>

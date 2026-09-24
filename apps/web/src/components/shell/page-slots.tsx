@@ -14,36 +14,52 @@ import { createPortal } from 'react-dom';
  * Topbar slots — how a page puts its identity and its actions in the chrome
  * (01-skeleton.md §4).
  *
- * Not a context holding nodes: that shape re-renders the shell on every page
- * render (node identity changes), and comparing nodes to break that loop is a
- * losing game. The shell owns empty DOM nodes instead, and a page *portals*
- * into them — so updates flow with the page's own render tree, events bubble
- * through the React tree as usual, and the shell never hears about the page's
- * state. A page that claims the title slot also replaces the route-derived
- * fallback, which is why claiming is tracked separately from the target node.
+ * **Title = a string, not a portal.** The title used to be portaled into the
+ * topbar's `<h1>`, and that was a real bug: React renders that `<h1>`'s own text
+ * child too, so the container had two writers. Whenever the node's children were
+ * cleared behind React's back (React's text-content fast path, a browser feature
+ * rewriting text nodes — anything), the page's text node was gone while React
+ * still believed it owned it, and the next commit that unmounted the page threw
+ * `NotFoundError: The node to be removed is not a child of this node` during the
+ * deletion pass. With no error boundary above it, React then unmounts the whole
+ * app: a blank page. Reproduced that way (wipe the slot's children, then
+ * navigate). A string cannot desync — the shell renders it as the `<h1>`'s own
+ * text, so exactly one writer owns that container.
  *
- * The node is captured with a callback ref and the claim in a layout effect, so
- * both land in the same pre-paint flush (the first render finds the slot empty,
- * the re-render portals into place). The refs are memoized: an inline callback
- * would be detached and re-attached on every shell render, and the pair of
- * null/node updates would render forever.
+ * **Actions stay a portal.** The actions container is a `<div>` the shell renders
+ * with no children of its own, so the page's buttons are its only writers, and
+ * events still bubble through the page's React tree. The shell renders that
+ * `<div>` unconditionally (`app-shell.tsx`), so a mounted portal's target can
+ * never disappear underneath it.
+ *
+ * The node is captured with a memoized callback ref: an inline callback would be
+ * detached and re-attached on every shell render, and the pair of null/node
+ * updates would render forever.
  */
 export type PageSlotName = 'title' | 'actions';
 
-type Slots = Partial<Record<PageSlotName, HTMLElement | null>>;
+type Targets = { actions?: HTMLElement | null };
 type Claims = Partial<Record<PageSlotName, boolean>>;
 
+const noop = () => undefined;
+
 export interface PageSlotsValue {
-  targets: Slots;
+  /** What the topbar's `<h1>` reads while a page claims the title slot. */
+  title: string | null;
   /** Slots a page has claimed — the shell drops its own fallback for those. */
   claims: Claims;
+  /** The shell's DOM nodes (the actions slot is a portal target). */
+  targets: Targets;
   register: (name: PageSlotName, claimed: boolean) => void;
+  setTitle: (title: string | null) => void;
 }
 
 const PageSlotsContext = createContext<PageSlotsValue>({
-  targets: {},
+  title: null,
   claims: {},
-  register: () => undefined,
+  targets: {},
+  register: noop,
+  setTitle: noop,
 });
 
 export function PageSlotsProvider({
@@ -56,32 +72,50 @@ export function PageSlotsProvider({
   return <PageSlotsContext.Provider value={value}>{children}</PageSlotsContext.Provider>;
 }
 
-/** Slot state plus stable callback refs for the shell's slot elements. */
+/** Shell side: the slot state plus a stable callback ref for the actions slot. */
 export function usePageSlots(): {
   value: PageSlotsValue;
-  ref: (name: PageSlotName) => RefCallback<HTMLElement | null>;
+  actionsRef: RefCallback<HTMLElement | null>;
 } {
-  const [targets, setTargets] = useState<Slots>({});
+  const [targets, setTargets] = useState<Targets>({});
   const [claims, setClaims] = useState<Claims>({});
+  const [title, setTitleState] = useState<string | null>(null);
 
-  const refs = useMemo(() => {
-    const make =
-      (name: PageSlotName): RefCallback<HTMLElement | null> =>
-      (el) => {
-        setTargets((prev) => (prev[name] === el ? prev : { ...prev, [name]: el }));
-      };
-    return { title: make('title'), actions: make('actions') };
-  }, []);
+  const actionsRef = useMemo<RefCallback<HTMLElement | null>>(
+    () => (el) => {
+      setTargets((prev) => (prev.actions === el ? prev : { actions: el }));
+    },
+    [],
+  );
 
   const register = useCallback((name: PageSlotName, claimed: boolean) => {
     setClaims((prev) => (prev[name] === claimed ? prev : { ...prev, [name]: claimed }));
   }, []);
 
-  const value = useMemo(() => ({ targets, claims, register }), [targets, claims, register]);
-  return { value, ref: (name) => refs[name] };
+  const setTitle = useCallback((next: string | null) => {
+    setTitleState((prev) => (prev === next ? prev : next));
+  }, []);
+
+  const value = useMemo(
+    () => ({ title, claims, targets, register, setTitle }),
+    [title, claims, targets, register, setTitle],
+  );
+  return { value, actionsRef };
 }
 
-/** Renders into the shell's slot; nothing when the shell did not provide one. */
+/** Page side: publish this page's title into the topbar. */
+export function usePageTitle(title: string | null | undefined): void {
+  const { register, setTitle } = useContext(PageSlotsContext);
+  useLayoutEffect(() => {
+    register('title', true);
+    return () => register('title', false);
+  }, [register]);
+  useLayoutEffect(() => {
+    setTitle(title ?? null);
+  }, [setTitle, title]);
+}
+
+/** Page side: render the page's actions into the shell's slot. */
 export function PageSlot({ slot, children }: { slot: PageSlotName; children: ReactNode }) {
   const { register, targets } = useContext(PageSlotsContext);
   useLayoutEffect(() => {
@@ -89,7 +123,7 @@ export function PageSlot({ slot, children }: { slot: PageSlotName; children: Rea
     return () => register(slot, false);
   }, [register, slot]);
 
-  const target = targets[slot];
+  const target = slot === 'actions' ? targets.actions : null;
   if (!target) return null;
   return createPortal(children, target);
 }

@@ -44,7 +44,7 @@ import {
   type ComposerConfig,
   type DraftFileRef,
 } from '@/components/chat/composer.js';
-import { PageSlot } from '@/components/shell/page-slots';
+import { usePageTitle } from '@/components/shell/page-slots';
 import { TodoPanel } from '@/components/chat/todo-panel.js';
 import { DirPicker } from '@/components/chat/dir-picker.js';
 import { FilePicker } from '@/components/chat/file-picker.js';
@@ -777,6 +777,12 @@ export function AgentSessionPage() {
     if (was && !conversation.turnActive) void refreshSessions(true);
   }, [conversation.turnActive, refreshSessions]);
 
+  // The page's identity: which agent, on which machine. Published to the topbar
+  // (a string — `page-slots.tsx` explains why it is not a portal).
+  usePageTitle(
+    agent === null ? t('chat.title') : `${agent.name}${machine !== null ? ` · ${machine.name}` : ''}`,
+  );
+
   if (loadFailed) {
     return (
       <>
@@ -793,12 +799,6 @@ export function AgentSessionPage() {
   return (
     <>
       <div className="flex h-full min-h-0 flex-col">
-        {/* The page's identity: which agent, on which machine. */}
-        <PageSlot slot="title">
-          {agent === null
-            ? t('chat.title')
-            : `${agent.name}${machine !== null ? ` · ${machine.name}` : ''}`}
-        </PageSlot>
         <ChannelTabs
           channels={channels}
           activeSessionId={sessionId}

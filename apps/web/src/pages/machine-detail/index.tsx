@@ -9,7 +9,7 @@ import { appSocket, type InventoryUpdatedEvent, type MachineStatusEvent } from '
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Lamp, PageIntro, Well } from '@/components/kit';
-import { PageSlot } from '@/components/shell/page-slots';
+import { usePageTitle } from '@/components/shell/page-slots';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   HarnessNexusError,
@@ -162,13 +162,13 @@ export function MachineDetailPage() {
     setSearchParams(v === 'overview' ? {} : { tab: v }, { replace: true });
   };
 
+  // The machine's name is this page's identity, so it rides the topbar (with the
+  // MESH crumb back to the list — the old back button is gone). A string, not a
+  // portal: `page-slots.tsx` explains why.
+  usePageTitle(machine?.name ?? t('machineDetail.fallbackTitle'));
+
   return (
     <>
-      {/* The machine's name is this page's identity, so it rides the topbar
-          (with the MESH crumb back to the list — the old back button is gone).
-          What stays here is what the name does not already say. */}
-      <PageSlot slot="title">{machine?.name ?? t('machineDetail.fallbackTitle')}</PageSlot>
-
       <PageIntro
         sub={
           <>

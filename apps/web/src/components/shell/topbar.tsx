@@ -22,7 +22,7 @@ import { cn } from '@/lib/utils';
 export function Topbar({
   route,
   isAdmin,
-  titleRef,
+  title,
   actionsRef,
   titleClaimed,
   leading,
@@ -30,9 +30,10 @@ export function Topbar({
 }: {
   route: RouteDef | undefined;
   isAdmin: boolean;
-  titleRef: (el: HTMLElement | null) => void;
+  /** A page's own title (it may not exist yet — the route title stands in). */
+  title: string | null;
   actionsRef: (el: HTMLElement | null) => void;
-  /** A page portaled its own title in — the route-derived fallback is dropped. */
+  /** A page claimed the title — the route-derived fallback is dropped. */
   titleClaimed: boolean;
   leading?: ReactNode;
   className?: string;
@@ -62,35 +63,39 @@ export function Topbar({
       {leading}
 
       <div className="flex min-w-0 flex-1 items-center gap-2.5">
-        {route !== undefined ? (
-          <>
-            {/* The `▸` accent leads the identity everywhere; below 640 the bay
-                strip names the section one row down, so only the crumb CHAIN
-                folds away and the page title keeps the line. */}
-            <span aria-hidden="true" className="text-signal role-label-sm shrink-0">
-              ▸
-            </span>
-            <nav
-              aria-label="Breadcrumb"
-              data-slot="breadcrumb"
-              className="hidden shrink-0 items-center gap-1.5 min-[640px]:flex"
-            >
-              {sectionCrumb !== undefined ? (
-                <Crumb to={sectionCrumb.to} label={sectionCrumb.label} />
-              ) : null}
-              {ancestors.map((ancestor) => (
-                <Crumb key={ancestor.id} to={ancestor.path} label={t(ancestor.titleKey)} />
-              ))}
-            </nav>
-            <h1
-              ref={titleRef}
-              data-slot="page-title"
-              className="text-foreground min-w-0 truncate font-semibold tracking-[-0.015em] text-(length:--shell-title-size)"
-            >
-              {titleClaimed ? null : t(trail[trail.length - 1]!.titleKey)}
-            </h1>
-          </>
-        ) : null}
+        {/* The `▸` accent leads the identity everywhere; below 640 the bay
+            strip names the section one row down, so only the crumb CHAIN folds
+            away and the page title keeps the line. The `<h1>` and the actions
+            seat render ALWAYS, even before a route resolves: they are portal
+            targets, and a target that can vanish under a mounted portal is how
+            this shell broke once (see `page-slots.tsx`). */}
+        <span aria-hidden="true" className="text-signal role-label-sm shrink-0">
+          ▸
+        </span>
+        <nav
+          aria-label="Breadcrumb"
+          data-slot="breadcrumb"
+          className="hidden shrink-0 items-center gap-1.5 min-[640px]:flex"
+        >
+          {sectionCrumb !== undefined ? (
+            <Crumb to={sectionCrumb.to} label={sectionCrumb.label} />
+          ) : null}
+          {ancestors.map((ancestor) => (
+            <Crumb key={ancestor.id} to={ancestor.path} label={t(ancestor.titleKey)} />
+          ))}
+        </nav>
+        <h1
+          data-slot="page-title"
+          className="text-foreground min-w-0 truncate font-semibold tracking-[-0.015em] text-(length:--shell-title-size)"
+        >
+          {/* One writer, one text child: the page's title wins, the route
+              metadata is the fallback. */}
+          {titleClaimed && title !== null
+            ? title
+            : trail.length > 0
+              ? t(trail[trail.length - 1]!.titleKey)
+              : null}
+        </h1>
       </div>
 
       {/* Page actions portal here (PageSlot slot="actions") — the page owns the
