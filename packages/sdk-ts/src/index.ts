@@ -102,6 +102,31 @@ export interface PatView {
 export interface MachineView extends Machine {
   online: boolean;
 }
+/** #23 D2 — whether a posture figure counts the caller's rows or every tenant's. */
+export type PostureScope = 'self' | 'all';
+/**
+ * #23 D2 — the readout aggregate. Each figure re-derives its row set with the
+ * same visibility rule as the list page it links to, and `scopes` says which
+ * rows each number counted (chat stays `self` even for admins — owner-only).
+ */
+export interface Posture {
+  scope: PostureScope;
+  scopes: {
+    machines: PostureScope;
+    agents: PostureScope;
+    queuedJobs: PostureScope;
+    mcp: PostureScope;
+    llmProviders: PostureScope;
+    channels: PostureScope;
+  };
+  generatedAt: string;
+  machines: { online: number; total: number };
+  agents: number;
+  mcp: { connected: number; total: number };
+  llmProviders: number;
+  queuedJobs: number;
+  channels: number;
+}
 /**
  * One of the agent's OWN persisted sessions (9 W7) — a LIVE read through the
  * daemon (`sessions:list`), never platform-persisted metadata.
@@ -341,6 +366,11 @@ export class HarnessNexusClient {
   }
 
   // ---- machines (Phase 8 C1) ----
+  /** #23 D2 — the topbar readout: posture aggregate, scoped to the caller. */
+  async getPosture(): Promise<Posture> {
+    return this.request('GET', '/api/status/posture');
+  }
+
   async createMachine(input: { name: string }): Promise<{ machine: MachineView; token: string }> {
     return this.request('POST', '/api/machines', input);
   }
