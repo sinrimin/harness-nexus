@@ -16,6 +16,20 @@ const en = {
   kind: 'Kind',
   key: 'Key',
   updated: 'Updated',
+  // Per-kind columns (09-p4-resource-kinds.md §3). No `kind` column: the route
+  // fixes the kind, so a per-row badge would only repeat "which page am I on".
+  bundle: 'Bundle',
+  source: 'Source',
+  trust: 'Trust',
+  events: 'Events',
+  triggerWord: 'Trigger',
+  sourceLocal: 'local',
+  sourceMarket: 'market',
+  trustBuiltin: 'built-in',
+  trustTrusted: 'trusted',
+  trustCommunity: 'community',
+  bundleCount: '{count} files',
+  marketCount: '{count} from market',
   empty: 'No resources yet.',
   emptyHint: 'Create one here, or reference a published one from a profile.',
   loadFailed: 'Failed to load resources',
@@ -57,6 +71,10 @@ const en = {
   hooksDesc: 'Stored as',
   hooksDescAfter: '. Only events supported by your chosen targets are offered.',
   hooksEmpty: 'No hook bindings yet. Click “Add binding”.',
+  hooksNoTargets:
+    'Pick a target first: which events can run is decided by the target, and a hook no target supports is rejected on save.',
+  hookEventUnsupported:
+    'No chosen target runs this event — the server will reject this hook as-is.',
   phMatcher: 'matcher (regex, optional) e.g. Bash|Edit',
   phHookCommand: 'shell command, e.g. ./hooks/lint.sh',
   removeBinding: 'Remove binding',
@@ -72,6 +90,9 @@ const en = {
   fileContent: 'Content of {path}',
   selectFile: 'Select a file to edit',
   addFile: 'Add file',
+  addHere: 'Add a file in this folder',
+  removeFile: 'Remove file',
+  renameFile: 'Rename file',
 };
 
 const zh: typeof en = {
@@ -90,6 +111,18 @@ const zh: typeof en = {
   kind: '类型',
   key: '键名',
   updated: '更新时间',
+  bundle: '文件',
+  source: '来源',
+  trust: '信任',
+  events: '事件',
+  triggerWord: '触发词',
+  sourceLocal: '本地',
+  sourceMarket: '市场',
+  trustBuiltin: '内置',
+  trustTrusted: '受信',
+  trustCommunity: '社区',
+  bundleCount: '{count} 个文件',
+  marketCount: '其中 {count} 个来自市场',
   empty: '还没有资源。',
   emptyHint: '在这里新建，或让配置集引用已发布的资源。',
   loadFailed: '加载资源失败',
@@ -128,6 +161,8 @@ const zh: typeof en = {
   hooksDesc: '以',
   hooksDescAfter: ' 格式存储。仅提供你所选目标支持的事件。',
   hooksEmpty: '还没有钩子绑定。请点击「添加绑定」。',
+  hooksNoTargets: '请先选择目标：事件能不能跑由目标决定，没有任何目标支持的钩子在保存时会被拒绝。',
+  hookEventUnsupported: '所选目标都不会跑这个事件——保存时服务端会拒绝当前这份钩子。',
   phMatcher: 'matcher（正则，可选），例如 Bash|Edit',
   phHookCommand: 'shell 命令，例如 ./hooks/lint.sh',
   removeBinding: '移除绑定',
@@ -142,6 +177,9 @@ const zh: typeof en = {
   fileContent: '{path} 的内容',
   selectFile: '选择要编辑的文件',
   addFile: '添加文件',
+  addHere: '在此文件夹中添加文件',
+  removeFile: '移除文件',
+  renameFile: '重命名文件',
 };
 
 export const resourcesStrings = { en, zh };

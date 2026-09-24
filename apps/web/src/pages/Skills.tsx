@@ -1,4 +1,5 @@
 import { useSearchParams } from 'react-router-dom';
+import { toast } from 'sonner';
 import { useI18n } from '@/i18n';
 import { cn } from '@/lib/utils';
 import { ResourcesPage } from '@/pages/Resources';
@@ -21,12 +22,27 @@ export function SkillsPage() {
   const { t } = useI18n();
   const [params, setParams] = useSearchParams();
   const tab = params.get('tab') === 'hub' ? 'hub' : 'mine';
+  // `?highlight=` is not a list parameter — it is this page's "look here"
+  // pointer, set by the hub's save and read by the list (09 §5). The list's
+  // own vocabulary (q/scope/sort) never touches it, and `clear()` only removes
+  // what the list declared.
+  const highlight = params.get('highlight');
 
   const select = (next: 'mine' | 'hub'): void => {
     const params2 = new URLSearchParams(params);
     if (next === 'mine') params2.delete('tab');
     else params2.set('tab', 'hub');
     setParams(params2, { replace: true });
+  };
+
+  /** The hub saved a skill: show it where it now lives. */
+  const revealSaved = (key: string): void => {
+    const params2 = new URLSearchParams(params);
+    params2.delete('tab');
+    params2.set('highlight', key);
+    setParams(params2, { replace: true });
+    // The toast belongs to the page you end up on, not the one you left.
+    toast.success(t('skillHub.savedToast'));
   };
 
   return (
@@ -45,7 +61,14 @@ export function SkillsPage() {
         </TabButton>
       </div>
 
-      {tab === 'mine' ? <ResourcesPage fixedKind="skill" /> : <SkillHubPanel />}
+      {tab === 'mine' ? (
+        <ResourcesPage
+          fixedKind="skill"
+          {...(highlight !== null ? { highlightKey: highlight } : {})}
+        />
+      ) : (
+        <SkillHubPanel onSavedSkill={revealSaved} />
+      )}
     </>
   );
 }

@@ -632,6 +632,34 @@
   [data-slot='filter-bar'] :is([data-slot='input'], [data-slot='select-trigger']) {
     height: 2.5rem;
   }
+  /* Row-level controls, measured at 390x844 (2026-09-25): the row menu trigger
+     renders 32x32 and a Well's copy affordance 12x12 — both under a fingertip. */
+  [data-surface='table'] :is([data-slot='dropdown-menu-trigger'], [data-slot='copy']) {
+    min-height: 2.5rem;
+    min-width: 2.5rem;
+  }
+}
+
+/* The actions column stays put while the panel scrolls sideways
+   (03-interaction.md §7). A phone shows a table wider than the screen, and
+   the row's menu sits in the last column — i.e. outside the viewport until you
+   scroll, which makes a control that exists unreachable. Pinned, it is always
+   under the thumb; on a wide screen the pin is a no-op. */
+[data-surface='table'] :is(thead th, tbody td):last-child {
+  position: sticky;
+  right: 0;
+  z-index: 2;
+  /* Opaque: scrolled cells must pass *behind* it, not show through it — and the
+     colour has to match whatever this cell sits on, or the pin shows as a seam. */
+  background: var(--card);
+}
+[data-surface='table'] thead th:last-child {
+  background: var(--tray); /* the head row's own colour */
+  z-index: 11; /* above the sticky head row, which is 10 */
+}
+[data-surface='table'] tbody tr:hover td:last-child {
+  /* same tint as the rest of the row, over the opaque base above */
+  background: color-mix(in oklab, var(--tray) 60%, var(--card));
 }
 
 /* The copies that are still `ui/table` outside the kit (unchanged pages) keep

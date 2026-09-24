@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import {
@@ -9,6 +9,10 @@ import {
   GlobeIcon,
   UserIcon,
   MoreHorizontalIcon,
+  ChevronDownIcon,
+  ChevronRightIcon,
+  FileTextIcon,
+  FolderIcon,
 } from 'lucide-react';
 import { api } from '@/api';
 import { useAuth, withAuthGuard } from '@/auth';
@@ -18,6 +22,7 @@ import {
   DataTable,
   FilterBar,
   FilterSelect,
+  LabelText,
   PageIntro,
   Readout,
   SortSelect,
@@ -32,6 +37,7 @@ import {
   useListQuery,
   type ListQuerySpec,
 } from '@/lib/list-query';
+import { buildBundleTree, bundlePathError, type BundleNode } from '@/lib/bundle-tree';
 import { PageSlot } from '@/components/shell/page-slots';
 import type { ResourcePageKind } from '@/nav';
 import { Button } from '@/components/ui/button';
@@ -135,6 +141,41 @@ function kindLabelKey(kind: ResourcePageKind): TranslationKey {
 }
 
 /**
+ * Per-kind column facts (09-p4-resource-kinds.md §2). Every one of these reads
+ * a field the model actually has; `null` means "not a fact we can state", which
+ * renders as a dash rather than a made-up number.
+ */
+function bundleCount(r: Resource): number | null {
+  if (r.source.type === 'inline-bundle') return Object.keys(r.source.files).length;
+  if (r.source.type === 'inline') return 1;
+  return null; // plugin: the files live in the plugin, resolved at install time
+}
+
+function sourceLabelKey(r: Resource): TranslationKey {
+  return r.source.type === 'plugin' ? 'resources.sourceMarket' : 'resources.sourceLocal';
+}
+
+function pluginName(r: Resource): string | null {
+  return r.source.type === 'plugin' ? r.source.plugin : null;
+}
+
+/** `labels.trust`, stamped server-side for plugin sources (7.1). Absent otherwise. */
+function trustLabelKey(r: Resource): TranslationKey | null {
+  const tier = r.labels?.['trust'];
+  if (tier === 'builtin') return 'resources.trustBuiltin';
+  if (tier === 'trusted') return 'resources.trustTrusted';
+  if (tier === 'community') return 'resources.trustCommunity';
+  return null;
+}
+
+/** The events a hooks.json body covers, in declaration order (09 §2). */
+function hookEventsOf(r: Resource): HookEvent[] {
+  if (r.source.type !== 'inline') return [];
+  const covered = new Set(parseHooksJson(r.source.content).map((e) => e.event));
+  return HOOK_EVENTS.filter((e) => covered.has(e));
+}
+
+/**
  * One kind per page (#23 P2, README §5.3). The route is the address, so the
  * kind is not a per-visit decision: `/resources` itself redirects to `/skills`.
  * P4 gives each kind its own columns and editor; until then every kind page is
@@ -145,7 +186,19 @@ function kindLabelKey(kind: ResourcePageKind): TranslationKey {
  * every filter change and pushed nothing into the URL, so a filtered view could
  * not be shared, reloaded or gone back to.
  */
-export function ResourcesPage({ fixedKind }: { fixedKind: ResourcePageKind }) {
+export function ResourcesPage({
+  fixedKind,
+  highlightKey,
+}: {
+  fixedKind: ResourcePageKind;
+  /**
+   * A resource to point at (09 §5): the skills page sets it when the hub hands
+   * a freshly saved skill over, so the row you just made is visible instead of
+   * somewhere in the list. Absent on every other kind page — and a `highlight`
+   * that matches nothing is simply no highlight.
+   */
+  highlightKey?: string;
+}) {
   const { logout, user } = useAuth();
   const { t, lang } = useI18n();
   const isAdmin = user?.role === 'admin';
@@ -172,6 +225,18 @@ export function ResourcesPage({ fixedKind }: { fixedKind: ResourcePageKind }) {
     void refresh();
   }, []);
 
+  /**
+   * Bring the pointed-at row into view once it is actually rendered. Smooth
+   * scrolling is motion, so it is skipped when the reader asked for less.
+   */
+  useEffect(() => {
+    if (highlightKey === undefined || items === null) return;
+    const row = document.querySelector('[data-highlight]');
+    if (row === null) return;
+    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    row.scrollIntoView({ block: 'center', behavior: reduced ? 'auto' : 'smooth' });
+  }, [highlightKey, items]);
+
   const visible = useMemo(() => {
     if (items === null) return null;
     const rows = items.filter(
@@ -193,6 +258,167 @@ export function ResourcesPage({ fixedKind }: { fixedKind: ResourcePageKind }) {
   const sortLabels = useMemo(
     () => ({ '-updated': t('common.sortUpdated'), name: t('common.sortName') }),
     [t],
+  );
+
+  /**
+   * The columns each kind page gets (09-p4-resource-kinds.md §3). `kind` is
+   * deliberately absent: the route already says which kind this is, and a
+   * per-row badge would only repeat the page's own name. Cells are built here
+   * rather than at module scope because they need `t` and the date locale.
+   */
+  const table = useMemo(() => {
+    const nameCell = (r: Resource) => <TableCell className="font-medium">{r.name}</TableCell>;
+    const nameDescCell = (r: Resource) => (
+      <TableCell className="font-medium">
+        <span className="block">{r.name}</span>
+        {r.description !== undefined && r.description !== '' ? (
+          <span className="text-muted-foreground mt-0.5 block max-w-[46ch] truncate text-xs">
+            {r.description}
+          </span>
+        ) : null}
+      </TableCell>
+    );
+    const descriptionCell = (r: Resource) => (
+      <TableCell className="text-muted-foreground max-w-[46ch] truncate text-xs">
+        {r.description !== undefined && r.description !== '' ? r.description : '—'}
+      </TableCell>
+    );
+    const keyCell = (r: Resource) => (
+      <TableCell>
+        <Well variant="chip" copy={r.key}>
+          {r.key}
+        </Well>
+      </TableCell>
+    );
+    const targetsCell = (r: Resource) => (
+      <TableCell>
+        <div className="flex flex-wrap gap-1">
+          {r.targets.map((target) => (
+            <Badge key={target} variant="outline" className="font-mono text-[10px]">
+              {target}
+            </Badge>
+          ))}
+        </div>
+      </TableCell>
+    );
+    const bundleCell = (r: Resource) => {
+      const count = bundleCount(r);
+      return (
+        <TableCell className="text-muted-foreground tabular-nums">
+          {count === null ? '—' : t('resources.bundleCount', { count })}
+        </TableCell>
+      );
+    };
+    const sourceCell = (r: Resource) => {
+      const plugin = pluginName(r);
+      return (
+        <TableCell>
+          <div className="flex flex-wrap items-center gap-1">
+            <Badge variant="secondary" className="text-[10px]">
+              {t(sourceLabelKey(r))}
+            </Badge>
+            {plugin !== null ? (
+              <Well variant="chip" copy={plugin}>
+                {plugin}
+              </Well>
+            ) : null}
+          </div>
+        </TableCell>
+      );
+    };
+    const trustCell = (r: Resource) => {
+      const key = trustLabelKey(r);
+      return (
+        <TableCell>
+          {key === null ? (
+            <span className="text-muted-foreground">—</span>
+          ) : (
+            <Badge variant="outline" className="text-[10px]">
+              {t(key)}
+            </Badge>
+          )}
+        </TableCell>
+      );
+    };
+    const eventsCell = (r: Resource) => {
+      const events = hookEventsOf(r);
+      return (
+        <TableCell>
+          {events.length === 0 ? (
+            <span className="text-muted-foreground">—</span>
+          ) : (
+            <div className="flex flex-wrap gap-1">
+              {events.map((event) => (
+                <Badge key={event} variant="outline" className="font-mono text-[10px]">
+                  {event}
+                </Badge>
+              ))}
+            </div>
+          )}
+        </TableCell>
+      );
+    };
+    const scopeCell = (r: Resource) => (
+      <TableCell>
+        <Badge variant={r.scope === 'global' ? 'default' : 'secondary'} className="gap-1">
+          {r.scope === 'global' ? (
+            <GlobeIcon className="size-3" />
+          ) : (
+            <UserIcon className="size-3" />
+          )}
+          {r.scope === 'global' ? t('common.scopeGlobal') : t('common.scopePersonal')}
+        </Badge>
+      </TableCell>
+    );
+    const updatedCell = (r: Resource) => (
+      <TableCell className="text-muted-foreground tabular-nums">
+        {new Date(r.updatedAt).toLocaleDateString(dateLocale(lang), {
+          year: 'numeric',
+          month: 'short',
+          day: 'numeric',
+        })}
+      </TableCell>
+    );
+
+    const perKind: Record<
+      ResourcePageKind,
+      { headers: TranslationKey[]; cells: Array<(r: Resource) => ReactNode> }
+    > = {
+      skill: {
+        headers: ['common.name', 'resources.bundle', 'resources.source', 'resources.trust'],
+        cells: [nameDescCell, bundleCell, sourceCell, trustCell],
+      },
+      sub_agent: {
+        headers: ['common.name', 'common.description', 'resources.targets'],
+        cells: [nameCell, descriptionCell, targetsCell],
+      },
+      rule: {
+        headers: ['common.name', 'resources.key', 'resources.targets'],
+        cells: [nameDescCell, keyCell, targetsCell],
+      },
+      command: {
+        headers: ['resources.triggerWord', 'common.description', 'resources.targets'],
+        cells: [nameCell, descriptionCell, targetsCell],
+      },
+      hook: {
+        headers: ['common.name', 'resources.events', 'resources.targets'],
+        cells: [nameDescCell, eventsCell, targetsCell],
+      },
+    };
+    const kind = perKind[fixedKind];
+    const headers: TranslationKey[] = [
+      ...kind.headers,
+      'common.scope',
+      'resources.updated',
+      'common.actions',
+    ];
+    return { headers, cells: [...kind.cells, scopeCell, updatedCell] };
+  }, [fixedKind, t, lang]);
+
+  /** Skills from the marketplace, for the panel nameplate's fact line (09 §3). */
+  const marketCount = useMemo(
+    () => (items ?? []).filter((r) => r.kind === fixedKind && r.source.type === 'plugin').length,
+    [items, fixedKind],
   );
 
   async function confirmRemove() {
@@ -235,17 +461,24 @@ export function ResourcesPage({ fixedKind }: { fixedKind: ResourcePageKind }) {
       />
 
       <DataTable
-        columns={6}
+        columns={table.headers.length}
         label={t('resources.storedTitle')}
         icon={<BoxesIcon />}
         meta={
-          <Readout
-            layout="inline"
-            size="sm"
-            value={items?.length ?? 0}
-            label={t('resources.total')}
-            loading={items === null}
-          />
+          <>
+            <Readout
+              layout="inline"
+              size="sm"
+              value={items?.length ?? 0}
+              label={t('resources.total')}
+              loading={items === null}
+            />
+            {fixedKind === 'skill' && marketCount > 0 ? (
+              <span className="text-muted-foreground text-xs">
+                {t('resources.marketCount', { count: marketCount })}
+              </span>
+            ) : null}
+          </>
         }
         toolbar={
           <FilterBar query={query} shown={visible?.length} total={items?.length}>
@@ -287,41 +520,23 @@ export function ResourcesPage({ fixedKind }: { fixedKind: ResourcePageKind }) {
       >
         <TableHeader>
           <TableRow>
-            <TableHead>{t('common.name')}</TableHead>
-            <TableHead>{t('resources.kind')}</TableHead>
-            <TableHead>{t('resources.key')}</TableHead>
-            <TableHead>{t('common.scope')}</TableHead>
-            <TableHead>{t('resources.updated')}</TableHead>
-            <TableHead className="text-right">{t('common.actions')}</TableHead>
+            {table.headers.map((key, i) => (
+              <TableHead key={key} className={i === table.headers.length - 1 ? 'text-right' : ''}>
+                {t(key)}
+              </TableHead>
+            ))}
           </TableRow>
         </TableHeader>
         <TableBody>
           {visible?.map((r) => (
-            <TableRow key={r.id}>
-              <TableCell className="font-medium">{r.name}</TableCell>
-              <TableCell>
-                <Badge variant="outline" className="font-mono text-[10px]">
-                  {r.kind}
-                </Badge>
-              </TableCell>
-              <TableCell className="font-mono text-xs tabular-nums">{r.key}</TableCell>
-              <TableCell>
-                <Badge variant={r.scope === 'global' ? 'default' : 'secondary'} className="gap-1">
-                  {r.scope === 'global' ? (
-                    <GlobeIcon className="size-3" />
-                  ) : (
-                    <UserIcon className="size-3" />
-                  )}
-                  {r.scope === 'global' ? t('common.scopeGlobal') : t('common.scopePersonal')}
-                </Badge>
-              </TableCell>
-              <TableCell className="text-muted-foreground tabular-nums">
-                {new Date(r.updatedAt).toLocaleDateString(dateLocale(lang), {
-                  year: 'numeric',
-                  month: 'short',
-                  day: 'numeric',
-                })}
-              </TableCell>
+            <TableRow
+              key={r.id}
+              data-highlight={r.key === highlightKey ? '' : undefined}
+              className={r.key === highlightKey ? 'bg-signal/5' : undefined}
+            >
+              {table.cells.map((cell, i) => (
+                <Fragment key={i}>{cell(r)}</Fragment>
+              ))}
               <TableCell className="text-right">
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
@@ -498,8 +713,9 @@ function ResourceEditor({
         <form onSubmit={onSubmit} className="grid gap-4">
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="grid gap-2">
-              <Label htmlFor="res-kind">{t('resources.kind')}</Label>
-              {/* The page owns the kind; the editor states it rather than asking. */}
+              <LabelText>{t('resources.kind')}</LabelText>
+              {/* The page owns the kind; the editor states it rather than asking.
+                  Not a <Label htmlFor>: the value is a badge, not a control. */}
               <div>
                 <Badge variant="secondary">{t(kindMeta.labelKey)}</Badge>
               </div>
@@ -685,7 +901,14 @@ function HookBodyEditor({
     <>
       <div className="flex items-center justify-between">
         <Label>{t('resources.hookBindings')}</Label>
-        <Button type="button" variant="outline" size="sm" className="gap-1.5" onClick={addEntry}>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="gap-1.5"
+          disabled={availableEvents.length === 0}
+          onClick={addEntry}
+        >
           <PlusIcon className="size-4" />
           {t('resources.addBinding')}
         </Button>
@@ -694,6 +917,13 @@ function HookBodyEditor({
         {t('resources.hooksDesc')} <code className="font-mono">hooks.json</code>
         {t('resources.hooksDescAfter')}
       </p>
+      {/* Which events exist is a per-target fact (HOOK_SUPPORT), and the server
+          rejects a hook whose events NO declared target can run (409
+          HOOK_EVENT_UNSUPPORTED). Say that here rather than letting the save
+          fail with a server error. */}
+      {availableEvents.length === 0 ? (
+        <p className="text-state-warn-ink text-xs">{t('resources.hooksNoTargets')}</p>
+      ) : null}
       <div className="flex flex-col gap-3">
         {entries.length === 0 ? (
           <p className="text-muted-foreground rounded-md border border-dashed py-6 text-center text-sm">
@@ -707,7 +937,7 @@ function HookBodyEditor({
                   value={e.event}
                   onValueChange={(v) => updateEntry(i, { event: v as HookEvent })}
                 >
-                  <SelectTrigger className="w-[180px]">
+                  <SelectTrigger className="w-[180px] font-mono text-xs">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -743,6 +973,9 @@ function HookBodyEditor({
                 spellCheck={false}
                 className="font-mono text-xs"
               />
+              {availableEvents.includes(e.event) ? null : (
+                <p className="text-state-warn-ink text-xs">{t('resources.hookEventUnsupported')}</p>
+              )}
             </div>
           ))
         )}
@@ -795,11 +1028,121 @@ function serializeHooksJson(entries: HookEntry[]): string {
 }
 
 /**
+ * One row of the bundle tree. Folders collapse and offer "add a file here";
+ * files select for editing. Module scope on purpose (09 §4): the tree is data,
+ * and a nested component definition would remount every keystroke.
+ */
+function BundleTreeRow({
+  node,
+  depth,
+  activePath,
+  collapsed,
+  onToggle,
+  onSelect,
+  onRemove,
+  onAddHere,
+}: {
+  node: BundleNode;
+  depth: number;
+  activePath: string | null;
+  collapsed: Record<string, boolean>;
+  onToggle: (path: string) => void;
+  onSelect: (path: string) => void;
+  onRemove: (path: string) => void;
+  onAddHere: (dir: string) => void;
+}) {
+  const { t } = useI18n();
+  const indent = { paddingLeft: `${depth * 12 + 8}px` };
+
+  if (node.dir) {
+    const isCollapsed = collapsed[node.path] === true;
+    return (
+      <>
+        <div className="hover:bg-accent/40 group flex items-center rounded" style={indent}>
+          <button
+            type="button"
+            aria-expanded={!isCollapsed}
+            onClick={() => onToggle(node.path)}
+            className="flex flex-1 items-center gap-1.5 py-1.5 text-left font-mono text-xs"
+          >
+            {isCollapsed ? (
+              <ChevronRightIcon className="text-muted-foreground size-3.5 shrink-0" />
+            ) : (
+              <ChevronDownIcon className="text-muted-foreground size-3.5 shrink-0" />
+            )}
+            <FolderIcon className="text-muted-foreground size-3.5 shrink-0" />
+            <span className="truncate">{node.name}/</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => onAddHere(node.path)}
+            className="text-muted-foreground hover:text-foreground mr-1 size-6 shrink-0 rounded"
+          >
+            <PlusIcon className="mx-auto size-3.5" />
+            <span className="sr-only">{t('resources.addHere')}</span>
+          </button>
+        </div>
+        {isCollapsed ? null : (
+          <>
+            {node.children.map((child) => (
+              <BundleTreeRow
+                key={child.path}
+                node={child}
+                depth={depth + 1}
+                activePath={activePath}
+                collapsed={collapsed}
+                onToggle={onToggle}
+                onSelect={onSelect}
+                onRemove={onRemove}
+                onAddHere={onAddHere}
+              />
+            ))}
+          </>
+        )}
+      </>
+    );
+  }
+
+  const active = activePath === node.path;
+  return (
+    <div
+      className={cn(
+        'group flex items-center rounded',
+        active ? 'bg-accent text-accent-foreground' : 'hover:bg-accent/60',
+      )}
+      style={indent}
+    >
+      <button
+        type="button"
+        onClick={() => onSelect(node.path)}
+        className="flex flex-1 items-center gap-1.5 py-1.5 text-left font-mono text-xs"
+      >
+        <FileTextIcon className="text-muted-foreground size-3.5 shrink-0" />
+        <span className="truncate">{node.name}</span>
+      </button>
+      <button
+        type="button"
+        onClick={() => onRemove(node.path)}
+        className="text-muted-foreground hover:text-destructive mr-1 size-6 shrink-0 rounded"
+      >
+        <TrashIcon className="mx-auto size-3.5" />
+        <span className="sr-only">{t('resources.removeFile')}</span>
+      </button>
+    </div>
+  );
+}
+
+/**
  * Manages the extra files of a multi-file skill (everything besides the main
- * SKILL.md, which lives in the primary body textarea). Each entry is a
- * relative path → content pair. When any extra file exists, the editor emits
+ * SKILL.md, which lives in the primary body textarea). Each entry is a relative
+ * path → content pair. When any extra file exists, the editor emits
  * `source.inline-bundle` instead of `source.inline`. See Phase 4.6 / the 4.4
  * skill research (~42% of real skills are multi-file).
+ *
+ * P4 (09 §4): the files are shown as the tree their paths describe — a skill
+ * with `references/a.md` and `scripts/run.sh` is two folders, not a flat list
+ * that makes you read the slashes. The tree is a *view*: the stored shape stays
+ * the flat `path → content` map.
  */
 function SkillBundleEditor({
   files,
@@ -811,12 +1154,16 @@ function SkillBundleEditor({
   const { t } = useI18n();
   const [newPath, setNewPath] = useState('');
   const [activePath, setActivePath] = useState<string | null>(null);
+  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
+  const [renaming, setRenaming] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState('');
   const paths = Object.keys(files).sort();
+  const tree = buildBundleTree(paths);
 
   function addFile() {
     const p = newPath.trim();
     if (!p) return;
-    if (p === 'SKILL.md' || p.startsWith('/') || p.includes('..') || p.includes('\\')) {
+    if (bundlePathError(p) !== null) {
       toast.error(t('resources.invalidPath'));
       return;
     }
@@ -827,6 +1174,27 @@ function SkillBundleEditor({
     setFiles({ ...files, [p]: '' });
     setActivePath(p);
     setNewPath('');
+  }
+
+  function renameFile(from: string) {
+    const to = renameValue.trim();
+    if (to === from) {
+      setRenaming(null);
+      return;
+    }
+    if (to === '' || bundlePathError(to) !== null) {
+      toast.error(t('resources.invalidPath'));
+      return;
+    }
+    if (files[to] !== undefined) {
+      toast.error(t('resources.pathExists', { path: to }));
+      return;
+    }
+    const next: Record<string, string> = {};
+    for (const [k, v] of Object.entries(files)) next[k === from ? to : k] = v;
+    setFiles(next);
+    if (activePath === from) setActivePath(to);
+    setRenaming(null);
   }
 
   function removeFile(p: string) {
@@ -859,39 +1227,70 @@ function SkillBundleEditor({
 
         {paths.length > 0 ? (
           <div className="flex flex-col gap-3 sm:flex-row">
-            {/* File list */}
-            <div className="bg-muted/40 flex flex-col rounded-md border p-2 sm:w-56 sm:shrink-0">
-              {paths.map((p) => (
-                <button
-                  key={p}
-                  type="button"
-                  onClick={() => setActivePath(p)}
-                  className={cn(
-                    'flex items-center justify-between rounded px-2 py-1.5 text-left font-mono text-xs transition-colors',
-                    activePath === p ? 'bg-accent text-accent-foreground' : 'hover:bg-accent/60',
-                  )}
-                >
-                  <span className="truncate">{p}</span>
-                  <TrashIcon
-                    className="text-muted-foreground hover:text-destructive size-3.5 shrink-0"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      removeFile(p);
-                    }}
-                  />
-                </button>
+            {/* File tree (folders are derived from the paths) */}
+            <div className="bg-muted/40 flex flex-col rounded-md border p-1 sm:w-64 sm:shrink-0">
+              {tree.map((node) => (
+                <BundleTreeRow
+                  key={node.path}
+                  node={node}
+                  depth={0}
+                  activePath={activePath}
+                  collapsed={collapsed}
+                  onToggle={(path) => setCollapsed((prev) => ({ ...prev, [path]: !prev[path] }))}
+                  onSelect={setActivePath}
+                  onRemove={removeFile}
+                  onAddHere={(dir) => setNewPath(`${dir}/`)}
+                />
               ))}
             </div>
-            {/* Active file editor */}
-            {activePath ? (
-              <Textarea
-                key={activePath}
-                value={files[activePath]}
-                onChange={(e) => updateContent(activePath, e.target.value)}
-                placeholder={t('resources.fileContent', { path: activePath })}
-                spellCheck={false}
-                className="min-h-48 flex-1 font-mono text-xs"
-              />
+            {/* Active file: its path is protocol material (a Well), its body is text */}
+            {activePath !== null ? (
+              <div className="flex min-w-0 flex-1 flex-col gap-2">
+                <div className="flex items-center gap-2">
+                  <Well variant="chip" copy={activePath}>
+                    {activePath}
+                  </Well>
+                  {renaming === activePath ? (
+                    <Input
+                      autoFocus
+                      value={renameValue}
+                      onChange={(e) => setRenameValue(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          renameFile(activePath);
+                        }
+                        if (e.key === 'Escape') setRenaming(null);
+                      }}
+                      onBlur={() => renameFile(activePath)}
+                      spellCheck={false}
+                      className="h-7 max-w-64 font-mono text-xs"
+                    />
+                  ) : (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="size-7"
+                      onClick={() => {
+                        setRenaming(activePath);
+                        setRenameValue(activePath);
+                      }}
+                    >
+                      <PencilIcon className="size-3.5" />
+                      <span className="sr-only">{t('resources.renameFile')}</span>
+                    </Button>
+                  )}
+                </div>
+                <Textarea
+                  key={activePath}
+                  value={files[activePath]}
+                  onChange={(e) => updateContent(activePath, e.target.value)}
+                  placeholder={t('resources.fileContent', { path: activePath })}
+                  spellCheck={false}
+                  className="min-h-48 flex-1 font-mono text-xs"
+                />
+              </div>
             ) : (
               <div className="text-muted-foreground flex flex-1 items-center justify-center rounded-md border border-dashed py-8 text-sm">
                 {t('resources.selectFile')}
