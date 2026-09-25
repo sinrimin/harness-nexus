@@ -212,9 +212,9 @@ this before adding screens or components so the look stays consistent.
 
 - **Concept.** The interface is a _signal console_. Color encodes connection
   state only; everything else is a disciplined cool neutral. The single accent
-  — `--signal` (cyan) — marks what is live: links, focus, the brand mark, and
-  (once Phase 2.2 ships) online connections. Spend that accent in one place per
-  view; do not sprinkle it as decoration.
+  — `--signal` (cyan) — marks what is live: links, focus, the brand mark, the
+  current bay, the working session, and online upstreams. Spend that accent in
+  one place per view; do not sprinkle it as decoration.
 - **Tokens live in `apps/web/src/index.css`.** Light + dark are both defined;
   `color-scheme` is set per theme. Do not hardcode hex in components — derive
   from the CSS variables (`bg-background`, `text-signal`, etc.). The semantic
@@ -231,15 +231,37 @@ this before adding screens or components so the look stays consistent.
   brand blues via `--brand-{bright,mid,deep}` tokens (deep navy is lifted in
   dark theme) — separate from the UI's `--signal` accent. Reuse `<Brand>`;
   don't introduce a raster logo.
-- **Honesty over decoration.** The Dashboard mesh topology (`components/
-mesh-topology.tsx`) renders upstreams as "configured" (muted), **never** a
-  green "online" dot — live aggregation is Phase 2.2 and faking status would
-  mislead. When 2.2 lands, swap the `Dot` variant per real state; the geometry
-  already supports it.
-- **Chrome.** `AppShell` provides the sidebar + header and a skip link to
-  `#main`. The mobile nav is a Radix `Dialog` drawer (`components/mobile-nav.tsx`)
-  that mirrors the same `navItems()`. Add new routes to `navItems()` in
-  `app-shell.tsx` so both surfaces stay in sync.
+- **Honesty over decoration.** The mesh topology
+  (`components/mesh-topology.tsx`) fills each node from its **real** state
+  (`online` → `--ok`, everything else the muted "configured") and flips live off
+  the socket — it never paints a liveness colour it has not been told, and a
+  figure that failed to load renders nothing rather than zeros. `data-state` is
+  the truth; styling only renders it.
+- **Chrome.** `AppShell` composes the shell (`components/shell/`): a 30px
+  numbered spine + a 168px plate (both ≥900px), the 56px chrome bar (drawer /
+  breadcrumb / page title / the page's actions / readouts / toggles), the
+  readout strip, and the content frame with a skip link to `#main`. The mobile
+  nav is a Radix `Dialog` drawer (`components/mobile-nav.tsx`) rendering the
+  same plate.
+- **A destination is declared once** — in `apps/web/src/nav.ts` (`ROUTES` +
+  `NAV_GROUPS`: id, path, `group`, `titleKey`, `layout`, …). The router, the
+  breadcrumb, the spine, the plate, the plate's counts and the phone's
+  `navstrip` all read that one table, so there is no second list to update (the
+  old `navItems()` is gone). A page's identity and actions go into the chrome
+  through the shell's slots — `usePageTitle(text)` (a string, never a portal
+  into the shell's `<h1>`: two writers on that container was a blank-page bug)
+  and `<PageSlot slot="actions">`; `<PageSlot slot="margin">` fills the folio
+  column outside the content frame. The shell owns scrolling — a page that
+  needs its own panes declares `layout: 'panes'` and takes it over.
+- **Build pages out of `components/kit/`, not out of `div`s.** `ui/` stays the
+  untouched Radix/shadcn wrappers; the product's devices live in `kit/` —
+  `Panel`/`PanelHeader`, `Well`, `Lamp` + `StateSignal`, `Readout`, `Chip`,
+  `DataTable` + `TableStateRow`, `Field`, `FilterBar`, `EmptyState`,
+  `Skeleton`, `Note`, `CommandLine`, `ConfirmDialog`, `LabelText`/`DataText`,
+  `Region`. A band or a row hand-rolled from raw `div`s with literal type sizes
+  is a defect: it is the one thing on screen no skin can reach. A new primitive
+  must replace at least two hand-rolled copies before it earns a place in
+  `kit/`.
 - **Theme.** Defaults to the OS preference (`system`), user-overridable via the
   header toggle. The toggle keys off `resolvedTheme` so the icon is correct even
   while following the system.
