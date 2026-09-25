@@ -262,10 +262,14 @@
 
 /* ---------- Controls ---------------------------------------------------- */
 
-/* The comp's key: hard shadow, NO caps silliness on the quiet ones, and the
-   press is the base's rule reading this skin's numbers (--press-shift /
-   --shadow-press). Density comes from --control-h*. */
-[data-skin='bay'] [data-slot='button']:not([data-variant='ghost']):not([data-variant='link']) {
+/* The comp's key: hard shadow, caps on the label, and the press is the base's
+   rule reading this skin's numbers (--press-shift 2px, --shadow-press none).
+   The resting rule steps aside while the key is held — `:not(:active)` — or its
+   own selector would out-specify the base's and the shadow would stay put, i.e.
+   the key would slide under its own shadow instead of being pushed into the
+   panel. Density comes from --control-h*. */
+[data-skin='bay']
+  [data-slot='button']:not([data-variant='ghost']):not([data-variant='link']):not(:active) {
   border-radius: 2px;
   box-shadow: var(--shadow-panel);
   font-family: var(--app-font-label);
