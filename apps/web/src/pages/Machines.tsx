@@ -53,6 +53,7 @@ import {
   type ListQuerySpec,
 } from '@/lib/list-query';
 import { PageSlot } from '@/components/shell/page-slots';
+import { PageAction } from '@/components/shell/page-action';
 import { HarnessNexusError, type MachineView } from '@harness-nexus/sdk';
 
 /**
@@ -179,10 +180,7 @@ export function MachinesPage() {
   return (
     <>
       <PageSlot slot="actions">
-        <Button onClick={() => setEnrolling(true)}>
-          <PlusIcon className="size-4" />
-          {t('machines.enrollButton')}
-        </Button>
+        <PageAction label={t('machines.enrollButton')} onClick={() => setEnrolling(true)} />
       </PageSlot>
 
       <PageIntro

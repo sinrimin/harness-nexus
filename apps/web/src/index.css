@@ -817,20 +817,24 @@
     min-height: 2.5rem;
     transform: translate(-50%, -50%);
   }
-  /* The section menu's caret sits in the topbar beside the page title, where a
-     24px box is what keeps the identity line from being all button. Same
-     overlay: the fingertip gets 2.5rem, the bar keeps its proportions. */
-  [data-nav-menu='trigger'] {
-    position: relative;
-  }
-  [data-nav-menu='trigger']::after {
-    content: '';
-    position: absolute;
-    inset: 50%;
-    min-width: 2.5rem;
+  /* The mobile nav strip is a row of PAGE links now (#23), not five bay
+     buttons: a fingertip has to be able to hit a 36px-tall item without
+     swiping into its neighbour, and the strip is the one control a phone user
+     reaches for most. The box grows; nothing else in the band does. */
+  [data-region='navstrip'] a {
     min-height: 2.5rem;
-    transform: translate(-50%, -50%);
   }
+}
+
+/* Fifteen items overflow a phone, so the strip scrolls — and a 37px band with a
+   scrollbar painted over it reads as a defect (the comp hides it for the same
+   reason: `.baystrip::-webkit-scrollbar { display: none }`). Not inside the
+   coarse block: a narrow desktop window shows the same strip. */
+[data-region='navstrip'] {
+  scrollbar-width: none;
+}
+[data-region='navstrip']::-webkit-scrollbar {
+  display: none;
 }
 
 /* The actions column stays put while the panel scrolls sideways

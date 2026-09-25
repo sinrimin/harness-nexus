@@ -33,6 +33,7 @@ import {
   type ListQuerySpec,
 } from '@/lib/list-query';
 import { PageSlot } from '@/components/shell/page-slots';
+import { PageAction } from '@/components/shell/page-action';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
@@ -150,10 +151,7 @@ export function LlmProvidersPage() {
   return (
     <>
       <PageSlot slot="actions">
-        <Button onClick={() => setCreating(true)}>
-          <PlusIcon className="size-4" />
-          {t('common.create')}
-        </Button>
+        <PageAction label={t('common.create')} onClick={() => setCreating(true)} />
       </PageSlot>
 
       <PageIntro

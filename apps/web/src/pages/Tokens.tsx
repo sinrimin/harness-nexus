@@ -30,6 +30,7 @@ import {
 import { useAuth, withAuthGuard } from '@/auth';
 import { useI18n, dateLocale } from '@/i18n';
 import { PageSlot } from '@/components/shell/page-slots';
+import { PageAction } from '@/components/shell/page-action';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
@@ -138,10 +139,7 @@ export function TokensPage() {
   return (
     <>
       <PageSlot slot="actions">
-        <Button onClick={() => setCreating(true)} className="gap-1.5">
-          <PlusIcon className="size-4" />
-          <span className="hidden sm:inline">{t('tokens.createButton')}</span>
-        </Button>
+        <PageAction label={t('tokens.createButton')} onClick={() => setCreating(true)} />
       </PageSlot>
 
       <PageIntro

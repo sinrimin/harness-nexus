@@ -19,6 +19,7 @@ import {
   type ListQuerySpec,
 } from '@/lib/list-query';
 import { PageSlot } from '@/components/shell/page-slots';
+import { PageAction } from '@/components/shell/page-action';
 import { useAuth, withAuthGuard } from '@/auth';
 import { useI18n, dateLocale } from '@/i18n';
 import { toast } from 'sonner';
@@ -44,7 +45,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { MoreHorizontalIcon, PlusIcon, ShieldCheckIcon, UserIcon, TrashIcon } from 'lucide-react';
+import { MoreHorizontalIcon, ShieldCheckIcon, UserIcon, TrashIcon } from 'lucide-react';
 
 /** The list's vocabulary (07-p3-list-pages.md §5). */
 const USER_SPEC: ListQuerySpec = {
@@ -138,10 +139,7 @@ export function UsersPage() {
   return (
     <>
       <PageSlot slot="actions">
-        <Button onClick={() => setCreating(true)}>
-          <PlusIcon className="size-4" />
-          {t('users.addUser')}
-        </Button>
+        <PageAction label={t('users.addUser')} onClick={() => setCreating(true)} />
       </PageSlot>
 
       <PageIntro sub={t('users.subtitle')} />

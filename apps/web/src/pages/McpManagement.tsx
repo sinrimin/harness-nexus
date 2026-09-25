@@ -36,6 +36,7 @@ import {
   type ListQuerySpec,
 } from '@/lib/list-query';
 import { PageSlot } from '@/components/shell/page-slots';
+import { PageAction } from '@/components/shell/page-action';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from '@/components/ui/collapsible';
@@ -255,10 +256,7 @@ export function McpManagementPage() {
   return (
     <>
       <PageSlot slot="actions">
-        <Button onClick={() => setCreating(true)}>
-          <PlusIcon className="size-4" />
-          {t('mcp.addServer')}
-        </Button>
+        <PageAction label={t('mcp.addServer')} onClick={() => setCreating(true)} />
       </PageSlot>
 
       <PageIntro

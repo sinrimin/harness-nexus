@@ -16,7 +16,7 @@ const en = {
   langToEn: 'Switch to English',
   mobileOpenNav: 'Open navigation',
   mobileCloseNav: 'Close navigation',
-  openNavMenu: 'Menu — go to any page',
+  jumpToPage: 'Go to page',
   // Nav items + page titles (single source of truth in nav.tsx).
   navHome: 'Home',
   navChat: 'Chat',
@@ -75,7 +75,7 @@ const zh: typeof en = {
   langToEn: 'Switch to English',
   mobileOpenNav: '打开导航',
   mobileCloseNav: '关闭导航',
-  openNavMenu: '菜单 — 去任意页面',
+  jumpToPage: '跳转到页面',
   navHome: '总览',
   navChat: '聊天',
   navMachines: '机器',
