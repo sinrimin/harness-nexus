@@ -11,7 +11,15 @@ import {
   type InventoryDiff,
   type Profile,
 } from '@harness-nexus/sdk';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import {
+  ConfirmDialog,
+  EmptyState,
+  Note,
+  Panel,
+  PanelBody,
+  PanelHeader,
+  TableStateRow,
+} from '@/components/kit';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
@@ -33,7 +41,6 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { ConfirmDialog, Note, TableStateRow } from '@/components/kit';
 import type { InventoryEntry } from './types.js';
 
 /**
@@ -63,11 +70,9 @@ export function InventoryTab({
   if (inventory.length === 0) {
     return (
       <>
-        <Card>
-          <CardContent className="text-muted-foreground py-8 text-center text-sm">
-            {t('machineDetail.emptyInventory')}
-          </CardContent>
-        </Card>
+        <Panel>
+          <EmptyState title={t('machineDetail.emptyInventory')} />
+        </Panel>
       </>
     );
   }
@@ -91,26 +96,29 @@ function TargetItemsCard({ entry, machineId }: { entry: InventoryEntry; machineI
   const notInstalled = entry.runtime !== null && !entry.runtime.installed;
   return (
     <>
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex flex-wrap items-center gap-2 text-base">
-            <LaptopIcon className="size-4" />
-            <span className="font-mono">{entry.target}</span>
-            {agent?.profileApplied ? (
-              <Badge variant="secondary" className="text-[10px]">
-                {t('machineDetail.profileApplied')}
-              </Badge>
-            ) : null}
-          </CardTitle>
-          <CardDescription>
-            {notInstalled ? `${t('machineDetail.runtimeNotInstalled')} · ` : ''}
-            {t('machineDetail.itemsReported', {
-              count: items.length,
-              time: new Date(entry.reportedAt).toLocaleString(dateLocale(lang)),
-            })}
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-0 px-0">
+      {/* One panel per Agent — identity in the nameplate (target in mono, not
+          the label role), the scanned items flush below it. */}
+      <Panel>
+        <PanelHeader
+          icon={<LaptopIcon />}
+          meta={
+            <>
+              {notInstalled ? `${t('machineDetail.runtimeNotInstalled')} · ` : ''}
+              {t('machineDetail.itemsReported', {
+                count: items.length,
+                time: new Date(entry.reportedAt).toLocaleString(dateLocale(lang)),
+              })}
+            </>
+          }
+        >
+          <span className="role-data text-foreground truncate">{entry.target}</span>
+          {agent?.profileApplied ? (
+            <Badge variant="secondary" className="text-[10px]">
+              {t('machineDetail.profileApplied')}
+            </Badge>
+          ) : null}
+        </PanelHeader>
+        <PanelBody variant="flush" className="flex flex-col gap-0">
           {/* A not-installed Agent leads with its absence; leftover items (if
             any) still render honestly below — files can outlive binaries. */}
           {notInstalled && items.length === 0 ? (
@@ -167,8 +175,8 @@ function TargetItemsCard({ entry, machineId }: { entry: InventoryEntry; machineI
             </Table>
           )}
           <CaptureForm machineId={machineId} target={entry.target} />
-        </CardContent>
-      </Card>
+        </PanelBody>
+      </Panel>
     </>
   );
 }
@@ -355,15 +363,11 @@ function DiffAndImport({ machineId, targets }: { machineId: string; targets: str
 
   return (
     <>
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-base">
-            <GitCompareArrowsIcon className="size-4" />
-            {t('machineDetail.diffTitle')}
-          </CardTitle>
-          <CardDescription>{t('machineDetail.diffDesc')}</CardDescription>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-4">
+      <Panel label={t('machineDetail.diffTitle')} icon={<GitCompareArrowsIcon />}>
+        <PanelBody variant="pad" className="flex flex-col gap-4">
+          <p className="text-muted-foreground max-w-[68ch] text-sm">
+            {t('machineDetail.diffDesc')}
+          </p>
           <div className="flex flex-wrap items-end gap-3">
             <div className="grid min-w-64 gap-2">
               <Label htmlFor="diff-profile">{t('machineDetail.profileLabel')}</Label>
@@ -535,8 +539,8 @@ function DiffAndImport({ machineId, targets }: { machineId: string; targets: str
               </AlertDescription>
             </Alert>
           ) : null}
-        </CardContent>
-      </Card>
+        </PanelBody>
+      </Panel>
     </>
   );
 }

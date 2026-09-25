@@ -8,8 +8,11 @@
  * - `modes` declares which light/dark modes the skin ships; single-mode skins
  *   lock the theme toggle.
  * - `topology` picks the mesh visualization renderer for the dashboard.
- * - `widgets` are the only new DOM a skin may add (rendered by the app in
- *   fixed slots, only when declared here).
+ * - A skin may NOT add DOM. The extra regions the skins-of-record want
+ *   (NIGHTWATCH's watch bar, LEDGER's folio margin) ride the base's `Region`
+ *   slots, which render nothing while empty — so a skin never needs a manifest
+ *   field to own them. (`widgets` used to claim otherwise and was never
+ *   implemented nor called: 04-contract.md §3.)
  * - `load()` injects the skin's tokens.css / skin.css / fonts at runtime;
  *   `signal` is the always-present baseline and loads nothing.
  */
@@ -18,7 +21,6 @@ export type SkinId = 'signal' | 'bay' | 'ledger' | 'nightwatch';
 export type SkinMode = 'light' | 'dark';
 export type StatusStyle = 'dot' | 'led' | 'lamp' | 'word';
 export type TopologyStyle = 'constellation' | 'plate' | 'radar';
-export type SkinWidget = 'watchbar' | 'marginalia';
 
 export interface SkinManifest {
   id: SkinId;
@@ -27,7 +29,6 @@ export interface SkinManifest {
   modes: SkinMode[];
   statusStyle: StatusStyle;
   topology: TopologyStyle;
-  widgets?: SkinWidget[];
   load: () => Promise<unknown>;
 }
 

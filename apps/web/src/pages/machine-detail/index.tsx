@@ -7,9 +7,8 @@ import { useAuth, withAuthGuard } from '@/auth';
 import { useI18n, dateLocale } from '@/i18n';
 import { appSocket, type InventoryUpdatedEvent } from '@/realtime';
 import { patchMachine } from '@/lib/machine-presence.js';
-import { Card, CardContent } from '@/components/ui/card';
+import { EmptyState, Lamp, Panel, PanelBody, PanelHeader, Well } from '@/components/kit';
 import { Button } from '@/components/ui/button';
-import { Lamp, Panel, PanelHeader, Well } from '@/components/kit';
 import { PageSlot, usePageTitle } from '@/components/shell/page-slots';
 import { useMachineStatus } from '@/components/shell/use-presence.js';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -249,17 +248,17 @@ export function MachineDetailPage() {
           </TabsContent>
           <TabsContent value="agents" forceMount className="data-[state=inactive]:hidden">
             {inventory === null ? (
-              <Card>
-                <CardContent className="text-muted-foreground py-8 text-center text-sm">
-                  {t('machineDetail.loadingInventory')}
-                </CardContent>
-              </Card>
+              <Panel>
+                <PanelBody variant="pad">
+                  <p className="text-muted-foreground py-8 text-center text-sm">
+                    {t('machineDetail.loadingInventory')}
+                  </p>
+                </PanelBody>
+              </Panel>
             ) : inventory.length === 0 ? (
-              <Card>
-                <CardContent className="text-muted-foreground py-8 text-center text-sm">
-                  {t('machineDetail.emptyInventory')}
-                </CardContent>
-              </Card>
+              <Panel>
+                <EmptyState title={t('machineDetail.emptyInventory')} />
+              </Panel>
             ) : (
               <AgentsTab
                 inventory={inventory}

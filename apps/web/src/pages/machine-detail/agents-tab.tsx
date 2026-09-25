@@ -27,7 +27,6 @@ import {
   type RuntimeConfigSpec,
   type RuntimeTarget,
 } from '@harness-nexus/sdk';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
@@ -55,7 +54,7 @@ import {
   DrawerHeader,
   DrawerTitle,
 } from '@/components/ui/drawer';
-import { ConfirmDialog } from '@/components/kit';
+import { ConfirmDialog, EmptyState, Panel, PanelBody, PanelHeader } from '@/components/kit';
 import type { InventoryEntry, RuntimeInfoView } from './types.js';
 
 /**
@@ -88,11 +87,9 @@ export function AgentsTab({
   if (inventory.length === 0) {
     return (
       <>
-        <Card>
-          <CardContent className="text-muted-foreground py-8 text-center text-sm">
-            {t('machineDetail.emptyInventory')}
-          </CardContent>
-        </Card>
+        <Panel>
+          <EmptyState title={t('machineDetail.emptyInventory')} />
+        </Panel>
       </>
     );
   }
@@ -131,17 +128,23 @@ function AgentRuntimeCard({
   const notInstalled = entry.runtime !== null && !entry.runtime.installed;
   return (
     <>
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex flex-wrap items-center gap-2 text-base">
-            <LaptopIcon className="size-4" />
-            <span className="font-mono">{entry.target}</span>
-            {agent?.profileApplied ? (
-              <Badge variant="secondary" className="text-[10px]">
-                {t('machineDetail.profileApplied')}
-              </Badge>
-            ) : null}
-            <span className="ml-auto flex flex-wrap items-center gap-3">
+      {/* One panel per Agent: the nameplate carries the identity (target in
+          mono — never the label role, which uppercases) plus the runtime
+          verdict; the body is the pre-warm switch and the provider route. */}
+      <Panel>
+        <PanelHeader
+          icon={<LaptopIcon />}
+          meta={
+            <>
+              {notInstalled ? `${t('machineDetail.runtimeNotInstalled')} · ` : ''}
+              {t('machineDetail.itemsReported', {
+                count: items.length,
+                time: new Date(entry.reportedAt).toLocaleString(dateLocale(lang)),
+              })}
+            </>
+          }
+          actions={
+            <>
               <RuntimeStatus runtime={entry.runtime} />
               <ViewConfigButton
                 machineId={machineId}
@@ -149,17 +152,17 @@ function AgentRuntimeCard({
                 runtime={entry.runtime}
               />
               <RuntimeManage machineId={machineId} target={entry.target} runtime={entry.runtime} />
-            </span>
-          </CardTitle>
-          <CardDescription>
-            {notInstalled ? `${t('machineDetail.runtimeNotInstalled')} · ` : ''}
-            {t('machineDetail.itemsReported', {
-              count: items.length,
-              time: new Date(entry.reportedAt).toLocaleString(dateLocale(lang)),
-            })}
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="px-0">
+            </>
+          }
+        >
+          <span className="role-data text-foreground truncate">{entry.target}</span>
+          {agent?.profileApplied ? (
+            <Badge variant="secondary" className="text-[10px]">
+              {t('machineDetail.profileApplied')}
+            </Badge>
+          ) : null}
+        </PanelHeader>
+        <PanelBody variant="flush">
           <PrewarmToggle
             machineId={machineId}
             target={entry.target}
@@ -167,8 +170,8 @@ function AgentRuntimeCard({
             onChanged={onChanged}
           />
           <ProviderConfigForm machineId={machineId} target={entry.target} runtime={entry.runtime} />
-        </CardContent>
-      </Card>
+        </PanelBody>
+      </Panel>
     </>
   );
 }

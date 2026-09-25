@@ -12,35 +12,22 @@
 [data-skin='bay'] [data-surface='panel'],
 [data-skin='bay'] [data-surface='mesh'] {
   border-color: var(--border);
-  border-radius: 6px;
   box-shadow: 2px 2px 0 #c3cad4; /* the bezel bolts the panel onto the chassis */
   gap: 1rem;
 }
 
-/* Bezel header strip: the engraved label plate across the panel's top.
- * Only the VERTICAL offset is cancelled: the kit's Card carries `py-6` and no
- * horizontal padding — the header/content supply their own `px-6` — so a
- * negative inline margin would push the plate past the panel on both sides.
- * Under the old max-w-6xl frame that overhang had slack; with the full-width
- * frame it lands outside the content column and the column scrolls sideways. */
-[data-skin='bay'] [data-surface='panel'] > [data-slot='card-header'] {
-  margin: -1.5rem 0 0;
-  padding: 0.5rem 1.25rem;
-  border-bottom: 1px solid var(--border);
-  background: #e9edf2;
-}
-
-/* The kit's panel nameplate is already full-bleed and already set in the label
- * role, so the skin only has to engrave it: gradient plate + top lip. */
+/* The kit's nameplate already IS the bezel header strip — 28px, full-bleed,
+ * 1px rule under it, `--panel-head-h` and `px-3` from the base (kit/panel.tsx)
+ * — so the skin only has to engrave it: gradient plate + top lip. The old
+ * `-1.5rem` margin that pulled a Card's header up into the panel is gone
+ * (04-contract.md §3 bans layout surgery); the five pages still rendering
+ * `Card > CardHeader` now use `Panel` / `DataTable` like every list page. */
 [data-skin='bay'] [data-slot='panel-header'] {
-  height: auto;
-  padding: 0.45rem 0.75rem;
   background: linear-gradient(#f2f4f7, #e7ebf0);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7);
 }
 
 /* Card titles become engraved panel labels: narrow caps, tracked. */
-[data-skin='bay'] [data-slot='card-title'],
 [data-skin='bay'] [data-slot='panel-title'] {
   font-family: var(--app-font-display);
   font-size: 0.8rem;
@@ -151,73 +138,27 @@
 
 /* ---------- Sidebar: the bay spine ---------- */
 
-/* Reserve a 56px gutter for the numbered bays, split by a hairline. */
-[data-skin='bay'] [data-region='sidebar'] {
-  position: relative;
-  padding-left: 56px;
+/* The bay numbers are DATA, and the base renders them (shell/spine.tsx: the
+ * section address `01`…`05` from the nav manifest, with the section's label
+ * under it — so hiding a section for a non-admin can never renumber anything).
+ *
+ * This skin used to inject the same numbers with `content: '01\A NAV'` into
+ * `[data-region='nav']` — CSS could not know the list, and the plates were
+ * positioned at `left: -44px` inside a `overflow-hidden` plate column, i.e.
+ * painted nowhere. Both families are gone; BAY only styles what the base
+ * renders (04-contract.md §3, rule 1). */
+[data-skin='bay'] [data-region='spine'] a[data-bay-number] {
+  background: var(--sidebar);
 }
 
-[data-skin='bay'] [data-region='sidebar']::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  left: 56px;
-  width: 1px;
-  background: var(--sidebar-border);
+[data-skin='bay'] [data-region='spine'] a[data-bay-number]:hover {
+  background: #e7eaef;
 }
 
-/* Each nav anchor's group number + label, dropped into the gutter. Groups
- * with consecutive members hide the plate on all but the first (the group
- * order in navItems is contiguous, which the sibling selectors rely on). */
-[data-skin='bay'] [data-region='nav'] a[data-nav-group] {
-  position: relative;
-}
-
-[data-skin='bay'] [data-region='nav'] a[data-nav-group]::before {
-  position: absolute;
-  left: -44px;
-  width: 36px;
-  text-align: left;
-  font-family: var(--app-font-display);
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.08em;
-  line-height: 1.25;
-  color: var(--muted-foreground);
-  white-space: pre-line; /* the \A in content stacks number over label */
-  pointer-events: none;
-}
-
-[data-skin='bay'] a[data-nav-group='nav']::before {
-  content: '01\A NAV';
-}
-[data-skin='bay'] a[data-nav-group='fleet']::before {
-  content: '02\A FLEET';
-}
-[data-skin='bay'] a[data-nav-group='mesh']::before {
-  content: '03\A MESH';
-}
-[data-skin='bay'] a[data-nav-group='asset']::before {
-  content: '04\A ASSET';
-}
-[data-skin='bay'] a[data-nav-group='tokens']::before {
-  content: '05\A TOKENS';
-}
-[data-skin='bay'] a[data-nav-group='admin']::before {
-  content: '06\A ADMIN';
-}
-
-/* Hide the plate on 2nd..nth consecutive member of the same group. */
-[data-skin='bay'] a[data-nav-group='fleet'] ~ a[data-nav-group='fleet']::before,
-[data-skin='bay'] a[data-nav-group='asset'] ~ a[data-nav-group='asset']::before,
-[data-skin='bay'] a[data-nav-group='admin'] ~ a[data-nav-group='admin']::before {
-  display: none;
-}
-
-/* The active bay carries the live edge. */
-[data-skin='bay'] [data-region='nav'] a[data-nav-group][aria-current='page'] {
-  box-shadow: inset 3px 0 0 var(--signal);
+/* The live bay keeps the accent edge the base drew (3px, `--signal`), and the
+ * plate behind it goes to paper: one screen, one live thing. */
+[data-skin='bay'] [data-region='spine'] a[data-bay-number][aria-current='true'] {
+  background: var(--card);
 }
 
 /* ---------- Mesh panel: the graticule ---------- */

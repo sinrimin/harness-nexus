@@ -10,7 +10,6 @@ import {
 import { api } from '@/api';
 import { useAuth, withAuthGuard } from '@/auth';
 import { useI18n } from '@/i18n';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
@@ -31,7 +30,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { StateSignal } from '@/components/state-signal';
-import { TableStateRow } from '@/components/kit';
+import { DataTable, Note, PageIntro, tableState } from '@/components/kit';
 import {
   Dialog,
   DialogContent,
@@ -172,127 +171,110 @@ export function SkillHubPanel({ onSavedSkill }: { onSavedSkill?: (key: string) =
 
   return (
     <>
-      <Card>
-        <CardHeader>
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <CardTitle className="flex items-center gap-2">
-                <StoreIcon className="size-5" />
-                {t('skillHub.title')}
-              </CardTitle>
-              <CardDescription>{t('skillHub.subtitle')}</CardDescription>
+      {/* The hub tab owns no page chrome (the tab row + topbar carry the
+          identity), so the panel IS the page: subtitle as the intro prose the
+          sibling tab also renders, the filters as the table's toolbar strip. */}
+      <PageIntro sub={<>{t('skillHub.subtitle')}</>} />
+
+      <DataTable
+        columns={5}
+        label={t('skillHub.title')}
+        icon={<StoreIcon />}
+        state={tableState({
+          error: loadError,
+          loading: rows === null,
+          count: rows?.length ?? 0,
+          filtered: searching || category !== 'all',
+        })}
+        error={loadError}
+        onRetry={() => setReloads((n) => n + 1)}
+        {...(searching || category !== 'all'
+          ? {
+              onClearFilters: () => {
+                if (searching) setQ('');
+                else setCategory('all');
+              },
+            }
+          : {})}
+        toolbar={
+          <>
+            {!searching ? (
+              <>
+                <Select
+                  value={selectedMkt}
+                  onValueChange={(v) => setSelectedMkt(v)}
+                  disabled={!marketplaces || marketplaces.length === 0}
+                >
+                  <SelectTrigger id="filter-marketplace" className="w-[220px]">
+                    <SelectValue placeholder={t('skillHub.marketplacePlaceholder')} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {(marketplaces ?? []).map((m) => (
+                      <SelectItem key={m.id} value={m.id}>
+                        <span className="font-mono">{m.id}</span>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Select
+                  value={category}
+                  onValueChange={(v) => setCategory(v)}
+                  disabled={!selectedMkt}
+                >
+                  <SelectTrigger id="filter-category" className="w-[150px]">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">{t('skillHub.allCategories')}</SelectItem>
+                    {categories.map((c) => (
+                      <SelectItem key={c} value={c}>
+                        {c}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </>
+            ) : null}
+            <div className="relative">
+              <SearchIcon className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                value={q}
+                onChange={(e) => setQ(e.target.value)}
+                placeholder={t('skillHub.searchPlaceholder')}
+                spellCheck={false}
+                className="w-[260px] pl-8"
+                aria-label={t('skillHub.searchAriaLabel')}
+              />
             </div>
-            <div className="flex flex-wrap items-center gap-2">
-              {!searching ? (
-                <>
-                  <Select
-                    value={selectedMkt}
-                    onValueChange={(v) => setSelectedMkt(v)}
-                    disabled={!marketplaces || marketplaces.length === 0}
-                  >
-                    <SelectTrigger id="filter-marketplace" className="w-[220px]">
-                      <SelectValue placeholder={t('skillHub.marketplacePlaceholder')} />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {(marketplaces ?? []).map((m) => (
-                        <SelectItem key={m.id} value={m.id}>
-                          <span className="font-mono">{m.id}</span>
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <Select
-                    value={category}
-                    onValueChange={(v) => setCategory(v)}
-                    disabled={!selectedMkt}
-                  >
-                    <SelectTrigger id="filter-category" className="w-[150px]">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">{t('skillHub.allCategories')}</SelectItem>
-                      {categories.map((c) => (
-                        <SelectItem key={c} value={c}>
-                          {c}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </>
-              ) : null}
-              <div className="relative">
-                <SearchIcon className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-                <Input
-                  value={q}
-                  onChange={(e) => setQ(e.target.value)}
-                  placeholder={t('skillHub.searchPlaceholder')}
-                  spellCheck={false}
-                  className="w-[260px] pl-8"
-                  aria-label={t('skillHub.searchAriaLabel')}
-                />
-              </div>
-            </div>
-          </div>
-        </CardHeader>
-        <CardContent className="px-0">
-          {searching && timedOut.length > 0 ? (
-            <div className="text-muted-foreground px-6 py-2 text-xs">
-              {t('skillHub.timedOut', { sources: timedOut.join(', ') })}
-            </div>
-          ) : null}
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="pl-6">{t('common.name')}</TableHead>
-                <TableHead>{t('skillHub.category')}</TableHead>
-                <TableHead>{t('skillHub.source')}</TableHead>
-                <TableHead>{t('skillHub.trust')}</TableHead>
-                <TableHead className="pr-6 text-right">{t('common.actions')}</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {loadError !== null ? (
-                <TableStateRow
-                  state="error"
-                  columns={5}
-                  error={loadError}
-                  onRetry={() => setReloads((n) => n + 1)}
-                />
-              ) : rows === null ? (
-                <TableStateRow state="loading" columns={5} />
-              ) : rows.length === 0 ? (
-                // Both arms are filter-driven emptiness — a search or the
-                // category filter excluded everything — so this is the kit's
-                // `filtered` state, whose whole point is the way out (the
-                // centred sentence it replaces left the reader stuck).
-                <TableStateRow
-                  state="filtered"
-                  columns={5}
-                  // Only offered while there IS something to clear — a filter
-                  // button that changes nothing would be the misleading CTA
-                  // 03-interaction.md §1 warns about.
-                  {...(searching || category !== 'all'
-                    ? {
-                        onClearFilters: () => {
-                          if (searching) setQ('');
-                          else setCategory('all');
-                        },
-                      }
-                    : {})}
-                />
-              ) : (
-                rows.map((r) => (
-                  <HubRowView
-                    key={`${r.sourceKind}:${r.key}`}
-                    row={r}
-                    onSave={() => setSaving(r)}
-                  />
-                ))
-              )}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
+          </>
+        }
+      >
+        <TableHeader>
+          <TableRow>
+            <TableHead className="pl-6">{t('common.name')}</TableHead>
+            <TableHead>{t('skillHub.category')}</TableHead>
+            <TableHead>{t('skillHub.source')}</TableHead>
+            <TableHead>{t('skillHub.trust')}</TableHead>
+            <TableHead className="pr-6 text-right">{t('common.actions')}</TableHead>
+          </TableRow>
+        </TableHeader>
+        {rows !== null && rows.length > 0 ? (
+          <TableBody>
+            {rows.map((r) => (
+              <HubRowView key={`${r.sourceKind}:${r.key}`} row={r} onSave={() => setSaving(r)} />
+            ))}
+          </TableBody>
+        ) : null}
+      </DataTable>
+
+      {/* Partial results are a degradation, not a failure: the data above is
+          real, some source just did not answer in time — the design's warn
+          note (03-interaction.md §1), never a silent truncation. */}
+      {searching && timedOut.length > 0 ? (
+        <div className="mt-(--gap-tight)">
+          <Note tone="warn">{t('skillHub.timedOut', { sources: timedOut.join(', ') })}</Note>
+        </div>
+      ) : null}
 
       {saving ? (
         <SavePluginDialog
