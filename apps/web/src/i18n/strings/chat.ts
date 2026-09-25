@@ -26,6 +26,8 @@ const en = {
   sessionsOffline: 'Machine offline — the session list needs the daemon.',
   sessionsDaemonOld: 'Upgrade hnx on the machine to list its native sessions.',
   newSessionHere: 'New session in {dir}',
+  // The rail's group header: the comp's `.sgroup-h` label over the directory.
+  workingDirectory: 'Working directory',
   staleModel: 'pinned {model} no longer configured — not resumable',
   untitled: 'Untitled session',
   unknownWorkspace: '(no workspace)',
@@ -176,6 +178,7 @@ const zh: typeof en = {
   sessionsOffline: '机器离线——会话列表需要守护进程在线。',
   sessionsDaemonOld: '请升级机器上的 hnx 以列出原生会话。',
   newSessionHere: '在此目录新建会话（{dir}）',
+  workingDirectory: '工作目录',
   staleModel: '固定模型 {model} 已不在当前配置——无法恢复',
   untitled: '未命名会话',
   unknownWorkspace: '（无工作区）',

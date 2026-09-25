@@ -232,7 +232,7 @@ export function CredentialsPage() {
                 <TableCell className="text-right">
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
-                      <Button variant="ghost" size="icon" className="size-(--control-h-sm)">
+                      <Button variant="ghost" size="icon" className="size-(--row-ctl-h)">
                         <MoreHorizontalIcon className="size-4" />
                         <span className="sr-only">{t('common.openMenu')}</span>
                       </Button>

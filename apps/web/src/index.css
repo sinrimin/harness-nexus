@@ -205,6 +205,14 @@
   --control-h: 2.25rem;
   --control-h-sm: 2rem;
   --control-h-lg: 2.5rem;
+  /* Row-level control height: the control that lives INSIDE a `--row-h` table
+   * row (its menu, its inline action, its copy key). It is the skin's small
+   * control CAPPED so it can never be taller than the row holding it — a 32px
+   * control in a 30px row touches the cell rules top and bottom at best and
+   * overflows at worst (reported twice, first on BAY then on Signal). Signal:
+   * min(32, 26) = 26px; BAY: min(25, 26) = 25px, its own scale, so the cap
+   * never bites there. */
+  --row-ctl-h: min(var(--control-h-sm), calc(var(--row-h) - 4px));
   --gap: 16px;
   --gap-tight: 8px;
   --touch: 40px;

@@ -7,7 +7,6 @@ import {
   BotIcon,
   ChevronRightIcon,
   ClockIcon,
-  FolderIcon,
   PencilIcon,
   PlusIcon,
   RefreshCwIcon,
@@ -17,6 +16,7 @@ import { api } from '@/api';
 import { useAuth, withAuthGuard } from '@/auth';
 import { useI18n, dateLocale } from '@/i18n';
 import { StateSignal } from '@/components/state-signal';
+import { DataText, LabelText, Well } from '@/components/kit';
 import {
   appSocket,
   emitWithAck,
@@ -253,7 +253,7 @@ function SessionRail({
         <Button
           variant="ghost"
           size="icon"
-          className="size-7"
+          className="size-(--control-h-sm)"
           title={t('common.refresh')}
           onClick={() => void onRefresh()}
         >
@@ -303,41 +303,46 @@ function SessionRail({
                 // default open.
                 const collapsed = collapsedCwds.has(group.cwd);
                 return (
-                  <div key={group.cwd} className="mb-1">
-                    {/* Folder header: click toggles; hover reveals the
-                            new-session button which starts a channel with
-                            THIS cwd — no picker round-trip. */}
-                    <div className="group/folder text-muted-foreground flex items-center gap-1 px-1.5 py-1 text-[11px] font-medium">
-                      <button
-                        type="button"
-                        className="flex min-w-0 flex-1 items-center gap-1.5 text-left hover:text-foreground"
-                        title={group.cwd}
-                        // The header renders the basename (a rail 288px wide
-                        // cannot print a path), so the accessible name carries
-                        // the full cwd — the group IS the directory, and two
-                        // folders can share a basename.
-                        aria-label={group.cwd}
-                        aria-expanded={!collapsed}
-                        onClick={() => onToggleCwd(group.cwd)}
-                      >
-                        <ChevronRightIcon
-                          className={cn(
-                            'size-3 shrink-0 transition-transform',
-                            !collapsed && 'rotate-90',
-                          )}
-                        />
-                        <FolderIcon className="size-3 shrink-0" />
-                        <span className="truncate">{cwdBasename(group.cwd)}</span>
-                      </button>
-                      <button
-                        type="button"
-                        className="hover:text-foreground shrink-0 opacity-0 group-hover/folder:opacity-100"
-                        title={t('chat.newSessionHere', { dir: cwdBasename(group.cwd) })}
-                        aria-label={t('chat.newSessionHere', { dir: group.cwd })}
-                        onClick={() => void onOpenChannel(undefined, group.cwd)}
-                      >
-                        <PlusIcon className="size-3.5" />
-                      </button>
+                  <div key={group.cwd} className="border-b last:border-b-0">
+                    {/* The group header is the comp's `.sgroup-h`: a tray strip
+                            carrying the label AND the directory itself as a
+                            Well. It used to print a basename and keep the path
+                            in a tooltip — a rail that cannot tell two projects
+                            apart, and hand-rolled chrome on a page whose every
+                            other band is a designed device ("会话列表的样式感觉
+                            游离于设计之外", #23). Click the strip to collapse;
+                            hover reveals the new-session-in-this-cwd button. */}
+                    <div className="bg-tray group/folder border-b px-3 py-2">
+                      <div className="text-muted-foreground flex items-center gap-1">
+                        <button
+                          type="button"
+                          className="hover:text-foreground flex min-w-0 flex-1 items-center gap-1.5 text-left"
+                          title={group.cwd}
+                          aria-label={`${t('chat.workingDirectory')} ${group.cwd}`}
+                          aria-expanded={!collapsed}
+                          onClick={() => onToggleCwd(group.cwd)}
+                        >
+                          <ChevronRightIcon
+                            className={cn(
+                              'size-3 shrink-0 transition-transform',
+                              !collapsed && 'rotate-90',
+                            )}
+                          />
+                          <LabelText size="sm">{t('chat.workingDirectory')}</LabelText>
+                        </button>
+                        <button
+                          type="button"
+                          className="hover:text-foreground shrink-0 opacity-0 group-hover/folder:opacity-100"
+                          title={t('chat.newSessionHere', { dir: cwdBasename(group.cwd) })}
+                          aria-label={t('chat.newSessionHere', { dir: group.cwd })}
+                          onClick={() => void onOpenChannel(undefined, group.cwd)}
+                        >
+                          <PlusIcon className="size-3.5" />
+                        </button>
+                      </div>
+                      <Well variant="chip" copy={group.cwd} className="mt-1.5 max-w-full">
+                        {group.cwd}
+                      </Well>
                     </div>
                     {!collapsed
                       ? group.sessions.map((s) => {
@@ -383,12 +388,12 @@ function SessionRail({
                                 }
                               }}
                               className={cn(
-                                'flex w-full items-center gap-1 rounded-md py-1 pl-4 pr-1.5 text-left text-xs',
+                                'flex w-full items-start gap-2 border-b px-3 py-2 text-left last:border-b-0',
                                 active
-                                  ? 'bg-accent'
+                                  ? 'bg-tray'
                                   : stale
                                     ? 'cursor-default'
-                                    : 'hover:bg-accent/60',
+                                    : 'hover:bg-tray/60',
                                 stale && !active && 'opacity-50',
                               )}
                               title={
@@ -400,8 +405,10 @@ function SessionRail({
                               }
                             >
                               {/* The status gutter: green running, blue
-                                      opened, empty otherwise (#12/#13). */}
-                              <span className="flex w-2 shrink-0 justify-center">
+                                      opened, empty otherwise (#12/#13). Top-
+                                      aligned, the way the comp's `.sess` lamp
+                                      sits beside a two-line row. */}
+                              <span className="mt-1 flex w-2 shrink-0 justify-center">
                                 <StateSignal
                                   state={
                                     running ? 'busy' : attached !== undefined ? 'live' : 'idle'
@@ -409,13 +416,27 @@ function SessionRail({
                                   className="size-1.5"
                                 />
                               </span>
-                              <span className="min-w-0 flex-1 truncate">
-                                {s.title ??
-                                  (s.sessionId === nativeSessionId ? firstPromptText : undefined) ??
-                                  t('chat.untitled')}
-                              </span>
-                              <span className="text-muted-foreground shrink-0 text-[10px] tabular-nums">
-                                {relativeTime(s.updatedAt, dateLocale(lang))}
+                              <span className="min-w-0 flex-1">
+                                <span
+                                  className={cn(
+                                    'block truncate text-xs',
+                                    active && 'text-foreground font-semibold',
+                                  )}
+                                >
+                                  {s.title ??
+                                    (s.sessionId === nativeSessionId
+                                      ? firstPromptText
+                                      : undefined) ??
+                                    t('chat.untitled')}
+                                </span>
+                                {/* When + WHICH: the comp prints the age and the
+                                    short id, and the id is what a session can
+                                    be resumed by. Data role, so the column of
+                                    times stays tabular. */}
+                                <DataText size="sm" tone="dim" className="mt-0.5 block truncate">
+                                  {relativeTime(s.updatedAt, dateLocale(lang))} ·{' '}
+                                  {s.sessionId.slice(0, 8)}
+                                </DataText>
                               </span>
                             </button>
                           );
