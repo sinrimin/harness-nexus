@@ -54,7 +54,7 @@ import {
   DrawerHeader,
   DrawerTitle,
 } from '@/components/ui/drawer';
-import { ConfirmDialog, EmptyState, Panel, PanelBody, PanelHeader } from '@/components/kit';
+import { ConfirmDialog, EmptyState, Panel, PanelBody, PanelHeader, Well } from '@/components/kit';
 import type { InventoryEntry, RuntimeInfoView } from './types.js';
 
 /**
@@ -514,9 +514,16 @@ const MANUAL_PROVIDER = '__manual__';
 
 /**
  * A read-only fact cell shaped exactly like the editable cells around it —
- * label on top, h-9 mono body — so the preset-provider summary (api / base
- * URL / credential) aligns row-for-row with the manual arm and the other
- * form cells. Values are data, not decoration: muted fill, no focus ring.
+ * label on top, a control-height body — so the preset-provider summary (api /
+ * base URL / credential) aligns row-for-row with the manual arm and the other
+ * form cells.
+ *
+ * The body is the kit's `Well`, not a hand-rolled box: these are protocol
+ * values (a base URL, an api flavour, a credential NAME), i.e. exactly what the
+ * well material exists for, and a hand-rolled `bg-muted/50 h-9 rounded-md` box
+ * was unreachable for skins — BAY painted its LCD inputs dark and left these
+ * three light, with a 36px body next to 30px controls (reported from a phone,
+ * P8). Height comes from the density token now.
  */
 function ReadonlyField({
   label,
@@ -529,15 +536,19 @@ function ReadonlyField({
   className?: string;
   children: ReactNode;
 }) {
+  const value = typeof children === 'string' ? children : undefined;
   return (
-    <>
-      <div className={cn('grid min-w-0 gap-2', className)}>
-        <span className="text-sm leading-none font-medium select-none">{label}</span>
-        <div title={title} className="bg-muted/50 flex h-9 items-center rounded-md border px-3">
-          <span className="truncate font-mono text-xs">{children}</span>
-        </div>
-      </div>
-    </>
+    <div className={cn('grid min-w-0 gap-2', className)}>
+      <span className="text-sm leading-none font-medium select-none">{label}</span>
+      <Well
+        variant="text"
+        copy={value}
+        title={title}
+        className="flex h-(--control-h) w-full items-center px-2.5"
+      >
+        <span className="truncate font-mono text-xs">{children}</span>
+      </Well>
+    </div>
   );
 }
 

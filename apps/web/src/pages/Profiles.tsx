@@ -660,9 +660,17 @@ function EditProfile({
             </div>
             <div className="grid content-start gap-2">
               <Label>{t('profiles.versionLabel')}</Label>
-              <p className="bg-muted font-mono flex h-9 items-center rounded-md px-3 text-sm">
+              {/* The version is read-only protocol data inside a form of
+                  editable controls — the same well material as the inputs beside
+                  it, at the same density height (a hand-rolled
+                  `bg-muted h-9 rounded-md` box was unreachable for skins). */}
+              <Well
+                variant="text"
+                copy={profile.version}
+                className="flex h-(--control-h) w-full items-center px-2.5 text-sm"
+              >
                 {profile.version}
-              </p>
+              </Well>
               <p className="text-muted-foreground text-xs">{t('profiles.versionHint')}</p>
             </div>
           </div>
