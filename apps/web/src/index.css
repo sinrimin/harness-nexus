@@ -772,10 +772,22 @@
     height: 2.5rem;
   }
   /* Row-level controls, measured at 390x844 (2026-09-25): the row menu trigger
-     renders 32x32 and a Well's copy affordance 12x12 — both under a fingertip. */
+     renders 32x32 and a Well's copy affordance 12x12 — both under a fingertip.
+     The extra area is a HIT area, not a box: raising `min-height`/`min-width`
+     made the control grow, which grew its row (33px → 51px) and, inside a Well,
+     the well itself (a machine row's own host well became a 242x50 slab on a
+     phone, #23). An overlay keeps the visuals at their designed size while the
+     fingertip still gets 2.5rem. */
   [data-surface='table'] :is([data-slot='dropdown-menu-trigger'], [data-slot='copy']) {
-    min-height: 2.5rem;
+    position: relative;
+  }
+  [data-surface='table'] :is([data-slot='dropdown-menu-trigger'], [data-slot='copy'])::after {
+    content: '';
+    position: absolute;
+    inset: 50%;
     min-width: 2.5rem;
+    min-height: 2.5rem;
+    transform: translate(-50%, -50%);
   }
 }
 

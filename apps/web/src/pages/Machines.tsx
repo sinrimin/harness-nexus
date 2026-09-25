@@ -356,7 +356,14 @@ function MachineRow({
               —
             </DataText>
           ) : (
-            <Well copy={host}>{host}</Well>
+            /* Chip scale, not the full Well: a table cell's protocol value is a
+             * chip in the comps (`wchip wide` carries a job detail and a whole
+             * session id), and the same facts sit in chips in the machine's own
+             * nameplate. At Well scale a 26-char host filled the cell with a
+             * black window and grew the row on a phone (#23). */
+            <Well variant="chip" copy={host}>
+              {host}
+            </Well>
           )}
         </TableCell>
         <TableCell>
