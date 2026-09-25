@@ -807,6 +807,23 @@ async function captureShot(browser, { route, skin, mode, viewport, token }) {
       return false;
     }, skinFamilies);
     await settle();
+    // Landed where we aimed? A shot that settles on `/login` because the token
+    // was not in place yet is a perfectly stable LOGIN page — and the rig spent
+    // a whole matrix run writing such frames as baselines (found in P8: the
+    // skills-route baseline was a login screenshot, 33% apart from reality).
+    // Fail loudly instead; the caller retries once, and a persistent failure
+    // stops the run rather than poisoning the baseline set.
+    const landed = await page.evaluate(() => ({
+      path: location.pathname,
+      search: location.search,
+    }));
+    const wantPath = route.split('?')[0];
+    if (landed.path !== wantPath) {
+      throw new Error(
+        `landed on ${landed.path}${landed.search} instead of ${route}` +
+          `${landed.path === '/login' ? ' (token not installed / rejected)' : ''}`,
+      );
+    }
     // Single-mode skins LOCK the theme (skin-provider forces the manifest's
     // only mode), so a shot for the other mode is a byte-identical duplicate —
     // P3 measured 22 of 88 that way. Ask the document what it actually
