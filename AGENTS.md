@@ -205,6 +205,11 @@ the mirror.
 The `apps/web` UI follows a deliberate system, not stock shadcn defaults. Read
 this before adding screens or components so the look stays consistent.
 
+> The durable design docs are on the wiki: `design-ui-system.md` (shell
+> skeleton, content language, interaction language) and `design-skin-system.md`
+> (the skin axis — tokens, hooks, the status device). This section is the
+> orientation; those two are the contract.
+
 - **Concept.** The interface is a _signal console_. Color encodes connection
   state only; everything else is a disciplined cool neutral. The single accent
   — `--signal` (cyan) — marks what is live: links, focus, the brand mark, and
@@ -367,6 +372,7 @@ covers layering; `docs/adr/` the stack decisions.
 | Adapter pre-warm pool (#3–#4)          | `design-adapter-prewarm.md`                         | Machine-scoped `chatPrewarm` map, strict 4-key replace (legacy 3-key → 400; web normalizes); pool holds ONE initialized adapter per target; TTL 120s; opencode default OFF                                                                                                                                                                                                                                                  |
 | claude-code marketplace deploy (#6)    | `design-cc-marketplace-deploy.md`                   | claude-code deploys ride the emitter: daemon drives CC's plugin CLI headless (`-y`), state read from CC's JSON files; emitter accepts machine-ctl PATs; web Edit dialog = name/desc + entry re-pick (version auto-numbered since #18: bumps on entry changes only — the bump is the publish switch); no AgentInstance                                                                                                       |
 | Live sender (#10)                      | `design-live-sender.md`                             | Queue is SERVER-owned (depth-1 slot on the live session, `queue_state` event, flush on busy→idle, turn-cancel drops); config selects stay writable mid-turn (next-turn effect); #11: `user_message` echo broadcasts the prompt to every viewer + busy sessions re-assert status after history replay                                                                                                                        |
+| Console design system (#23)            | `design-ui-system.md`                               | Structure is the base's, materials the skin's; protocol material gets a `Well` and prose stays prose; state truth is `data-state`, never colour alone; counts are numerator/denominator + a qualifier                                                                                                                                                                                                                          |
 | Skin system (#23)                      | `design-skin-system.md`                             | Two axes: next-themes mode + `data-skin` (pre-paint, `hnx.skin`); skins = tokens + scoped css + manifest under `src/skins/` (Signal is the zero-package baseline, BAY shipped); status truth is `data-state` — `Lamp` is the device and `StateSignal` the inline mark, both rendering one `lamp-body` slot (D-13); extra regions ride base `Region` slots (empty = no footprint); the two hard skin rules are test-enforced |
 
 ## Authentication & authorization (permission interceptors)
