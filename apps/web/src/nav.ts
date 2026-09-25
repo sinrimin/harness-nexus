@@ -38,6 +38,16 @@ interface NavGroupDef {
   id: NavGroupId;
   /** Bay address shown on the spine (`01`…`05`) — data, never CSS content. */
   number: string;
+  /**
+   * The bay's ENGRAVED name: English, uppercase, and the same in both locales.
+   * A bay is a rack address (`01 NAV`), not prose — 01-skeleton.md §6 drew the
+   * mobile strip as `NAV MESH ASSET ACCES ADMIN` for exactly this reason, and
+   * translating a serial number is how one section ends up with two names
+   * (reported from a phone: the zh spine read 导航/机网/资产 against a comp that
+   * says NAV/MESH/ASSET).
+   */
+  label: string;
+  /** The section named as a LINK in the page trail — prose, so it translates. */
   labelKey: TranslationKey;
   /**
    * The plate repeats the section as a list heading. The leading group does
@@ -48,11 +58,17 @@ interface NavGroupDef {
 }
 
 export const NAV_GROUPS: NavGroupDef[] = [
-  { id: 'nav', number: '01', labelKey: 'app.navGroupNav' },
-  { id: 'mesh', number: '02', labelKey: 'app.navGroupMesh', plateHeading: true },
-  { id: 'asset', number: '03', labelKey: 'app.navGroupAsset', plateHeading: true },
-  { id: 'access', number: '04', labelKey: 'app.navGroupAccess', plateHeading: true },
-  { id: 'admin', number: '05', labelKey: 'app.navGroupAdmin', plateHeading: true },
+  { id: 'nav', number: '01', label: 'NAV', labelKey: 'app.navGroupNav' },
+  { id: 'mesh', number: '02', label: 'MESH', labelKey: 'app.navGroupMesh', plateHeading: true },
+  { id: 'asset', number: '03', label: 'ASSET', labelKey: 'app.navGroupAsset', plateHeading: true },
+  {
+    id: 'access',
+    number: '04',
+    label: 'ACCESS',
+    labelKey: 'app.navGroupAccess',
+    plateHeading: true,
+  },
+  { id: 'admin', number: '05', label: 'ADMIN', labelKey: 'app.navGroupAdmin', plateHeading: true },
 ];
 
 /** Resource kinds with their own page (README §5.3 — one page per kind). */

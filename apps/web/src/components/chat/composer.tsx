@@ -184,6 +184,11 @@ interface SelectChoice {
  * with a label above each was tried and rejected in review: it made an
  * already-tight strip taller, which is the opposite of the point. The trigger
  * rides `--control-h-sm`, so BAY's 25px hardware scale applies.
+ *
+ * It is `variant="bare"`: the value or the icon, no field around it. That is
+ * the whole control in BOTH skins — the report was "无论主题，都只显示文字或图标，
+ * 不要底色和边框了" — so the exemption has to be a variant the skin can read,
+ * not utilities the skin out-votes (ui/select.tsx, skins/bay/skin.css).
  */
 function ConfigSelect({
   label,
@@ -220,6 +225,7 @@ function ConfigSelect({
     >
       <SelectTrigger
         size="sm"
+        variant="bare"
         aria-label={label}
         title={
           hint ??
@@ -228,7 +234,7 @@ function ConfigSelect({
             : (choices.find((c) => c.value === value)?.description ?? label))
         }
         className={cn(
-          'text-muted-foreground hover:text-foreground min-w-0 max-w-40 gap-1 border-none px-1.5 text-xs font-normal shadow-none focus:ring-0 dark:hover:bg-accent/50',
+          'text-muted-foreground hover:text-foreground min-w-0 max-w-40 gap-1 px-1.5 text-xs font-normal',
           // Phone: one compact square per control — the trigger keeps the
           // compact control height and drops the chevron (the icon IS the
           // affordance) and the value (the picker states it, check included).
@@ -620,16 +626,20 @@ export function Composer({
         spellCheck={false}
         className="placeholder:text-muted-foreground max-h-56 w-full resize-none overflow-y-auto bg-transparent px-3.5 pb-1 pt-3 text-sm leading-relaxed outline-none disabled:cursor-not-allowed"
       />
-      {/* The toolbar WRAPS. Three opaque config values plus a meter plus Send
-          do not fit a 390px phone, and a non-shrinkable row pushed the Send
-          control off the screen — reported from a phone. Below `sm` the config
-          controls are icons (their picker is where the value is read), the
-          meter takes its own row (`order:9`, comp `.ctools .ctx`) and Send
-          keeps the right edge of its row (`.round { margin-left:auto }`).
-          Wrapping stays as the fallback for a narrow desktop window. */}
+      {/* The toolbar WRAPS and sits on the baseline of its TALLEST control.
+          Three opaque config values plus a meter plus Send do not fit a 390px
+          phone, and a non-shrinkable row pushed the Send control off the screen
+          — reported from a phone. Below `sm` the config controls are icons
+          (their picker is where the value is read), the meter takes its own row
+          (`order:9`, comp `.ctools .ctx`) and Send keeps the right edge of its
+          row (`.round { margin-left:auto }`). Wrapping stays as the fallback for
+          a narrow desktop window. `items-end` because the row is not a line of
+          text: the config words sit ON the Send's baseline, and centring them
+          against a taller button floated them a few pixels above the card's
+          bottom edge ("下拉菜单离下边距特别远", #23). */}
       <div
         data-slot="composer-tools"
-        className="flex flex-wrap items-center gap-x-2 gap-y-1.5 px-3 pb-2.5 pt-1"
+        className="flex flex-wrap items-end gap-x-2 gap-y-1.5 px-3 pb-2.5 pt-1"
       >
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
@@ -713,12 +723,16 @@ export function Composer({
             {/* #10 — a non-empty draft mid-turn offers Send (the message
                 queues server-side) ALONGSIDE Stop; an empty draft is Stop
                 only. Send keeps the primary look; Stop stays the outlined
-                danger-leaning outline. */}
+                danger-leaning outline. Both are the SAME shape as the config
+                controls they sit beside — a rounded square on the control
+                height, not the comp's 40px circle: the circle was a head taller
+                than its own toolbar (#23), and on a phone the fingertip is
+                served by `--touch` without the desktop row growing with it. */}
             {canSend ? (
               <Button
                 type="button"
                 size="icon"
-                className="size-9 shrink-0 rounded-full max-sm:ml-auto max-sm:size-(--touch)"
+                className="size-(--control-h) shrink-0 rounded-md max-sm:ml-auto max-sm:size-(--touch)"
                 onClick={onSend}
                 title={t('chat.queueSendAria')}
                 aria-label={t('chat.queueSendAria')}
@@ -730,7 +744,7 @@ export function Composer({
               type="button"
               variant="outline"
               size="icon"
-              className="hover:border-destructive/40 hover:text-destructive size-9 shrink-0 rounded-full max-sm:size-(--touch)"
+              className="hover:border-destructive/40 hover:text-destructive size-(--control-h) shrink-0 rounded-md max-sm:size-(--touch)"
               onClick={onCancel}
               title={t('chat.stopAria')}
               aria-label={t('chat.stopAria')}
@@ -742,7 +756,7 @@ export function Composer({
           <Button
             type="button"
             size="icon"
-            className="size-9 shrink-0 rounded-full max-sm:ml-auto max-sm:size-(--touch)"
+            className="size-(--control-h) shrink-0 rounded-md max-sm:ml-auto max-sm:size-(--touch)"
             onClick={onSend}
             disabled={!canSend}
             title={t('chat.sendAria')}

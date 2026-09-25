@@ -5,6 +5,7 @@ import { LabelText } from '@/components/kit';
 import { LanguageToggle } from '@/components/language-toggle';
 import { SkinToggle } from '@/components/skin-toggle';
 import { ThemeToggle } from '@/components/theme-toggle';
+import { NavMenu } from '@/components/shell/nav-menu';
 import { NAV_GROUPS, groupLanding, routeTrail, type RouteDef } from '@/nav';
 import { cn } from '@/lib/utils';
 
@@ -18,6 +19,10 @@ import { cn } from '@/lib/utils';
  * Expected names come from the route manifest; a page with a dynamic name (a
  * machine, a session) portals its own content into the title slot — see
  * `PageSlot` for why the slot is a DOM node rather than a context value.
+ *
+ * The identity also carries the section menu's caret (<900px, #23) — where the
+ * plate is hidden, the topbar is the only chrome left, so the map of the app
+ * belongs here rather than in a row of its own.
  */
 export function Topbar({
   route,
@@ -63,12 +68,11 @@ export function Topbar({
       {leading}
 
       <div className="flex min-w-0 flex-1 items-center gap-2.5">
-        {/* The `▸` accent leads the identity everywhere; below 640 the bay
-            strip names the section one row down, so only the crumb CHAIN folds
-            away and the page title keeps the line. The `<h1>` and the actions
-            seat render ALWAYS, even before a route resolves: they are portal
-            targets, and a target that can vanish under a mounted portal is how
-            this shell broke once (see `page-slots.tsx`). */}
+        {/* The `▸` accent leads the identity everywhere; below 640 only the
+            crumb CHAIN folds away and the page title keeps the line. The `<h1>`
+            and the actions seat render ALWAYS, even before a route resolves:
+            they are portal targets, and a target that can vanish under a
+            mounted portal is how this shell broke once (see `page-slots.tsx`). */}
         <span aria-hidden="true" className="text-signal role-label-sm shrink-0">
           ▸
         </span>
@@ -96,6 +100,13 @@ export function Topbar({
               ? t(trail[trail.length - 1]!.titleKey)
               : null}
         </h1>
+        {/* Handed off to the caret where the plate is hidden (#23): with the
+            bay strip retired, this is what replaces it — the camera does not
+            move, the library does. Hidden by CSS, never unmounted, so the
+            title's portal target never sits under a conditional parent. */}
+        <span data-slot="nav-menu-seat" className="flex shrink-0 items-center min-[900px]:hidden">
+          <NavMenu activeRouteId={route?.id} isAdmin={isAdmin} />
+        </span>
       </div>
 
       {/* Page actions portal here (PageSlot slot="actions") — the page owns the

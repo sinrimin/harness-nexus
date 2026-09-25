@@ -279,8 +279,19 @@
 
 /* Inputs are WINDOWS (the comp's `.inp`/`.sel`): the same inverted LCD as a
    well, mono data inside, and focus is the accent edge — never the generic
-   ring, which on an LCD reads as a light leak. */
-[data-skin='bay'] :is([data-slot='input'], [data-slot='select-trigger'], [data-slot='textarea']) {
+   ring, which on an LCD reads as a light leak.
+   `variant="bare"` is exempt (#23): the chat Sender's config selects are not
+   fields on a panel, they are words inside the surface the user writes in, and
+   the report was "无论主题，都只显示文字或图标，不要底色和边框了". A skin owns
+   its chassis; this is the socket that says "not mine" — and it has to live on
+   the SKIN's side of the fence, because a skin rule here is unlayered and no
+   Tailwind utility can out-vote it. */
+[data-skin='bay']
+  :is(
+    [data-slot='input'],
+    [data-slot='select-trigger']:not([data-variant='bare']),
+    [data-slot='textarea']
+  ) {
   background: var(--surface-inverted);
   color: var(--surface-inverted-ink);
   border-color: #2a3340;
@@ -292,11 +303,19 @@
     inset 0 2px 6px rgba(0, 0, 0, 0.5);
 }
 [data-skin='bay']
-  :is([data-slot='input'], [data-slot='select-trigger'], [data-slot='textarea'])::placeholder {
+  :is(
+    [data-slot='input'],
+    [data-slot='select-trigger']:not([data-variant='bare']),
+    [data-slot='textarea']
+  )::placeholder {
   color: var(--surface-inverted-dim);
 }
 [data-skin='bay']
-  :is([data-slot='input'], [data-slot='select-trigger'], [data-slot='textarea']):focus-visible {
+  :is(
+    [data-slot='input'],
+    [data-slot='select-trigger']:not([data-variant='bare']),
+    [data-slot='textarea']
+  ):focus-visible {
   outline: none;
   border-color: var(--signal);
   box-shadow:

@@ -11,8 +11,15 @@ import { cn } from '@/lib/utils';
  * hiding a section (ADMIN for a non-admin) never renumbers anything. That is
  * why BAY's CSS `content: '01\A NAV'` had to go — it could not know the list.
  *
+ * Narrow (#23, reported from a phone): 72px of column for two or three glyphs
+ * was mostly air, so the bay runs SIDEWAYS now — the address stays legible
+ * across (`01`), the engraved name reads down (`ACCESS`), and the strip costs
+ * `--spine-w`. The name is the manifest's English label, never the translated
+ * one: a bay is an address, and the same rail has to read the same in both
+ * locales.
+ *
  * Desktop only (≥900px): below that the plate hides too, and the sections move
- * into the bay strip (mobile) + drawer.
+ * into the topbar's nav menu + drawer.
  */
 export function Spine({
   activeGroup,
@@ -54,7 +61,7 @@ export function Spine({
             data-tone={active ? 'live' : 'none'}
             aria-current={active ? 'true' : undefined}
             className={cn(
-              'relative flex shrink-0 flex-col items-center justify-center gap-1 border-b py-3.5',
+              'relative flex min-h-(--bay-h) shrink-0 flex-col items-center justify-center gap-2 border-b px-1 py-3',
               active
                 ? 'bg-background text-foreground'
                 : 'text-muted-foreground hover:bg-sidebar-accent/50',
@@ -65,20 +72,21 @@ export function Spine({
             {active ? (
               <span aria-hidden="true" className="bg-signal absolute inset-y-0 left-0 w-[3px]" />
             ) : null}
-            <span className="role-label-sm nums">{group.number}</span>
             <span className="flex items-center gap-1">
-              <span
-                className={cn(
-                  'role-label-sm text-center leading-tight',
-                  active && 'text-foreground',
-                )}
-              >
-                {t(group.labelKey)}
-              </span>
+              <span className="role-label-sm nums">{group.number}</span>
               {/* The live bay is lit — one of the four places the accent may
                   appear, and the reason the plate's active item is ink, not
-                  accent: one screen, one colour. */}
+                  accent: one screen, one colour. Beside the address rather
+                  than under the name: sideways there is no under. */}
               {active ? <Lamp state="live" size="sm" label={t(landing.titleKey)} /> : null}
+            </span>
+            <span
+              className={cn(
+                'role-label-sm role-label-vertical',
+                active && 'text-foreground font-bold',
+              )}
+            >
+              {group.label}
             </span>
           </Link>
         );
