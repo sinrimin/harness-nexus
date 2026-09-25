@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import { api } from '@/api';
 import { PageSlot } from '@/components/shell/page-slots';
+import { PageAction } from '@/components/shell/page-action';
 import { useAuth, withAuthGuard } from '@/auth';
 import { useI18n, type TranslationKey } from '@/i18n';
 import { Button } from '@/components/ui/button';
@@ -361,10 +362,7 @@ export function ProfilesPage() {
   return (
     <>
       <PageSlot slot="actions">
-        <Button onClick={() => setCreating(true)}>
-          <PlusIcon className="size-4" />
-          {t('common.create')}
-        </Button>
+        <PageAction label={t('common.create')} onClick={() => setCreating(true)} />
       </PageSlot>
 
       <PageIntro sub={<>{t('profiles.subtitle')}</>} />
@@ -493,7 +491,7 @@ claude plugin install <profile-name>@harness-nexus-${user.username.toLowerCase()
               <TableCell className="text-right">
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
-                    <Button variant="ghost" size="icon" className="size-8">
+                    <Button variant="ghost" size="icon" className="size-(--control-h-sm)">
                       <MoreHorizontalIcon className="size-4" />
                       <span className="sr-only">{t('common.openMenu')}</span>
                     </Button>

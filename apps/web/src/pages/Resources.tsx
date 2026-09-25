@@ -39,6 +39,7 @@ import {
 } from '@/lib/list-query';
 import { buildBundleTree, bundlePathError, type BundleNode } from '@/lib/bundle-tree';
 import { PageSlot } from '@/components/shell/page-slots';
+import { PageAction } from '@/components/shell/page-action';
 import type { ResourcePageKind } from '@/nav';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -440,12 +441,10 @@ export function ResourcesPage({
   return (
     <>
       <PageSlot slot="actions">
-        <Button onClick={() => setEditing('new')} className="gap-1.5">
-          <PlusIcon className="size-4" />
-          <span className="hidden sm:inline">
-            {fixedKind === 'skill' ? t('resources.newSkill') : t('resources.newResource')}
-          </span>
-        </Button>
+        <PageAction
+          onClick={() => setEditing('new')}
+          label={fixedKind === 'skill' ? t('resources.newSkill') : t('resources.newResource')}
+        />
       </PageSlot>
 
       <PageIntro
@@ -540,7 +539,7 @@ export function ResourcesPage({
               <TableCell className="text-right">
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
-                    <Button variant="ghost" size="icon" className="size-8">
+                    <Button variant="ghost" size="icon" className="size-(--control-h-sm)">
                       <MoreHorizontalIcon className="size-4" />
                       <span className="sr-only">{t('common.openMenu')}</span>
                     </Button>

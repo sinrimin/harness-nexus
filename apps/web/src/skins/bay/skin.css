@@ -338,6 +338,9 @@
 }
 [data-skin='bay'] [data-slot='switch'][data-state='checked'] {
   background: #dfe4ea;
+  /* The comp's `.sw.on { border-color: var(--led-ok) }`: a switch that is ON is
+     WIRED, and the edge should say so before you read the knob or the pilot. */
+  border-color: var(--lamp-ok);
 }
 [data-skin='bay'] [data-slot='switch'][data-state='checked']::before {
   content: '';
@@ -349,18 +352,28 @@
   background: var(--ok);
   box-shadow: 0 0 4px rgba(26, 156, 83, 0.7);
 }
+/* The knob TRAVELS on `left` (the comp's `.sw i`), not on a transform. The base
+ * animates the thumb through Tailwind v4's `translate:` property
+ * (`data-[state=checked]:translate-x-[calc(100%-2px)]`), and a skin that wrote
+ * `transform: translateX(22px)` merely ADDED to it — the ON knob landed at
+ * 22 + 12 = 34px in a 38px slot and poked out of the switch. Displacement is a
+ * property the base owns, so the skin resets it and positions the knob itself
+ * (comp: `.sw i { left: 2px }`, `.sw.on i { left: 20px }`). */
 [data-skin='bay'] [data-slot='switch-thumb'] {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  translate: none;
   width: 14px;
   height: 14px;
   border-radius: 1px;
   background: linear-gradient(180deg, #f2f4f7, var(--bezel));
   box-shadow: 1px 1px 0 var(--bezel);
-}
-[data-skin='bay'] [data-slot='switch-thumb'][data-state='unchecked'] {
-  transform: translateX(2px);
+  transition: left 120ms ease;
 }
 [data-skin='bay'] [data-slot='switch-thumb'][data-state='checked'] {
-  transform: translateX(22px);
+  left: 20px;
+  translate: none;
 }
 
 /* ---------- Tabs: the comp's segmented tray ----------------------------- */
@@ -395,9 +408,16 @@
 /* ---------- The instrument's numbers ------------------------------------ */
 
 /* A figure is a plate, not a glyph: the comp's hard shadow sits behind the
-   large readout numerals (02-content.md §8 "数字 = 等宽 + 硬阴影块"). */
+   large readout numerals (02-content.md §8 "数字 = 等宽 + 硬阴影块").
+
+   The shadow is the DIMMED ink of the window the figure sits on, not the
+   aluminium `--bezel`: the figures live inside BAY's inverted wells, where the
+   ink is already light (#c8d4e0) — and a `--bezel` shadow (#c3cad4) is the same
+   lightness to within 20 units, so the offset glyph and the glyph read as one
+   blurred word ("两个同色字重叠在一起肉眼地看着有点眼花"). #7b8899 is the dim
+   ink OF THAT SAME WINDOW, i.e. unmistakably the plate behind the number. */
 [data-skin='bay'] [data-surface='readout'][data-layout='figure'] .role-readout {
-  text-shadow: 3px 3px 0 var(--bezel);
+  text-shadow: 3px 3px 0 var(--surface-inverted-dim);
 }
 
 /* The meter is 62x7 with a squared 1px radius and a steel fill (the comp's

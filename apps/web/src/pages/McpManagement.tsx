@@ -36,6 +36,7 @@ import {
   type ListQuerySpec,
 } from '@/lib/list-query';
 import { PageSlot } from '@/components/shell/page-slots';
+import { PageAction } from '@/components/shell/page-action';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from '@/components/ui/collapsible';
@@ -255,10 +256,7 @@ export function McpManagementPage() {
   return (
     <>
       <PageSlot slot="actions">
-        <Button onClick={() => setCreating(true)}>
-          <PlusIcon className="size-4" />
-          {t('mcp.addServer')}
-        </Button>
+        <PageAction label={t('mcp.addServer')} onClick={() => setCreating(true)} />
       </PageSlot>
 
       <PageIntro
@@ -497,7 +495,7 @@ function ServerRow({
           <Button
             variant="ghost"
             size="sm"
-            className="text-muted-foreground h-8"
+            className="text-muted-foreground"
             onClick={() => onAsk('disconnect', server)}
           >
             <PlugZapIcon className="size-4" />
@@ -506,7 +504,7 @@ function ServerRow({
         ) : null}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon" className="size-8">
+            <Button variant="ghost" size="icon" className="size-(--control-h-sm)">
               <MoreHorizontalIcon className="size-4" />
               <span className="sr-only">{t('common.openMenu')}</span>
             </Button>
@@ -586,7 +584,7 @@ function ServerRow({
                   <Button
                     variant="ghost"
                     size="sm"
-                    className="text-muted-foreground h-8"
+                    className="text-muted-foreground"
                     onClick={() => onAsk('disconnect', server)}
                   >
                     <PlugZapIcon className="size-4" />
@@ -596,7 +594,6 @@ function ServerRow({
                   <Button
                     variant="outline"
                     size="sm"
-                    className="h-8"
                     disabled={isConnecting}
                     onClick={connect}
                   >
@@ -614,7 +611,7 @@ function ServerRow({
                 )}
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
-                    <Button variant="ghost" size="icon" className="size-8">
+                    <Button variant="ghost" size="icon" className="size-(--control-h-sm)">
                       <MoreHorizontalIcon className="size-4" />
                       <span className="sr-only">{t('common.openMenu')}</span>
                     </Button>

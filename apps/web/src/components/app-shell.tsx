@@ -8,6 +8,7 @@ import { UserBlock } from '@/components/user-block';
 import { Plate } from '@/components/shell/plate';
 import { Spine } from '@/components/shell/spine';
 import { Topbar } from '@/components/shell/topbar';
+import { NavStrip } from '@/components/shell/nav-strip';
 import { ReadoutStrip } from '@/components/shell/readout-strip';
 import { PageSlotsProvider, usePageSlots } from '@/components/shell/page-slots';
 import { usePosture } from '@/components/shell/use-posture';
@@ -26,8 +27,8 @@ import { cn } from '@/lib/utils';
  * holds `spine-head` + `brand` at `--top-h`, and `.topbar` lives in `.col`,
  * i.e. it starts to the brand's RIGHT — the brand owns the top-left corner, the
  * page bar is not a band above it). Below 900px the chrome folds into the
- * drawer and the sections move into the topbar's nav menu (the bay strip that
- * used to lie the spine down is retired — #23).
+ * drawer, and the nav strip carries the whole map — every destination, not just
+ * the five bays it started with (#23).
  *
  * Everything the shell needs about the current page comes from the route
  * manifest (`nav.ts`) — the nav list, the breadcrumb trail, the title, and
@@ -100,6 +101,9 @@ export function AppShell({ children }: { children: ReactNode }) {
             </MobileNav>
           }
         />
+        {/* Nav strip (mobile): every destination one tap away — the plate's
+            job, done where the plate is hidden. */}
+        <NavStrip activeRouteId={route?.id} isAdmin={isAdmin} />
         {/* Readout strip: its own band so the topbar is not asked to hold a
             page identity AND four figures AND the toggles in 56px. */}
         <ReadoutStrip posture={posture} />

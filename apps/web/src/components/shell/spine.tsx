@@ -72,14 +72,22 @@ export function Spine({
             {active ? (
               <span aria-hidden="true" className="bg-signal absolute inset-y-0 left-0 w-[3px]" />
             ) : null}
-            <span className="flex items-center gap-1">
-              <span className="role-label-sm nums">{group.number}</span>
-              {/* The live bay is lit — one of the four places the accent may
-                  appear, and the reason the plate's active item is ink, not
-                  accent: one screen, one colour. Beside the address rather
-                  than under the name: sideways there is no under. */}
-              {active ? <Lamp state="live" size="sm" label={t(landing.titleKey)} /> : null}
-            </span>
+            {/* The live bay is lit — one of the four places the accent may
+                appear, and the reason the plate's active item is ink, not
+                accent: one screen, one colour.
+                OUT of the flow and in the module's top corner: a lamp beside
+                the address pushed the address sideways on exactly the one bay
+                the eye is on ("数字和激活状态的圆点在同一行，会把数字往左边挤"),
+                and a pilot light on a panel belongs in a corner anyway. */}
+            {active ? (
+              <Lamp
+                state="live"
+                size="sm"
+                label={t(landing.titleKey)}
+                className="absolute top-1 right-0.5"
+              />
+            ) : null}
+            <span className="role-label-sm nums">{group.number}</span>
             <span
               className={cn(
                 'role-label-sm role-label-vertical',

@@ -213,7 +213,7 @@ function FieldInput({
           inputMode="decimal"
           autoComplete="off"
           spellCheck={false}
-          className="h-8 w-48"
+          className="h-(--control-h-sm) w-48"
           placeholder={field.placeholder}
           value={value === undefined ? '' : String(value)}
           onChange={(e) => {
@@ -238,7 +238,7 @@ function FieldInput({
         type="text"
         autoComplete="off"
         spellCheck={false}
-        className="h-8"
+        className="h-(--control-h-sm)"
         placeholder={field.placeholder}
         value={typeof value === 'string' ? value : ''}
         onChange={(e) => onChange(e.target.value)}

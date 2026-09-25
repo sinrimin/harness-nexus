@@ -8,8 +8,8 @@ import { useI18n, dateLocale } from '@/i18n';
 import { appSocket, type InventoryUpdatedEvent } from '@/realtime';
 import { patchMachine } from '@/lib/machine-presence.js';
 import { EmptyState, Lamp, Panel, PanelBody, PanelHeader, Well } from '@/components/kit';
-import { Button } from '@/components/ui/button';
 import { PageSlot, usePageTitle } from '@/components/shell/page-slots';
+import { PageAction } from '@/components/shell/page-action';
 import { useMachineStatus } from '@/components/shell/use-presence.js';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
@@ -168,10 +168,13 @@ export function MachineDetailPage() {
       {/* A page-level action belongs in the chrome (P2's topbar slot): scanning
           is what this page DOES, so it does not take a content row of its own. */}
       <PageSlot slot="actions">
-        <Button onClick={() => void scan()} disabled={scanning || !online}>
-          <RefreshCwIcon className={scanning ? 'size-4 animate-spin' : 'size-4'} />
-          {scanning ? t('machineDetail.scanning') : t('machineDetail.scanNow')}
-        </Button>
+        <PageAction
+          icon={RefreshCwIcon}
+          label={scanning ? t('machineDetail.scanning') : t('machineDetail.scanNow')}
+          busy={scanning}
+          disabled={scanning || !online}
+          onClick={() => void scan()}
+        />
       </PageSlot>
 
       <Tabs value={tab} onValueChange={onTabChange}>

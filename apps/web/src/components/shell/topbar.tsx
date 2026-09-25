@@ -5,7 +5,6 @@ import { LabelText } from '@/components/kit';
 import { LanguageToggle } from '@/components/language-toggle';
 import { SkinToggle } from '@/components/skin-toggle';
 import { ThemeToggle } from '@/components/theme-toggle';
-import { NavMenu } from '@/components/shell/nav-menu';
 import { NAV_GROUPS, groupLanding, routeTrail, type RouteDef } from '@/nav';
 import { cn } from '@/lib/utils';
 
@@ -20,9 +19,9 @@ import { cn } from '@/lib/utils';
  * machine, a session) portals its own content into the title slot — see
  * `PageSlot` for why the slot is a DOM node rather than a context value.
  *
- * The identity also carries the section menu's caret (<900px, #23) — where the
- * plate is hidden, the topbar is the only chrome left, so the map of the app
- * belongs here rather than in a row of its own.
+ * No nav affordance of its own: where the plate is hidden (<900px) the shell's
+ * nav strip carries the destinations (shell/nav-strip.tsx) — a caret here was
+ * tried and rejected as a second copy of the drawer button (#23).
  */
 export function Topbar({
   route,
@@ -100,13 +99,6 @@ export function Topbar({
               ? t(trail[trail.length - 1]!.titleKey)
               : null}
         </h1>
-        {/* Handed off to the caret where the plate is hidden (#23): with the
-            bay strip retired, this is what replaces it — the camera does not
-            move, the library does. Hidden by CSS, never unmounted, so the
-            title's portal target never sits under a conditional parent. */}
-        <span data-slot="nav-menu-seat" className="flex shrink-0 items-center min-[900px]:hidden">
-          <NavMenu activeRouteId={route?.id} isAdmin={isAdmin} />
-        </span>
       </div>
 
       {/* Page actions portal here (PageSlot slot="actions") — the page owns the
