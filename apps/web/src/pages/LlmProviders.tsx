@@ -16,11 +16,13 @@ import { useI18n } from '@/i18n';
 import {
   ConfirmDialog,
   DataTable,
+  DataText,
   FilterBar,
   FilterSelect,
   PageIntro,
   SortSelect,
   TableSearch,
+  Well,
   tableState,
 } from '@/components/kit';
 import {
@@ -230,10 +232,25 @@ export function LlmProvidersPage() {
                   {p.api}
                 </Badge>
               </TableCell>
-              <TableCell className="max-w-64 truncate font-mono text-xs">
-                {p.baseUrl ?? t('llmProviders.baseUrlPlaceholder')}
+              {/* Both are protocol material — a URL and a credential NAME —
+                  so they render as devices, not as hand-rolled mono text
+                  (02-content.md §4; the same cell-scale chip as the machines
+                  list's host). The URL is copyable; the credential is not
+                  (its name goes nowhere useful pasted alone). */}
+              <TableCell className="max-w-64">
+                {p.baseUrl === null ? (
+                  <DataText size="sm" tone="dim">
+                    {t('llmProviders.baseUrlPlaceholder')}
+                  </DataText>
+                ) : (
+                  <Well variant="chip" copy={p.baseUrl}>
+                    {p.baseUrl}
+                  </Well>
+                )}
               </TableCell>
-              <TableCell className="font-mono text-xs">{p.credentialName}</TableCell>
+              <TableCell>
+                <Well variant="chip">{p.credentialName}</Well>
+              </TableCell>
               <TableCell>
                 <Badge variant={p.scope === 'global' ? 'default' : 'secondary'} className="gap-1">
                   {p.scope === 'global' ? (

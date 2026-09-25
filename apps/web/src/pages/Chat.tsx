@@ -167,7 +167,14 @@ function AgentCard({
         {/* The agent's name is its identity → prose (02-content.md §4), while the
             target above is an enum and belongs in the nameplate. */}
         <span className="truncate text-sm font-semibold">{agent.name}</span>
-        <Well copy={agent.directory}>{agent.directory}</Well>
+        {/* The directory hugs its value (`self-start`): this body is a flex
+            column, where an inline-flex Well would stretch to the card's full
+            width — a black window across every card in BAY. The comps hug
+            (a long path there is a well capped at 520px, never a full-width
+            bar). */}
+        <Well className="self-start" copy={agent.directory}>
+          {agent.directory}
+        </Well>
         <span className="text-muted-foreground role-data-sm">
           {new Date(agent.updatedAt).toLocaleDateString(dateLocale(lang), {
             year: 'numeric',

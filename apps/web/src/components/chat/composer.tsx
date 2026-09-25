@@ -128,7 +128,7 @@ function ContextMeter({ usage }: { usage: ComposerUsage | null }) {
   const tone = pct > 95 ? 'danger' : pct > 80 ? 'warn' : 'neutral';
   return (
     <span
-      className="flex shrink-0 items-center gap-2"
+      className="flex shrink-0 items-center gap-2 max-sm:order-9 max-sm:w-full"
       title={t('chat.contextUsed', { used: formatTokens(used), size: formatTokens(size) })}
     >
       <span
@@ -172,6 +172,13 @@ interface SelectChoice {
  * One borderless config select (the SessionConfigBar pattern). Values are
  * OPAQUE adapter keys — never parsed; `group` becomes a labeled group
  * (dsh's per-provider model lists).
+ *
+ * It is a labeled COLUMN, not a bare trigger: the comp's `.ctl` puts the
+ * control's name above it (`Permission` / `Model` / `Effort` at 9.5px), which
+ * is what makes three adjacent select windows readable when their values are
+ * opaque words. The trigger itself rides `--control-h-sm`, so BAY's 25px
+ * hardware scale applies (it was a hard 32px — "the dropdowns are almost half
+ * the Sender", reported from a phone).
  */
 function ConfigSelect({
   label,
@@ -198,45 +205,48 @@ function ConfigSelect({
     else list.push(c);
   }
   return (
-    <Select
-      value={value === undefined ? undefined : value}
-      onValueChange={onPick}
-      disabled={disabled}
-    >
-      <SelectTrigger
-        size="sm"
-        aria-label={label}
-        title={
-          hint ??
-          (value === undefined
-            ? label
-            : (choices.find((c) => c.value === value)?.description ?? label))
-        }
-        className="text-muted-foreground hover:text-foreground h-7 max-w-40 gap-1 border-none px-1.5 text-xs font-normal shadow-none focus:ring-0 dark:hover:bg-accent/50"
+    <span className="flex min-w-0 flex-col gap-0.5">
+      <span className="role-label-sm text-muted-foreground">{label}</span>
+      <Select
+        value={value === undefined ? undefined : value}
+        onValueChange={onPick}
+        disabled={disabled}
       >
-        <SelectValue placeholder={label} />
-      </SelectTrigger>
-      <SelectContent>
-        {[...groups.entries()].map(([group, list]) =>
-          group === '' ? (
-            list.map((c) => (
-              <SelectItem key={c.value} value={c.value} title={c.description}>
-                {c.name}
-              </SelectItem>
-            ))
-          ) : (
-            <SelectGroup key={group}>
-              <SelectLabel>{group}</SelectLabel>
-              {list.map((c) => (
+        <SelectTrigger
+          size="sm"
+          aria-label={label}
+          title={
+            hint ??
+            (value === undefined
+              ? label
+              : (choices.find((c) => c.value === value)?.description ?? label))
+          }
+          className="text-muted-foreground hover:text-foreground min-w-0 max-w-40 gap-1 border-none px-1.5 text-xs font-normal shadow-none focus:ring-0 dark:hover:bg-accent/50"
+        >
+          <SelectValue placeholder={label} />
+        </SelectTrigger>
+        <SelectContent>
+          {[...groups.entries()].map(([group, list]) =>
+            group === '' ? (
+              list.map((c) => (
                 <SelectItem key={c.value} value={c.value} title={c.description}>
                   {c.name}
                 </SelectItem>
-              ))}
-            </SelectGroup>
-          ),
-        )}
-      </SelectContent>
-    </Select>
+              ))
+            ) : (
+              <SelectGroup key={group}>
+                <SelectLabel>{group}</SelectLabel>
+                {list.map((c) => (
+                  <SelectItem key={c.value} value={c.value} title={c.description}>
+                    {c.name}
+                  </SelectItem>
+                ))}
+              </SelectGroup>
+            ),
+          )}
+        </SelectContent>
+      </Select>
+    </span>
   );
 }
 
@@ -590,7 +600,14 @@ export function Composer({
         spellCheck={false}
         className="placeholder:text-muted-foreground max-h-56 w-full resize-none overflow-y-auto bg-transparent px-3.5 pb-1 pt-3 text-sm leading-relaxed outline-none disabled:cursor-not-allowed"
       />
-      <div className="flex items-center gap-1.5 px-3 pb-2.5 pt-1">
+      {/* The toolbar WRAPS (comp `mobile.html` frame C: "the composer toolbar
+          wraps"). Three opaque config values plus a meter plus Send do not fit
+          a 390px phone, and a non-shrinkable row pushed the Send control off
+          the screen — reported from a phone. Wrapping keeps every control
+          reachable; the meter moves to its own row below the controls
+          (comp `.ctools .ctx { width:100%; order:9 }`) and Send keeps the
+          right edge of the row it lands on (`.round { margin-left:auto }`). */}
+      <div className="flex flex-wrap items-end gap-x-2 gap-y-1.5 px-3 pb-2.5 pt-1">
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button
@@ -675,7 +692,7 @@ export function Composer({
               <Button
                 type="button"
                 size="icon"
-                className="size-9 shrink-0 rounded-full"
+                className="size-9 shrink-0 rounded-full max-sm:ml-auto max-sm:size-(--touch)"
                 onClick={onSend}
                 title={t('chat.queueSendAria')}
                 aria-label={t('chat.queueSendAria')}
@@ -687,7 +704,7 @@ export function Composer({
               type="button"
               variant="outline"
               size="icon"
-              className="hover:border-destructive/40 hover:text-destructive size-9 shrink-0 rounded-full"
+              className="hover:border-destructive/40 hover:text-destructive size-9 shrink-0 rounded-full max-sm:size-(--touch)"
               onClick={onCancel}
               title={t('chat.stopAria')}
               aria-label={t('chat.stopAria')}
@@ -699,7 +716,7 @@ export function Composer({
           <Button
             type="button"
             size="icon"
-            className="size-9 shrink-0 rounded-full"
+            className="size-9 shrink-0 rounded-full max-sm:ml-auto max-sm:size-(--touch)"
             onClick={onSend}
             disabled={!canSend}
             title={t('chat.sendAria')}

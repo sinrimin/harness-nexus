@@ -440,6 +440,12 @@ async function seed(token) {
     fetchJson(`${API_ORIGIN}${p}`, { method, body, ...(tokenArg ? { token: tokenArg } : {}) });
 
   // Machines (offline — no daemon dials in; honest "configured/offline" rows).
+  // `hostname`/`os`/`arch` are daemon-reported and `POST /api/machines` pins
+  // them to null, so the HOST and DAEMON cells photograph as `—` in every
+  // baseline. A host-bearing row needs a live daemon (see the local
+  // single-machine rig in docs/dev/ui-refactor/17-p8-acceptance.md §5b) — the
+  // matrix cannot stage it, and a host-less seed once hid a real defect in
+  // that cell until a phone reported it (#23).
   for (const name of ['dev-laptop', 'ci-runner']) {
     const r = await api('POST', '/api/machines', { name }, token);
     if (r.ok) log(`seeded machine "${name}"`);
