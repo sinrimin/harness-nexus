@@ -12,6 +12,7 @@ import { PlateTopology } from '@/components/plate-topology';
 import { RadarTopology } from '@/components/radar-topology';
 import { Region } from '@/components/kit/region';
 import { Lamp } from '@/components/kit';
+import { StateSignal } from '@/components/state-signal';
 import { SKINS, isSkinId, type TopologyStyle } from './registry';
 
 /**
@@ -92,6 +93,21 @@ describe('status rendering is replaceable', () => {
     expect(lamp?.getAttribute('data-state')).toBe('online');
     expect(lamp?.querySelector("[data-slot='lamp-body']")).not.toBeNull();
   });
+
+  // D-13: before P8 the mark (`StateSignal`) and the lamp were two devices with
+  // two element shapes, so every skin wrote its status rules twice and a
+  // word-style skin could only reach one of them.
+  it('renders the same body slot for the mark and for the lamp', () => {
+    const { container } = render(<StateSignal state="running" label="running" />);
+    const mark = container.querySelector("[data-slot='lamp-body']");
+    expect(mark?.getAttribute('data-state')).toBe('running');
+    expect(mark?.getAttribute('aria-label')).toBe('running');
+    cleanup();
+
+    const { container: lampBox } = withProviders(<Lamp state="running" />, 'signal');
+    const body = lampBox.querySelector("[data-slot='lamp-body']");
+    expect(body?.getAttribute('data-state')).toBe('running');
+  });
 });
 
 describe('topology registry', () => {
@@ -166,6 +182,15 @@ describe('the two hard rules for skins (04-contract.md §3)', () => {
       const css = withoutComments(readFileSync(file, 'utf8'));
       const negative = [...css.matchAll(/margin[a-z-]*:\s*(-[^;]+)/g)].map((m) => m[1]);
       expect(negative, `${file} uses a negative margin`).toEqual([]);
+    }
+  });
+
+  it('styles status once, through the body slot (no second device hook)', () => {
+    // `.signal-dot` was the mark's own class before D-13; a skin reaching for
+    // it again means the two devices have drifted apart.
+    for (const file of cssFiles) {
+      const css = withoutComments(readFileSync(file, 'utf8'));
+      expect(css.includes('signal-dot'), `${file} targets the old mark hook`).toBe(false);
     }
   });
 });

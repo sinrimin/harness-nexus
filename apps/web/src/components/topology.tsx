@@ -19,6 +19,11 @@ import type { TopologyProps } from './topology-frame.js';
  * - `radar` — the mesh as an instrument sweep (radar-topology.tsx). Built in
  *   P7, where the flexibility drill selects it for real: before that the key
  *   resolved to `constellation`, which proved the field was decorative.
+ *
+ * P8 kept `radar` although no shipped skin selects it: the key is part of the
+ * frozen `TopologyStyle` contract (`04-contract.md §3`), it is a real renderer
+ * with real coverage, and a third skin gets it by editing its manifest alone —
+ * deleting it now would make the contract's three shapes a lie again.
  */
 export const TOPOLOGY_RENDERERS: Record<TopologyStyle, ComponentType<TopologyProps>> = {
   constellation: MeshTopology,

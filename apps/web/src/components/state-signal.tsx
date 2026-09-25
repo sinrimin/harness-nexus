@@ -7,6 +7,19 @@ import { cn } from '@/lib/utils';
  * one day render it as a word instead (see wiki design-skin-system.md); the
  * state itself is data and must never be altered by styling.
  *
+ * **One body slot, two call shapes (P8, D-13).** The mark renders the same
+ * element the kit's `Lamp` does — `data-slot="lamp-body"` carrying
+ * `data-state` — so a skin writes ONE rule family for status instead of one
+ * per device. BAY used to write every LED rule twice (`.signal-dot` and
+ * `[data-slot='lamp-body']`); a drill's word skin likewise had to neutralize
+ * the two separately.
+ *
+ * What the mark omits is the word channel and the wrapper, so it stays usable
+ * in a 2px gutter or a tool row. A skin that replaces colour with a printed
+ * word (`statusStyle: 'word'`) hides the body itself —
+ * `[data-skin='ledger'] [data-slot='lamp-body'] { display: none }` — because
+ * only the skin knows whether a word can be printed where the mark sits.
+ *
  * `pulse` is explicit per site (a running job is a steady dot in the jobs
  * table but a pulsing one in the chat tool row — both are correct today and
  * stay that way).
@@ -116,8 +129,9 @@ export function StateSignal({ state, label, pulse, className, ...props }: StateS
   return (
     <span
       data-state={state}
+      data-slot="lamp-body"
       className={cn(
-        'signal-dot inline-block size-2 shrink-0 rounded-full',
+        'inline-block size-2 shrink-0 rounded-full',
         SIGNAL_DOT_CLASS[state],
         // The one breathing motion the design allows (03-interaction.md §6):
         // token-driven, 0.55→1 over `--motion-breath`, restored to full

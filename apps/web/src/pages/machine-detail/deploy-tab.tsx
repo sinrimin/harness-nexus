@@ -12,7 +12,6 @@ import {
   type JobView,
   type Profile,
 } from '@harness-nexus/sdk';
-import { StateSignal } from '@/components/state-signal';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
@@ -27,6 +26,7 @@ import { TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/compon
 import {
   ConfirmDialog,
   DataTable,
+  Lamp,
   Note,
   Panel,
   PanelBody,
@@ -256,12 +256,14 @@ function DeploymentsPanel({
                 </span>
               </TableCell>
               <TableCell>
-                <span className="inline-flex items-center gap-2">
-                  <StateSignal state={JOB_STATUS_SIGNAL[job.status] ?? 'inactive'} />
-                  <span className="role-data text-xs">
-                    {JOB_STATUS_WORD[job.status] ?? job.status}
-                  </span>
-                </span>
+                {/* The two channels in one device (02-content.md §3.3): the
+                    lamp carries the tone, the word carries the state — so a
+                    word-style skin says "queued" instead of leaving a muted
+                    dot beside it (D-13). */}
+                <Lamp
+                  state={JOB_STATUS_SIGNAL[job.status] ?? 'inactive'}
+                  word={JOB_STATUS_WORD[job.status] ?? job.status}
+                />
               </TableCell>
               <TableCell className="max-w-[28rem]">
                 {detail.fail ? (
