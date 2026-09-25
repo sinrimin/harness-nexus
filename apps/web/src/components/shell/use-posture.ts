@@ -9,7 +9,7 @@ const POSTURE_EVENTS = ['machine:status', 'inventory:updated', 'job:update', 'ch
 /** Safety poll for a missed push / a socket that never came up. */
 const FALLBACK_POLL_MS = 30_000;
 
-export interface PostureState {
+interface PostureState {
   /** `null` until the first answer lands — and after a failure: the strip
    *  renders nothing rather than a zero (D2: a number may be absent, never a lie). */
   posture: Posture | null;

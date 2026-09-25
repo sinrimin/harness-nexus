@@ -17,7 +17,7 @@ type BrandMarkProps = {
   className?: string;
 };
 
-export function BrandMark({ size = 28, className }: BrandMarkProps) {
+function BrandMark({ size = 28, className }: BrandMarkProps) {
   return (
     <svg
       width={size}
@@ -41,7 +41,7 @@ export function BrandMark({ size = 28, className }: BrandMarkProps) {
   );
 }
 
-export function Wordmark({ className }: { className?: string }) {
+function Wordmark({ className }: { className?: string }) {
   return (
     <span className={className}>
       Harness<span className="text-brand-mid">Nexus</span>

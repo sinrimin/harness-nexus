@@ -26,7 +26,7 @@ export interface TopologyProps {
 }
 
 /** The four upstream variants a live status resolves to. */
-export type UpstreamVariant = 'configured' | 'pending' | 'online' | 'warn';
+type UpstreamVariant = 'configured' | 'pending' | 'online' | 'warn';
 
 /** Map a live status to a variant. Absent/unknown status is `configured`. */
 export function upstreamVariant(

@@ -19,7 +19,7 @@ import { useSkin } from '@/components/skin-provider';
  * no colour at all, still says everything.
  */
 
-export type LampSize = 'md' | 'sm' | 'lg';
+type LampSize = 'md' | 'sm' | 'lg';
 
 const LAMP_CLASS: Record<SignalTone, string> = {
   ok: 'bg-lamp-ok',

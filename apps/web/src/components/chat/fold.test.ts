@@ -57,9 +57,9 @@ describe('fold history ingestion (#8: user item = turn boundary)', () => {
     expect(userTextAt(state, 4)).toBe('Q2');
     expect(stepTextAt(state, 5)).toBe('reply to Q2');
     // No row stays running after ingestion.
-    expect(state.rows.every((r) => (r.row === 'assistant' ? r.step.status !== 'running' : true))).toBe(
-      true,
-    );
+    expect(
+      state.rows.every((r) => (r.row === 'assistant' ? r.step.status !== 'running' : true)),
+    ).toBe(true);
   });
 
   it('closes the open step even when the user item renders no blocks', () => {
@@ -110,7 +110,10 @@ describe('fold history ingestion (#8: user item = turn boundary)', () => {
     expect(state.queued?.[0]).toEqual({ type: 'text', text: 'meanwhile' });
     const rowsBefore = state.rows.length;
     // A cancel clear drops the chip WITHOUT folding a user row.
-    state = fold(state, { type: 'event', event: { kind: 'queue_state', prompt: null, flushed: false } });
+    state = fold(state, {
+      type: 'event',
+      event: { kind: 'queue_state', prompt: null, flushed: false },
+    });
     expect(state.queued).toBeNull();
     expect(state.rows.length).toBe(rowsBefore);
   });
@@ -118,7 +121,11 @@ describe('fold history ingestion (#8: user item = turn boundary)', () => {
   it('#10/#11: a flush clears the chip; the user_message echo paints the row', () => {
     let state = fold(createFoldState(), {
       type: 'event',
-      event: { kind: 'queue_state', prompt: [{ type: 'text', text: 'next question' }], flushed: false },
+      event: {
+        kind: 'queue_state',
+        prompt: [{ type: 'text', text: 'next question' }],
+        flushed: false,
+      },
     });
     state = fold(state, {
       type: 'event',

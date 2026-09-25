@@ -27,7 +27,13 @@ export function UserBlock() {
     >
       <span
         aria-hidden="true"
-        className="bg-tray text-well-ink flex size-7 shrink-0 items-center justify-center rounded-(--radius-well) font-mono text-xs font-semibold uppercase"
+        // The initials sit on the TRAY chip, so they take the tray's ink.
+        // `text-well-ink` belongs to text on the well behind the chip, and a
+        // skin that re-scopes the well (BAY paints it as a dark window) turns
+        // that ink light: light on the light tray measured 1.27:1 and the
+        // initials vanished (P8 audit). `--tray-ink` is a literal per skin, so
+        // the well's local re-scope cannot reach it.
+        className="bg-tray text-tray-ink flex size-7 shrink-0 items-center justify-center rounded-(--radius-well) font-mono text-xs font-semibold uppercase"
       >
         {name.slice(0, 2) || '?'}
       </span>

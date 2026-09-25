@@ -34,7 +34,7 @@ import type { TranslationKey } from '@/i18n';
  */
 export type NavGroupId = 'nav' | 'mesh' | 'asset' | 'access' | 'admin';
 
-export interface NavGroupDef {
+interface NavGroupDef {
   id: NavGroupId;
   /** Bay address shown on the spine (`01`…`05`) — data, never CSS content. */
   number: string;

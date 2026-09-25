@@ -12,16 +12,16 @@
  */
 export { LabelText, DataText } from './text';
 export { Panel, PanelHeader, PanelBody } from './panel';
-export { Well, CopyButton, type WellVariant } from './well';
-export { Lamp, type LampSize } from './lamp';
+export { Well, CopyButton } from './well';
+export { Lamp } from './lamp';
 export { Readout } from './readout';
 export { Field } from './field';
-export { DataTable, TableStateRow, tableState, type TableState } from './table';
+export { DataTable, TableStateRow, tableState } from './table';
 export { FilterBar, TableSearch, FilterSelect, SortSelect } from './filter-bar';
 export { EmptyState } from './empty-state';
-export { Skeleton, SkeletonRows, useDelayedVisible } from './skeleton';
-export { Note, errorParts, type NoteTone } from './note';
-export { CommandLine, commandPlaceholders, markPlaceholders } from './command-line';
+export { Skeleton } from './skeleton';
+export { Note } from './note';
+export { CommandLine } from './command-line';
 export { ConfirmDialog } from './confirm-dialog';
 export { PageIntro } from './page-intro';
 export { Chip } from './chip';

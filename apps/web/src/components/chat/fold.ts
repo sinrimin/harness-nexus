@@ -56,12 +56,12 @@ export interface ToolCallNode {
   endedAt?: number;
 }
 
-export interface ContentBlock {
+interface ContentBlock {
   type: 'text' | 'reasoning';
   text: string;
 }
 
-export interface AssistantStep {
+interface AssistantStep {
   stepId: string;
   status: 'running' | 'settled' | 'interrupted';
   blocks: ContentBlock[];
@@ -80,7 +80,7 @@ export interface TurnStats {
   };
 }
 
-export type ConversationRow =
+type ConversationRow =
   | { row: 'user'; key: string; blocks: UserBlock[] }
   | { row: 'assistant'; key: string; step: AssistantStep }
   | { row: 'tool'; key: string; root: ToolCallNode }
@@ -150,7 +150,7 @@ export interface FoldState {
   turnActive: boolean;
 }
 
-export type FoldAction =
+type FoldAction =
   | { type: 'reset' }
   | {
       type: 'event';
@@ -331,7 +331,8 @@ function startUserTurn(state: FoldState, blocks: UserBlock[]): FoldState {
   };
 }
 
-function applyEvent(state: FoldState, event: ChatStreamEvent): FoldState {  switch (event.kind) {
+function applyEvent(state: FoldState, event: ChatStreamEvent): FoldState {
+  switch (event.kind) {
     case 'message_delta':
     case 'thought_delta': {
       const block: ContentBlock =

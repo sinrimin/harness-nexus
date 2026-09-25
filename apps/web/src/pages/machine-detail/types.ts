@@ -28,7 +28,7 @@ export interface RuntimeInfoView {
   installMethod?: 'npm' | 'native' | 'brew' | 'unknown';
 }
 
-export interface InventoryItemView {
+interface InventoryItemView {
   kind: string;
   name: string;
   origin: 'platform' | 'local';

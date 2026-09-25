@@ -69,7 +69,7 @@ interface I18n {
 }
 
 /** The translate function, so non-component helpers can accept `t` as a param. */
-export type TFunc = (key: TranslationKey, params?: Params) => string;
+type TFunc = (key: TranslationKey, params?: Params) => string;
 
 const I18nContext = createContext<I18n | null>(null);
 

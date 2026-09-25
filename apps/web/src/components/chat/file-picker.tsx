@@ -179,6 +179,10 @@ function LevelRows({
           )}
           style={{ paddingLeft: `${depth * 14 + 6}px` }}
           title={node.path}
+          // The row prints the basename; the path it stands for (the value the
+          // tooltip hid) is announced instead.
+          aria-label={node.path}
+          aria-expanded={node.expanded}
         >
           {node.children === null && loadingPath === node.path ? (
             <LoaderIcon className="size-3 shrink-0 animate-spin" />
@@ -199,6 +203,7 @@ function LevelRows({
           className="hover:bg-accent flex w-full items-center gap-1.5 rounded px-1.5 py-1 text-left"
           style={{ paddingLeft: `${depth * 14 + 22}px` }}
           title={f.path}
+          aria-label={f.path}
         >
           <FileIcon className="size-3 shrink-0" />
           <span className="truncate">{f.name}</span>

@@ -30,7 +30,7 @@ export function Spine({
     <nav
       data-region="spine"
       aria-label={t('app.primaryNav')}
-className={cn(
+      className={cn(
         'bg-sidebar text-sidebar-foreground flex w-(--spine-w) shrink-0 flex-col border-r',
         className,
       )}

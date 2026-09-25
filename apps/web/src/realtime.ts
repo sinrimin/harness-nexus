@@ -35,15 +35,6 @@ export function appSocket(): Socket {
   return socket;
 }
 
-/** Close the singleton (e.g. on logout). */
-export function closeAppSocket(): void {
-  if (socket !== null) {
-    socket.removeAllListeners();
-    socket.close();
-    socket = null;
-  }
-}
-
 // ---- chat (Phase 8 C5) — mirrors shared/realtime.ts ----
 
 /** One semantic chat event (`chat:event` → `{ sessionId, event }`). */
@@ -109,7 +100,7 @@ export type ChatStreamEvent =
 
 // ---- 9 W14 — ACP plan (todo) snapshots (mirrors shared/realtime.ts) ----
 
-export type PlanEntryStatus = 'pending' | 'in_progress' | 'completed';
+type PlanEntryStatus = 'pending' | 'in_progress' | 'completed';
 
 /**
  * One todo/task row. Full-REPLACE semantics: every `plan` event carries the
@@ -122,7 +113,7 @@ export interface PlanEntry {
   priority?: 'high' | 'medium' | 'low';
 }
 
-export interface PlanPatch {
+interface PlanPatch {
   entries: PlanEntry[];
 }
 
@@ -139,7 +130,7 @@ export interface CommandView {
   hint?: string;
 }
 
-export interface CommandsPatch {
+interface CommandsPatch {
   commands: CommandView[];
 }
 
@@ -164,7 +155,7 @@ export interface SessionMode {
   description?: string;
 }
 
-export interface SessionConfigValue {
+interface SessionConfigValue {
   value: string;
   name: string;
   description?: string;
@@ -187,7 +178,7 @@ export interface SessionConfigOption {
  * merged snapshots; option VALUES are opaque adapter keys (dsh model values
  * are JSON `[provider, model]` — compare by equality, never parse).
  */
-export interface SessionConfigPatch {
+interface SessionConfigPatch {
   modes?: { currentModeId?: string; availableModes?: SessionMode[] };
   configOptions?: SessionConfigOption[];
 }
@@ -197,7 +188,6 @@ export type ChatConfigSetPayload =
   { kind: 'mode'; modeId: string } | { kind: 'option'; configId: string; value: string };
 
 /** 9 W9 A — browser → server: switch the session's mode / one option. */
-export type ChatConfigSet = { sessionId: string } & ChatConfigSetPayload;
 
 /** 9 W6 — one ACP ToolCallContent item (diff / content / terminal). */
 export interface AcpToolContentItem {

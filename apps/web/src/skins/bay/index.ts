@@ -8,7 +8,7 @@
 
 import { loadBayFonts } from './fonts.js';
 
-export interface BaySkin {
+interface BaySkin {
   id: 'bay';
   nameKey: 'app.skinBay';
   modes: ['light'];

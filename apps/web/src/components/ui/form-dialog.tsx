@@ -34,7 +34,7 @@ const SIZES = {
   xl: 'sm:max-w-4xl',
 } as const;
 
-export type FormDialogSize = keyof typeof SIZES;
+type FormDialogSize = keyof typeof SIZES;
 
 interface FormDialogProps {
   open: boolean;

@@ -3,10 +3,13 @@
 
 /* Self-hosted IBM Plex (no external requests — this product handles secrets).
  * Sans ships as a variable font; Mono only has static weights, so we load the
- * weights we actually use (400 body, 500 emphasis). */
-@import '@fontsource-variable/ibm-plex-sans/index.css';
-@import '@fontsource/ibm-plex-mono/400.css';
-@import '@fontsource/ibm-plex-mono/500.css';
+ * weights we actually use (400 body, 500 emphasis). Every sheet is the LATIN
+ * subset: the UI is en/zh-CN, CJK rides the system stack in `--font-sans`, and
+ * the packages' other subsets would cost ~320 KB of woff2 this build never
+ * renders (see `src/fonts/ibm-plex-sans-latin.css`). */
+@import './fonts/ibm-plex-sans-latin.css';
+@import '@fontsource/ibm-plex-mono/latin-400.css';
+@import '@fontsource/ibm-plex-mono/latin-500.css';
 
 @custom-variant dark (&:is(.dark *));
 
@@ -141,8 +144,13 @@
   --shell-title-size: 17px; /* the page's identity in the topbar */
 
   /* Tray: the neutral step behind table heads, list feet, sub-panels and row
-   * hover — the one surface between card and muted. */
+   * hover — the one surface between card and muted. `--tray-ink` is the ink for
+   * text ON that material, and it is a material token on purpose: an element
+   * that sits on a tray inside a WELL must not inherit the well's inverted ink
+   * (BAY paints the well re-scoped, which made the account avatar's initials
+   * light-on-light — P8 audit). */
   --tray: oklch(0.955 0.005 250);
+  --tray-ink: var(--foreground);
 
   /* Well: the surface protocol material sits on (hosts, paths, ids, commands).
    * Signal cuts a shallow trough; BAY re-points it at the dark LCD window.
@@ -261,6 +269,7 @@
   /* Token v2 roles, dark reading. A trough in dark mode is darker than the
    * card it is cut into, so --well moves down instead of up. */
   --tray: oklch(0.26 0.015 260);
+  --tray-ink: var(--foreground);
   --well: oklch(0.205 0.014 260);
   --well-edge: oklch(1 0 0 / 8%);
   --well-ink: var(--foreground);
@@ -312,6 +321,7 @@
   --color-signal-foreground: var(--signal-foreground);
   --color-scrim: var(--scrim);
   --color-tray: var(--tray);
+  --color-tray-ink: var(--tray-ink);
   --color-well: var(--well);
   --color-well-edge: var(--well-edge);
   --color-well-ink: var(--well-ink);

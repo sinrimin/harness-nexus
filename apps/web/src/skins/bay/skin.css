@@ -107,7 +107,9 @@
    — a same-colour glow. Every value here is the comp's `.lamp`
    (appendix-comp-inventory.md A.2); the off state is a dead grey lens with no
    glow at all, which is what makes "configured but not connected" read. */
-[data-skin='bay'] .signal-dot,
+/* One selector family, because the base renders one body slot for both
+   devices (state-signal.tsx / lamp.tsx, D-13): a mark and a lamp are the same
+   element to a skin. */
 [data-skin='bay'] [data-slot='lamp-body'] {
   box-shadow:
     inset 0 0 0 1px rgba(20, 26, 33, 0.55),
@@ -115,15 +117,10 @@
 }
 
 /* Live states glow — a lit LED, low and physical, never neon. */
-[data-skin='bay'] .signal-dot[data-state='online'],
 [data-skin='bay'] [data-slot='lamp-body'][data-state='online'],
-[data-skin='bay'] .signal-dot[data-state='connected'],
 [data-skin='bay'] [data-slot='lamp-body'][data-state='connected'],
-[data-skin='bay'] .signal-dot[data-state='succeeded'],
 [data-skin='bay'] [data-slot='lamp-body'][data-state='succeeded'],
-[data-skin='bay'] .signal-dot[data-state='completed'],
 [data-skin='bay'] [data-slot='lamp-body'][data-state='completed'],
-[data-skin='bay'] .signal-dot[data-state='busy'],
 [data-skin='bay'] [data-slot='lamp-body'][data-state='busy'] {
   box-shadow:
     inset 0 0 0 1px rgba(20, 26, 33, 0.55),
@@ -131,13 +128,9 @@
     0 0 0 1px rgba(20, 26, 33, 0.4);
 }
 
-[data-skin='bay'] .signal-dot[data-state='running'],
 [data-skin='bay'] [data-slot='lamp-body'][data-state='running'],
-[data-skin='bay'] .signal-dot[data-state='connecting'],
 [data-skin='bay'] [data-slot='lamp-body'][data-state='connecting'],
-[data-skin='bay'] .signal-dot[data-state='warn'],
 [data-skin='bay'] [data-slot='lamp-body'][data-state='warn'],
-[data-skin='bay'] .signal-dot[data-state='error'],
 [data-skin='bay'] [data-slot='lamp-body'][data-state='error'] {
   box-shadow:
     inset 0 0 0 1px rgba(20, 26, 33, 0.55),
@@ -145,7 +138,6 @@
     0 0 0 1px rgba(20, 26, 33, 0.4);
 }
 
-[data-skin='bay'] .signal-dot[data-state='failed'],
 [data-skin='bay'] [data-slot='lamp-body'][data-state='failed'] {
   box-shadow:
     inset 0 0 0 1px rgba(20, 26, 33, 0.55),
@@ -154,7 +146,6 @@
 }
 
 /* The energised channel: orange carries the current. */
-[data-skin='bay'] .signal-dot[data-state='live'],
 [data-skin='bay'] [data-slot='lamp-body'][data-state='live'] {
   box-shadow:
     inset 0 0 0 1px rgba(20, 26, 33, 0.55),
@@ -195,14 +186,6 @@
     linear-gradient(to right, rgba(20, 26, 33, 0.06) 1px, transparent 1px),
     linear-gradient(to bottom, rgba(20, 26, 33, 0.06) 1px, transparent 1px);
   background-size: 8px 8px;
-}
-
-/* Reduced motion: LEDs stop breathing (the pulse utility animates opacity;
- * freeze it inside BAY so a static panel stays static). */
-@media (prefers-reduced-motion: reduce) {
-  [data-skin='bay'] .signal-dot {
-    animation: none;
-  }
 }
 
 /* The kit's breathing lamp is the same instrument as the LED: keep the glow,
@@ -277,6 +260,16 @@
   font-weight: 600;
   letter-spacing: var(--label-tracking);
   text-transform: uppercase;
+}
+/* The line above replaces the base's whole `box-shadow`, and the base's focus
+ * ring IS a box-shadow (`focus-visible:ring-[3px]`) — so every solid BAY key
+ * was focusable but gave no visible indicator. This skin draws its own: a hard
+ * 2px outline in the live ink, which is also what a machined control wants (a
+ * crisp edge step, not a soft halo). Measured: outline 2px solid, offset 2px,
+ * `--signal` — see the P8 a11y sweep. */
+[data-skin='bay'] [data-slot='button']:focus-visible {
+  outline: 2px solid var(--signal);
+  outline-offset: 2px;
 }
 /* The quiet variants are text, not hardware. */
 [data-skin='bay'] [data-slot='button'][data-variant='ghost'],

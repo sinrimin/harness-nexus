@@ -153,7 +153,7 @@ function latestLine(text: string): string {
   return i === -1 ? visible : visible.slice(i + 1);
 }
 
-export function ReasoningRow({ text, running }: { text: string; running: boolean }) {
+function ReasoningRow({ text, running }: { text: string; running: boolean }) {
   const { t } = useI18n();
   const [expanded, setExpanded] = useState(false);
   const summaryRef = useRef<HTMLSpanElement>(null);

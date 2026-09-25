@@ -15,10 +15,6 @@ function Drawer({ ...props }: React.ComponentProps<typeof DialogPrimitive.Root>)
   return <DialogPrimitive.Root data-slot="drawer" {...props} />;
 }
 
-function DrawerClose({ ...props }: React.ComponentProps<typeof DialogPrimitive.Close>) {
-  return <DialogPrimitive.Close data-slot="drawer-close" {...props} />;
-}
-
 function DrawerContent({
   className,
   children,
@@ -94,12 +90,4 @@ function DrawerDescription({
   );
 }
 
-export {
-  Drawer,
-  DrawerClose,
-  DrawerContent,
-  DrawerDescription,
-  DrawerHeader,
-  DrawerBody,
-  DrawerTitle,
-};
+export { Drawer, DrawerContent, DrawerDescription, DrawerHeader, DrawerBody, DrawerTitle };

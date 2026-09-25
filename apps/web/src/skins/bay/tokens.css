@@ -21,7 +21,13 @@
   --secondary: #e3e7ec;
   --secondary-foreground: #2a3441;
   --muted: #e3e7ec;
-  --muted-foreground: #5a6675;
+  /* The comp's soft ink is `#5a6675` (appendix A.4). On the bay strip
+   * (`--sidebar #cdd3db`) it measures 3.88:1 — below AA for the 10px bay
+   * numbers and nav labels that live there, and the P8 contrast sweep found 40
+   * such pairs across the chrome. One step darker keeps the hue and clears AA
+   * on every BAY surface: 5.53:1 on the chassis, 5.17:1 on the sidebar,
+   * 6.56:1 on the tray, 7.05:1 on the panel. */
+  --muted-foreground: #495260;
   --accent: #e9edf2;
   --accent-foreground: #141a21;
 
@@ -57,6 +63,11 @@
    * Both are BAY-local (Signal plays no part in this rack), so they live here
    * rather than in the frozen contract. */
   --bezel: #c3cad4;
+  /* A literal, not `var(--foreground)`: the account avatar's initials sit on a
+     tray chip INSIDE the well, and the well block re-scopes --foreground to
+     the dark-world ink — a var reference would follow it and go invisible on
+     the light tray (measured 1.27:1 before this, P8 audit). */
+  --tray-ink: #141a21;
   --tray: #e9ecf1;
 
   /* Physics. The panel is bolted on (2px hard offset, no blur), the radius is

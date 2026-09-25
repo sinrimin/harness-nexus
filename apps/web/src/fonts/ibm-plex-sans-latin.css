@@ -1,0 +1,27 @@
+/**
+ * IBM Plex Sans Variable — the LATIN face only, hand-declared.
+ *
+ * Why not `@fontsource-variable/ibm-plex-sans/index.css`: that sheet declares
+ * all six subsets (latin, latin-ext, cyrillic, cyrillic-ext, greek,
+ * vietnamese), and vite copies every referenced file into `dist` — ~157 KB of
+ * woff2 this product never renders. The variable package ships no per-subset
+ * sheet, so the latin `@font-face` is copied from it verbatim (family name,
+ * weight range, format, unicode-range) with only the src path changed.
+ *
+ * The CJK fallback chain in `--font-sans` stays system fonts (IBM Plex has no
+ * CJK glyphs), and characters outside this range — extended Latin included —
+ * fall through to the next family in the stack. `apps/web/src/fonts.test.ts`
+ * asserts the referenced file exists, so a Fontsource upgrade that renames it
+ * fails a test instead of silently re-rendering the UI in a system font.
+ */
+@font-face {
+  font-family: 'IBM Plex Sans Variable';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 700;
+  src: url('@fontsource-variable/ibm-plex-sans/files/ibm-plex-sans-latin-wght-normal.woff2')
+    format('woff2-variations');
+  unicode-range:
+    U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329,
+    U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}

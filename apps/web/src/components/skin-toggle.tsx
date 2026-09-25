@@ -27,11 +27,7 @@ export function SkinToggle() {
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
         {SKINS.map((s) => (
-          <DropdownMenuItem
-            key={s.id}
-            aria-checked={skin === s.id}
-            onSelect={() => setSkin(s.id)}
-          >
+          <DropdownMenuItem key={s.id} aria-checked={skin === s.id} onSelect={() => setSkin(s.id)}>
             <span className="flex w-full items-center justify-between gap-4">
               {t(s.nameKey)}
               {skin === s.id ? <CheckIcon className="size-4" /> : <span className="size-4" />}

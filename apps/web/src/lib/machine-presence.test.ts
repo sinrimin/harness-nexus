@@ -22,10 +22,11 @@ function machine(over: Partial<MachineView> = {}): MachineView {
 
 describe('patchMachine', () => {
   it('applies presence to the matching machine', () => {
-    const next = patchMachine(
-      machine(),
-      { machineId: 'm1', online: true, lastSeenAt: '2026-09-25T10:00:00.000Z' },
-    );
+    const next = patchMachine(machine(), {
+      machineId: 'm1',
+      online: true,
+      lastSeenAt: '2026-09-25T10:00:00.000Z',
+    });
     expect(next.online).toBe(true);
     expect(next.lastSeenAt).toBe('2026-09-25T10:00:00.000Z');
   });

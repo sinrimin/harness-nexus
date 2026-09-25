@@ -68,7 +68,7 @@ function CopyButton({ text }: { text: string }) {
 
 // ---- Read ----
 
-export interface ReadLine {
+interface ReadLine {
   number: number;
   text: string;
 }
@@ -129,7 +129,7 @@ export const ReadBlock = memo(function ReadBlock({
 
 // ---- Diff ----
 
-export interface DiffHunk {
+interface DiffHunk {
   path: string;
   oldText: string | null;
   newText: string;
@@ -297,7 +297,7 @@ function cwdBasename(cwd: string): string {
 
 // ---- Search ----
 
-export interface SearchFileGroup {
+interface SearchFileGroup {
   path: string;
   matches: { lineNumber: number; line: string }[];
 }

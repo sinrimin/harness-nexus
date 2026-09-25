@@ -35,7 +35,7 @@ import { DiffBlock, IoCard, ReadBlock, SearchBlock, TerminalBlock, TodoList } fr
  * payload degrades to one line instead of a white screen.
  */
 
-export interface ToolCardProps {
+interface ToolCardProps {
   node: ToolCallNode;
   cwd?: string;
 }

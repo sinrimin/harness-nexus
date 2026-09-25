@@ -155,6 +155,5 @@ export function RadarTopology({ servers, statuses, machines }: TopologyProps) {
 }
 
 /** Exported so a drill or a test can assert the arc maths without a DOM. */
-export const RADAR_RINGS = RINGS;
 
 export type { FleetNode };

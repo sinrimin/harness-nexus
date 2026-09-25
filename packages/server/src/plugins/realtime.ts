@@ -620,7 +620,10 @@ export async function registerRealtime(
         ack?.({ error: 'proto:invalid' });
         return;
       }
-      const result = realtime.chat.onQueueCancel(socket.data.userId as string, parsed.data.sessionId);
+      const result = realtime.chat.onQueueCancel(
+        socket.data.userId as string,
+        parsed.data.sessionId,
+      );
       ack?.(result.ok ? { accepted: true } : { error: result.code });
     });
 

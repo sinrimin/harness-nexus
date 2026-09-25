@@ -24,7 +24,7 @@ import { SkeletonRows } from './skeleton';
  * otherwise. That is what removes the 23 inline `colSpan` cells.
  */
 
-export type TableState = 'ready' | 'loading' | 'empty' | 'filtered' | 'error';
+type TableState = 'ready' | 'loading' | 'empty' | 'filtered' | 'error';
 
 /**
  * Derive the state from what the page knows. Kept a free function so it is

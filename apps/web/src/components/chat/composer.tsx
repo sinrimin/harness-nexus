@@ -45,7 +45,7 @@ import type {
  * page's PRIMARY action; `--signal` stays reserved for the live-turn dot.
  */
 
-export interface ComposerUsage {
+interface ComposerUsage {
   contextUsed?: number;
   contextSize?: number;
 }

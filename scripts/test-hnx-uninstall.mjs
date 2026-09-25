@@ -22,28 +22,61 @@ fs.writeFileSync(`${OUT}/config.yaml`, USER_CONFIG, 'utf8');
 
 const resolvedProfile = {
   profile: {
-    id: 'p1', name: 'Uninstall Me', description: 'd', version: '1.0.0',
-    target: 'hermes', scope: 'personal', ownerId: null,
+    id: 'p1',
+    name: 'Uninstall Me',
+    description: 'd',
+    version: '1.0.0',
+    target: 'hermes',
+    scope: 'personal',
+    ownerId: null,
     entries: [
       { resourceId: 'skill-1', kind: 'skill' },
       { resourceId: 'mcp-1', kind: 'mcp' },
     ],
-    createdAt: '2026-01-01T00:00:00Z', updatedAt: '2026-01-01T00:00:00Z',
+    createdAt: '2026-01-01T00:00:00Z',
+    updatedAt: '2026-01-01T00:00:00Z',
   },
   artifacts: [
-    { entryId: 'skill-1', kind: 'skill', resource: {
-      id: 'skill-1', key: 'skill:tdd', kind: 'skill', name: 'tdd', description: 'TDD.',
-      version: '1.0.0', source: { type: 'inline', content: '---\nname: tdd\ndescription: TDD\n---\n\nWrite tests first.' },
-      scope: 'personal', ownerId: null, targets: ['hermes'], createdAt: '2026-01-01T00:00:00Z', updatedAt: '2026-01-01T00:00:00Z',
-    }},
-    { entryId: 'mcp-1', kind: 'mcp', mcpServer: {
-      id: 'mcp-1', name: 'upstream', transport: { type: 'streamable-http', url: 'https://up.example/mcp' },
-      mode: 'proxy', scope: 'personal', ownerId: null, createdAt: '2026-01-01T00:00:00Z', updatedAt: '2026-01-01T00:00:00Z',
-    }},
+    {
+      entryId: 'skill-1',
+      kind: 'skill',
+      resource: {
+        id: 'skill-1',
+        key: 'skill:tdd',
+        kind: 'skill',
+        name: 'tdd',
+        description: 'TDD.',
+        version: '1.0.0',
+        source: {
+          type: 'inline',
+          content: '---\nname: tdd\ndescription: TDD\n---\n\nWrite tests first.',
+        },
+        scope: 'personal',
+        ownerId: null,
+        targets: ['hermes'],
+        createdAt: '2026-01-01T00:00:00Z',
+        updatedAt: '2026-01-01T00:00:00Z',
+      },
+    },
+    {
+      entryId: 'mcp-1',
+      kind: 'mcp',
+      mcpServer: {
+        id: 'mcp-1',
+        name: 'upstream',
+        transport: { type: 'streamable-http', url: 'https://up.example/mcp' },
+        mode: 'proxy',
+        scope: 'personal',
+        ownerId: null,
+        createdAt: '2026-01-01T00:00:00Z',
+        updatedAt: '2026-01-01T00:00:00Z',
+      },
+    },
   ],
 };
 
-let pass = 0, fail = 0;
+let pass = 0,
+  fail = 0;
 const expect = (label, got, want) => {
   const ok = got === want;
   console.log(`${ok ? 'PASS' : 'FAIL'}  ${label}`);
@@ -79,7 +112,11 @@ expect('user conflict edit kept as .bak', fs.existsSync(`${OUT}/config.yaml.hnx.
 expect('plugin dir pruned', fs.existsSync(`${OUT}/plugins/uninstall-me`), false);
 expect('empty plugins parent pruned', fs.existsSync(`${OUT}/plugins`), false);
 expect('ledger removed', fs.existsSync(`${OUT}/harness-nexus-install-state.json`), false);
-expect('second uninstall finds nothing', planUninstall({ target: 'hermes', input: { outDir: OUT } }) === null, true);
+expect(
+  'second uninstall finds nothing',
+  planUninstall({ target: 'hermes', input: { outDir: OUT } }) === null,
+  true,
+);
 
 console.log(`\n=== ${pass} passed, ${fail} failed ===`);
 process.exit(fail > 0 ? 1 : 0);

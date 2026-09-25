@@ -312,6 +312,12 @@ function SessionRail({
                         type="button"
                         className="flex min-w-0 flex-1 items-center gap-1.5 text-left hover:text-foreground"
                         title={group.cwd}
+                        // The header renders the basename (a rail 288px wide
+                        // cannot print a path), so the accessible name carries
+                        // the full cwd — the group IS the directory, and two
+                        // folders can share a basename.
+                        aria-label={group.cwd}
+                        aria-expanded={!collapsed}
                         onClick={() => onToggleCwd(group.cwd)}
                       >
                         <ChevronRightIcon
@@ -327,7 +333,7 @@ function SessionRail({
                         type="button"
                         className="hover:text-foreground shrink-0 opacity-0 group-hover/folder:opacity-100"
                         title={t('chat.newSessionHere', { dir: cwdBasename(group.cwd) })}
-                        aria-label={t('chat.newSessionHere', { dir: cwdBasename(group.cwd) })}
+                        aria-label={t('chat.newSessionHere', { dir: group.cwd })}
                         onClick={() => void onOpenChannel(undefined, group.cwd)}
                       >
                         <PlusIcon className="size-3.5" />
