@@ -457,7 +457,10 @@ function AdaptersPanel({
           actionLabel={t('machineDetail.adapterKillAction')}
           // 02-content.md §3.8 names this one of the two truly irreversible
           // actions: the process is gone, and a process cannot be un-killed.
+          // It is also one of the comp's two HAZARD buttons (.hazard): the
+          // stripe marks an action that reaches a RUNNING thing, not a record.
           tone="danger"
+          hazard
           busy={killing !== null}
           onConfirm={() => void kill(pending)}
         />

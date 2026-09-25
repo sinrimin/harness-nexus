@@ -1,10 +1,9 @@
 import type { ReactNode } from 'react';
 import { Navigate, useLocation, Link } from 'react-router-dom';
-import { TriangleAlertIcon } from 'lucide-react';
 import { useAuth } from './auth.js';
 import { useI18n } from '@/i18n';
 import { AppShell } from '@/components/app-shell.js';
-import { Card, CardContent } from '@/components/ui/card.js';
+import { EmptyState, Panel } from '@/components/kit';
 import { Button } from '@/components/ui/button.js';
 
 /**
@@ -34,16 +33,19 @@ export function RequireAdmin({ children }: { children: ReactNode }) {
   if (user?.role !== 'admin') {
     return (
       <AppShell>
-        <Card className="mx-auto mt-12 max-w-md">
-          <CardContent className="flex flex-col items-center gap-3 p-8 text-center">
-            <TriangleAlertIcon className="text-warn size-8" />
-            <h2 className="text-lg font-semibold">{t('app.adminsOnlyTitle')}</h2>
-            <p className="text-muted-foreground text-sm">{t('app.adminsOnlyBody')}</p>
-            <Button asChild variant="outline" size="sm" className="mt-1">
-              <Link to="/">{t('app.backToOverview')}</Link>
-            </Button>
-          </CardContent>
-        </Card>
+        {/* A 403 is a dead end, not a panel: the kit's empty state (the comp's
+            lamp sockets), with the way out as its action. */}
+        <Panel className="mx-auto mt-12 max-w-md">
+          <EmptyState
+            title={t('app.adminsOnlyTitle')}
+            hint={t('app.adminsOnlyBody')}
+            action={
+              <Button asChild variant="outline" size="sm">
+                <Link to="/">{t('app.backToOverview')}</Link>
+              </Button>
+            }
+          />
+        </Panel>
       </AppShell>
     );
   }

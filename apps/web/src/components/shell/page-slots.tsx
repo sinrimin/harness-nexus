@@ -36,9 +36,9 @@ import { createPortal } from 'react-dom';
  * detached and re-attached on every shell render, and the pair of null/node
  * updates would render forever.
  */
-export type PageSlotName = 'title' | 'actions';
+export type PageSlotName = 'title' | 'actions' | 'margin';
 
-type Targets = { actions?: HTMLElement | null };
+type Targets = { actions?: HTMLElement | null; margin?: HTMLElement | null };
 type Claims = Partial<Record<PageSlotName, boolean>>;
 
 const noop = () => undefined;
@@ -48,7 +48,8 @@ export interface PageSlotsValue {
   title: string | null;
   /** Slots a page has claimed — the shell drops its own fallback for those. */
   claims: Claims;
-  /** The shell's DOM nodes (the actions slot is a portal target). */
+  /** The shell's DOM nodes (the actions and folio-margin slots are portal
+   *  targets; the margin one is the Region slot a skin may style). */
   targets: Targets;
   register: (name: PageSlotName, claimed: boolean) => void;
   setTitle: (title: string | null) => void;
@@ -72,10 +73,11 @@ export function PageSlotsProvider({
   return <PageSlotsContext.Provider value={value}>{children}</PageSlotsContext.Provider>;
 }
 
-/** Shell side: the slot state plus a stable callback ref for the actions slot. */
+/** Shell side: the slot state plus stable callback refs for the two DOM slots. */
 export function usePageSlots(): {
   value: PageSlotsValue;
   actionsRef: RefCallback<HTMLElement | null>;
+  marginRef: RefCallback<HTMLElement | null>;
 } {
   const [targets, setTargets] = useState<Targets>({});
   const [claims, setClaims] = useState<Claims>({});
@@ -83,7 +85,13 @@ export function usePageSlots(): {
 
   const actionsRef = useMemo<RefCallback<HTMLElement | null>>(
     () => (el) => {
-      setTargets((prev) => (prev.actions === el ? prev : { actions: el }));
+      setTargets((prev) => (prev.actions === el ? prev : { ...prev, actions: el }));
+    },
+    [],
+  );
+  const marginRef = useMemo<RefCallback<HTMLElement | null>>(
+    () => (el) => {
+      setTargets((prev) => (prev.margin === el ? prev : { ...prev, margin: el }));
     },
     [],
   );
@@ -100,7 +108,7 @@ export function usePageSlots(): {
     () => ({ title, claims, targets, register, setTitle }),
     [title, claims, targets, register, setTitle],
   );
-  return { value, actionsRef };
+  return { value, actionsRef, marginRef };
 }
 
 /** Page side: publish this page's title into the topbar. */
@@ -123,7 +131,7 @@ export function PageSlot({ slot, children }: { slot: PageSlotName; children: Rea
     return () => register(slot, false);
   }, [register, slot]);
 
-  const target = slot === 'actions' ? targets.actions : null;
+  const target = slot === 'actions' ? targets.actions : slot === 'margin' ? targets.margin : null;
   if (!target) return null;
   return createPortal(children, target);
 }

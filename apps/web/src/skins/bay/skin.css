@@ -1,10 +1,13 @@
 /*
  * BAY skin — signature surfaces, scoped under [data-skin='bay'] only.
  * Panels are bolted on (hard offset shadows, no blur); protocol data sits in
- * inverted LCD wells; status is an LED; the sidebar grows a numbered bay
- * spine. Wells work by RE-SCOPING the contract variables locally (--border,
- * --muted-foreground… inside the well), so the utility classes inside them
- * re-render correctly without a single selector fight.
+ * inverted LCD wells; status is an LED; the spine is a numbered rack. Everything
+ * whose number the comp states lives in tokens.css (radius, shadows, control
+ * heights, type sizes, the label face); this file is what a token cannot say —
+ * gradients, glows, stripes, and shapes that are one selector wide. Wells work
+ * by RE-SCOPING the contract variables locally (--border, --muted-foreground…
+ * inside the well), so the utility classes inside them re-render correctly
+ * without a single selector fight.
  */
 
 /* ---------- Panels: bezel-mount ---------- */
@@ -12,46 +15,36 @@
 [data-skin='bay'] [data-surface='panel'],
 [data-skin='bay'] [data-surface='mesh'] {
   border-color: var(--border);
-  border-radius: 6px;
-  box-shadow: 2px 2px 0 #c3cad4; /* the bezel bolts the panel onto the chassis */
-  gap: 1rem;
+  box-shadow: var(--shadow-panel); /* the bezel bolts the panel onto the chassis */
 }
 
-/* Bezel header strip: the engraved label plate across the panel's top.
- * Only the VERTICAL offset is cancelled: the kit's Card carries `py-6` and no
- * horizontal padding — the header/content supply their own `px-6` — so a
- * negative inline margin would push the plate past the panel on both sides.
- * Under the old max-w-6xl frame that overhang had slack; with the full-width
- * frame it lands outside the content column and the column scrolls sideways. */
-[data-skin='bay'] [data-surface='panel'] > [data-slot='card-header'] {
-  margin: -1.5rem 0 0;
-  padding: 0.5rem 1.25rem;
-  border-bottom: 1px solid var(--border);
-  background: #e9edf2;
-}
-
-/* The kit's panel nameplate is already full-bleed and already set in the label
- * role, so the skin only has to engrave it: gradient plate + top lip. */
+/* The kit's nameplate already IS the bezel header strip — 28px, full-bleed,
+ * 1px rule under it, `--panel-head-h` and `px-3` from the base (kit/panel.tsx)
+ * — so the skin only has to engrave it: the comp's plate gradient, the
+ * machined top lip, and the caps face. The old `-1.5rem` margin that pulled a
+ * Card's header up into the panel is gone (04-contract.md §3 bans layout
+ * surgery); the five pages still rendering `Card > CardHeader` now use
+ * `Panel` / `DataTable` like every list page. */
 [data-skin='bay'] [data-slot='panel-header'] {
-  height: auto;
-  padding: 0.45rem 0.75rem;
-  background: linear-gradient(#f2f4f7, #e7ebf0);
+  background: linear-gradient(180deg, #e4e8ed, var(--bezel));
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7);
 }
 
-/* Card titles become engraved panel labels: narrow caps, tracked. */
-[data-skin='bay'] [data-slot='card-title'],
 [data-skin='bay'] [data-slot='panel-title'] {
-  font-family: var(--app-font-display);
-  font-size: 0.8rem;
+  font-family: var(--app-font-label);
+  font-size: var(--label-size);
   font-weight: 600;
-  letter-spacing: 0.09em;
+  letter-spacing: var(--label-tracking);
   text-transform: uppercase;
 }
 
-/* The kit's lamp is the LED: same ring, same glow, both renderings. */
-[data-skin='bay'] [data-slot='lamp-body'] {
-  outline: 1px solid rgba(20, 26, 33, 0.35);
+/* Facts beside a nameplate are instrument print, not prose: the comp's legend
+   is mono 10.5px. Scoped to the meta TEXT, not the whole strip — the controls
+   sitting next to it have their own dress. */
+[data-skin='bay'] [data-slot='panel-meta-text'] {
+  font-family: var(--app-font-mono);
+  font-size: 10.5px;
+  font-variant-numeric: tabular-nums;
 }
 
 /* Page titles take the display role without the caps treatment. */
@@ -63,8 +56,11 @@
 
 /* ---------- LCD wells ---------- */
 
+/* A FIGURE readout is a window (the comp's `.pc-*` posture wells); an INLINE
+   readout is a panel-head legend — a lamp, a number and a label on the plate —
+   and filling that one would put a black block in every nameplate. */
 [data-skin='bay'] [data-surface='well'],
-[data-skin='bay'] [data-surface='readout'] {
+[data-skin='bay'] [data-surface='readout'][data-layout='figure'] {
   background: var(--surface-inverted);
   border: 1px solid var(--border);
   border-radius: 2px;
@@ -86,23 +82,36 @@
   --well-edge: #2a3340;
   --well-ink: var(--surface-inverted-ink);
   --well-dim: var(--surface-inverted-dim);
-  --well-ok: #4fbf7f;
-  --well-warn: #e8a24c;
-  --well-fail: #e5715f;
+  --well-ok: #64d493;
+  --well-warn: #e8ae5d;
+  --well-fail: #ff8b7a;
 }
 
 /* Posture readouts (dashboard figures) get well padding; links keep routing. */
-[data-skin='bay'] [data-surface='readout'] {
+[data-skin='bay'] [data-surface='readout'][data-layout='figure'] {
   display: block;
   padding: 0.75rem 1rem;
 }
 
+/* The inline legend is instrument print: the comp's `.legend` is an 8px lamp
+   and mono 10.5px on the plate. */
+[data-skin='bay'] [data-surface='readout'][data-layout='inline'] {
+  font-family: var(--app-font-mono);
+  font-size: 10.5px;
+}
+
 /* ---------- LEDs ---------- */
 
-/* Every dot gains a dark instrument ring. */
+/* The comp's lamp is a LENS SET INTO THE PANEL, not a coloured dot: a dark
+   seat ring inside the lens, a black hole ring around it, and — only when lit
+   — a same-colour glow. Every value here is the comp's `.lamp`
+   (appendix-comp-inventory.md A.2); the off state is a dead grey lens with no
+   glow at all, which is what makes "configured but not connected" read. */
 [data-skin='bay'] .signal-dot,
 [data-skin='bay'] [data-slot='lamp-body'] {
-  box-shadow: 0 0 0 1px rgba(20, 26, 33, 0.35);
+  box-shadow:
+    inset 0 0 0 1px rgba(20, 26, 33, 0.55),
+    0 0 0 1px rgba(20, 26, 33, 0.4);
 }
 
 /* Live states glow — a lit LED, low and physical, never neon. */
@@ -117,8 +126,9 @@
 [data-skin='bay'] .signal-dot[data-state='busy'],
 [data-skin='bay'] [data-slot='lamp-body'][data-state='busy'] {
   box-shadow:
-    0 0 6px rgba(26, 156, 83, 0.35),
-    0 0 0 1px rgba(20, 26, 33, 0.35);
+    inset 0 0 0 1px rgba(20, 26, 33, 0.55),
+    0 0 6px rgba(26, 156, 83, 0.55),
+    0 0 0 1px rgba(20, 26, 33, 0.4);
 }
 
 [data-skin='bay'] .signal-dot[data-state='running'],
@@ -130,94 +140,51 @@
 [data-skin='bay'] .signal-dot[data-state='error'],
 [data-skin='bay'] [data-slot='lamp-body'][data-state='error'] {
   box-shadow:
-    0 0 6px rgba(217, 131, 36, 0.35),
-    0 0 0 1px rgba(20, 26, 33, 0.35);
+    inset 0 0 0 1px rgba(20, 26, 33, 0.55),
+    0 0 6px rgba(217, 131, 36, 0.55),
+    0 0 0 1px rgba(20, 26, 33, 0.4);
 }
 
 [data-skin='bay'] .signal-dot[data-state='failed'],
 [data-skin='bay'] [data-slot='lamp-body'][data-state='failed'] {
   box-shadow:
-    0 0 6px rgba(210, 49, 31, 0.35),
-    0 0 0 1px rgba(20, 26, 33, 0.35);
+    inset 0 0 0 1px rgba(20, 26, 33, 0.55),
+    0 0 6px rgba(210, 49, 31, 0.55),
+    0 0 0 1px rgba(20, 26, 33, 0.4);
 }
 
 /* The energised channel: orange carries the current. */
 [data-skin='bay'] .signal-dot[data-state='live'],
 [data-skin='bay'] [data-slot='lamp-body'][data-state='live'] {
   box-shadow:
-    0 0 7px rgba(239, 91, 19, 0.45),
-    0 0 0 1px rgba(20, 26, 33, 0.35);
+    inset 0 0 0 1px rgba(20, 26, 33, 0.55),
+    0 0 7px rgba(239, 91, 19, 0.6),
+    0 0 0 1px rgba(20, 26, 33, 0.4);
 }
 
 /* ---------- Sidebar: the bay spine ---------- */
 
-/* Reserve a 56px gutter for the numbered bays, split by a hairline. */
-[data-skin='bay'] [data-region='sidebar'] {
-  position: relative;
-  padding-left: 56px;
+/* The bay numbers are DATA, and the base renders them (shell/spine.tsx: the
+ * section address `01`…`05` from the nav manifest, with the section's label
+ * under it — so hiding a section for a non-admin can never renumber anything).
+ *
+ * This skin used to inject the same numbers with `content: '01\A NAV'` into
+ * `[data-region='nav']` — CSS could not know the list, and the plates were
+ * positioned at `left: -44px` inside a `overflow-hidden` plate column, i.e.
+ * painted nowhere. Both families are gone; BAY only styles what the base
+ * renders (04-contract.md §3, rule 1). */
+[data-skin='bay'] [data-region='spine'] a[data-bay-number] {
+  background: var(--sidebar);
 }
 
-[data-skin='bay'] [data-region='sidebar']::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  left: 56px;
-  width: 1px;
-  background: var(--sidebar-border);
+[data-skin='bay'] [data-region='spine'] a[data-bay-number]:hover {
+  background: #e7eaef;
 }
 
-/* Each nav anchor's group number + label, dropped into the gutter. Groups
- * with consecutive members hide the plate on all but the first (the group
- * order in navItems is contiguous, which the sibling selectors rely on). */
-[data-skin='bay'] [data-region='nav'] a[data-nav-group] {
-  position: relative;
-}
-
-[data-skin='bay'] [data-region='nav'] a[data-nav-group]::before {
-  position: absolute;
-  left: -44px;
-  width: 36px;
-  text-align: left;
-  font-family: var(--app-font-display);
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.08em;
-  line-height: 1.25;
-  color: var(--muted-foreground);
-  white-space: pre-line; /* the \A in content stacks number over label */
-  pointer-events: none;
-}
-
-[data-skin='bay'] a[data-nav-group='nav']::before {
-  content: '01\A NAV';
-}
-[data-skin='bay'] a[data-nav-group='fleet']::before {
-  content: '02\A FLEET';
-}
-[data-skin='bay'] a[data-nav-group='mesh']::before {
-  content: '03\A MESH';
-}
-[data-skin='bay'] a[data-nav-group='asset']::before {
-  content: '04\A ASSET';
-}
-[data-skin='bay'] a[data-nav-group='tokens']::before {
-  content: '05\A TOKENS';
-}
-[data-skin='bay'] a[data-nav-group='admin']::before {
-  content: '06\A ADMIN';
-}
-
-/* Hide the plate on 2nd..nth consecutive member of the same group. */
-[data-skin='bay'] a[data-nav-group='fleet'] ~ a[data-nav-group='fleet']::before,
-[data-skin='bay'] a[data-nav-group='asset'] ~ a[data-nav-group='asset']::before,
-[data-skin='bay'] a[data-nav-group='admin'] ~ a[data-nav-group='admin']::before {
-  display: none;
-}
-
-/* The active bay carries the live edge. */
-[data-skin='bay'] [data-region='nav'] a[data-nav-group][aria-current='page'] {
-  box-shadow: inset 3px 0 0 var(--signal);
+/* The live bay keeps the accent edge the base drew (3px, `--signal`), and the
+ * plate behind it goes to paper: one screen, one live thing. */
+[data-skin='bay'] [data-region='spine'] a[data-bay-number][aria-current='true'] {
+  background: var(--card);
 }
 
 /* ---------- Mesh panel: the graticule ---------- */
@@ -243,6 +210,222 @@
 [data-skin='bay'] [data-slot='lamp-body'][data-live='true'],
 [data-skin='bay'] [data-slot='lamp-body'].lamp-breath {
   box-shadow:
-    0 0 7px rgba(239, 91, 19, 0.45),
-    0 0 0 1px rgba(20, 26, 33, 0.35);
+    inset 0 0 0 1px rgba(20, 26, 33, 0.55),
+    0 0 7px rgba(239, 91, 19, 0.6),
+    0 0 0 1px rgba(20, 26, 33, 0.4);
+}
+
+/* ---------- The drafting table ------------------------------------------ */
+
+/* The content area is the drafting table: an 8px measurement grid behind
+ * everything (02-content.md §8, "坐标纸"). It is faint on purpose — it is a
+ * reference, not a texture, and the panels sit on top of it opaquely. */
+[data-skin='bay'] [data-region='main'] {
+  background-image:
+    linear-gradient(to right, rgba(20, 26, 33, 0.05) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(20, 26, 33, 0.05) 1px, transparent 1px);
+  background-size: 8px 8px;
+}
+
+/* ---------- Tables ------------------------------------------------------ */
+
+/* The head is a tray at 10px caps (the base reads --tray / --app-font-label /
+   --label-size-sm / --table-head-h, all re-pointed in tokens.css), the rows are
+   30px, and the LAST row carries no rule — the comp's table ends on the row,
+   not on a line. Hover stays the system's tinted step rather than the comp's
+   solid tray: a hover has to read as a step on both skins. */
+[data-skin='bay'] [data-surface='table'] tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+/* ---------- Chips and badges -------------------------------------------- */
+
+/* A chip is a small key: 1px hard shadow (the comp's `.chip`), tightened
+   radius; a muted chip is deliberately flat (the comp's `.chip.more`). */
+[data-skin='bay'] [data-slot='chip'] {
+  border-radius: 1px;
+  box-shadow: 1px 1px 0 var(--bezel);
+}
+[data-skin='bay'] [data-slot='chip'][data-tone='muted'] {
+  box-shadow: none;
+}
+
+/* A badge is a printed enum, not an object: no shadow, mono, 10px, square. */
+[data-skin='bay'] [data-slot='badge'] {
+  height: 18px;
+  border-radius: 1px;
+  padding-inline: 5px;
+  font-family: var(--app-font-mono);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- Controls ---------------------------------------------------- */
+
+/* The comp's key: hard shadow, caps on the label, and the press is the base's
+   rule reading this skin's numbers (--press-shift 2px, --shadow-press none).
+   The resting rule steps aside while the key is held — `:not(:active)` — or its
+   own selector would out-specify the base's and the shadow would stay put, i.e.
+   the key would slide under its own shadow instead of being pushed into the
+   panel. Density comes from --control-h*. */
+[data-skin='bay']
+  [data-slot='button']:not([data-variant='ghost']):not([data-variant='link']):not(:active) {
+  border-radius: 2px;
+  box-shadow: var(--shadow-panel);
+  font-family: var(--app-font-label);
+  font-size: var(--label-size);
+  font-weight: 600;
+  letter-spacing: var(--label-tracking);
+  text-transform: uppercase;
+}
+/* The quiet variants are text, not hardware. */
+[data-skin='bay'] [data-slot='button'][data-variant='ghost'],
+[data-skin='bay'] [data-slot='button'][data-variant='link'] {
+  box-shadow: none;
+}
+
+/* Inputs are WINDOWS (the comp's `.inp`/`.sel`): the same inverted LCD as a
+   well, mono data inside, and focus is the accent edge — never the generic
+   ring, which on an LCD reads as a light leak. */
+[data-skin='bay'] :is([data-slot='input'], [data-slot='select-trigger'], [data-slot='textarea']) {
+  background: var(--surface-inverted);
+  color: var(--surface-inverted-ink);
+  border-color: #2a3340;
+  border-radius: 2px;
+  font-family: var(--app-font-mono);
+  font-size: var(--data-size);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.07),
+    inset 0 2px 6px rgba(0, 0, 0, 0.5);
+}
+[data-skin='bay']
+  :is([data-slot='input'], [data-slot='select-trigger'], [data-slot='textarea'])::placeholder {
+  color: var(--surface-inverted-dim);
+}
+[data-skin='bay']
+  :is([data-slot='input'], [data-slot='select-trigger'], [data-slot='textarea']):focus-visible {
+  outline: none;
+  border-color: var(--signal);
+  box-shadow:
+    0 0 0 1px var(--signal),
+    inset 0 1px 0 rgba(255, 255, 255, 0.07),
+    inset 0 2px 6px rgba(0, 0, 0, 0.5);
+}
+
+/* The switch is a rectangular SLOT with a machined knob, and a green pilot
+   lamp on the left when it is on — the comp's `.sw`. (Shape is the skin's
+   business: manifest.statusStyle and this are why `data-slot` exists.) */
+[data-skin='bay'] [data-slot='switch'] {
+  position: relative;
+  width: 38px;
+  height: 20px;
+  border-radius: 2px;
+  border-color: var(--border);
+  background: var(--tray);
+  box-shadow: inset 0 1px 2px rgba(20, 26, 33, 0.25);
+}
+[data-skin='bay'] [data-slot='switch'][data-state='checked'] {
+  background: #dfe4ea;
+}
+[data-skin='bay'] [data-slot='switch'][data-state='checked']::before {
+  content: '';
+  position: absolute;
+  left: 5px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--ok);
+  box-shadow: 0 0 4px rgba(26, 156, 83, 0.7);
+}
+[data-skin='bay'] [data-slot='switch-thumb'] {
+  width: 14px;
+  height: 14px;
+  border-radius: 1px;
+  background: linear-gradient(180deg, #f2f4f7, var(--bezel));
+  box-shadow: 1px 1px 0 var(--bezel);
+}
+[data-skin='bay'] [data-slot='switch-thumb'][data-state='unchecked'] {
+  transform: translateX(2px);
+}
+[data-skin='bay'] [data-slot='switch-thumb'][data-state='checked'] {
+  transform: translateX(22px);
+}
+
+/* ---------- Tabs: the comp's segmented tray ----------------------------- */
+
+/* One rule for both tab strips (the kit's Radix `ui/tabs` and the hand-rolled
+   one on the skills page) — they share the slots precisely so this stays one
+   rule. The active tab is panel-plate with a 3px accent underline. */
+[data-skin='bay'] [data-slot='tabs-list'] {
+  height: 34px;
+  gap: 0;
+  background: var(--tray);
+  border-bottom-color: var(--border);
+}
+[data-skin='bay'] [data-slot='tabs-trigger'] {
+  height: 100%;
+  padding: 0 12px;
+  border: 0;
+  border-right: 1px solid var(--border);
+  border-radius: 0;
+  font-family: var(--app-font-label);
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: var(--label-tracking);
+  text-transform: uppercase;
+}
+[data-skin='bay'] [data-slot='tabs-trigger']:is([data-state='active'], [data-state='live']) {
+  background: var(--card);
+  color: var(--foreground);
+  box-shadow: inset 0 -3px 0 var(--signal);
+}
+
+/* ---------- The instrument's numbers ------------------------------------ */
+
+/* A figure is a plate, not a glyph: the comp's hard shadow sits behind the
+   large readout numerals (02-content.md §8 "数字 = 等宽 + 硬阴影块"). */
+[data-skin='bay'] [data-surface='readout'][data-layout='figure'] .role-readout {
+  text-shadow: 3px 3px 0 var(--bezel);
+}
+
+/* The meter is 62x7 with a squared 1px radius and a steel fill (the comp's
+   `.meter`: 填充渐变 #93a3b5→#6d7f93) — neutral until it is nearly full, when
+   the tone (warn/danger) takes over. */
+[data-skin='bay'] [data-slot='meter'] {
+  width: 62px;
+  height: 7px;
+  border-radius: 1px;
+}
+[data-skin='bay'] [data-slot='meter-fill'] {
+  border-radius: 1px;
+  background: linear-gradient(90deg, #93a3b5, #6d7f93);
+}
+[data-skin='bay'] [data-slot='meter-fill'][data-tone='warn'] {
+  background: var(--warn);
+}
+[data-skin='bay'] [data-slot='meter-fill'][data-tone='danger'] {
+  background: var(--danger);
+}
+
+/* ---------- Hazard ------------------------------------------------------ */
+
+/* The comp's hazard stripe (.hazard): a 5px diagonal warning bar, used on
+   exactly the actions that reach a RUNNING thing. The base decides which
+   actions those are (`data-hazard`, kit/confirm-dialog) — the skin only paints
+   the mark, so the meaning is in the DOM and not in this file. */
+[data-skin='bay'] [data-hazard='true'] {
+  position: relative;
+  overflow: hidden;
+}
+[data-skin='bay'] [data-hazard='true']::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 5px;
+  background: repeating-linear-gradient(
+    45deg,
+    rgba(239, 91, 19, 0.9) 0 6px,
+    rgba(20, 26, 33, 0.85) 6px 12px
+  );
+  pointer-events: none;
 }

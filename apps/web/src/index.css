@@ -135,6 +135,9 @@
   --shell-bar-h: 56px;
   --shell-bar-h-sm: 48px;
   --shell-subbar-h: 38px; /* the readout strip, inside the content column */
+  /* The folio margin (README §6 `Region`): a skin's side-note column, and the
+   * base keeps the slot itself empty-and-invisible until a page fills it. */
+  --marginalia-w: 200px;
   --shell-title-size: 17px; /* the page's identity in the topbar */
 
   /* Tray: the neutral step behind table heads, list feet, sub-panels and row
@@ -166,9 +169,14 @@
   --state-warn-ink: oklch(0.5 0.12 62);
   --state-fail-ink: oklch(0.5 0.19 25);
 
-  /* Physics — a skin may make the panel hard-shadowed and mechanical. */
+  /* Physics — a skin may make the panel hard-shadowed and mechanical.
+   * `--press-shift`/`--shadow-press` are the press displacement: Signal is a
+   * flat console (both zero), BAY is a machine key (2px shift, shadow gone).
+   * `--shadow-press: 0 0 #0000` is a valid, invisible shadow — a bare `0px`
+   * is not, and would leave the resting shadow in place on press. */
   --shadow-panel: 0 1px 2px oklch(0 0 0 / 5%);
-  --shadow-press: 0px; /* the :active displacement; BAY = 2px 2px 0 offset */
+  --press-shift: 0px;
+  --shadow-press: 0 0 #0000;
   --radius-panel: var(--radius);
   --radius-well: calc(var(--radius) - 2px);
 
@@ -176,7 +184,16 @@
   --panel-pad: 13px;
   --panel-pad-wide: 20px; /* table first/last cell: the shell owns its edges */
   --panel-head-h: 28px;
+  /* The table head is its own device: a skin may want a 26px strip in the
+   * table while the panel nameplate stays 28px (BAY's comp does exactly
+   * that), so it reads a token that defaults to the nameplate's. */
+  --table-head-h: var(--panel-head-h);
   --row-h: 30px;
+  /* Control heights (kit `Button` sizes). The comps' buttons are 30/25px in
+   * the instrument density — same mechanism, one step shorter. */
+  --control-h: 2.25rem;
+  --control-h-sm: 2rem;
+  --control-h-lg: 2.5rem;
   --gap: 16px;
   --gap-tight: 8px;
   --touch: 40px;
@@ -423,6 +440,15 @@
   animation-delay: calc(var(--motion-seat) * 0.66);
 }
 
+/* The folio margin is a Region slot: an EMPTY slot is not a 200px gutter with
+ * nothing in it — it is nothing at all (README §6). A portal's children are
+ * real DOM children of this node, so `:empty` stops matching the moment a page
+ * fills it; `.hidden`/`min-[1280px]:block` above decides where it may show at
+ * all. */
+[data-region='marginalia']:empty {
+  display: none;
+}
+
 /* ---- Toast (03-interaction.md §3) --------------------------------------
  * The Note's material on sonner's engine: panel surface, 1px frame, a 3px
  * tone edge on the left, mono body (the `role-data-sm` title set in
@@ -634,6 +660,19 @@
   line-height: 1.4;
 }
 
+/* ---- Controls: the physical layer (02-content.md §A.2 `.btn`) -----------
+ * One of the four motions the system allows is a press displacement: the
+ * control moves by its own shadow's offset and the shadow goes away, so a
+ * hard-shadowed skin reads as a machine key. Signal keeps both at zero, so
+ * the rule costs it nothing — and the mechanism lives in the base instead of
+ * in a skin's `:active` rule (04-contract.md §3: material in tokens, intent
+ * in the base).
+ */
+[data-slot='button']:not(:disabled):active {
+  transform: translate(var(--press-shift), var(--press-shift));
+  box-shadow: var(--shadow-press);
+}
+
 /* The table shell's edge padding: 13 call sites used to hand-write pl-6/pr-6
  * on the first and last cell. Unlayered for the same reason — `ui/table`'s
  * `p-2` / `px-2` utilities would otherwise win over it. */
@@ -688,7 +727,7 @@
 }
 
 [data-surface='table'] thead th {
-  height: var(--panel-head-h);
+  height: var(--table-head-h);
   padding-block: 0;
   font-family: var(--app-font-label);
   font-size: var(--label-size-sm);

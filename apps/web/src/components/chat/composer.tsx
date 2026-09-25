@@ -140,8 +140,16 @@ function ContextMeter({ usage }: { usage: ComposerUsage | null }) {
       >
         {formatTokens(used)} / {formatTokens(size)}
       </span>
-      <span className="bg-muted relative h-1 w-16 overflow-hidden rounded-full">
+      {/* Slots + tone are data: the comp's meter is 62x7 with a steel fill,
+          and a skin has to reach both without parsing utilities. */}
+      <span
+        data-slot="meter"
+        data-tone={tone}
+        className="bg-muted relative h-1 w-16 overflow-hidden rounded-full"
+      >
         <span
+          data-slot="meter-fill"
+          data-tone={tone}
           className={cn(
             'absolute inset-y-0 left-0 rounded-full transition-[width] duration-300',
             tone === 'danger' ? 'bg-danger' : tone === 'warn' ? 'bg-warn' : 'bg-primary',

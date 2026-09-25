@@ -2,11 +2,10 @@ import { useEffect, useState } from 'react';
 import { api } from '@/api';
 import { useAuth, withAuthGuard } from '@/auth';
 import { useI18n } from '@/i18n';
-import { PageIntro } from '@/components/kit';
+import { PageIntro, Panel, PanelBody } from '@/components/kit';
 import { PageSlot } from '@/components/shell/page-slots';
 import { HarnessNexusError } from '@harness-nexus/sdk';
 import { toast } from 'sonner';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
 import { Label } from '@/components/ui/label';
@@ -38,13 +37,12 @@ export function SettingsPage() {
     <>
       <PageIntro sub={<>{t('settings.subtitle')}</>} />
 
-      <Card className="max-w-xl">
-        <CardHeader>
-          <CardTitle className="text-base">{t('settings.registration')}</CardTitle>
-          <CardDescription>{t('settings.registrationDesc')}</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="flex items-center justify-between rounded-lg border p-4">
+      <Panel label={t('settings.registration')} className="max-w-xl">
+        <PanelBody variant="pad" className="flex flex-col gap-3">
+          <p className="text-muted-foreground max-w-[68ch] text-sm">
+            {t('settings.registrationDesc')}
+          </p>
+          <div className="flex items-center justify-between rounded-(--radius-well) border p-4">
             <div className="flex flex-col gap-1">
               <Label htmlFor="reg-switch" className="text-sm font-medium">
                 {t('settings.allowPublicRegistration')}
@@ -67,8 +65,8 @@ export function SettingsPage() {
               onCheckedChange={(v) => toggle(v)}
             />
           </div>
-        </CardContent>
-      </Card>
+        </PanelBody>
+      </Panel>
     </>
   );
 }
