@@ -1,10 +1,13 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
   ArrowUpIcon,
+  BoxIcon,
+  BrainIcon,
   CircleStopIcon,
   ImageIcon,
   PaperclipIcon,
   PlusIcon,
+  ShieldCheckIcon,
   SquareSlashIcon,
 } from 'lucide-react';
 import { useI18n } from '@/i18n';
@@ -173,15 +176,18 @@ interface SelectChoice {
  * OPAQUE adapter keys — never parsed; `group` becomes a labeled group
  * (dsh's per-provider model lists).
  *
- * It is a labeled COLUMN, not a bare trigger: the comp's `.ctl` puts the
- * control's name above it (`Permission` / `Model` / `Effort` at 9.5px), which
- * is what makes three adjacent select windows readable when their values are
- * opaque words. The trigger itself rides `--control-h-sm`, so BAY's 25px
- * hardware scale applies (it was a hard 32px — "the dropdowns are almost half
- * the Sender", reported from a phone).
+ * Two shapes, because the phone has no room for three opaque values plus a
+ * meter plus Send: from `sm` up it is the value and a chevron; below it is the
+ * control's ICON (the picker is where the current value is read — the selected
+ * row carries the check) at the compact control's size, with the fingertip
+ * supplied by an overlay hit area rather than a bigger box. Naming the three
+ * with a label above each was tried and rejected in review: it made an
+ * already-tight strip taller, which is the opposite of the point. The trigger
+ * rides `--control-h-sm`, so BAY's 25px hardware scale applies.
  */
 function ConfigSelect({
   label,
+  icon,
   value,
   choices,
   disabled,
@@ -189,6 +195,8 @@ function ConfigSelect({
   onPick,
 }: {
   label: string;
+  /** Shown instead of the value on phones — the adapter's control as an icon. */
+  icon: ReactNode;
   value: string | undefined;
   choices: SelectChoice[];
   disabled: boolean;
@@ -205,48 +213,60 @@ function ConfigSelect({
     else list.push(c);
   }
   return (
-    <span className="flex min-w-0 flex-col gap-0.5">
-      <span className="role-label-sm text-muted-foreground">{label}</span>
-      <Select
-        value={value === undefined ? undefined : value}
-        onValueChange={onPick}
-        disabled={disabled}
+    <Select
+      value={value === undefined ? undefined : value}
+      onValueChange={onPick}
+      disabled={disabled}
+    >
+      <SelectTrigger
+        size="sm"
+        aria-label={label}
+        title={
+          hint ??
+          (value === undefined
+            ? label
+            : (choices.find((c) => c.value === value)?.description ?? label))
+        }
+        className={cn(
+          'text-muted-foreground hover:text-foreground min-w-0 max-w-40 gap-1 border-none px-1.5 text-xs font-normal shadow-none focus:ring-0 dark:hover:bg-accent/50',
+          // Phone: one compact square per control — the trigger keeps the
+          // compact control height and drops the chevron (the icon IS the
+          // affordance) and the value (the picker states it, check included).
+          // Its fingertip comes from the hit-area rule in index.css, so the
+          // visual stays as dense as the reference row.
+          'max-sm:min-w-(--control-h-sm) max-sm:max-w-none max-sm:justify-center max-sm:gap-0 max-sm:px-0',
+          // The base rules for these two slots are `*:` selectors (more
+          // specific than a bare utility), so the mobile hiding has to name
+          // them too.
+          'max-sm:[&_[data-slot=select-value]]:hidden max-sm:[&_[data-slot=select-chevron]]:hidden',
+        )}
       >
-        <SelectTrigger
-          size="sm"
-          aria-label={label}
-          title={
-            hint ??
-            (value === undefined
-              ? label
-              : (choices.find((c) => c.value === value)?.description ?? label))
-          }
-          className="text-muted-foreground hover:text-foreground min-w-0 max-w-40 gap-1 border-none px-1.5 text-xs font-normal shadow-none focus:ring-0 dark:hover:bg-accent/50"
-        >
-          <SelectValue placeholder={label} />
-        </SelectTrigger>
-        <SelectContent>
-          {[...groups.entries()].map(([group, list]) =>
-            group === '' ? (
-              list.map((c) => (
+        <span className="sm:hidden" aria-hidden="true">
+          {icon}
+        </span>
+        <SelectValue placeholder={label} />
+      </SelectTrigger>
+      <SelectContent>
+        {[...groups.entries()].map(([group, list]) =>
+          group === '' ? (
+            list.map((c) => (
+              <SelectItem key={c.value} value={c.value} title={c.description}>
+                {c.name}
+              </SelectItem>
+            ))
+          ) : (
+            <SelectGroup key={group}>
+              <SelectLabel>{group}</SelectLabel>
+              {list.map((c) => (
                 <SelectItem key={c.value} value={c.value} title={c.description}>
                   {c.name}
                 </SelectItem>
-              ))
-            ) : (
-              <SelectGroup key={group}>
-                <SelectLabel>{group}</SelectLabel>
-                {list.map((c) => (
-                  <SelectItem key={c.value} value={c.value} title={c.description}>
-                    {c.name}
-                  </SelectItem>
-                ))}
-              </SelectGroup>
-            ),
-          )}
-        </SelectContent>
-      </Select>
-    </span>
+              ))}
+            </SelectGroup>
+          ),
+        )}
+      </SelectContent>
+    </Select>
   );
 }
 
@@ -600,14 +620,17 @@ export function Composer({
         spellCheck={false}
         className="placeholder:text-muted-foreground max-h-56 w-full resize-none overflow-y-auto bg-transparent px-3.5 pb-1 pt-3 text-sm leading-relaxed outline-none disabled:cursor-not-allowed"
       />
-      {/* The toolbar WRAPS (comp `mobile.html` frame C: "the composer toolbar
-          wraps"). Three opaque config values plus a meter plus Send do not fit
-          a 390px phone, and a non-shrinkable row pushed the Send control off
-          the screen — reported from a phone. Wrapping keeps every control
-          reachable; the meter moves to its own row below the controls
-          (comp `.ctools .ctx { width:100%; order:9 }`) and Send keeps the
-          right edge of the row it lands on (`.round { margin-left:auto }`). */}
-      <div className="flex flex-wrap items-end gap-x-2 gap-y-1.5 px-3 pb-2.5 pt-1">
+      {/* The toolbar WRAPS. Three opaque config values plus a meter plus Send
+          do not fit a 390px phone, and a non-shrinkable row pushed the Send
+          control off the screen — reported from a phone. Below `sm` the config
+          controls are icons (their picker is where the value is read), the
+          meter takes its own row (`order:9`, comp `.ctools .ctx`) and Send
+          keeps the right edge of its row (`.round { margin-left:auto }`).
+          Wrapping stays as the fallback for a narrow desktop window. */}
+      <div
+        data-slot="composer-tools"
+        className="flex flex-wrap items-center gap-x-2 gap-y-1.5 px-3 pb-2.5 pt-1"
+      >
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button
@@ -640,6 +663,7 @@ export function Composer({
 
         <ConfigSelect
           label={t('chat.modeLabel')}
+          icon={<ShieldCheckIcon className="size-4" />}
           value={modeValue}
           choices={modeChoices}
           disabled={controlsDisabled}
@@ -649,6 +673,7 @@ export function Composer({
         {modelOption === undefined ? null : (
           <ConfigSelect
             label={t('chat.modelLabel')}
+            icon={<BoxIcon className="size-4" />}
             value={modelOption.currentValue}
             choices={
               modelOption.options?.map((o) => ({
@@ -666,6 +691,7 @@ export function Composer({
         {effortOption === undefined ? null : (
           <ConfigSelect
             label={t('chat.effortLabel')}
+            icon={<BrainIcon className="size-4" />}
             value={effortOption.currentValue}
             choices={
               effortOption.options?.map((o) => ({

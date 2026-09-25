@@ -17,9 +17,11 @@
  *                 never a token on the command line, it lands in shell history
  *   [skin]        `signal` (default) or `bay`
  *
- * Reports the first table row's geometry plus the whole table's row heights.
- * Uses puppeteer-core like the ui-snap rig, at the phone profile the #23
- * reports came from (1080×2400 screenshots ⇒ 412 CSS px at DPR 2.625).
+ * Reports every device it finds: the first table row (rows' heights, the well
+ * or chip inside it, its copy affordance's visual box and hit area) and, on a
+ * chat session page, the Sender's config controls. Uses puppeteer-core like
+ * the ui-snap rig, at the phone profile the #23 reports came from (1080×2400
+ * screenshots ⇒ 412 CSS px at DPR 2.625).
  */
 import { readFileSync } from 'node:fs';
 import puppeteer from 'puppeteer-core';
@@ -75,16 +77,34 @@ const out = await page.evaluate(() => {
   const row = rows[0];
   const device = row?.querySelector('[data-surface="well"]') ?? null;
   const copy = device?.querySelector('[data-slot="copy"]') ?? null;
-  const hit = copy === null ? null : getComputedStyle(copy, '::after');
+  const hitOf = (el) => {
+    if (el === null || el === undefined) return null;
+    const a = getComputedStyle(el, '::after');
+    return { w: a.minWidth, h: a.minHeight };
+  };
+  // The chat Sender's config controls: below `sm` they are icon squares and
+  // their fingertip is an overlay, so the visual and the hit area differ.
+  const senderTools = [...document.querySelectorAll("[data-slot='composer-tools'] [data-slot='select-trigger']")];
+  const sendButton = [...document.querySelectorAll("[data-slot='composer-tools'] button")].find((b) =>
+    /send|发送/i.test(b.getAttribute('aria-label') ?? ''),
+  );
   return {
     coarse: matchMedia('(pointer: coarse)').matches,
     rowHeights: rows.map((r) => Math.round(r.getBoundingClientRect().height)),
     row: rect(row),
     device: { ...rect(device), variant: device?.getAttribute('data-variant') ?? null },
     copyVisual: rect(copy),
-    copyHitArea: hit === null ? null : { w: hit.minWidth, h: hit.minHeight },
+    copyHitArea: hitOf(copy),
     menuTrigger: rect(row?.querySelector('[data-slot="dropdown-menu-trigger"]')),
     pinnedCell: rect(row?.lastElementChild),
+    sender: senderTools.length === 0 ? null : {
+      tools: senderTools.map((t) => ({
+        label: t.getAttribute('aria-label'),
+        visual: rect(t),
+        hitArea: hitOf(t),
+      })),
+      send: rect(sendButton),
+    },
   };
 });
 console.log(JSON.stringify(out, null, 1));

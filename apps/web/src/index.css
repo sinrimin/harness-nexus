@@ -789,6 +789,22 @@
     min-height: 2.5rem;
     transform: translate(-50%, -50%);
   }
+  /* Same bargain for the chat Sender's config icons: on a phone they are the
+     compact control's square (25px in BAY), because the reference row — and
+     this Sender's whole point — is that four controls plus Send fit one line.
+     A 2.5rem BOX would put the toolbar back to a two-row block, so the
+     fingertip is an overlay. */
+  [data-slot='composer-tools'] [data-slot='select-trigger'] {
+    position: relative;
+  }
+  [data-slot='composer-tools'] [data-slot='select-trigger']::after {
+    content: '';
+    position: absolute;
+    inset: 50%;
+    min-width: 2.5rem;
+    min-height: 2.5rem;
+    transform: translate(-50%, -50%);
+  }
 }
 
 /* The actions column stays put while the panel scrolls sideways
