@@ -413,7 +413,7 @@ function MachineRow({
         <TableCell className="text-right">
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon" className="size-8">
+              <Button variant="ghost" size="icon" className="size-(--control-h-sm)">
                 <MoreHorizontalIcon className="size-4" />
                 <span className="sr-only">{t('common.openMenu')}</span>
               </Button>

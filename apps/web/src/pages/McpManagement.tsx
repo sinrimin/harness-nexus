@@ -495,7 +495,7 @@ function ServerRow({
           <Button
             variant="ghost"
             size="sm"
-            className="text-muted-foreground h-8"
+            className="text-muted-foreground"
             onClick={() => onAsk('disconnect', server)}
           >
             <PlugZapIcon className="size-4" />
@@ -504,7 +504,7 @@ function ServerRow({
         ) : null}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon" className="size-8">
+            <Button variant="ghost" size="icon" className="size-(--control-h-sm)">
               <MoreHorizontalIcon className="size-4" />
               <span className="sr-only">{t('common.openMenu')}</span>
             </Button>
@@ -584,7 +584,7 @@ function ServerRow({
                   <Button
                     variant="ghost"
                     size="sm"
-                    className="text-muted-foreground h-8"
+                    className="text-muted-foreground"
                     onClick={() => onAsk('disconnect', server)}
                   >
                     <PlugZapIcon className="size-4" />
@@ -594,7 +594,6 @@ function ServerRow({
                   <Button
                     variant="outline"
                     size="sm"
-                    className="h-8"
                     disabled={isConnecting}
                     onClick={connect}
                   >
@@ -612,7 +611,7 @@ function ServerRow({
                 )}
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
-                    <Button variant="ghost" size="icon" className="size-8">
+                    <Button variant="ghost" size="icon" className="size-(--control-h-sm)">
                       <MoreHorizontalIcon className="size-4" />
                       <span className="sr-only">{t('common.openMenu')}</span>
                     </Button>

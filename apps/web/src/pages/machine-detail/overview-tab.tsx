@@ -190,7 +190,7 @@ function BaseWorkspaceField({
         placeholder="/home/user/projects"
         autoComplete="off"
         spellCheck={false}
-        className="h-8 font-mono text-xs"
+        className="h-(--control-h-sm) font-mono text-xs"
       />
     </Field>
   );

@@ -359,7 +359,7 @@ function RuntimeManage({
           value={version}
           onChange={(e) => setVersion(e.target.value)}
           placeholder={t('machineDetail.versionPlaceholder')}
-          className="h-8 w-36 font-mono text-xs"
+          className="h-(--control-h-sm) w-36 font-mono text-xs"
           autoComplete="off"
           spellCheck={false}
         />

@@ -200,7 +200,7 @@ function DeploymentsPanel({
               {t('machineDetail.profileLabel')}
             </Label>
             <Select value={profileId} onValueChange={setProfileId}>
-              <SelectTrigger id="deploy-profile" className="h-8 w-64 font-mono text-xs">
+              <SelectTrigger id="deploy-profile" size="sm" className="w-64 font-mono text-xs">
                 <SelectValue placeholder={t('machineDetail.pickProfile')} />
               </SelectTrigger>
               <SelectContent>
