@@ -1,6 +1,6 @@
 {
   "name": "@harness-nexus/mcp-runtime",
-  "version": "0.1.0-alpha.5",
+  "version": "0.1.0-alpha.6",
   "description": "Transport-facing MCP upstream pool \u2014 dial upstreams (SSE / Streamable HTTP / stdio), aggregate namespaced tools, route calls. Shared by the server's McpRegistry and the `hnx mcp serve` stdio shim (Phase 8 C2).",
   "type": "module",
   "main": "./dist/index.js",
