@@ -17,7 +17,7 @@ import { useI18n } from '@/i18n';
  * fall back to a `title` tooltip: the value must be reachable (02-content.md §3.2).
  */
 
-export type WellVariant = 'text' | 'block' | 'chip' | 'code' | 'term' | 'diff';
+type WellVariant = 'text' | 'block' | 'chip' | 'code' | 'term' | 'diff';
 
 type WellProps = HTMLAttributes<HTMLElement> & {
   variant?: WellVariant;

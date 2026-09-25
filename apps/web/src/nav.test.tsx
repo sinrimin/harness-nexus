@@ -24,7 +24,10 @@ afterEach(() => {
 describe('route manifest', () => {
   it('matches every declared path, including the parameterized ones', () => {
     for (const route of ROUTES) {
-      const concrete = route.path.replace(':agentId', 'a1').replace(':id', 'm1').replace('/*', '/x');
+      const concrete = route.path
+        .replace(':agentId', 'a1')
+        .replace(':id', 'm1')
+        .replace('/*', '/x');
       expect(matchRoute(concrete)?.id, `${route.path} → ${concrete}`).toBe(route.id);
     }
   });

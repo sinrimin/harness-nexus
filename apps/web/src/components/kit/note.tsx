@@ -14,7 +14,7 @@ import { cn } from '@/lib/utils';
  * failed, and offers the retry.
  */
 
-export type NoteTone = 'neutral' | 'ok' | 'warn' | 'fail';
+type NoteTone = 'neutral' | 'ok' | 'warn' | 'fail';
 
 const TONE_EDGE: Record<NoteTone, string> = {
   neutral: 'border-l-foreground/40',

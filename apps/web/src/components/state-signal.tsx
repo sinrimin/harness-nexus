@@ -33,7 +33,7 @@ export type SignalState =
   | 'inactive';
 
 /** HTML dot colors (Signal baseline) — one class family per state. */
-export const SIGNAL_DOT_CLASS: Record<SignalState, string> = {
+const SIGNAL_DOT_CLASS: Record<SignalState, string> = {
   online: 'bg-ok',
   connected: 'bg-ok',
   succeeded: 'bg-ok',

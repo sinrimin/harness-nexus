@@ -28,7 +28,7 @@ export interface ListQuerySpec {
   sort?: readonly string[];
 }
 
-export interface ParsedListQuery {
+interface ParsedListQuery {
   /** Trimmed search text; `''` when absent. */
   q: string;
   /** Every declared filter, `null` when absent or not in the vocabulary. */
@@ -39,14 +39,14 @@ export interface ParsedListQuery {
   active: boolean;
 }
 
-export interface ListQueryPatch {
+interface ListQueryPatch {
   q?: string;
   filters?: Record<string, string | null>;
   sort?: string | null;
 }
 
 /** `<key>` = ascending, `-<key>` = descending (§3.8). */
-export function parseSort(raw: string | null): { key: string; desc: boolean } | null {
+function parseSort(raw: string | null): { key: string; desc: boolean } | null {
   if (raw === null) return null;
   const trimmed = raw.trim();
   if (trimmed === '') return null;
@@ -56,7 +56,7 @@ export function parseSort(raw: string | null): { key: string; desc: boolean } | 
   return { key, desc };
 }
 
-export function encodeSort(key: string, desc: boolean): string {
+function encodeSort(key: string, desc: boolean): string {
   return desc ? `-${key}` : key;
 }
 
@@ -151,7 +151,7 @@ function isBlank(value: unknown): boolean {
  * Blank values last in both directions: a machine that never connected is not
  * "the oldest machine", and an empty credential name is not "the smallest".
  */
-export function compareValues(a: unknown, b: unknown): number {
+function compareValues(a: unknown, b: unknown): number {
   const aBlank = isBlank(a);
   const bBlank = isBlank(b);
   if (aBlank || bBlank) {

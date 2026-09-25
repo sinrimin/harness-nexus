@@ -245,7 +245,10 @@ export function UsersPage() {
                     >
                       <ShieldCheckIcon /> {t('users.makeAdmin')}
                     </DropdownMenuItem>
-                    <DropdownMenuItem disabled={u.role === 'user'} onClick={() => setRole(u, 'user')}>
+                    <DropdownMenuItem
+                      disabled={u.role === 'user'}
+                      onClick={() => setRole(u, 'user')}
+                    >
                       <UserIcon /> {t('users.makeUser')}
                     </DropdownMenuItem>
                     <DropdownMenuSeparator />

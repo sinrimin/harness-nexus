@@ -149,8 +149,7 @@ export function MachinesPage() {
     const rows = items.filter(
       (m) =>
         matchesQuery(query.q, [m.name, m.hostname, m.os, m.arch, m.daemonVersion, m.id]) &&
-        (query.filters['status'] === null ||
-          (query.filters['status'] === 'online') === m.online),
+        (query.filters['status'] === null || (query.filters['status'] === 'online') === m.online),
     );
     return sortRows(rows, effectiveSort(MACHINE_SPEC, query), (m, key) =>
       key === 'name' ? m.name : key === 'status' ? m.online : m.lastSeenAt,

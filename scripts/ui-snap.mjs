@@ -170,10 +170,26 @@ function parseArgs(argv) {
     if (a === '--update') opts.update = true;
     else if (a === '--keep') opts.keep = true;
     else if (a === '--help' || a === '-h') opts.help = true;
-    else if (a === '--routes') opts.routes = take(argv, i++).split(',').map((s) => s.trim()).filter(Boolean);
-    else if (a === '--skins') opts.skins = take(argv, i++).split(',').map((s) => s.trim()).filter(Boolean);
-    else if (a === '--modes') opts.modes = take(argv, i++).split(',').map((s) => s.trim()).filter(Boolean);
-    else if (a === '--viewports') opts.viewports = take(argv, i++).split(',').map((s) => s.trim()).filter(Boolean);
+    else if (a === '--routes')
+      opts.routes = take(argv, i++)
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean);
+    else if (a === '--skins')
+      opts.skins = take(argv, i++)
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean);
+    else if (a === '--modes')
+      opts.modes = take(argv, i++)
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean);
+    else if (a === '--viewports')
+      opts.viewports = take(argv, i++)
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean);
     else if (a === '--threshold') opts.threshold = Number(take(argv, i++));
     else if (a === '--drift') opts.drift = Number(take(argv, i++));
     else throw new Error(`unknown option ${a}`);
@@ -182,7 +198,8 @@ function parseArgs(argv) {
   const badRoute = opts.routes.filter((r) => !ALL_ROUTES.includes(r));
   if (badRoute.length) throw new Error(`unknown route(s): ${badRoute.join(', ')}`);
   const badSkin = opts.skins.filter((s) => !ALL_SKINS.includes(s));
-  if (badSkin.length) throw new Error(`unknown skin(s): ${badSkin.join(', ')} — available: ${ALL_SKINS.join(', ')}`);
+  if (badSkin.length)
+    throw new Error(`unknown skin(s): ${badSkin.join(', ')} — available: ${ALL_SKINS.join(', ')}`);
   const badMode = opts.modes.filter((m) => !ALL_MODES.includes(m));
   if (badMode.length) throw new Error(`unknown mode(s): ${badMode.join(', ')}`);
   const badVp = opts.viewports.filter((v) => !ALL_VIEWPORTS.includes(v));
@@ -291,7 +308,8 @@ function spawnLogged(label, cmd, args, env) {
     detached: true, // own process group => kill(-pid) reaps pnpm + grandchildren
   });
   child.on('exit', (code, signal) => {
-    if (!shuttingDown) log(`${label} exited unexpectedly (code=${code} signal=${signal}; log: ${logPath})`);
+    if (!shuttingDown)
+      log(`${label} exited unexpectedly (code=${code} signal=${signal}; log: ${logPath})`);
     try {
       closeSync(fd);
     } catch {
@@ -425,7 +443,12 @@ async function seed(token) {
 
   // Credentials (global + personal; the LLM provider rows reference them).
   for (const c of [
-    { name: 'anthropic-key', secret: 'sk-snap-demo-anthropic-000000000000', scope: 'global', distributable: false },
+    {
+      name: 'anthropic-key',
+      secret: 'sk-snap-demo-anthropic-000000000000',
+      scope: 'global',
+      distributable: false,
+    },
     { name: 'openrouter-key', secret: 'sk-snap-demo-openrouter-0000000000', scope: 'personal' },
   ]) {
     const r = await api('POST', '/api/credentials', c, token);
@@ -443,7 +466,11 @@ async function seed(token) {
   for (const s of [
     {
       name: 'filesystem',
-      transport: { type: 'stdio', command: 'npx', args: ['-y', '@modelcontextprotocol/server-filesystem', '/tmp'] },
+      transport: {
+        type: 'stdio',
+        command: 'npx',
+        args: ['-y', '@modelcontextprotocol/server-filesystem', '/tmp'],
+      },
       dialSite: 'client',
       scope: 'personal',
     },
@@ -482,7 +509,10 @@ async function seed(token) {
       name: 'Commit discipline',
       description: 'Write honest, reviewable commit messages.',
       version: '1.0.0',
-      source: { type: 'inline', content: '# Commit discipline\n\nSmall commits, honest messages.\n' },
+      source: {
+        type: 'inline',
+        content: '# Commit discipline\n\nSmall commits, honest messages.\n',
+      },
       scope: 'personal',
       targets: ['claude-code', 'codex'],
     },
@@ -589,7 +619,9 @@ function findChrome() {
       /* not on PATH */
     }
   }
-  throw new Error('no Chrome/Chromium binary found (tried google-chrome, google-chrome-stable, chromium)');
+  throw new Error(
+    'no Chrome/Chromium binary found (tried google-chrome, google-chrome-stable, chromium)',
+  );
 }
 
 // Injected before any page script runs: freeze the clock and kill animations.
@@ -834,7 +866,13 @@ async function main() {
     for (const skin of opts.skins) {
       for (const mode of opts.modes) {
         for (const viewport of opts.viewports) {
-          matrix.push({ route, skin, mode, viewport, token: route === '/login' ? null : 'PENDING' });
+          matrix.push({
+            route,
+            skin,
+            mode,
+            viewport,
+            token: route === '/login' ? null : 'PENDING',
+          });
         }
       }
     }
@@ -850,35 +888,37 @@ async function main() {
   // port-flexible (the proxy target does not depend on vite's own port):
   // prefer 5173, fall back upward so a stray dev server doesn't wedge the rig.
   if (!(await portFree(8080))) {
-    throw new Error('port 8080 is already in use — the API server must bind it (vite proxies /api there)');
+    throw new Error(
+      'port 8080 is already in use — the API server must bind it (vite proxies /api there)',
+    );
   }
   const webPort = await pickPort(5173);
   WEB_ORIGIN = `http://127.0.0.1:${webPort}`;
   const jwtSecret = randomBytes(32).toString('hex');
   log('booting API server (STORAGE_DRIVER=memory, ephemeral JWT secret, :8080)');
-  spawnLogged('api-server', 'pnpm', [
-    '--filter',
-    '@harness-nexus/server',
-    'run',
-    'dev',
-  ], {
+  spawnLogged('api-server', 'pnpm', ['--filter', '@harness-nexus/server', 'run', 'dev'], {
     JWT_SECRET: jwtSecret,
     STORAGE_DRIVER: 'memory',
     PORT: '8080',
   });
   log(`booting web dev server (vite, :${webPort}, strictPort)`);
-  spawnLogged('web-dev', 'pnpm', [
-    '--filter',
-    '@harness-nexus/web',
-    'run',
-    'dev',
-    '--',
-    '--port',
-    String(webPort),
-    '--strictPort',
-    '--host',
-    '127.0.0.1',
-  ], {});
+  spawnLogged(
+    'web-dev',
+    'pnpm',
+    [
+      '--filter',
+      '@harness-nexus/web',
+      'run',
+      'dev',
+      '--',
+      '--port',
+      String(webPort),
+      '--strictPort',
+      '--host',
+      '127.0.0.1',
+    ],
+    {},
+  );
 
   await waitForHttp(`${API_ORIGIN}/healthz`, 'api-server', 180_000);
   await waitForHttp(`${WEB_ORIGIN}/`, 'web-dev', 120_000);
@@ -931,7 +971,13 @@ async function main() {
         writeFileSync(baselinePath, png);
         results.push({ name, status: 'UPDATED', detail: '', px: 0, total: 0 });
       } else if (!existsSync(baselinePath)) {
-        results.push({ name, status: 'MISSING', detail: 'no baseline (run with --update)', px: 0, total: 0 });
+        results.push({
+          name,
+          status: 'MISSING',
+          detail: 'no baseline (run with --update)',
+          px: 0,
+          total: 0,
+        });
       } else {
         const r = compareShot(name, png, readFileSync(baselinePath), opts.threshold, opts.drift);
         if (r.diffPng) writeFileSync(path.join(CURRENT_DIR, `${name}.diff.png`), r.diffPng);
@@ -954,7 +1000,9 @@ async function main() {
   process.stdout.write(
     `\n${'SHOT'.padEnd(width)}  ${'RESULT'.padEnd(8)} ${'DIFF PX'.padStart(10)} ${'PCT'.padStart(9)}  DETAIL\n`,
   );
-  process.stdout.write(`${'-'.repeat(width)}  ${'-'.repeat(8)} ${'-'.repeat(10)} ${'-'.repeat(9)}  ${'-'.repeat(30)}\n`);
+  process.stdout.write(
+    `${'-'.repeat(width)}  ${'-'.repeat(8)} ${'-'.repeat(10)} ${'-'.repeat(9)}  ${'-'.repeat(30)}\n`,
+  );
   for (const r of results) {
     const pct = r.total ? ((r.px / r.total) * 100).toFixed(4) : '';
     process.stdout.write(
@@ -978,7 +1026,8 @@ async function main() {
     process.stdout.write(`[ui-snap] FAIL: ${failed.length} shot(s) differ or lack baselines\n`);
     return 1;
   }
-  if (counts.DRIFT) warn(`${counts.DRIFT} shot(s) drifted within tolerance (<= ${opts.drift}% differing pixels)`);
+  if (counts.DRIFT)
+    warn(`${counts.DRIFT} shot(s) drifted within tolerance (<= ${opts.drift}% differing pixels)`);
   process.stdout.write('[ui-snap] OK: all shots match baseline\n');
   return 0;
 }

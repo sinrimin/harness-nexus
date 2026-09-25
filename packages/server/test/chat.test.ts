@@ -522,10 +522,7 @@ describe('session lifecycle', () => {
         flushed: false,
       });
       // Drop the chip so the rest of this test's idle→send flow is clean.
-      const droppedP = nextEvent(
-        browser,
-        (e) => e.kind === 'queue_state' && e.prompt === null,
-      );
+      const droppedP = nextEvent(browser, (e) => e.kind === 'queue_state' && e.prompt === null);
       const dropAck = await emitAck(browser, 'chat:queue.cancel', { sessionId });
       expect(dropAck).toEqual({ accepted: true });
       expect(await droppedP).toEqual({ kind: 'queue_state', prompt: null, flushed: false });
@@ -1015,10 +1012,10 @@ describe('session lifecycle', () => {
   });
 });
 
-  it(
-    '#10: the send queue parks, fills, cancels, flushes on idle, and replays on rejoin',
-    { timeout: 15000 },
-    async () => {
+it(
+  '#10: the send queue parks, fills, cancels, flushes on idle, and replays on rejoin',
+  { timeout: 15000 },
+  async () => {
     const startP = once(daemon, 'chat:session.start');
     const res = await openSession(browser, agentId);
     const sessionId = res.sessionId!;
@@ -1092,7 +1089,10 @@ describe('session lifecycle', () => {
     // #11 — a mid-turn history batch is followed by a synthetic active
     // status: the fold's history rebuild force-closes running rows, so the
     // server must re-assert turn state after the batch (refresh / rejoin).
-    const resyncStatusP = nextEvent(browser, (e) => e.kind === 'session_status' && e.state === 'active');
+    const resyncStatusP = nextEvent(
+      browser,
+      (e) => e.kind === 'session_status' && e.state === 'active',
+    );
     daemon.emit('chat:history', {
       sessionId,
       items: [{ type: 'user', blocks: [{ type: 'text', text: 'resync me' }] }],
@@ -1139,8 +1139,8 @@ describe('session lifecycle', () => {
     await directP;
 
     await emitAck(browser, 'chat:session.close', { sessionId });
-    },
-  );
+  },
+);
 
 describe('REST surface', () => {
   // The 'user disconnect' test above (re)creates the suite daemon and leaves

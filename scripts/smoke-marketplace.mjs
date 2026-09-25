@@ -14,7 +14,9 @@ let pass = 0,
   fail = 0;
 const expect = (label, got, want) => {
   const ok = got === want;
-  console.log(`${ok ? 'PASS' : 'FAIL'}  ${label}: got ${String(got).slice(0, 120)}, want ${String(want).slice(0, 120)}`);
+  console.log(
+    `${ok ? 'PASS' : 'FAIL'}  ${label}: got ${String(got).slice(0, 120)}, want ${String(want).slice(0, 120)}`,
+  );
   ok ? pass++ : fail++;
 };
 
@@ -88,7 +90,9 @@ try {
   expect('pat carries marketplace scope', r.json.pat.scopes.includes('marketplace'), true);
   expect(
     'add command shape',
-    r.json.addCommand.startsWith('claude plugin marketplace add http://127.0.0.1:17800/api/marketplace/'),
+    r.json.addCommand.startsWith(
+      'claude plugin marketplace add http://127.0.0.1:17800/api/marketplace/',
+    ),
     true,
   );
 
@@ -122,7 +126,10 @@ try {
     kind: 'skill',
     name: 'Greeter',
     description: 'Greets people.',
-    source: { type: 'inline', content: '---\nname: greeter\ndescription: Greets people.\n---\n\nSay hi warmly.' },
+    source: {
+      type: 'inline',
+      content: '---\nname: greeter\ndescription: Greets people.\n---\n\nSay hi warmly.',
+    },
   });
   expect('skill resource status', r.status, 201);
   const skillId = r.json.resource.id;
@@ -158,7 +165,10 @@ try {
     kind: 'command',
     name: 'Deploy',
     description: 'Deploy the app.',
-    source: { type: 'inline', content: '---\ndescription: Deploy the app\n---\nRun the deploy pipeline.' },
+    source: {
+      type: 'inline',
+      content: '---\ndescription: Deploy the app\n---\nRun the deploy pipeline.',
+    },
   });
   expect('command resource status', r.status, 201);
   const commandId = r.json.resource.id;
@@ -168,7 +178,10 @@ try {
     kind: 'sub_agent',
     name: 'Reviewer',
     description: 'Reviews code.',
-    source: { type: 'inline', content: '---\nname: reviewer\ndescription: Reviews code.\n---\n\nYou review code.' },
+    source: {
+      type: 'inline',
+      content: '---\nname: reviewer\ndescription: Reviews code.\n---\n\nYou review code.',
+    },
   });
   expect('sub_agent resource status', r.status, 201);
   const agentId = r.json.resource.id;

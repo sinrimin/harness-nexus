@@ -6,7 +6,7 @@
  * backstop, not the design.
  */
 
-export type PromptImageMime = 'image/png' | 'image/jpeg' | 'image/webp' | 'image/gif';
+type PromptImageMime = 'image/png' | 'image/jpeg' | 'image/webp' | 'image/gif';
 
 export interface DraftAttachment {
   id: string;
@@ -16,7 +16,7 @@ export interface DraftAttachment {
 }
 
 /** Error codes the page maps to i18n toasts. */
-export type ImageAttachError = 'too-large' | 'bad-type' | 'decode-failed';
+type ImageAttachError = 'too-large' | 'bad-type' | 'decode-failed';
 
 export class ImageAttachError_ extends Error {
   constructor(
@@ -36,7 +36,6 @@ const MAX_GIF_BYTES = 2 * 1024 * 1024;
 const ACCEPTED: readonly PromptImageMime[] = ['image/png', 'image/jpeg', 'image/webp', 'image/gif'];
 
 /** The `accept` string for the hidden file input. */
-export const IMAGE_ACCEPT = ACCEPTED.join(',');
 
 /** Wire caps mirrored from the shared schema (per-turn budget). */
 export const MAX_IMAGES_PER_TURN = 4;

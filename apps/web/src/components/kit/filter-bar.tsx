@@ -205,10 +205,7 @@ export function SortSelect({ query, spec, labels, label, className }: SortSelect
   const value = query.sort ?? fallback;
 
   return (
-    <Select
-      value={value}
-      onValueChange={(next) => query.setSort(next === fallback ? null : next)}
-    >
+    <Select value={value} onValueChange={(next) => query.setSort(next === fallback ? null : next)}>
       <SelectTrigger aria-label={label} className={cn('w-auto text-xs', className)}>
         <SelectValue />
       </SelectTrigger>

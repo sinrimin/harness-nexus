@@ -165,11 +165,13 @@ describe('GET /api/status/posture (#23 D2)', () => {
 
   it('caches per viewer and drops the cache on a presence transition', async () => {
     const app = await buildApp(testConfig({ postureCacheTtlMs: 60_000 }));
-    const jwt = (await app.inject({
-      method: 'POST',
-      url: '/api/auth/register',
-      payload: { username: 'root', password: 'hunter2hunter2' },
-    })).json().token as string;
+    const jwt = (
+      await app.inject({
+        method: 'POST',
+        url: '/api/auth/register',
+        payload: { username: 'root', password: 'hunter2hunter2' },
+      })
+    ).json().token as string;
     const auth = { authorization: `Bearer ${jwt}` };
     const posture = async () =>
       (await app.inject({ method: 'GET', url: '/api/status/posture', headers: auth })).json();

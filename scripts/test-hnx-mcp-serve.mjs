@@ -17,7 +17,9 @@ let pass = 0;
 let fail = 0;
 const expect = (label, got, want) => {
   const ok = got === want;
-  console.log(`${ok ? 'PASS' : 'FAIL'}  ${label}: got ${JSON.stringify(got)}, want ${JSON.stringify(want)}`);
+  console.log(
+    `${ok ? 'PASS' : 'FAIL'}  ${label}: got ${JSON.stringify(got)}, want ${JSON.stringify(want)}`,
+  );
   ok ? pass++ : fail++;
 };
 
@@ -88,7 +90,9 @@ async function main() {
   });
   try {
     for (let i = 0; i < 50; i++) {
-      const ok = await fetch(`${B}/healthz`).then((r) => r.ok).catch(() => false);
+      const ok = await fetch(`${B}/healthz`)
+        .then((r) => r.ok)
+        .catch(() => false);
       if (ok) break;
       await sleep(100);
     }
@@ -128,9 +132,23 @@ async function main() {
     const profileId = profile.json.profile.id;
 
     // 3. spawn the shim
-    const shim = spawn('node', [path.join(ROOT, 'packages/cli/dist/index.js'), 'mcp', 'serve', '--profile', profileId, '--server', B, '--token', token], {
-      stdio: ['pipe', 'pipe', 'inherit'],
-    });
+    const shim = spawn(
+      'node',
+      [
+        path.join(ROOT, 'packages/cli/dist/index.js'),
+        'mcp',
+        'serve',
+        '--profile',
+        profileId,
+        '--server',
+        B,
+        '--token',
+        token,
+      ],
+      {
+        stdio: ['pipe', 'pipe', 'inherit'],
+      },
+    );
     const client = ndjsonClient(shim);
 
     try {

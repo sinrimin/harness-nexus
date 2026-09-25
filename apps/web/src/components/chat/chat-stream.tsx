@@ -161,7 +161,7 @@ export function ChatStream({
 }
 
 /** Settled permission cards are collapsed to a single muted line. */
-export const SettledPermissions = memo(function SettledPermissions({ count }: { count: number }) {
+const SettledPermissions = memo(function SettledPermissions({ count }: { count: number }) {
   const { t } = useI18n();
   if (count === 0) return null;
   return (

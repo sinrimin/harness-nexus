@@ -364,11 +364,11 @@ export function McpManagementPage() {
           onOpenChange={(o) => {
             if (!o) setPending(null);
           }}
-          title={
-            pending.action === 'delete' ? t('mcp.deleteAction') : t('mcp.disconnectAction')
-          }
+          title={pending.action === 'delete' ? t('mcp.deleteAction') : t('mcp.disconnectAction')}
           consequence={
-            pending.action === 'delete' ? t('mcp.deleteConsequence') : t('mcp.disconnectConsequence')
+            pending.action === 'delete'
+              ? t('mcp.deleteConsequence')
+              : t('mcp.disconnectConsequence')
           }
           impact={[
             { label: 'server', value: pending.server.name },

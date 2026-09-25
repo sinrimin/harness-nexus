@@ -36,14 +36,14 @@ import { createPortal } from 'react-dom';
  * detached and re-attached on every shell render, and the pair of null/node
  * updates would render forever.
  */
-export type PageSlotName = 'title' | 'actions' | 'margin';
+type PageSlotName = 'title' | 'actions' | 'margin';
 
 type Targets = { actions?: HTMLElement | null; margin?: HTMLElement | null };
 type Claims = Partial<Record<PageSlotName, boolean>>;
 
 const noop = () => undefined;
 
-export interface PageSlotsValue {
+interface PageSlotsValue {
   /** What the topbar's `<h1>` reads while a page claims the title slot. */
   title: string | null;
   /** Slots a page has claimed — the shell drops its own fallback for those. */

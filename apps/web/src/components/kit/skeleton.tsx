@@ -27,7 +27,7 @@ export function Skeleton({ className, ...props }: SkeletonProps) {
 }
 
 /** True once `delayMs` has passed since mount — the "give the data a chance" gate. */
-export function useDelayedVisible(delayMs = 300): boolean {
+function useDelayedVisible(delayMs = 300): boolean {
   const [visible, setVisible] = useState(false);
   useEffect(() => {
     const timer = window.setTimeout(() => setVisible(true), delayMs);

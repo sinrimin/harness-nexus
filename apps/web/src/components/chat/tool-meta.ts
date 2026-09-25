@@ -55,7 +55,7 @@ export function firstOutputLine(node: ToolCallNode): string | null {
   return line.trim() === '' ? null : line;
 }
 
-export interface ReadParse {
+interface ReadParse {
   lines: { number: number; text: string }[];
   totalLines: number;
   /** Fence hint some tools prefix: `cat -n` output carries leading numbers. */
@@ -82,7 +82,7 @@ export function parseReadLines(text: string): ReadParse {
   };
 }
 
-export interface BashParts {
+interface BashParts {
   command: string;
   description: string | null;
 }
@@ -95,7 +95,7 @@ export function bashCommandParts(node: ToolCallNode): BashParts {
   return { command, description };
 }
 
-export interface EditParts {
+interface EditParts {
   path: string;
   oldText: string | null;
   newText: string | null;
@@ -131,7 +131,7 @@ export function editDiffParts(node: ToolCallNode): EditParts | null {
   };
 }
 
-export type SearchParse =
+type SearchParse =
   | { kind: 'matches'; files: { path: string; matches: { lineNumber: number; line: string }[] }[] }
   | { kind: 'paths'; paths: string[] };
 

@@ -18,8 +18,8 @@
  */
 
 export type SkinId = 'signal' | 'bay' | 'ledger' | 'nightwatch';
-export type SkinMode = 'light' | 'dark';
-export type StatusStyle = 'dot' | 'led' | 'lamp' | 'word';
+type SkinMode = 'light' | 'dark';
+type StatusStyle = 'dot' | 'led' | 'lamp' | 'word';
 export type TopologyStyle = 'constellation' | 'plate' | 'radar';
 
 export interface SkinManifest {

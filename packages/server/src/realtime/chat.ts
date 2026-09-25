@@ -631,7 +631,7 @@ export class ChatService {
     return { ok: true };
   }
 
-/** Browser's `chat:message.send` — owner check, queue-on-busy, normalization. */
+  /** Browser's `chat:message.send` — owner check, queue-on-busy, normalization. */
   onMessageSend(
     ownerId: string,
     sessionId: string,
