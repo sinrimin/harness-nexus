@@ -57,21 +57,28 @@ export function Chip({
 
   if (to !== undefined) {
     return (
-      <Link to={to} title={title} data-slot="chip" className={classes}>
+      <Link to={to} title={title} data-slot="chip" data-tone={tone} className={classes}>
         {content}
       </Link>
     );
   }
   if (href !== undefined) {
     return (
-      <a href={href} title={title} data-slot="chip" className={classes}>
+      <a href={href} title={title} data-slot="chip" data-tone={tone} className={classes}>
         {content}
       </a>
     );
   }
   if (onClick !== undefined) {
     return (
-      <button type="button" title={title} onClick={onClick} data-slot="chip" className={classes}>
+      <button
+        type="button"
+        title={title}
+        onClick={onClick}
+        data-slot="chip"
+        data-tone={tone}
+        className={classes}
+      >
         {content}
       </button>
     );

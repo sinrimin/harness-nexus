@@ -50,7 +50,9 @@ export function SkillsPage() {
       <div
         role="tablist"
         aria-label={t('app.navSkills')}
-        data-slot="tabs"
+        /* Same slots as the kit's Radix tabs: a skin styles the section tab
+           strip once, whether it is this hand-rolled one or `ui/tabs`. */
+        data-slot="tabs-list"
         className="mb-(--gap) flex items-center gap-1 border-b"
       >
         <TabButton active={tab === 'mine'} onClick={() => select('mine')}>
@@ -88,6 +90,7 @@ function TabButton({
         type="button"
         role="tab"
         aria-selected={active}
+        data-slot="tabs-trigger"
         data-state={active ? 'live' : 'inactive'}
         onClick={onClick}
         className={cn(

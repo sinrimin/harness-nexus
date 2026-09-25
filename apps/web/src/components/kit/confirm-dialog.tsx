@@ -55,6 +55,15 @@ type ConfirmDialogProps = {
    * the one thing this kit promises never to do.
    */
   irreversible?: boolean;
+  /**
+   * A PHYSICAL action: it reaches a running process or a piece of hardware —
+   * terminate an adapter, decommission a machine — rather than deleting a
+   * record. Separate from `irreversible` on purpose (revoking a token is
+   * irreversible and not physical), and set by the caller because only the
+   * caller knows: the base marks it, a skin decides what the mark looks like
+   * (BAY's hazard stripe, 02-content.md §A.2 `.hazard`).
+   */
+  hazard?: boolean;
   busy?: boolean;
   onConfirm: () => void;
   children?: ReactNode;
@@ -70,6 +79,7 @@ export function ConfirmDialog({
   actionLabel,
   tone = 'danger',
   irreversible,
+  hazard,
   busy,
   onConfirm,
   children,
@@ -151,6 +161,7 @@ export function ConfirmDialog({
           <Button
             type="button"
             variant={tone === 'danger' ? 'destructive' : 'default'}
+            {...(hazard === true ? { 'data-hazard': 'true' } : {})}
             onClick={onConfirm}
             disabled={busy === true || !armed}
           >

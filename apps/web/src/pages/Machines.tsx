@@ -322,6 +322,9 @@ export function MachinesPage() {
                 : t('machines.chatDisableAction')
           }
           tone={pending.action === 'remove' ? 'danger' : 'default'}
+          // The comp's second hazard button: removing a machine decommissions
+          // hardware (its daemon, its tokens), it does not delete a record.
+          {...(pending.action === 'remove' ? { hazard: true } : {})}
           busy={busy}
           onConfirm={() => void confirmPending()}
         />

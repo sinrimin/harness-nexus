@@ -19,10 +19,13 @@ const buttonVariants = cva(
         link: 'text-primary underline-offset-4 hover:underline',
       },
       size: {
-        default: 'h-9 px-4 py-2 has-[>svg]:px-3',
-        sm: 'h-8 rounded-md gap-1.5 px-3 has-[>svg]:px-2.5',
-        lg: 'h-10 rounded-md px-6 has-[>svg]:px-4',
-        icon: 'size-9',
+        /* Heights are density tokens, not literals: a skin with a denser
+           chassis reads the same control one step shorter (defaults are
+           exactly today's 36 / 32 / 40px). */
+        default: 'h-(--control-h) px-4 py-2 has-[>svg]:px-3',
+        sm: 'h-(--control-h-sm) rounded-md gap-1.5 px-3 has-[>svg]:px-2.5',
+        lg: 'h-(--control-h-lg) rounded-md px-6 has-[>svg]:px-4',
+        icon: 'size-(--control-h)',
       },
     },
     defaultVariants: {
@@ -46,6 +49,12 @@ function Button({
   return (
     <Comp
       data-slot="button"
+      /* The variant/size are data, not just a class string: a skin has to be
+         able to say "engraved, but not the quiet one" without parsing Tailwind
+         utilities (04-contract.md §3 — structure and intent in the base, the
+         material in the skin). */
+      data-variant={variant ?? 'default'}
+      data-size={size ?? 'default'}
       className={cn(buttonVariants({ variant, size, className }))}
       {...props}
     />

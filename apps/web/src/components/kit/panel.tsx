@@ -91,7 +91,14 @@ export function PanelHeader({
       {children}
       {meta !== undefined || actions !== undefined ? (
         <span data-slot="panel-meta" className="ml-auto flex items-center gap-3">
-          {meta ? <span className="text-muted-foreground text-xs">{meta}</span> : null}
+          {meta ? (
+            /* Its own slot: the strip's facts are instrument print on BAY and
+               prose on Signal, so a skin has to be able to reach the text
+               without also reaching the controls beside it. */
+            <span data-slot="panel-meta-text" className="text-muted-foreground text-xs">
+              {meta}
+            </span>
+          ) : null}
           {actions}
         </span>
       ) : null}

@@ -50,6 +50,40 @@
   /* hard panels: cards 4px, wells 2px via local overrides in skin.css */
   --radius: 0.25rem;
 
+  /* ---- The chassis ladder (appendix-comp-inventory.md A.4) ---------------
+   * The comp's own names, where it had names the contract does not:
+   *   --bezel  #c3cad4  the aluminium edge: every hard shadow is this colour
+   *   --tray   #e9ecf1  the neutral step behind table heads, tabs, sub-panels
+   * Both are BAY-local (Signal plays no part in this rack), so they live here
+   * rather than in the frozen contract. */
+  --bezel: #c3cad4;
+  --tray: #e9ecf1;
+
+  /* Physics. The panel is bolted on (2px hard offset, no blur), the radius is
+   * the comp's --r:2px, and a press MOVES the control by the shadow's own
+   * offset while the shadow goes away — the base owns the rule
+   * (`[data-slot='button']:active`), the skin owns the numbers. */
+  --radius-panel: 2px;
+  --radius-well: 2px;
+  --shadow-panel: 2px 2px 0 var(--bezel);
+  --press-shift: 2px;
+  --shadow-press: none;
+  --control-h: 30px;
+  --control-h-sm: 25px;
+  --control-h-lg: 34px;
+
+  /* The instrument's own strip heights: the comp's table head is 26px while
+   * the panel nameplate stays 28px and the row 30px. */
+  --table-head-h: 26px;
+
+  /* Inks on a light chassis: the comp deepened its status colours rather than
+   * using the LED hues as type (#14713c / #9c2417). The warn ink is derived
+   * from the same rule — the comp never printed a warn word on light. */
+  --state-ok-ink: #14713c;
+  --state-warn-ink: #8a5a10;
+  --state-fail-ink: #9c2417;
+  --lamp-off: #6d7887;
+
   /* brand: steel blue deepened to sit in aluminium (shape stays frozen) */
   --brand-bright: #4a7bd0;
   --brand-mid: #2e5a9e;
@@ -74,4 +108,12 @@
   --app-font-display:
     'Archivo Narrow', 'Archivo', ui-sans-serif, system-ui, 'PingFang SC', 'Microsoft YaHei',
     'Noto Sans CJK SC', sans-serif;
+  /* The label role is the comp's caps face: Archivo Narrow 11px at +0.09em,
+     with the small step at the comp's 10px (table heads, legends). The base
+     reads this token for every nameplate, table head and control label, so
+     the whole chassis changes face from one line. */
+  --app-font-label:
+    'Archivo Narrow', 'Archivo', ui-sans-serif, system-ui, 'PingFang SC', 'Microsoft YaHei',
+    'Noto Sans CJK SC', sans-serif;
+  --label-size-sm: 10px;
 }
