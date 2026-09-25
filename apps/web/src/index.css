@@ -791,6 +791,12 @@
   /* Opaque: scrolled cells must pass *behind* it, not show through it — and the
      colour has to match whatever this cell sits on, or the pin shows as a seam. */
   background: var(--card);
+  /* A hairline on the pin's left edge, so the column passing under it reads as
+     UNDER rather than colliding. Without it a phone shows the last data column
+     half-hidden beneath this one with nothing saying "scroll me" (reported from
+     a phone: two headers looked like they overlapped, P8). `inset` so nothing
+     reflows. */
+  box-shadow: inset 1px 0 0 var(--border);
 }
 [data-surface='table'] thead th:last-child {
   background: var(--tray); /* the head row's own colour */

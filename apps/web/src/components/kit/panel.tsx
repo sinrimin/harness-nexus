@@ -75,7 +75,17 @@ export function PanelHeader({
   return (
     <header
       data-slot="panel-header"
-      className={cn('flex h-(--panel-head-h) shrink-0 items-center gap-2 border-b px-3', className)}
+      // `min-h`, not `h`: the strip is a nameplate, and a nameplate whose facts
+      // do not fit must GROW. A fixed height made the strip's content paint
+      // outside its own box — at 390px the agents card's meta (count + time +
+      // path + badge) is 66px tall inside a 28px strip in BAY, so it covered
+      // the tab strip above and the section below (reported from a phone, P8).
+      // `flex-wrap` + `min-w-0` let the facts wrap inside the strip instead of
+      // pushing a 500px-wide row through a 390px viewport.
+      className={cn(
+        'flex min-h-(--panel-head-h) shrink-0 flex-wrap items-center gap-x-2 gap-y-1 border-b px-3 py-1',
+        className,
+      )}
       {...props}
     >
       {icon ? (
@@ -90,12 +100,15 @@ export function PanelHeader({
       ) : null}
       {children}
       {meta !== undefined || actions !== undefined ? (
-        <span data-slot="panel-meta" className="ml-auto flex items-center gap-3">
+        <span
+          data-slot="panel-meta"
+          className="ml-auto flex min-w-0 flex-wrap items-center justify-end gap-x-3 gap-y-1"
+        >
           {meta ? (
             /* Its own slot: the strip's facts are instrument print on BAY and
                prose on Signal, so a skin has to be able to reach the text
                without also reaching the controls beside it. */
-            <span data-slot="panel-meta-text" className="text-muted-foreground text-xs">
+            <span data-slot="panel-meta-text" className="text-muted-foreground min-w-0 text-xs">
               {meta}
             </span>
           ) : null}
