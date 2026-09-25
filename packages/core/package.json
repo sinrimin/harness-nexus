@@ -1,6 +1,6 @@
 {
   "name": "@harness-nexus/core",
-  "version": "0.1.0-alpha.5",
+  "version": "0.1.0-alpha.6",
   "description": "Pure-TS domain core for Harness Nexus \u2014 entities and repository ports, zero I/O or framework dependencies.",
   "type": "module",
   "main": "./dist/index.js",
