@@ -40,7 +40,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const isAdmin = user?.role === 'admin';
   const route = matchRoute(location.pathname);
   const { posture } = usePosture();
-  const { value: slots, actionsRef } = usePageSlots();
+  const { value: slots, actionsRef, marginRef } = usePageSlots();
   // `panes` hands scrolling to the page (chat: rail + stream + composer);
   // `flow` is the default content frame.
   const panes = route?.layout === 'panes';
@@ -103,27 +103,44 @@ export function AppShell({ children }: { children: ReactNode }) {
         {/* Readout strip: its own band so the topbar is not asked to hold a
             page identity AND four figures AND the toggles in 56px. */}
         <ReadoutStrip posture={posture} />
-        <main
-          id="main"
-          data-region="main"
-          // P6 — the skip link's target has to be focusable, or the "skip"
-          // only moves the URL hash and leaves the keyboard user at the top of
-          // the document (measured: activeElement stayed BODY). `outline-none`
-          // because this is a container, not a control: the replacement for the
-          // ring is the content itself arriving under the caret.
-          tabIndex={-1}
-          className={cn('min-h-0 flex-1 outline-none', panes ? 'overflow-hidden' : 'overflow-y-auto')}
-        >
-          <div
+        {/* The reading surface is a row: the content frame, and beside it the
+            folio margin. The margin sits OUTSIDE the frame the way the spine
+            and the plate do, so filling it never re-lays-out a page (it takes
+            its width from the row, and the frame keeps its own scrolling); empty
+            it is `display: none` and costs nothing (index.css). A page fills it
+            with `<PageSlot slot="margin">`; a skin styles the `data-region`. */}
+        <div className="flex min-h-0 min-w-0 flex-1">
+          <main
+            id="main"
+            data-region="main"
+            // P6 — the skip link's target has to be focusable, or the "skip"
+            // only moves the URL hash and leaves the keyboard user at the top of
+            // the document (measured: activeElement stayed BODY). `outline-none`
+            // because this is a container, not a control: the replacement for the
+            // ring is the content itself arriving under the caret.
+            tabIndex={-1}
             className={cn(
-              panes
-                ? 'flex h-full min-h-0 flex-col'
-                : 'w-full px-[18px] pt-[18px] pb-11 max-[640px]:px-0 max-[640px]:pt-4',
+              'min-h-0 min-w-0 flex-1 outline-none',
+              panes ? 'overflow-hidden' : 'overflow-y-auto',
             )}
           >
-            <PageSlotsProvider value={slots}>{children}</PageSlotsProvider>
-          </div>
-        </main>
+            <div
+              className={cn(
+                panes
+                  ? 'flex h-full min-h-0 flex-col'
+                  : 'w-full px-[18px] pt-[18px] pb-11 max-[640px]:px-0 max-[640px]:pt-4',
+              )}
+            >
+              <PageSlotsProvider value={slots}>{children}</PageSlotsProvider>
+            </div>
+          </main>
+          <div
+            data-region="marginalia"
+            data-side="end"
+            ref={marginRef}
+            className="hidden w-(--marginalia-w) shrink-0 overflow-y-auto border-l p-3 min-[1280px]:block"
+          />
+        </div>
       </div>
     </div>
   );

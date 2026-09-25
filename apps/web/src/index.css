@@ -135,6 +135,9 @@
   --shell-bar-h: 56px;
   --shell-bar-h-sm: 48px;
   --shell-subbar-h: 38px; /* the readout strip, inside the content column */
+  /* The folio margin (README §6 `Region`): a skin's side-note column, and the
+   * base keeps the slot itself empty-and-invisible until a page fills it. */
+  --marginalia-w: 200px;
   --shell-title-size: 17px; /* the page's identity in the topbar */
 
   /* Tray: the neutral step behind table heads, list feet, sub-panels and row
@@ -435,6 +438,15 @@
    trickling panels in for half a second. */
 [data-region='main'] > div > :nth-child(n + 5) {
   animation-delay: calc(var(--motion-seat) * 0.66);
+}
+
+/* The folio margin is a Region slot: an EMPTY slot is not a 200px gutter with
+ * nothing in it — it is nothing at all (README §6). A portal's children are
+ * real DOM children of this node, so `:empty` stops matching the moment a page
+ * fills it; `.hidden`/`min-[1280px]:block` above decides where it may show at
+ * all. */
+[data-region='marginalia']:empty {
+  display: none;
 }
 
 /* ---- Toast (03-interaction.md §3) --------------------------------------

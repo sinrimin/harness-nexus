@@ -2,6 +2,7 @@ import type { ComponentType } from 'react';
 import type { TopologyStyle } from '@/skins/registry.js';
 import { MeshTopology } from './mesh-topology.js';
 import { PlateTopology } from './plate-topology.js';
+import { RadarTopology } from './radar-topology.js';
 import type { TopologyProps } from './topology-frame.js';
 
 /**
@@ -15,14 +16,14 @@ import type { TopologyProps } from './topology-frame.js';
  * - `constellation` — the SVG fan-in/fan-out (the product's signature).
  * - `plate` — the same mesh as a two-column list; also what `constellation`
  *   steps aside for when its labels would render too small (mesh-topology.tsx).
- * - `radar` — not built. It resolves to `constellation` on purpose, so a skin
- *   declaring a renderer we do not have still draws the mesh; P7's placeholder
- *   skin drills exactly this key to prove the registry is real, not decorative.
+ * - `radar` — the mesh as an instrument sweep (radar-topology.tsx). Built in
+ *   P7, where the flexibility drill selects it for real: before that the key
+ *   resolved to `constellation`, which proved the field was decorative.
  */
 export const TOPOLOGY_RENDERERS: Record<TopologyStyle, ComponentType<TopologyProps>> = {
   constellation: MeshTopology,
   plate: PlateTopology,
-  radar: MeshTopology,
+  radar: RadarTopology,
 };
 
 export function topologyRenderer(style: TopologyStyle): ComponentType<TopologyProps> {

@@ -73,6 +73,7 @@ export function Lamp({
 
   return (
     <span
+      data-slot="lamp"
       data-lamp={manifest.statusStyle}
       data-state={state}
       data-tone={tone}
