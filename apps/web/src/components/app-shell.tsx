@@ -8,7 +8,6 @@ import { UserBlock } from '@/components/user-block';
 import { Plate } from '@/components/shell/plate';
 import { Spine } from '@/components/shell/spine';
 import { Topbar } from '@/components/shell/topbar';
-import { BayStrip } from '@/components/shell/bay-strip';
 import { ReadoutStrip } from '@/components/shell/readout-strip';
 import { PageSlotsProvider, usePageSlots } from '@/components/shell/page-slots';
 import { usePosture } from '@/components/shell/use-posture';
@@ -18,15 +17,17 @@ import { cn } from '@/lib/utils';
 /**
  * The console shell (01-skeleton.md §1).
  *
- * Three columns on desktop — spine (72px, the numbered section address) +
- * plate (168px, entries and counts) + content — and the two left columns are
- * exactly the 240px the old `w-60` sidebar used, so the upgrade costs no
- * content width. The chrome column runs the FULL height and carries the brand
- * at the very top (theme-designs/01-bay/theme.css: `.chrome` holds
- * `spine-head` + `brand` at `--top-h`, and `.topbar` lives in `.col`, i.e. it
- * starts to the brand's RIGHT — the brand owns the top-left corner, the page
- * bar is not a band above it). Below 900px the chrome folds into the drawer
- * and the spine lies down into the bay strip.
+ * Three columns on desktop — spine (30px, the numbered section address, its
+ * name running down) + plate (168px, entries and counts) + content. `--spine-w`
+ * used to be 72 so the two left columns were exactly the 240px of the old
+ * `w-60` sidebar; #23 narrowed it to the address's real width and the content
+ * column took the difference. The chrome column runs the FULL height and
+ * carries the brand at the very top (theme-designs/01-bay/theme.css: `.chrome`
+ * holds `spine-head` + `brand` at `--top-h`, and `.topbar` lives in `.col`,
+ * i.e. it starts to the brand's RIGHT — the brand owns the top-left corner, the
+ * page bar is not a band above it). Below 900px the chrome folds into the
+ * drawer and the sections move into the topbar's nav menu (the bay strip that
+ * used to lie the spine down is retired — #23).
  *
  * Everything the shell needs about the current page comes from the route
  * manifest (`nav.ts`) — the nav list, the breadcrumb trail, the title, and
@@ -99,7 +100,6 @@ export function AppShell({ children }: { children: ReactNode }) {
             </MobileNav>
           }
         />
-        <BayStrip activeGroup={route?.group ?? 'nav'} isAdmin={isAdmin} />
         {/* Readout strip: its own band so the topbar is not asked to hold a
             page identity AND four figures AND the toggles in 56px. */}
         <ReadoutStrip posture={posture} />

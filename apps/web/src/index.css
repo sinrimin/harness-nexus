@@ -133,7 +133,10 @@
    * `--shell-bar-h` is the FIRST band: spine head + plate brand + topbar all
    * sit in it (the chrome column owns the top-left corner — see app-shell.tsx
    * and theme-designs/01-bay/theme.css `.chrome`/`.topbar`). */
-  --spine-w: 72px;
+  /* 30px, not the comp's 72 (#23, reported from a phone): the bay's name runs
+   * vertically, so the column only has to hold an address across. */
+  --spine-w: 30px;
+  --bay-h: 72px; /* one rack unit — the spine's bays all sit in the same frame */
   --plate-w: 168px;
   --shell-bar-h: 56px;
   --shell-bar-h-sm: 48px;
@@ -657,6 +660,15 @@
   line-height: 1;
   text-transform: uppercase;
 }
+/* The same label running DOWN a bay (shell/spine.tsx). Writing mode, not a
+ * transform: the box turns with the text, so a 30px spine stays 30px and the
+ * bay's height is the name's real length. Latin glyphs rotate (the CJK default
+ * `mixed`), which is how a rack plate reads on a narrow rail — reported from a
+ * phone as "竖着展示文字，宽度压缩到 30px". */
+.role-label-vertical {
+  writing-mode: vertical-rl;
+  text-orientation: mixed;
+}
 .role-data {
   font-family: var(--app-font-mono);
   font-size: var(--data-size);
@@ -798,6 +810,20 @@
     position: relative;
   }
   [data-slot='composer-tools'] [data-slot='select-trigger']::after {
+    content: '';
+    position: absolute;
+    inset: 50%;
+    min-width: 2.5rem;
+    min-height: 2.5rem;
+    transform: translate(-50%, -50%);
+  }
+  /* The section menu's caret sits in the topbar beside the page title, where a
+     24px box is what keeps the identity line from being all button. Same
+     overlay: the fingertip gets 2.5rem, the bar keeps its proportions. */
+  [data-nav-menu='trigger'] {
+    position: relative;
+  }
+  [data-nav-menu='trigger']::after {
     content: '';
     position: absolute;
     inset: 50%;

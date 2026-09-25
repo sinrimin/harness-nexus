@@ -97,6 +97,14 @@ const out = await page.evaluate(() => {
     copyHitArea: hitOf(copy),
     menuTrigger: rect(row?.querySelector('[data-slot="dropdown-menu-trigger"]')),
     pinnedCell: rect(row?.lastElementChild),
+    // #23 — the section menu's caret in the topbar: 24px of box (the identity
+    // line has to stay a line), 2.5rem of fingertip. Present on every page.
+    navMenu: (() => {
+      const t = document.querySelector("[data-nav-menu='trigger']");
+      return t === null
+        ? null
+        : { visible: t.offsetParent !== null, visual: rect(t), hitArea: hitOf(t) };
+    })(),
     sender: senderTools.length === 0 ? null : {
       tools: senderTools.map((t) => ({
         label: t.getAttribute('aria-label'),

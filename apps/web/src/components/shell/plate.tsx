@@ -42,7 +42,7 @@ export function Plate({
                 data-nav-heading={group.id}
                 className="role-label-sm text-muted-foreground px-2.5 pt-4 pb-1.5"
               >
-                {t(group.labelKey)}
+                {group.label}
               </span>
             ) : (
               <span aria-hidden="true" className="pt-2" />

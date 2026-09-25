@@ -14,21 +14,35 @@ function SelectValue({ ...props }: React.ComponentProps<typeof SelectPrimitive.V
 function SelectTrigger({
   className,
   size = 'default',
+  variant = 'default',
   children,
   ...props
 }: React.ComponentProps<typeof SelectPrimitive.Trigger> & {
   size?: 'sm' | 'default';
+  /**
+   * `bare` = the trigger is its text/icon and nothing else: no field, no rule,
+   * no fill — for controls that live INSIDE a surface the user is composing in
+   * (the chat Sender's config selects) rather than in a form. It is a variant
+   * and not a pile of `border-none bg-transparent` utilities because a skin
+   * paints `[data-slot='select-trigger']` wholesale (BAY makes every one an
+   * inverted LCD window) and utilities cannot out-vote an unlayered skin rule.
+   * The skins exclude `[data-variant='bare']` — see skins/bay/skin.css.
+   */
+  variant?: 'default' | 'bare';
 }) {
   return (
     <SelectPrimitive.Trigger
       data-slot="select-trigger"
       data-size={size}
+      data-variant={variant}
       className={cn(
         // Heights come from the control-height tokens, not from literals: a skin
         // owns its hardware scale (BAY's 30/25px vs Signal's 36/32px), and a
         // hard `h-8` was 7px too tall for BAY's densest toolbars (the chat
         // Sender's config selects). Same rule as `ui/button`.
         "border-input data-[placeholder]:text-muted-foreground [&_svg:not([class*='text-'])]:text-muted-foreground focus-visible:border-ring focus-visible:ring-ring/50 aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive dark:bg-input/30 dark:hover:bg-input/50 flex w-fit items-center justify-between gap-2 rounded-md border bg-transparent px-3 py-2 text-sm whitespace-nowrap shadow-xs transition-[color,box-shadow] outline-none focus-visible:ring-[3px] disabled:cursor-not-allowed disabled:opacity-50 data-[size=default]:h-(--control-h) data-[size=sm]:h-(--control-h-sm) *:data-[slot=select-value]:line-clamp-1 *:data-[slot=select-value]:flex *:data-[slot=select-value]:items-center *:data-[slot=select-value]:gap-2 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+        variant === 'bare' &&
+          'focus-visible:border-transparent border-transparent bg-transparent shadow-none focus-visible:ring-0 dark:bg-transparent dark:hover:bg-transparent',
         className,
       )}
       {...props}
