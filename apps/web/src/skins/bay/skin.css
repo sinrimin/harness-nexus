@@ -261,6 +261,16 @@
   letter-spacing: var(--label-tracking);
   text-transform: uppercase;
 }
+/* The line above replaces the base's whole `box-shadow`, and the base's focus
+ * ring IS a box-shadow (`focus-visible:ring-[3px]`) — so every solid BAY key
+ * was focusable but gave no visible indicator. This skin draws its own: a hard
+ * 2px outline in the live ink, which is also what a machined control wants (a
+ * crisp edge step, not a soft halo). Measured: outline 2px solid, offset 2px,
+ * `--signal` — see the P8 a11y sweep. */
+[data-skin='bay'] [data-slot='button']:focus-visible {
+  outline: 2px solid var(--signal);
+  outline-offset: 2px;
+}
 /* The quiet variants are text, not hardware. */
 [data-skin='bay'] [data-slot='button'][data-variant='ghost'],
 [data-skin='bay'] [data-slot='button'][data-variant='link'] {

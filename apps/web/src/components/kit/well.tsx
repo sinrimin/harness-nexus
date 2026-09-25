@@ -111,7 +111,11 @@ export function CopyButton({ value, label, className, always }: CopyButtonProps)
       type="button"
       data-slot="copy"
       className={cn(
-        'text-well-dim hover:text-well-ink focus-visible:text-well-ink shrink-0 rounded-[2px] transition-opacity focus-visible:outline-none',
+        // Focus is an OUTLINE in the well's own ink (currentColor). Brightening
+        // a 12px glyph was the only signal, and a shade change is not a focus
+        // indicator a keyboard user can find — P8's focus sweep found this
+        // control as the last one in the app without an outline or a ring.
+        'text-well-dim hover:text-well-ink focus-visible:text-well-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-current shrink-0 rounded-[2px] transition-opacity',
         always ? null : 'opacity-0 group-hover/well:opacity-100 focus-visible:opacity-100',
         '[@media(hover:none)]:opacity-100', // touch: no hover to reveal it
         className,

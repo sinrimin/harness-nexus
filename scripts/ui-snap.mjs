@@ -15,6 +15,11 @@
  *   node scripts/ui-snap.mjs --skins signal --viewports desktop,mobile
  *   node scripts/ui-snap.mjs --threshold 0.1 --drift 0.5 --keep
  *
+ * Single-mode skins: the capture asks the document which mode it actually
+ * resolved to and SKIPS the shot when a skin locks the theme to the other one
+ * (BAY ships light only), rather than storing byte-identical duplicates. A
+ * refreshed baseline set is pruned to the matrix that produced it.
+ *
  * Exit codes: 0 = all shots match (or drift-only warnings); 1 = any shot
  * differs beyond tolerance, is missing, or the rig failed to boot/seed.
  *
@@ -52,6 +57,7 @@ import { spawn, execSync } from 'node:child_process';
 import {
   existsSync,
   mkdirSync,
+  readdirSync,
   readFileSync,
   writeFileSync,
   rmSync,
@@ -801,6 +807,17 @@ async function captureShot(browser, { route, skin, mode, viewport, token }) {
       return false;
     }, skinFamilies);
     await settle();
+    // Single-mode skins LOCK the theme (skin-provider forces the manifest's
+    // only mode), so a shot for the other mode is a byte-identical duplicate —
+    // P3 measured 22 of 88 that way. Ask the document what it actually
+    // resolved to, instead of mirroring each manifest here: a skin that starts
+    // shipping its second mode is picked up with no edit to this rig.
+    const resolvedMode = await page.evaluate(() =>
+      document.documentElement.classList.contains('dark') ? 'dark' : 'light',
+    );
+    if (resolvedMode !== mode) {
+      return { skipped: `skin locks ${resolvedMode}` };
+    }
     await page.evaluate(MASK_SCRIPT);
     const png = await page.screenshot({ type: 'png' });
     return png;
@@ -964,6 +981,17 @@ async function main() {
         warn(`${name}: capture failed (${err.message ?? err}) — retrying once`);
         png = await captureShot(browser, shot);
       }
+      if (png !== null && typeof png === 'object' && 'skipped' in png) {
+        results.push({
+          name,
+          status: 'SKIPPED',
+          detail: png.skipped,
+          px: 0,
+          total: 0,
+        });
+        log(`(${i + 1}/${matrix.length}) ${name} -> SKIPPED (${png.skipped})`);
+        continue;
+      }
       writeFileSync(path.join(CURRENT_DIR, `${name}.png`), png);
       const baselinePath = path.join(BASELINE_DIR, `${name}.png`);
 
@@ -996,6 +1024,30 @@ async function main() {
   }
 
   // ---- report -----------------------------------------------------------
+  // A refreshed baseline set must equal the matrix: without pruning, the
+  // duplicates a single-mode skin used to produce (`bay__dark__*`) would stay
+  // on disk forever and be reported as MISSING on the next compare run.
+  //
+  // Prune ONLY inside the requested matrix. A run narrowed to one skin or one
+  // route (`--skins bay`) must not delete the shots it did not ask for — the
+  // first version of this did, which would have silently thrown away the other
+  // skin's baselines. A name reads `<skin>__<route>__<mode>__<viewport>.png`.
+  let pruned = 0;
+  if (opts.update) {
+    const produced = new Set(
+      results.filter((r) => r.status === 'UPDATED').map((r) => `${r.name}.png`),
+    );
+    const wanted = new Set(
+      matrix.map((s) => `${shotName(s.route, s.skin, s.mode, s.viewport)}.png`),
+    );
+    for (const file of readdirSync(BASELINE_DIR)) {
+      if (!file.endsWith('.png') || produced.has(file) || !wanted.has(file)) continue;
+      rmSync(path.join(BASELINE_DIR, file));
+      pruned++;
+    }
+    if (pruned) log(`pruned ${pruned} baseline(s) the matrix no longer produces`);
+  }
+
   const width = Math.max(10, ...results.map((r) => r.name.length));
   process.stdout.write(
     `\n${'SHOT'.padEnd(width)}  ${'RESULT'.padEnd(8)} ${'DIFF PX'.padStart(10)} ${'PCT'.padStart(9)}  DETAIL\n`,
