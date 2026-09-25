@@ -272,6 +272,8 @@ function NodeList({
         onClick={() => onExpand(node)}
         className="hover:bg-accent/60 text-muted-foreground flex w-full items-center gap-1.5 rounded px-1.5 py-1 text-left"
         style={{ paddingLeft: `${depth * 14 + 6}px` }}
+        title={node.path}
+        aria-label={node.path}
       >
         {loadingPath === node.path ? (
           <LoaderIcon className="size-3 shrink-0 animate-spin" />
@@ -293,6 +295,7 @@ function NodeList({
         )}
         style={{ paddingLeft: `${depth * 14 + 6}px` }}
         title={node.path}
+        aria-label={node.path}
       >
         <ChevronDownIcon className="size-3 shrink-0" />
         <span className="truncate">{node.name}</span>
