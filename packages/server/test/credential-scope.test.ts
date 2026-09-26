@@ -235,3 +235,47 @@ describe('credential scoping (#21)', () => {
     expect(adminCreate.statusCode).toBe(201);
   });
 });
+
+describe('server-dial failures are actionable (#25)', () => {
+  it('a global row referencing a personal-only credential answers 409 with the scope rule, not a 500', async () => {
+    const { app, rootToken, aliceJwt, auth } = await setup();
+    expect(
+      await createCred(app, aliceJwt, {
+        name: 'alice-key',
+        secret: 'ALICE-KEY',
+        scope: 'personal',
+      }),
+    ).toBe(201);
+
+    // Admin-created GLOBAL row whose header references ALICE's personal
+    // credential — resolvable pre-#21 (bare-name lookup), out of scope now.
+    const created = await app.inject({
+      method: 'POST',
+      url: '/api/mcp-servers',
+      headers: auth(rootToken),
+      payload: {
+        name: 'global-needs-personal',
+        transport: {
+          type: 'streamable-http',
+          url: 'https://upstream.example/mcp',
+          headers: { Authorization: 'Bearer ${cred:alice-key}' },
+        },
+        dialSite: 'server',
+        scope: 'global',
+      },
+    });
+    expect(created.statusCode).toBe(201);
+    const id: string = created.json().mcpServer.id;
+
+    const connect = await app.inject({
+      method: 'POST',
+      url: `/api/mcp-servers/${id}/connect`,
+      headers: auth(rootToken),
+    });
+    expect(connect.statusCode).toBe(409);
+    expect(connect.json().error).toBe('NOT_SERVER_DIALED');
+    expect(connect.json().message).toContain('alice-key');
+    expect(connect.json().message).toContain('global credentials only');
+    await app.close();
+  });
+});

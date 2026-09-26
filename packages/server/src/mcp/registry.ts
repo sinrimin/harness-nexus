@@ -256,11 +256,28 @@ export class McpRegistry {
         'not_dialable',
       );
     }
-    return {
-      id: server.id,
-      name: server.name,
-      transport: await this.resolveTransport(server.transport, server.ownerId),
-    };
+    try {
+      return {
+        id: server.id,
+        name: server.name,
+        transport: await this.resolveTransport(server.transport, server.ownerId),
+      };
+    } catch (err) {
+      // #25: an unresolvable ${cred:NAME} is a config problem — surface it as
+      // a clean 409 not_dialable (naming the scope rule) instead of a raw 500.
+      // Common cause: a global row referencing a personal credential — since
+      // #21 a row resolves credentials in its own scope only.
+      throw new RegistryError(
+        `MCP server "${server.name}" cannot be dialed: ${
+          err instanceof Error ? err.message : String(err)
+        }. A ${server.scope}-scope row resolves ${
+          server.scope === 'global'
+            ? 'global credentials only — move the credential to global scope (or the row to personal)'
+            : "its owner's credentials — check the credential's name/scope"
+        }.`,
+        'not_dialable',
+      );
+    }
   }
 
   /** Close every pooled connection. Call on app shutdown. */
