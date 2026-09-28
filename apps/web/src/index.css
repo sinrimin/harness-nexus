@@ -814,10 +814,11 @@
      this Sender's whole point — is that four controls plus Send fit one line.
      A 2.5rem BOX would put the toolbar back to a two-row block, so the
      fingertip is an overlay. */
-  [data-slot='composer-tools'] [data-slot='select-trigger'] {
+  [data-slot='composer-tools'] :is([data-slot='select-trigger'], [data-slot='meter-trigger']) {
     position: relative;
   }
-  [data-slot='composer-tools'] [data-slot='select-trigger']::after {
+  [data-slot='composer-tools']
+    :is([data-slot='select-trigger'], [data-slot='meter-trigger'])::after {
     content: '';
     position: absolute;
     inset: 50%;
