@@ -11,7 +11,7 @@ import {
   SquareSlashIcon,
 } from 'lucide-react';
 import { useI18n } from '@/i18n';
-import { ConfirmDialog } from '@/components/kit';
+import { ConfirmDialog, DataText, LabelText } from '@/components/kit';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -19,6 +19,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import {
   Select,
   SelectContent,
@@ -120,47 +121,156 @@ export function queuedPreview(blocks: PromptBlock[]): string {
   return parts.join(' ');
 }
 
-/** Context pressure from the fold's usage slice — hidden when the target's
- *  adapter reports no occupancy. */
-function ContextMeter({ usage }: { usage: ComposerUsage | null }) {
+type MeterTone = 'neutral' | 'warn' | 'danger';
+
+/**
+ * The ring — the meter's phone shape. A 20px gauge whose stroke is the tone:
+ * `meter-ring-track` is the muted step, `meter-ring-fill` the value, both on
+ * `currentColor`. `data-tone` rides every element of the device (as it does on
+ * the bar and its fill) because that is the attribute a skin keys on: a skin
+ * that re-tones only the visual and forgets the fill leaves the danger reading
+ * painted in its neutral colour — measured, not assumed (#26).
+ */
+function MeterRing({ pct, tone }: { pct: number; tone: MeterTone }) {
+  const radius = 8;
+  const circumference = 2 * Math.PI * radius;
+  return (
+    <svg
+      data-slot="meter-ring"
+      data-tone={tone}
+      viewBox="0 0 20 20"
+      aria-hidden="true"
+      className={cn(
+        'size-5 shrink-0 sm:hidden',
+        tone === 'warn' ? 'text-warn' : tone === 'danger' ? 'text-danger' : 'text-primary',
+      )}
+    >
+      <circle
+        data-slot="meter-ring-track"
+        data-tone={tone}
+        cx="10"
+        cy="10"
+        r={radius}
+        fill="none"
+        strokeWidth="2.5"
+        className="text-muted stroke-current"
+      />
+      <circle
+        data-slot="meter-ring-fill"
+        data-tone={tone}
+        cx="10"
+        cy="10"
+        r={radius}
+        fill="none"
+        strokeWidth="2.5"
+        strokeLinecap="round"
+        stroke="currentColor"
+        strokeDasharray={circumference}
+        strokeDashoffset={circumference * (1 - pct / 100)}
+        transform="rotate(-90 10 10)"
+      />
+    </svg>
+  );
+}
+
+/**
+ * Context pressure from the fold's usage slice — hidden when the target's
+ * adapter reports no occupancy (it is the only source; nothing is invented).
+ *
+ * One device, two shapes. From `sm` up: the figures plus the comp's 62x7 bar.
+ * Below `sm`: a RING with no text, because the figures-plus-bar row was the
+ * widest thing in a toolbar that has to hold four controls and Send on a 390px
+ * phone. Both shapes are the same control and open the same details on click —
+ * the label, the fraction, a percentage qualifier and a full-width bar, on the
+ * popover material the dropdowns already use, so a floating surface reads as
+ * one device in the product whatever opened it. Tone (neutral, warn above 80%,
+ * danger above 95%) drives every form and both surfaces.
+ *
+ * Exported for the unit test (`context-meter.test.tsx`).
+ */
+export function ContextMeter({ usage }: { usage: ComposerUsage | null }) {
   const { t } = useI18n();
   const used = usage?.contextUsed;
   const size = usage?.contextSize;
   if (used === undefined || size === undefined || size <= 0) return null;
   const pct = Math.min(100, Math.max(0, (used / size) * 100));
-  const tone = pct > 95 ? 'danger' : pct > 80 ? 'warn' : 'neutral';
+  const tone: MeterTone = pct > 95 ? 'danger' : pct > 80 ? 'warn' : 'neutral';
+  const figure = `${formatTokens(used)} / ${formatTokens(size)}`;
+  const label = t('chat.contextUsed', { used: formatTokens(used), size: formatTokens(size) });
   return (
-    <span
-      className="flex shrink-0 items-center gap-2 max-sm:order-9 max-sm:w-full"
-      title={t('chat.contextUsed', { used: formatTokens(used), size: formatTokens(size) })}
-    >
-      <span
-        className={cn(
-          'text-muted-foreground font-mono text-[11px] tabular-nums',
-          tone === 'warn' && 'text-warn',
-          tone === 'danger' && 'text-danger',
-        )}
-      >
-        {formatTokens(used)} / {formatTokens(size)}
-      </span>
-      {/* Slots + tone are data: the comp's meter is 62x7 with a steel fill,
-          and a skin has to reach both without parsing utilities. */}
-      <span
-        data-slot="meter"
-        data-tone={tone}
-        className="bg-muted relative h-1 w-16 overflow-hidden rounded-full"
-      >
+    <Popover>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          data-slot="meter-trigger"
+          aria-label={label}
+          title={label}
+          className="text-muted-foreground focus-visible:ring-ring/50 flex shrink-0 items-center gap-2 rounded-sm focus-visible:ring-[3px] focus-visible:outline-none"
+        >
+          <span
+            className={cn(
+              'hidden font-mono text-[11px] tabular-nums sm:inline',
+              tone === 'warn' && 'text-warn',
+              tone === 'danger' && 'text-danger',
+            )}
+          >
+            {figure}
+          </span>
+          {/* Slots + tone are data: the comp's meter is 62x7 with a steel fill,
+              and a skin has to reach both without parsing utilities. */}
+          <span
+            data-slot="meter"
+            data-tone={tone}
+            className="bg-muted relative hidden h-1 w-16 overflow-hidden rounded-full sm:block"
+          >
+            <span
+              data-slot="meter-fill"
+              data-tone={tone}
+              className={cn(
+                'absolute inset-y-0 left-0 rounded-full transition-[width] duration-300',
+                tone === 'danger' ? 'bg-danger' : tone === 'warn' ? 'bg-warn' : 'bg-primary',
+              )}
+              style={{ width: `${pct}%` }}
+            />
+          </span>
+          <MeterRing pct={pct} tone={tone} />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent className="w-64 space-y-2 p-3">
+        <LabelText as="div" size="sm">
+          {t('chat.contextWindow')}
+        </LabelText>
+        <div className="flex items-baseline justify-between gap-2">
+          <DataText
+            size="sm"
+            tone={tone === 'warn' ? 'warn' : tone === 'danger' ? 'fail' : 'default'}
+          >
+            {figure}
+          </DataText>
+          <span className="text-muted-foreground text-xs tabular-nums">
+            {t('chat.contextPct', { pct: String(Math.round(pct)) })}
+          </span>
+        </div>
+        {/* The same device again, at the width a card can hold — the variant is
+            how a skin knows this bar is NOT the 62px nameplate one. */}
         <span
-          data-slot="meter-fill"
+          data-slot="meter"
+          data-variant="wide"
           data-tone={tone}
-          className={cn(
-            'absolute inset-y-0 left-0 rounded-full transition-[width] duration-300',
-            tone === 'danger' ? 'bg-danger' : tone === 'warn' ? 'bg-warn' : 'bg-primary',
-          )}
-          style={{ width: `${pct}%` }}
-        />
-      </span>
-    </span>
+          className="bg-muted relative block h-1.5 w-full overflow-hidden rounded-full"
+        >
+          <span
+            data-slot="meter-fill"
+            data-tone={tone}
+            className={cn(
+              'absolute inset-y-0 left-0 rounded-full transition-[width] duration-300',
+              tone === 'danger' ? 'bg-danger' : tone === 'warn' ? 'bg-warn' : 'bg-primary',
+            )}
+            style={{ width: `${pct}%` }}
+          />
+        </span>
+      </PopoverContent>
+    </Popover>
   );
 }
 

@@ -438,6 +438,30 @@
 [data-skin='bay'] [data-slot='meter-fill'][data-tone='danger'] {
   background: var(--danger);
 }
+/* The ring is the meter's phone shape (#26) — the same steel as the bar, with
+   the square cap an instrument panel would machine (the base's is round), so
+   the two shapes read as one device. */
+[data-skin='bay'] [data-slot='meter-ring-fill'] {
+  stroke: #93a3b5;
+  stroke-linecap: butt;
+}
+[data-skin='bay'] [data-slot='meter-ring-fill'][data-tone='warn'] {
+  stroke: var(--warn);
+}
+[data-skin='bay'] [data-slot='meter-ring-fill'][data-tone='danger'] {
+  stroke: var(--danger);
+}
+/* The details popover's bar is the CARD's width, not the 62px nameplate's —
+   and a skin has to be able to tell them apart, which is what the variant is
+   for (same doctrine as `SelectTrigger variant="bare"`). */
+[data-skin='bay'] [data-slot='meter'][data-variant='wide'] {
+  width: 100%;
+  height: 6px;
+  border-radius: 1px;
+}
+[data-skin='bay'] [data-slot='meter'][data-variant='wide'] [data-slot='meter-fill'] {
+  border-radius: 1px;
+}
 
 /* ---------- Hazard ------------------------------------------------------ */
 

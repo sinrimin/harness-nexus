@@ -31,6 +31,12 @@
  *   settles). Tests must pin FIXTURE_SESSION_ID — the daemon filters tap
  *   events by the acp session id.
  *
+ * FIXTURE_CONTEXT=1 (#26): usage_update also carries the context OCCUPANCY
+ *   (`used`/`size`, the way the claude wrapper reports it), which is what the
+ *   Sender's context meter renders. FIXTURE_CONTEXT_USED / _SIZE override the
+ *   default 34,100 / 200,000 — the rig uses the env pair to park the meter in
+ *   its warn (>80%) and danger (>95%) tones.
+ *
  * The daemon tests drive it via HN_ACP_COMMAND_<TARGET>="node <this file>".
  */
 import { randomUUID } from 'node:crypto';
@@ -192,6 +198,17 @@ function update(sessionId, sessionUpdate) {
     update: {
       sessionUpdate,
       ...(sessionUpdate === 'usage_update' ? { usage: { inputTokens: 11, outputTokens: 7 } } : {}),
+      // Occupancy, the way dsh reports it: FLAT on the update (`used`/`size`;
+      // the daemon maps exactly those two). The Sender's context meter renders
+      // them, so a rig that wants to see the meter (ring, bar, details) turns
+      // it on with FIXTURE_CONTEXT=1 — off by default, so the turn-usage
+      // assertions in chat.test.ts keep seeing exactly two fields.
+      ...(sessionUpdate === 'usage_update' && process.env.FIXTURE_CONTEXT === '1'
+        ? {
+            used: Number(process.env.FIXTURE_CONTEXT_USED ?? '34100'),
+            size: Number(process.env.FIXTURE_CONTEXT_SIZE ?? '200000'),
+          }
+        : {}),
     },
   });
 }

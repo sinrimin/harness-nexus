@@ -81,6 +81,8 @@ const en = {
   stopAria: 'Stop generating',
   sendAria: 'Send message',
   contextUsed: 'Context: {used} of {size} tokens',
+  contextWindow: 'Context window',
+  contextPct: '{pct}% used',
   permissionAsk: 'The agent asks permission',
   permissionAskTitle: 'The agent asks permission: {title}',
   // ---- 9 W14.1: agent questions (ACP elicitation) ----
@@ -228,6 +230,8 @@ const zh: typeof en = {
   stopAria: '停止生成',
   sendAria: '发送消息',
   contextUsed: '上下文：已用 {used} / {size} tokens',
+  contextWindow: '上下文窗口',
+  contextPct: '已用 {pct}%',
   permissionAsk: '代理请求权限',
   permissionAskTitle: '代理请求权限：{title}',
   // ---- 9 W14.1: agent questions (ACP elicitation) ----
