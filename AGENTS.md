@@ -94,16 +94,24 @@ docs/          architecture.md + adr/ — code-coupled contract docs ONLY
   release; assigning an issue to it = selecting it for that release. Closing
   the milestone accompanies the release tag; release notes come from its
   closed issues.
-- **Verify before merging:** typecheck + the relevant tests/smoke for the touched
-  surfaces. Unverified code must not reach `main`.
-- **Run the CI-parity gate before pushing:** CI (`.github/workflows/ci.yml`) is
-  `pnpm -r build` + `pnpm -r typecheck` + `pnpm -r test` on **Node 20** — the
-  documented engine floor. A dev box on a newer Node masks floor-only paths
-  (e.g. `zlib.zstd*` exists ≥22.15; a zstd-absent test guard once errored only
-  in CI). `task verify` (Taskfile) runs the same quartet with a Node 20
-  toolchain from `/opt/node-v20.20.2-linux-x64/bin` (override via `NODE20_BIN`);
-  without `task`, prepend that bin dir to PATH and run the three `pnpm -r`
-  commands yourself. Green locally ⇒ green in CI.
+- **Verification has two tiers — the full quartet is a PUSH-time gate, not a
+  per-commit tax.**
+  - *Per change, before merging:* `pnpm --filter <touched packages> run typecheck`
+    plus those packages' tests; for anything skin-visible, an agent-browser pass,
+    and `scripts/ui-snap.mjs` when a shared surface (tokens, kit, skin CSS) moved.
+  - *Before pushing (and before any release tag):* the full CI-parity quartet —
+    CI (`.github/workflows/ci.yml`) is `pnpm -r build` + `pnpm -r typecheck` +
+    `pnpm -r test` on **Node 20**, the documented engine floor. A dev box on a
+    newer Node masks floor-only paths (e.g. `zlib.zstd*` exists ≥22.15; a
+    zstd-absent test guard once errored only in CI). `task verify` (Taskfile)
+    runs the same quartet with a Node 20 toolchain from
+    `/opt/node-v20.20.2-linux-x64/bin` (override via `NODE20_BIN`); without
+    `task`, prepend that bin dir to PATH and run the three `pnpm -r` commands
+    yourself. Green locally ⇒ green in CI.
+
+  Nothing reaches `main` unverified; nothing is pushed with the quartet
+  unrun. An unfamiliar surface or a security-shaped change is the case to run
+  the quartet early — the tier is a floor, not a ceiling.
 - **Never push without an explicit user request.** `git push` — and any outward
   publish (`npm publish`, `gh pr create`, `gh release`) — happens ONLY when the user
   asks for it in the current session. Committing/merging locally is fine. This
