@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { useI18n } from '@/i18n';
 import { LabelText } from '@/components/kit';
 import { LanguageToggle } from '@/components/language-toggle';
+import { GithubStar } from '@/components/github-star';
 import { SkinToggle } from '@/components/skin-toggle';
 import { ThemeToggle } from '@/components/theme-toggle';
 import { NAV_GROUPS, groupLanding, routeTrail, type RouteDef } from '@/nav';
@@ -106,6 +107,7 @@ export function Topbar({
       <div ref={actionsRef} data-slot="page-actions" className="flex shrink-0 items-center gap-2" />
 
       <div className="flex shrink-0 items-center gap-0.5 border-l pl-1.5">
+        <GithubStar />
         <LanguageToggle />
         <SkinToggle />
         <ThemeToggle />
