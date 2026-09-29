@@ -104,6 +104,25 @@ runs deploy jobs and hosts the chat processes. Remote chat is off by
 default; enable it per machine (it executes tools on that machine,
 owner-only).
 
+### Client box (one command)
+
+Try any instance — your own or someone else's — without installing anything:
+the client image bundles the `hnx` CLI and the official MCP Inspector in a
+disposable container.
+
+```bash
+docker run -it --rm -p 6274:6274 -p 6275:6275 \
+  -e HNX_SERVER=https://your-instance \
+  -e HNX_TOKEN=hnpat_… \
+  sinrimin/harness-nexus-client
+```
+
+Create the token first in the web UI (Tokens → New). The box checks it,
+prints the profile's aggregated tool list, then serves the Inspector UI at
+`http://localhost:6274`, already pointed at the server's `/mcp` outlet —
+`HNX_PROFILE` picks the profile (default `default`). Any argument skips the
+box flow for plain CLI use: `docker run -it --rm sinrimin/harness-nexus-client hnx …`.
+
 ## Security
 
 - Credentials are encrypted at rest (AES-256-GCM); the UI only ever shows a

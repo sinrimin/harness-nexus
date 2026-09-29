@@ -92,6 +92,24 @@ hnx daemon --server https://your-instance --token <machine-token> --machine-id <
 连接、提供本地 MCP shim、执行部署作业、承载聊天进程。远程聊天默认关闭，按
 机器开启（它会在那台机器上执行工具，仅所有者可用）。
 
+### 客户端盒子（一条命令）
+
+不动你机器上的任何东西就能连上任意实例：客户端镜像把 `hnx` CLI 和官方
+MCP Inspector 装进一个即用即弃的容器。
+
+```bash
+docker run -it --rm -p 6274:6274 -p 6275:6275 \
+  -e HNX_SERVER=https://your-instance \
+  -e HNX_TOKEN=hnpat_… \
+  sinrimin/harness-nexus-client
+```
+
+token 先在 Web 界面创建（访问令牌 → 新建）。盒子会校验 token、打印配置集
+聚合出的工具列表，然后在 `http://localhost:6274` 起 Inspector 界面——已经
+指向该服务器的 `/mcp` 出口，无需手填；`HNX_PROFILE` 选择配置集（默认
+`default`）。带参数运行则完全跳过盒子流程，直接用 CLI：
+`docker run -it --rm sinrimin/harness-nexus-client hnx …`。
+
 ## 安全
 
 - 凭据以 AES-256-GCM 加密存储，界面只显示掩码，不回显完整内容。

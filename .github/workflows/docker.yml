@@ -1,6 +1,6 @@
 # Docker Hub image publish — tag-driven, in lockstep with the npm release.
 #
-# Publishing TWO images on every pushed vX.Y.Z tag (the same trigger as
+# Publishing THREE images on every pushed vX.Y.Z tag (the same trigger as
 # release.yml, so npm packages and images land together). Manual dispatch
 # from main is the fallback — it publishes whatever the manifests say,
 # unguarded by any tag (release.yml's fallback semantics; this is also the
@@ -9,6 +9,9 @@
 # commit):
 #   sinrimin/harness-nexus-server  ← root Dockerfile (Fastify API + MCP proxy)
 #   sinrimin/harness-nexus-web     ← apps/web/Dockerfile (nginx SPA + reverse proxy)
+#   sinrimin/harness-nexus-client  ← images/client/Dockerfile (hnx CLI + MCP
+#                                    Inspector, one-command client box; installs
+#                                    from npm only — no workspace build)
 #
 # Credentials are ENVIRONMENT secrets on the `release` environment:
 #   DOCKERHUB_USERNAME + DOCKERHUB_TOKEN (Docker Hub personal access token,
@@ -135,6 +138,32 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+      # ---- client image (images/client/Dockerfile; context is that dir) ----
+      # No workspace build — it installs @harness-nexus/cli from npm, pinned
+      # to the version being released so image and npm stay in lockstep.
+      - uses: docker/metadata-action@v5
+        id: meta-client
+        with:
+          images: sinrimin/harness-nexus-client
+          tags: |
+            type=raw,value=${{ steps.ver.outputs.version }}
+          flavor: |
+            latest=true
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: images/client
+          file: images/client/Dockerfile
+          platforms: linux/amd64
+          push: true
+          provenance: false
+          build-args: |
+            CLI_VERSION=${{ steps.ver.outputs.version }}
+          tags: ${{ steps.meta-client.outputs.tags }}
+          labels: ${{ steps.meta-client.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
       # ---- Docker Hub overviews (#15) -----------------------------------------
       # The repos' descriptions start EMPTY (Docker Hub derives nothing from
       # the image). Intended flow: PATCH the Hub API with a short line + the
@@ -181,3 +210,6 @@ jobs:
           sync_description web \
             'Harness Nexus web — nginx-served admin UI with a reverse proxy to the server.' \
             docs/docker-hub/web.md
+          sync_description client \
+            'Harness Nexus client — hnx CLI + MCP Inspector in a one-command box.' \
+            docs/docker-hub/client.md
