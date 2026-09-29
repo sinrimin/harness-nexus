@@ -23,6 +23,12 @@ MCP server 和 API key 往往每个工具配一遍，换台机器再来一遍；
 一个你自己部署的服务端和 Web 界面，加上每台机器上一个轻量客户端 `hnx` 负责本地
 执行。
 
+## 在线演示
+
+公开实例跑在 **<https://demo.harness-nexus.com>**——随手注册一个账号就能逛。
+那是个一次性环境：数据只存内存、每天清空，请使用一次性凭据，账号随时可能
+消失。它运行的准确代码[完全可查](https://github.com/sinrimin/harness-nexus-demo)。
+
 ## 它能做什么
 
 - MCP server 只登记一次，凭据加密保存；工具统一从一个端点提供给 agent 使用，
