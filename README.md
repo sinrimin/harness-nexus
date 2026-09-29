@@ -14,6 +14,8 @@
   <a href="https://github.com/sinrimin/harness-nexus/actions/workflows/ci.yml"><img src="https://github.com/sinrimin/harness-nexus/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   &nbsp;·&nbsp;
   <a href="https://www.npmjs.com/package/@harness-nexus/cli"><img src="https://img.shields.io/npm/v/@harness-nexus/cli" alt="npm @harness-nexus/cli"></a>
+  &nbsp;·&nbsp;
+  <a href="https://github.com/sinrimin/harness-nexus/stargazers"><img src="https://img.shields.io/github/stars/sinrimin/harness-nexus?logo=github" alt="GitHub stars"></a>
 </p>
 
 If you run coding agents — Claude Code, Codex, DeepSeek, OpenCode, pi,
