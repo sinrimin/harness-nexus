@@ -25,6 +25,14 @@ see what is installed where. Harness Nexus is that place: a server and web UI
 you host yourself, plus a lightweight client (`hnx`) on each machine that
 does the local work.
 
+## Live demo
+
+A public instance runs at **<https://demo.harness-nexus.com>** — register
+with any account and look around. It is a throwaway environment: data lives
+in memory and is wiped daily, so use disposable credentials and expect your
+account to vanish. The exact code it runs is
+[open for inspection](https://github.com/sinrimin/harness-nexus-demo).
+
 ## What you can do
 
 - Register MCP servers once, with credentials stored encrypted; the tools
