@@ -77,7 +77,9 @@ export function Well({
           shouldTruncate ? 'truncate' : null,
           variant === 'block' && !shouldTruncate ? 'break-all whitespace-pre-wrap' : null,
           (variant === 'code' || variant === 'term' || variant === 'diff') &&
-            'block overflow-x-auto whitespace-pre',
+            // #30: the right padding keeps the scrolled text's tail clear of
+            // the absolutely-positioned copy button (top-1 right-1).
+            'block overflow-x-auto whitespace-pre pr-5',
         )}
       >
         {children}
