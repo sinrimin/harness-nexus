@@ -213,7 +213,10 @@ export async function runHarnessJob(
     try {
       // Inherit the daemon's environment: proxied machines must pass
       // HTTP(S)_PROXY / npm_config_registry through to the installer.
-      child = spawn(cmd.command, cmd.args, { env: opts.env ?? process.env });
+      child = spawn(cmd.command, cmd.args, {
+        env: opts.env ?? process.env,
+        windowsHide: true, // #33 — no console window on Windows
+      });
     } catch (e) {
       resolve({ ok: false, tail: e instanceof Error ? e.message : String(e) });
       return;

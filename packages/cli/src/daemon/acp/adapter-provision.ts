@@ -142,7 +142,11 @@ export async function provisionAdapters(
     ((args: string[]): Promise<void> => {
       const env = { ...process.env, ...(opts.env ?? {}) };
       return new Promise((resolve, reject) => {
-        const child = spawn('npm', args, { env, stdio: ['ignore', 'ignore', 'pipe'] });
+        const child = spawn('npm', args, {
+          env,
+          stdio: ['ignore', 'ignore', 'pipe'],
+          windowsHide: true, // #33 — no console window on Windows
+        });
         const stderrTail: string[] = [];
         child.stderr?.on('data', (c: Buffer) => {
           for (const l of c.toString('utf8').split('\n')) {

@@ -320,6 +320,7 @@ export class PiRpcConnection implements AgentConnection {
         cwd: opts.cwd,
         env: { ...process.env, ...(opts.env ?? {}) },
         stdio: ['pipe', 'pipe', 'pipe'],
+        windowsHide: true, // #33 — no console window per child on Windows
         detached: true, // own process group — kill() takes the whole tree
       });
     } catch (e) {
