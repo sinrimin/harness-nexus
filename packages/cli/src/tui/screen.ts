@@ -38,6 +38,11 @@ export class Screen {
     return null;
   }
 
+  /** Live terminal size (may change between frames via resize). */
+  size(): { w: number; h: number } {
+    return { w: this.out.columns ?? this.cols, h: this.out.rows ?? this.rows };
+  }
+
   enter(): void {
     this.#active = true;
     this.out.write(ENTER_ALT);
