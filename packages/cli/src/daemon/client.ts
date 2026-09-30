@@ -14,6 +14,7 @@ import { probeRuntimes } from '../inventory/runtime.js';
 import { runtimeConfigViewPayload } from './config-view.js';
 import { listDirectories, listFiles } from './workspace.js';
 import { sweepAdapterLedger } from './adapter-ledger.js';
+import { attachCommLog, logOp } from './logbook.js';
 import { provisionAdapters } from './acp/adapter-provision.js';
 import { attachJobHandlers } from './jobs.js';
 import { attachChatHandlers } from './chat.js';
@@ -93,20 +94,39 @@ export function runDaemon(options: DaemonOptions): Promise<void> {
   // patch re-checks). Fire-and-forget: npx stays the spawn path until it
   // lands, and any failure just leaves that fallback in place.
   if (process.env.HN_ACP_NO_AUTO_PROVISION !== '1') {
+    const provisionStartedAt = Date.now();
     void provisionAdapters(homedir())
       .then((r) => {
         // eslint-disable-next-line no-console
         console.log(
           `hnx daemon: adapter provisioning — ${r.installed ? 'installed pinned adapters' : 'pinned adapters present'}${r.applied.length > 0 ? `, patches applied: ${r.applied.join(', ')}` : ''}${r.already.length > 0 ? `, patches already in place: ${r.already.join(', ')}` : ''}${r.failed.length > 0 ? `, patch issues: ${r.failed.map((f) => `${f.id} (${f.reason})`).join('; ')}` : ''}${r.error !== undefined ? ` — install FAILED (${r.error}), npx fallback stays` : ''}`,
         );
+        // #38 — the operation trail remembers installs even when the console
+        // scrollback is long gone.
+        logOp({
+          op: r.installed ? 'adapter-provision' : 'adapter-provision-check',
+          outcome: r.error !== undefined ? 'error' : 'ok',
+          ms: Date.now() - provisionStartedAt,
+          ...(r.error !== undefined ? { detail: r.error } : {}),
+        });
       })
-      .catch(() => {});
+      .catch((e: unknown) => {
+        logOp({
+          op: 'adapter-provision',
+          outcome: 'error',
+          ms: Date.now() - provisionStartedAt,
+          detail: e instanceof Error ? e.message : String(e),
+        });
+      });
   }
 
   const socket = io(`${options.server}/ctl`, {
     auth: { token: options.token, machineId: options.machineId },
     transports: ['websocket'],
   });
+  // #38 — every packet lands in ~/.hnx/logs/comm.log (metadata level; see
+  // logbook.ts for the payload escape hatch).
+  attachCommLog(socket);
 
   attachJobHandlers(socket, { server: options.server, token: options.token });
   // Issue #2 — the sessions listing reuses a live channel's adapter

@@ -37,6 +37,8 @@ import {
 import { runDaemon } from './daemon/client.js';
 import { runMcpServe } from './mcp/serve.js';
 import { cliVersion } from './version.js';
+import { runLogsCommand, type LogsArgs } from './logs.js';
+import { logOp } from './daemon/logbook.js';
 import { HarnessNexusClient } from '@harness-nexus/sdk';
 import type { InstallPlan } from './install/types.js';
 import type { AgentTarget } from '@harness-nexus/core';
@@ -49,6 +51,7 @@ Usage:
   hnx enroll --server <url> --token <pat> [--name <name>]
   hnx daemon [--server <url>] [--token <machine-pat>] [--machine-id <id>]
   hnx mcp serve --profile <id> [--server <url>] [--token <pat>]
+  hnx logs [--tail <n>] [--bundle <file|->]
   hnx --version
 
 Install options:
@@ -77,6 +80,18 @@ Daemon options (Phase 8 — bring the machine online):
   --server <url>     Override the server base URL
   --token <pat>      Override the machine token
   --machine-id <id>  Override the machine id
+  The daemon keeps a local logbook under ~/.hnx/logs/ (#38):
+  ops.log = operations it performed, comm.log = server traffic metadata
+  (chat stream bursts collapse to one line per burst). Env:
+  HNX_LOG_COMM=payload  also log full payloads (DEBUG ONLY — includes chat
+                        content; never share the file unreviewed)
+  HNX_LOG_DIR=<dir>     override the logbook directory
+
+Logs options (#38 — inspect the daemon's local logbook):
+  --tail <n>         Lines to print per file (default 20)
+  --bundle <file>    Write a shareable single-file support bundle
+                     (build header + last 200 lines of each log);
+                     '-' writes it to stdout
 
 MCP serve options (Phase 8 C2 — the stdio shim; spawned by Agent tools):
   --profile <id>     Profile to serve (required)
@@ -484,6 +499,34 @@ function parseMcpServeArgs(argv: string[]): McpServeArgs {
   return args;
 }
 
+function parseLogsArgs(argv: string[]): LogsArgs {
+  const args: LogsArgs = { tail: 20 };
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i];
+    const next = (): string => {
+      const v = argv[++i];
+      if (v === undefined) throw new InstallError(`Missing value for ${a}`, 'VALIDATION_FAILED');
+      return v;
+    };
+    switch (a) {
+      case '--tail': {
+        const n = Number(next());
+        if (!Number.isInteger(n) || n < 1) {
+          throw new InstallError('--tail expects a positive integer', 'VALIDATION_FAILED');
+        }
+        args.tail = n;
+        break;
+      }
+      case '--bundle':
+        args.bundle = next();
+        break;
+      default:
+        throw new InstallError(`Unknown argument: ${a}`, 'VALIDATION_FAILED');
+    }
+  }
+  return args;
+}
+
 async function runMcpServeCommand(args: McpServeArgs): Promise<void> {
   const config = loadDaemonConfig();
   const server = args.server ?? config?.server;
@@ -521,10 +564,43 @@ async function main(argv: string[]): Promise<number> {
     try {
       if (subcommand === 'install') {
         const args = parseArgs(rest);
-        await runInstall(args);
+        const startedAt = Date.now();
+        try {
+          await runInstall(args);
+        } catch (e) {
+          // #38 — manual installs share the daemon's operation trail.
+          if (args.apply) {
+            logOp({
+              op: 'install',
+              target: args.target ?? 'profile',
+              outcome: 'error',
+              ms: Date.now() - startedAt,
+              detail: `profile ${args.profile} — ${e instanceof Error ? e.message : String(e)}`,
+            });
+          }
+          throw e;
+        }
+        if (args.apply) {
+          logOp({
+            op: 'install',
+            target: args.target ?? 'profile',
+            outcome: 'ok',
+            ms: Date.now() - startedAt,
+            detail: `profile ${args.profile}`,
+          });
+        }
         return 0;
       }
-      return runUninstall(parseArgs(rest, /* loose */ true));
+      const args = parseArgs(rest, /* loose */ true);
+      const code = runUninstall(args);
+      if (args.apply) {
+        logOp({
+          op: 'uninstall',
+          target: args.target ?? 'profile',
+          outcome: code === 0 ? 'ok' : 'error',
+        });
+      }
+      return code;
     } catch (e) {
       if (e instanceof InstallError) {
         // eslint-disable-next-line no-console
@@ -535,6 +611,10 @@ async function main(argv: string[]): Promise<number> {
       console.error(`hnx: unexpected error: ${e instanceof Error ? e.message : String(e)}`);
       return 2;
     }
+  }
+
+  if (subcommand === 'logs') {
+    return runLogsCommand(parseLogsArgs(rest));
   }
 
   if (subcommand === 'enroll' || subcommand === 'daemon' || subcommand === 'mcp') {

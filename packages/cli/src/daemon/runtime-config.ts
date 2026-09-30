@@ -14,6 +14,7 @@ import { HarnessNexusClient } from '@harness-nexus/sdk';
 import { beginMarker, endMarker, DSH_PATCH_FILENAME } from '../install/adapters/deepseek.js';
 import { mergeTomlSection } from '../install/adapters/codex.js';
 import { dshNodeWarning, piNodeWarning } from './runtime.js';
+import { logOp } from './logbook.js';
 
 /**
  * Provider-config apply (Phase 9 W3) — the daemon half of
@@ -551,6 +552,7 @@ export async function runApplyConfigJob(
   job: JobView,
   homeDir: string = homedir(),
 ): Promise<void> {
+  const startedAt = Date.now();
   const parsed = harnessJobPayloadSchema.safeParse(job.payload);
   if (!parsed.success || parsed.data.action !== 'apply-config') {
     socket.emit('job:result', { jobId: job.id, ok: false, error: 'harness payload invalid' });
@@ -575,11 +577,22 @@ export async function runApplyConfigJob(
       ...(nodeWarning !== null ? { warning: nodeWarning } : {}),
     });
     socket.emit('job:result', { jobId: job.id, ok: true, data });
+    logOp({
+      op: 'runtime-config-apply',
+      target,
+      outcome: 'ok',
+      ms: Date.now() - startedAt,
+      detail: `${String(files.length)} file(s)`,
+    });
   } catch (e) {
-    socket.emit('job:result', {
-      jobId: job.id,
-      ok: false,
-      error: e instanceof Error ? e.message : String(e),
+    const error = e instanceof Error ? e.message : String(e);
+    socket.emit('job:result', { jobId: job.id, ok: false, error });
+    logOp({
+      op: 'runtime-config-apply',
+      target,
+      outcome: 'error',
+      ms: Date.now() - startedAt,
+      detail: error,
     });
   }
 }

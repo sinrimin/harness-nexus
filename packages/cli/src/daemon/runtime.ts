@@ -12,6 +12,7 @@ import {
 import { probeRuntime, type ResolveOptions } from '../inventory/runtime.js';
 import { scanTarget, scannerFor } from '../inventory/scan.js';
 import { emptySnapshot } from './client.js';
+import { logOp } from './logbook.js';
 
 /**
  * Harness-runtime job executor (Phase 9 W2). wiki design-phase-9-harness-runtime.md §4.2.
@@ -173,8 +174,18 @@ export async function runHarnessJob(
   const progress = (phase: string, message?: string): void => {
     socket.emit('job:progress', { jobId: job.id, phase, ...(message ? { message } : {}) });
   };
+  const harnessStartedAt = Date.now();
   const result = (ok: boolean, extra: { error?: string; data?: unknown }): void => {
     socket.emit('job:result', { jobId: job.id, ok, ...extra });
+    // #38 — installer runs leave a local trail (what was installed, how long,
+    // why it failed) even though the result also lives server-side.
+    logOp({
+      op: `harness.${payload.action}`,
+      target: payload.target,
+      outcome: ok ? 'ok' : 'error',
+      ms: Date.now() - harnessStartedAt,
+      ...(extra.error !== undefined ? { detail: extra.error } : {}),
+    });
   };
 
   progress(
