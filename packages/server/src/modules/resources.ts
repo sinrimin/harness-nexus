@@ -122,7 +122,7 @@ export async function resourcesRoutes(app: FastifyInstance): Promise<void> {
   // ---- GET /api/resources/:id ----
   app.get<{ Params: { id: string } }>('/api/resources/:id', guard, async (req) => {
     const resource = await app.uow.resources.findById(req.params.id);
-    if (!resource || !ownsOrAdmin(resource, req.user!.id, req.user!.role)) {
+    if (!resource || !canManage(resource, req.user!.id, req.user!.role)) {
       throw new AppError('Resource not found', 404, 'RESOURCE_NOT_FOUND');
     }
     return { resource: resourceView(resource) };
@@ -132,7 +132,7 @@ export async function resourcesRoutes(app: FastifyInstance): Promise<void> {
   app.patch<{ Params: { id: string } }>('/api/resources/:id', guard, async (req) => {
     const input = updateResourceSchema.parse(req.body) as UpdateResourceInput;
     const existing = await app.uow.resources.findById(req.params.id);
-    if (!existing || !ownsOrAdmin(existing, req.user!.id, req.user!.role)) {
+    if (!existing || !canManage(existing, req.user!.id, req.user!.role)) {
       throw new AppError('Resource not found', 404, 'RESOURCE_NOT_FOUND');
     }
 
@@ -183,7 +183,7 @@ export async function resourcesRoutes(app: FastifyInstance): Promise<void> {
   // ---- DELETE /api/resources/:id — two-stage (see mcp-servers) ----
   app.delete<{ Params: { id: string } }>('/api/resources/:id', guard, async (req) => {
     const existing = await app.uow.resources.findById(req.params.id);
-    if (!existing || !ownsOrAdmin(existing, req.user!.id, req.user!.role)) {
+    if (!existing || !canManage(existing, req.user!.id, req.user!.role)) {
       throw new AppError('Resource not found', 404, 'RESOURCE_NOT_FOUND');
     }
     if (existing.deletedAt === undefined) {
@@ -410,7 +410,7 @@ function withTrustLabels(resource: Resource): Resource {
   };
 }
 
-/** A record is actionable by the caller iff they own it (personal) or are admin. */
-function ownsOrAdmin(r: Resource, userId: string, role: 'admin' | 'user'): boolean {
-  return role === 'admin' || r.ownerId === userId;
+/** A record is manageable iff owner (personal) or admin on a global row (#36). */
+function canManage(r: Resource, userId: string, role: 'admin' | 'user'): boolean {
+  return r.scope === 'global' ? role === 'admin' : r.ownerId === userId;
 }

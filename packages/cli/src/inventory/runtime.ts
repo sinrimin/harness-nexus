@@ -106,9 +106,9 @@ export async function findRuntimeBin(
     ...(npmDir !== null && !entries.some((p) => sameDir(p, npmDir))
       ? binCandidates(bin, npmDir)
       : []),
-    ...RUNTIME_PROBES.find((r) => r.bin === bin)!.knownPaths(home).flatMap((p) =>
-      IS_WIN ? [p, `${p}.cmd`, `${p}.exe`] : [p],
-    ),
+    ...RUNTIME_PROBES.find((r) => r.bin === bin)!
+      .knownPaths(home)
+      .flatMap((p) => (IS_WIN ? [p, `${p}.cmd`, `${p}.exe`] : [p])),
   ];
   for (const candidate of candidates) {
     if (!isAbsolute(candidate)) continue;

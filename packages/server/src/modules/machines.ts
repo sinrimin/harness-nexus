@@ -11,22 +11,20 @@ import { generatePat, hashToken, patDisplayPrefix, generateId } from '../infra/c
 import { machineView } from './serialize.js';
 
 /**
- * Machine management (Phase 8 C1). Machines are personal — the owner (or an
- * admin) sees and mutates them; anyone else gets 404 (existence-hiding, same
- * convention as credentials/mcp-servers). Enrolling creates the Machine plus
- * its dedicated machine PAT (scopes ['machine-ctl'], rejected by REST) whose
- * raw token is returned exactly once.
+ * Machine management (Phase 8 C1). Machines are personal — the owner sees and
+ * mutates them; anyone else (admin included, #36: admins are not tenant
+ * overseers) gets 404 (existence-hiding, same convention as
+ * credentials/mcp-servers). Enrolling creates the Machine plus its dedicated
+ * machine PAT (scopes ['machine-ctl'], rejected by REST) whose raw token is
+ * returned exactly once.
  */
 export async function machinesRoutes(app: FastifyInstance): Promise<void> {
   const guard = { preHandler: [app.requireAuth] };
 
-  const visible = async (
-    id: string,
-    requester: { id: string; role: 'admin' | 'user' },
-  ): Promise<Machine | null> => {
+  const visible = async (id: string, requester: { id: string }): Promise<Machine | null> => {
     const machine = await app.uow.machines.findById(id);
     if (!machine) return null;
-    if (machine.ownerId !== requester.id && requester.role !== 'admin') return null;
+    if (machine.ownerId !== requester.id) return null;
     return machine;
   };
 
@@ -73,12 +71,9 @@ export async function machinesRoutes(app: FastifyInstance): Promise<void> {
     return reply.code(201).send({ machine: machineView(machine, false), token: rawToken });
   });
 
-  // ---- GET /api/machines (own; admin sees all) ----
+  // ---- GET /api/machines (own; an admin lists their own, not the fleet) ----
   app.get('/api/machines', guard, async (req) => {
-    const machines =
-      req.user!.role === 'admin'
-        ? await app.uow.machines.list()
-        : await app.uow.machines.list({ ownerId: req.user!.id });
+    const machines = await app.uow.machines.list({ ownerId: req.user!.id });
     return {
       machines: machines.map((m) => machineView(m, app.realtime.presence.isOnline(m.id))),
     };

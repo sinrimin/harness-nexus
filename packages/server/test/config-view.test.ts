@@ -134,7 +134,8 @@ describe('GET /api/machines/:id/runtimes/:target/config', () => {
       redacted: ['~/.codex/auth.json:OPENAI_API_KEY'],
     });
 
-    // Viewing is owner-or-admin (404 existence-hiding for strangers).
+    // Viewing is owner-only (404 existence-hiding for strangers AND admins —
+    // #36 removed the admin read bypass on personal machines).
     expect(
       (
         await app.inject({
@@ -143,7 +144,7 @@ describe('GET /api/machines/:id/runtimes/:target/config', () => {
           headers: auth(adminJwt),
         })
       ).statusCode,
-    ).toBe(200);
+    ).toBe(404);
     expect(
       (
         await app.inject({

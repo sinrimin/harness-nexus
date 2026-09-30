@@ -15,14 +15,14 @@ import { marketplaceNameFor } from '../marketplace/emitter.js';
  * Deploy jobs + harness jobs + agent instances (Phase 8 C4 · Phase 9 W2).
  * wiki design-phase-8-c4.md · phase-9-harness-runtime.md §4.2.
  *
- * All machine-scoped endpoints inherit the machine owner-or-admin guard with
- * 404 existence-hiding. A deploy job is fire-and-forget replayable work: it
- * queues when the daemon is offline and drains on reconnect; the daemon
- * executes it through the unchanged 3.3 pipeline against a deploy bundle
- * fetched with its own machine PAT. A harness job (W2) installs/upgrades/pins
- * the harness runtime — OWNER-ONLY to create (admins may view, not mutate:
- * machine-touching actions match chat's owner-only stance) and gated on the
- * daemon's `harness` capability when online.
+ * All machine-scoped endpoints inherit the machine OWNER guard with 404
+ * existence-hiding (#36: admins are not tenant overseers — a machine is
+ * personal like a credential). A deploy job is fire-and-forget replayable
+ * work: it queues when the daemon is offline and drains on reconnect; the
+ * daemon executes it through the unchanged 3.3 pipeline against a deploy
+ * bundle fetched with its own machine PAT. A harness job (W2)
+ * installs/upgrades/pins the harness runtime — OWNER-ONLY to create and gated
+ * on the daemon's `harness` capability when online.
  */
 
 /**
@@ -37,12 +37,9 @@ export const DEPLOYABLE_TARGETS = ['hermes', 'codex', 'deepseek', 'pi'] as const
 export async function jobsRoutes(app: FastifyInstance): Promise<void> {
   const guard = { preHandler: [app.requireAuth] };
 
-  const visibleMachine = async (
-    id: string,
-    requester: { id: string; role: 'admin' | 'user' },
-  ): Promise<Machine> => {
+  const visibleMachine = async (id: string, requester: { id: string }): Promise<Machine> => {
     const machine = await app.uow.machines.findById(id);
-    if (!machine || (machine.ownerId !== requester.id && requester.role !== 'admin')) {
+    if (!machine || machine.ownerId !== requester.id) {
       throw new AppError('Machine not found', 404, 'MACHINE_NOT_FOUND');
     }
     return machine;
@@ -61,15 +58,6 @@ export async function jobsRoutes(app: FastifyInstance): Promise<void> {
           'Use PUT /api/machines/:id/runtime-config/:target to apply provider config',
           409,
           'USE_RUNTIME_CONFIG_ENDPOINT',
-        );
-      }
-      // Owner-only: admins may view jobs but not run installers on someone
-      // else's machine (403 — the machine is already visible to them).
-      if (machine.ownerId !== req.user!.id) {
-        throw new AppError(
-          'Harness jobs are owner-only — only the machine owner may manage its software',
-          403,
-          'MACHINE_OWNER_ONLY',
         );
       }
       // Soft capability gate (deploy's rule): an ONLINE daemon without the
@@ -97,10 +85,7 @@ export async function jobsRoutes(app: FastifyInstance): Promise<void> {
     });
     const profile = await app.uow.profiles.findById(deployInput.profileId);
     const profileVisible =
-      profile &&
-      (profile.scope === 'global' ||
-        profile.ownerId === req.user!.id ||
-        req.user!.role === 'admin');
+      profile && (profile.scope === 'global' || profile.ownerId === req.user!.id);
     if (!profile || !profileVisible) {
       throw new AppError('Profile not found', 404, 'PROFILE_NOT_FOUND');
     }

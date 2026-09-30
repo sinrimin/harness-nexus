@@ -167,13 +167,9 @@ export class McpRegistry {
    * accessibility check. Throws if the profile references an MCP server the
    * caller cannot see. Returns `{ serverIds }` for use as a `listTools` filter.
    */
-  async profileEntriesFor(
-    profileId: string,
-    userId: string,
-    role: 'admin' | 'user',
-  ): Promise<{ serverIds: string[] }> {
+  async profileEntriesFor(profileId: string, userId: string): Promise<{ serverIds: string[] }> {
     const profile = await this.uow.profiles.findById(profileId);
-    if (!profile || !profileVisibleBy(profile, userId, role)) {
+    if (!profile || !profileVisibleBy(profile, userId)) {
       throw new Error(`profile ${profileId} not accessible`);
     }
     const serverIds: string[] = [];
@@ -182,7 +178,7 @@ export class McpRegistry {
       const server = await this.uow.mcpServers.findById(entry.resourceId);
       // Soft-deleted rows are skipped (two-stage delete), not fatal.
       if (!server || server.deletedAt !== undefined) continue;
-      if (!serverVisibleBy(server, userId, role)) {
+      if (!serverVisibleBy(server, userId)) {
         throw new Error(`profile entry ${entry.resourceId} not accessible`);
       }
       serverIds.push(server.id);
@@ -286,12 +282,12 @@ export class McpRegistry {
   }
 }
 
-/** A profile is visible to a user iff global, or personal + owned by them. */
-function profileVisibleBy(profile: Profile, userId: string, role: 'admin' | 'user'): boolean {
-  return profile.scope === 'global' || profile.ownerId === userId || role === 'admin';
+/** A profile is visible to a user iff global, or personal + owned by them (#36). */
+function profileVisibleBy(profile: Profile, userId: string): boolean {
+  return profile.scope === 'global' || profile.ownerId === userId;
 }
 
-/** An MCP server is visible to a user iff global, or personal + owned by them. */
-function serverVisibleBy(server: McpServer, userId: string, role: 'admin' | 'user'): boolean {
-  return server.scope === 'global' || server.ownerId === userId || role === 'admin';
+/** An MCP server is visible to a user iff global, or personal + owned by them (#36). */
+function serverVisibleBy(server: McpServer, userId: string): boolean {
+  return server.scope === 'global' || server.ownerId === userId;
 }

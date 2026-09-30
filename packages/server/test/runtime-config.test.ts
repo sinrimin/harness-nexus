@@ -97,21 +97,21 @@ describe('PUT /api/machines/:id/runtime-config/:target', () => {
     expect(again.json().job.type).toBe('harness');
   });
 
-  it('is owner-only — admin views but cannot mutate', async () => {
+  it('is owner-only — even an admin is 404-hidden from a foreign machine (#36)', async () => {
     const asAdmin = await app.inject({
       method: 'PUT',
       url: `/api/machines/${machineId}/runtime-config/codex`,
       headers: auth(rootToken),
       payload: codexSpec,
     });
-    expect(asAdmin.statusCode).toBe(403);
-    expect(asAdmin.json().error).toBe('MACHINE_OWNER_ONLY');
+    expect(asAdmin.statusCode).toBe(404);
+    expect(asAdmin.json().error).toBe('MACHINE_NOT_FOUND');
     const view = await app.inject({
       method: 'GET',
       url: `/api/machines/${machineId}/runtime-config/codex`,
       headers: auth(rootToken),
     });
-    expect(view.statusCode).toBe(200);
+    expect(view.statusCode).toBe(404);
   });
 
   it('hides foreign machines (404, not 403) and missing rows', async () => {

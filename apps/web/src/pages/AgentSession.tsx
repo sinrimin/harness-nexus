@@ -389,11 +389,7 @@ function SessionRail({
                               }}
                               className={cn(
                                 'flex w-full items-start gap-2 border-b px-3 py-2 text-left last:border-b-0',
-                                active
-                                  ? 'bg-tray'
-                                  : stale
-                                    ? 'cursor-default'
-                                    : 'hover:bg-tray/60',
+                                active ? 'bg-tray' : stale ? 'cursor-default' : 'hover:bg-tray/60',
                                 stale && !active && 'opacity-50',
                               )}
                               title={

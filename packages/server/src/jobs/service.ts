@@ -244,9 +244,9 @@ export class JobService {
   }
 
   /** Cancel a queued job (dispatched/running already live on the daemon). */
-  async cancel(jobId: string, requester: { id: string; role: 'admin' | 'user' }): Promise<Job> {
+  async cancel(jobId: string, requester: { id: string }): Promise<Job> {
     const job = await this.deps.uow.jobs.findById(jobId);
-    if (!job || (job.ownerId !== requester.id && requester.role !== 'admin')) {
+    if (!job || job.ownerId !== requester.id) {
       throw new AppError('Job not found', 404, 'JOB_NOT_FOUND');
     }
     if (job.status !== 'queued') {

@@ -4,8 +4,8 @@ import { testConfig } from './helpers.js';
 
 /**
  * #21 — GET /api/mcp-servers/status spans every tenant's pooled upstreams;
- * non-admins must only see rows visible to them (names and upstream error
- * details are tenant data).
+ * every caller (admins included — #36) must only see rows visible to them
+ * (names and upstream error details are tenant data).
  */
 
 async function setup() {
@@ -59,7 +59,7 @@ async function setup() {
 }
 
 describe('mcp-servers status visibility (#21)', () => {
-  it('hides other tenants' + "' rows from regular users; admin sees all", async () => {
+  it("hides other tenants' rows from regular users and admins alike (#36)", async () => {
     const { app, adminJwt, aliceJwt, bobJwt, serverId, statusFor } = await setup();
 
     const aliceIds = (await statusFor(aliceJwt)).map((s) => s.id);
@@ -69,7 +69,7 @@ describe('mcp-servers status visibility (#21)', () => {
     expect(bobIds).not.toContain(serverId);
 
     const adminIds = (await statusFor(adminJwt)).map((s) => s.id);
-    expect(adminIds).toContain(serverId);
+    expect(adminIds).not.toContain(serverId);
     await app.close();
   });
 });

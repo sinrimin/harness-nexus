@@ -30,7 +30,7 @@ export async function profilesRoutes(app: FastifyInstance): Promise<void> {
     if (input.scope === 'global' && req.user!.role !== 'admin') {
       throw new AppError('Only admins can create global profiles', 403, 'FORBIDDEN');
     }
-    const entries = await resolveEntries(app, input.entries, req.user!.id, req.user!.role);
+    const entries = await resolveEntries(app, input.entries, req.user!.id);
 
     const now = new Date().toISOString();
     const profile: Profile = {
@@ -64,7 +64,7 @@ export async function profilesRoutes(app: FastifyInstance): Promise<void> {
   // ---- GET /api/profiles/:id ----
   app.get<{ Params: { id: string } }>('/api/profiles/:id', guard, async (req) => {
     const profile = await app.uow.profiles.findById(req.params.id);
-    if (!profile || !visibleTo(profile, req.user!.id, req.user!.role)) {
+    if (!profile || !visibleTo(profile, req.user!.id)) {
       throw new AppError('Profile not found', 404, 'PROFILE_NOT_FOUND');
     }
     return { profile };
@@ -80,13 +80,13 @@ export async function profilesRoutes(app: FastifyInstance): Promise<void> {
       throw new AppError('Profile target is immutable', 409, 'TARGET_IMMUTABLE');
     }
     const existing = await app.uow.profiles.findById(req.params.id);
-    if (!existing || !ownsOrAdmin(existing, req.user!.id, req.user!.role)) {
+    if (!existing || !canManage(existing, req.user!.id, req.user!.role)) {
       throw new AppError('Profile not found', 404, 'PROFILE_NOT_FOUND');
     }
 
     const entries =
       input.entries !== undefined
-        ? await resolveEntries(app, input.entries, req.user!.id, req.user!.role)
+        ? await resolveEntries(app, input.entries, req.user!.id)
         : existing.entries;
 
     // Auto-version (#18): bump ONLY when the entries actually changed — the
@@ -110,7 +110,7 @@ export async function profilesRoutes(app: FastifyInstance): Promise<void> {
   // ---- DELETE /api/profiles/:id ----
   app.delete<{ Params: { id: string } }>('/api/profiles/:id', guard, async (req) => {
     const existing = await app.uow.profiles.findById(req.params.id);
-    if (!existing || !ownsOrAdmin(existing, req.user!.id, req.user!.role)) {
+    if (!existing || !canManage(existing, req.user!.id, req.user!.role)) {
       throw new AppError('Profile not found', 404, 'PROFILE_NOT_FOUND');
     }
     await app.uow.profiles.delete(existing.id);
@@ -129,13 +129,12 @@ async function resolveEntries(
   app: FastifyInstance,
   entries: ProfileEntryInput[],
   userId: string,
-  role: 'admin' | 'user',
 ): Promise<ProfileEntry[]> {
   const out: ProfileEntry[] = [];
   for (const e of entries) {
     if ('mcpServerId' in e) {
       const server = await app.uow.mcpServers.findById(e.mcpServerId);
-      if (!server || server.deletedAt !== undefined || !serverVisible(server, userId, role)) {
+      if (!server || server.deletedAt !== undefined || !serverVisible(server, userId)) {
         throw new AppError(
           `MCP server ${e.mcpServerId} not found or not accessible`,
           409,
@@ -154,7 +153,7 @@ async function resolveEntries(
       !resource ||
       resource.deletedAt !== undefined ||
       resource.kind !== e.kind ||
-      !(resource.scope === 'global' || resource.ownerId === userId || role === 'admin')
+      !(resource.scope === 'global' || resource.ownerId === userId)
     ) {
       throw new AppError(
         `Resource ${e.resourceId} not found or not accessible`,
@@ -172,21 +171,20 @@ async function resolveEntries(
   return out;
 }
 
-/** A profile is visible to a user iff global, personal + owned, or admin. */
-function visibleTo(p: Profile, userId: string, role: 'admin' | 'user'): boolean {
-  return p.scope === 'global' || p.ownerId === userId || role === 'admin';
+/** A profile is visible to a user iff global or personal + owned (#36). */
+function visibleTo(p: Profile, userId: string): boolean {
+  return p.scope === 'global' || p.ownerId === userId;
 }
 
-/** A profile is actionable iff owned (personal) or admin. */
-function ownsOrAdmin(p: Profile, userId: string, role: 'admin' | 'user'): boolean {
-  return role === 'admin' || p.ownerId === userId;
+/** A profile is manageable iff owner (personal) or admin on a global row (#36). */
+function canManage(p: Profile, userId: string, role: 'admin' | 'user'): boolean {
+  return p.scope === 'global' ? role === 'admin' : p.ownerId === userId;
 }
 
-/** An MCP server is visible iff global, personal + owned, or admin. */
+/** An MCP server is visible iff global or personal + owned (#36). */
 function serverVisible(
   s: { scope: 'global' | 'personal'; ownerId: string | null },
   userId: string,
-  role: 'admin' | 'user',
 ): boolean {
-  return s.scope === 'global' || s.ownerId === userId || role === 'admin';
+  return s.scope === 'global' || s.ownerId === userId;
 }

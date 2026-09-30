@@ -112,7 +112,7 @@ export async function mountMcpProxy(app: FastifyInstance): Promise<void> {
       throw new AppError('A profile query parameter is required', 400, 'PROFILE_REQUIRED');
     }
     try {
-      const { serverIds } = await registry.profileEntriesFor(profileId, req.user.id, req.user.role);
+      const { serverIds } = await registry.profileEntriesFor(profileId, req.user.id);
       (req as FastifyRequest & ResolvedProfileRequest).resolvedServerIds = serverIds;
     } catch {
       throw new AppError(

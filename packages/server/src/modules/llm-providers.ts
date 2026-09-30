@@ -125,7 +125,7 @@ export async function llmProviderRoutes(app: FastifyInstance): Promise<void> {
   app.patch<{ Params: { id: string } }>('/api/llm-providers/:id', guard, async (req) => {
     const input = llmProviderUpdateSchema.parse(req.body) as LlmProviderUpdateInput;
     const existing = await app.uow.llmProviders.findById(req.params.id);
-    if (!existing || !ownsOrAdmin(existing, req.user!.id, req.user!.role)) {
+    if (!existing || !canManage(existing, req.user!.id, req.user!.role)) {
       throw new AppError('Provider not found', 404, 'PROVIDER_NOT_FOUND');
     }
 
@@ -158,7 +158,7 @@ export async function llmProviderRoutes(app: FastifyInstance): Promise<void> {
   // ---- DELETE /api/llm-providers/:id ----
   app.delete<{ Params: { id: string } }>('/api/llm-providers/:id', guard, async (req) => {
     const existing = await app.uow.llmProviders.findById(req.params.id);
-    if (!existing || !ownsOrAdmin(existing, req.user!.id, req.user!.role)) {
+    if (!existing || !canManage(existing, req.user!.id, req.user!.role)) {
       throw new AppError('Provider not found', 404, 'PROVIDER_NOT_FOUND');
     }
     await app.uow.llmProviders.delete(existing.id);
@@ -227,9 +227,9 @@ function toView(p: LlmProvider): LlmProviderView {
   };
 }
 
-/** A row is actionable iff owner (personal) or admin. */
-function ownsOrAdmin(p: LlmProvider, userId: string, role: 'admin' | 'user'): boolean {
-  return role === 'admin' || p.ownerId === userId;
+/** A row is manageable iff owner (personal) or admin on a global row (#36). */
+function canManage(p: LlmProvider, userId: string, role: 'admin' | 'user'): boolean {
+  return p.scope === 'global' ? role === 'admin' : p.ownerId === userId;
 }
 
 /** A row is readable iff admin, owner, or global (credentials' read rule). */

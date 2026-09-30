@@ -80,10 +80,10 @@ export async function mcpServersRoutes(app: FastifyInstance): Promise<void> {
   // Live connection states from the registry. Drives the Dashboard mesh dots
   // and the per-row status/tool-count badges (Phase 2.4). The pool spans
   // every tenant's server-dialed rows — filter to what the caller can see
-  // (#21: names + upstream error details are tenant data).
+  // (#21: names + upstream error details are tenant data; #36: that is the
+  // same own-personal + global set for every role, admins included).
   app.get('/api/mcp-servers/status', guard, async (req) => {
     const statuses = app.mcpRegistry?.getStatuses() ?? [];
-    if (req.user!.role === 'admin') return { statuses };
     const rows = await app.uow.mcpServers.list();
     const visible = new Set(
       rows.filter((s) => s.scope === 'global' || s.ownerId === req.user!.id).map((s) => s.id),
@@ -94,7 +94,7 @@ export async function mcpServersRoutes(app: FastifyInstance): Promise<void> {
   // ---- Phase 2.4: per-server connect/disconnect + tool inspection ----
   // Operator control surface on top of the registry pool. proxy-only — a direct
   // server is never dialed by Harness Nexus, so these endpoints reject it with
-  // 409 NOT_PROXY_MODE. Owner-or-admin check (404 on miss, leak prevention)
+  // 409 NOT_PROXY_MODE. The canManage check (404 on miss, leak prevention)
   // mirrors PATCH/DELETE.
 
   // POST /api/mcp-servers/:id/connect — force (re)connect one proxy upstream.
@@ -146,7 +146,7 @@ export async function mcpServersRoutes(app: FastifyInstance): Promise<void> {
   app.patch<{ Params: { id: string } }>('/api/mcp-servers/:id', guard, async (req) => {
     const input = updateMcpServerSchema.parse(req.body) as UpdateMcpServerInput;
     const existing = await app.uow.mcpServers.findById(req.params.id);
-    if (!existing || !ownsOrAdmin(existing, req.user!.id, req.user!.role)) {
+    if (!existing || !canManage(existing, req.user!.id, req.user!.role)) {
       throw new AppError('MCP server not found', 404, 'MCP_SERVER_NOT_FOUND');
     }
 
@@ -172,7 +172,7 @@ export async function mcpServersRoutes(app: FastifyInstance): Promise<void> {
   // physically removes it — but only once no profile references it anymore.
   app.delete<{ Params: { id: string } }>('/api/mcp-servers/:id', guard, async (req) => {
     const existing = await app.uow.mcpServers.findById(req.params.id);
-    if (!existing || !ownsOrAdmin(existing, req.user!.id, req.user!.role)) {
+    if (!existing || !canManage(existing, req.user!.id, req.user!.role)) {
       throw new AppError('MCP server not found', 404, 'MCP_SERVER_NOT_FOUND');
     }
     if (existing.deletedAt === undefined) {
@@ -242,15 +242,19 @@ async function assertDialSite(
   }
 }
 
-/** A record is actionable by the caller iff they own it (personal) or are admin. */
-function ownsOrAdmin(s: McpServer, userId: string, role: 'admin' | 'user'): boolean {
-  return role === 'admin' || s.ownerId === userId;
+/**
+ * A record is manageable by the caller iff they own it (personal) or it is a
+ * global row and they are admin — #36: admins curate the global library, they
+ * are not overseers of personal rows.
+ */
+function canManage(s: McpServer, userId: string, role: 'admin' | 'user'): boolean {
+  return s.scope === 'global' ? role === 'admin' : s.ownerId === userId;
 }
 
 /**
  * Phase 2.4 — guard for the connect/disconnect/tools routes. Reads the stored
- * record (NOT the pool entry) and applies owner-or-admin + dial-site checks
- * BEFORE touching the registry: a not-found/not-owned server returns 404
+ * record (NOT the pool entry) and applies canManage + dial-site checks
+ * BEFORE touching the registry: a not-found/not-manageable server returns 404
  * MCP_SERVER_NOT_FOUND (leak prevention, identical to PATCH/DELETE), and a
  * client-dialed server returns 409 NOT_SERVER_DIALED (the platform never
  * dials it — that is the shim's job).
@@ -262,7 +266,7 @@ async function assertServerDialedOwned(
   app: FastifyInstance,
 ): Promise<void> {
   const existing = await app.uow.mcpServers.findById(id);
-  if (!existing || !ownsOrAdmin(existing, userId, role)) {
+  if (!existing || !canManage(existing, userId, role)) {
     throw new AppError('MCP server not found', 404, 'MCP_SERVER_NOT_FOUND');
   }
   const distributable = new Map<string, boolean>();
