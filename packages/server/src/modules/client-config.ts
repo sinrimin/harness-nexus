@@ -38,7 +38,7 @@ export async function clientConfigRoutes(app: FastifyInstance): Promise<void> {
       throw new AppError('A profile query parameter is required', 400, 'PROFILE_REQUIRED');
     }
     const profile = await app.uow.profiles.findById(profileId);
-    if (!profile || !visibleProfile(profile, caller.userId, caller.role)) {
+    if (!profile || !visibleProfile(profile, caller.userId)) {
       throw new AppError('Profile not found', 404, 'PROFILE_NOT_FOUND');
     }
 
@@ -85,7 +85,7 @@ export async function clientConfigRoutes(app: FastifyInstance): Promise<void> {
       // Soft-deleted (or already physically removed) rows are skipped, not
       // fatal — two-stage delete keeps profiles deployable with dangling refs.
       if (!server || server.deletedAt !== undefined) continue;
-      if (!visibleServer(server, caller.userId, caller.role)) {
+      if (!visibleServer(server, caller.userId)) {
         throw new AppError(
           'A profile entry references an MCP server you cannot access',
           403,
@@ -130,7 +130,7 @@ export async function clientConfigRoutes(app: FastifyInstance): Promise<void> {
       throw new AppError('A profile query parameter is required', 400, 'PROFILE_REQUIRED');
     }
     const profile = await app.uow.profiles.findById(profileId);
-    if (!profile || !visibleProfile(profile, caller.userId, caller.role)) {
+    if (!profile || !visibleProfile(profile, caller.userId)) {
       throw new AppError('Profile not found', 404, 'PROFILE_NOT_FOUND');
     }
 
@@ -141,7 +141,7 @@ export async function clientConfigRoutes(app: FastifyInstance): Promise<void> {
       if (entry.kind === 'mcp') {
         const server = await app.uow.mcpServers.findById(entry.resourceId);
         if (!server || server.deletedAt !== undefined) continue;
-        if (!visibleServer(server, caller.userId, caller.role)) {
+        if (!visibleServer(server, caller.userId)) {
           throw new AppError(
             'A profile entry references an MCP server you cannot access',
             403,
@@ -154,11 +154,7 @@ export async function clientConfigRoutes(app: FastifyInstance): Promise<void> {
         if (!resource || resource.deletedAt !== undefined) continue;
         if (
           resource.kind !== entry.kind ||
-          !(
-            resource.scope === 'global' ||
-            resource.ownerId === caller.userId ||
-            caller.role === 'admin'
-          )
+          !(resource.scope === 'global' || resource.ownerId === caller.userId)
         ) {
           throw new AppError(
             'A profile entry references a resource you cannot access',
@@ -286,10 +282,10 @@ async function resolveTransport(
   };
 }
 
-function visibleProfile(profile: Profile, userId: string, role: 'admin' | 'user'): boolean {
-  return profile.scope === 'global' || profile.ownerId === userId || role === 'admin';
+function visibleProfile(profile: Profile, userId: string): boolean {
+  return profile.scope === 'global' || profile.ownerId === userId;
 }
 
-function visibleServer(server: McpServer, userId: string, role: 'admin' | 'user'): boolean {
-  return server.scope === 'global' || server.ownerId === userId || role === 'admin';
+function visibleServer(server: McpServer, userId: string): boolean {
+  return server.scope === 'global' || server.ownerId === userId;
 }

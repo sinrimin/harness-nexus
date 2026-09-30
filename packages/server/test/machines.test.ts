@@ -140,7 +140,8 @@ describe('GET/PATCH/DELETE /api/machines', () => {
     const after = await app.inject({ method: 'GET', url: '/api/machines', headers: auth });
     expect(after.json().machines).toHaveLength(0);
 
-    // Admin path: admin sees other users' machines.
+    // Admin path (#36): an admin is NOT a tenant overseer — alice's machine
+    // stays invisible to them in the list AND by id (404, no existence leak).
     const aliceEnroll = await app.inject({
       method: 'POST',
       url: '/api/machines',
@@ -149,7 +150,15 @@ describe('GET/PATCH/DELETE /api/machines', () => {
     });
     const aliceMachine = aliceEnroll.json().machine;
     const adminList = await app.inject({ method: 'GET', url: '/api/machines', headers: auth });
-    expect(adminList.json().machines.map((m: { id: string }) => m.id)).toContain(aliceMachine.id);
+    expect(adminList.json().machines.map((m: { id: string }) => m.id)).not.toContain(
+      aliceMachine.id,
+    );
+    const adminView = await app.inject({
+      method: 'GET',
+      url: `/api/machines/${aliceMachine.id}`,
+      headers: auth,
+    });
+    expect(adminView.statusCode).toBe(404);
     void token;
     await app.close();
   });

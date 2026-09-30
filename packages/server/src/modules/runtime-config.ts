@@ -17,10 +17,9 @@ import { jobView } from '../jobs/service.js';
  * Runtime provider-config routes (Phase 9 W3 + W4).
  * wiki design-phase-9-harness-runtime.md §4.3/§6.
  *
- * One spec per (machine, target). GET is owner-or-admin (404 existence-hiding,
- * like every machine-scoped read); PUT is OWNER-ONLY (admins may view, not
- * mutate — machine-touching actions match harness jobs' and chat's stance) and
- * queues an `apply-config` harness job. The spec references a credential by
+ * One spec per (machine, target). Every route is OWNER-ONLY (404
+ * existence-hiding, #36: machines are personal — admins are not overseers) and
+ * PUT queues an `apply-config` harness job. The spec references a credential by
  * name; the referenced credential must be distributable (the plaintext leaves
  * the server inside the daemon's machine-PAT bundle) — the same gate the
  * dial-site model applies. The secret itself NEVER appears in any response
@@ -34,12 +33,9 @@ import { jobView } from '../jobs/service.js';
 export async function runtimeConfigRoutes(app: FastifyInstance): Promise<void> {
   const guard = { preHandler: [app.requireAuth] };
 
-  const visibleMachine = async (
-    id: string,
-    requester: { id: string; role: 'admin' | 'user' },
-  ): Promise<Machine> => {
+  const visibleMachine = async (id: string, requester: { id: string }): Promise<Machine> => {
     const machine = await app.uow.machines.findById(id);
-    if (!machine || (machine.ownerId !== requester.id && requester.role !== 'admin')) {
+    if (!machine || machine.ownerId !== requester.id) {
       throw new AppError('Machine not found', 404, 'MACHINE_NOT_FOUND');
     }
     return machine;
@@ -152,16 +148,6 @@ export async function runtimeConfigRoutes(app: FastifyInstance): Promise<void> {
         );
       }
       const target = parsedTarget.data;
-
-      // Owner-only: writing a provider route (with its API key) onto someone
-      // else's machine is a machine-touching mutation (403 — visible machine).
-      if (machine.ownerId !== req.user!.id) {
-        throw new AppError(
-          'Runtime config is owner-only — only the machine owner may manage its provider route',
-          403,
-          'MACHINE_OWNER_ONLY',
-        );
-      }
 
       const spec: RuntimeConfigSpec = runtimeConfigSpecSchema.parse(req.body);
       const unsupported = runtimeSpecUnsupportedReason(target, spec);

@@ -5,9 +5,9 @@ import { testConfig } from './helpers.js';
 
 /**
  * #23 D2 — GET /api/status/posture. The readout strip's numbers must mean what
- * the list pages mean, per viewer, and each figure declares its own scope
- * (admin-sees-all is NOT uniform: chat is owner-only, MCP/LLM lists are
- * own-personal + global for every role).
+ * the list pages mean, per viewer, and each figure declares its own scope.
+ * Since #36 every figure is self-scoped for every role: own machines/agents/
+ * jobs, own personal + global MCP/LLM rows, own channels.
  */
 
 type PostureJson = {
@@ -58,7 +58,7 @@ describe('GET /api/status/posture (#23 D2)', () => {
   it('scopes each figure to what its own list page shows', async () => {
     const { app, adminJwt, aliceJwt, bobJwt, aliceId, auth, posture } = await setup();
 
-    // Alice enrolls a machine (admin sees it under scope 'all'; bob sees none).
+    // Alice enrolls a machine (bob and the admin see none of it — #36).
     const enrolled = await app.inject({
       method: 'POST',
       url: '/api/machines',
@@ -128,23 +128,24 @@ describe('GET /api/status/posture (#23 D2)', () => {
     const bob = await posture(bobJwt);
     const admin = await posture(adminJwt);
 
-    // Machines: alice owns one; bob sees none; the admin sees the whole fleet.
+    // Machines: alice owns one; bob sees none; the admin owns none either —
+    // #36 made every figure self-scoped (admins are not tenant overseers).
     expect(alice.machines).toEqual({ online: 0, total: 1 });
     expect(bob.machines).toEqual({ online: 0, total: 0 });
-    expect(admin.machines).toEqual({ online: 0, total: 1 });
+    expect(admin.machines).toEqual({ online: 0, total: 0 });
     expect(alice.scope).toBe('self');
-    expect(admin.scope).toBe('all');
-    expect(admin.scopes.machines).toBe('all');
+    expect(admin.scope).toBe('self');
+    expect(admin.scopes.machines).toBe('self');
 
     // Agents + queued jobs ride the same visibility as machines.
     expect(alice.agents).toBe(1);
     expect(alice.queuedJobs).toBe(1);
     expect(bob.agents).toBe(0);
     expect(bob.queuedJobs).toBe(0);
-    expect(admin.agents).toBe(1);
-    expect(admin.queuedJobs).toBe(1);
-    expect(admin.scopes.agents).toBe('all');
-    expect(admin.scopes.queuedJobs).toBe('all');
+    expect(admin.agents).toBe(0);
+    expect(admin.queuedJobs).toBe(0);
+    expect(admin.scopes.agents).toBe('self');
+    expect(admin.scopes.queuedJobs).toBe('self');
 
     // MCP: alice sees her personal + the global row; bob sees only global.
     // Even the admin's MCP number stays 'self' — the MCP page shows own

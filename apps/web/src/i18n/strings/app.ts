@@ -41,16 +41,12 @@ const en = {
   navGroupAsset: 'Assets',
   navGroupAccess: 'Access',
   navGroupAdmin: 'Admin',
-  // Readout strip (D2). Figures first, then the scope vocabulary: a number
-  // that spans every user must say so.
+  // Readout strip (D2). Every figure counts the caller's own rows (#36), so
+  // there is no all/own scope vocabulary anymore.
   readoutMachines: 'machines',
   readoutMcp: 'mcp',
   readoutQueued: 'queued',
   readoutChannels: 'chan',
-  readoutAll: 'all',
-  readoutAllHint: 'Includes every user on this instance',
-  readoutOwn: 'own',
-  readoutOwnHint: 'Counts your rows only — chat is private to its owner',
   readoutAria: 'Instance posture',
   // 403 view (guards.tsx).
   adminsOnlyTitle: 'Admins only',
@@ -102,10 +98,6 @@ const zh: typeof en = {
   readoutMcp: 'mcp',
   readoutQueued: '排队',
   readoutChannels: '渠道',
-  readoutAll: '全部',
-  readoutAllHint: '包含本实例上的所有用户',
-  readoutOwn: '本人',
-  readoutOwnHint: '只统计你自己的数据 —— 聊天对所有者之外不可见',
   readoutAria: '实例姿态',
   adminsOnlyTitle: '仅限管理员',
   adminsOnlyBody: '你没有权限查看此页面。如需访问，请联系管理员。',

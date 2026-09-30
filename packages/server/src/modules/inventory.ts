@@ -75,13 +75,10 @@ function slugify(name: string): string {
 export async function inventoryRoutes(app: FastifyInstance): Promise<void> {
   const guard = { preHandler: [app.requireAuth] };
 
-  const visible = async (
-    id: string,
-    requester: { id: string; role: 'admin' | 'user' },
-  ): Promise<Machine | null> => {
+  const visible = async (id: string, requester: { id: string }): Promise<Machine | null> => {
     const machine = await app.uow.machines.findById(id);
     if (!machine) return null;
-    if (machine.ownerId !== requester.id && requester.role !== 'admin') return null;
+    if (machine.ownerId !== requester.id) return null;
     return machine;
   };
 
@@ -160,10 +157,7 @@ export async function inventoryRoutes(app: FastifyInstance): Promise<void> {
 
       const profile = await app.uow.profiles.findById(profileId);
       const profileVisible =
-        profile &&
-        (profile.scope === 'global' ||
-          profile.ownerId === req.user!.id ||
-          req.user!.role === 'admin');
+        profile && (profile.scope === 'global' || profile.ownerId === req.user!.id);
       if (!profile || !profileVisible) {
         throw new AppError('Profile not found', 404, 'PROFILE_NOT_FOUND');
       }

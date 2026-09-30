@@ -90,7 +90,7 @@ export async function credentialsRoutes(app: FastifyInstance): Promise<void> {
   app.patch<{ Params: { id: string } }>('/api/credentials/:id', guard, async (req) => {
     const input = updateCredentialSchema.parse(req.body) as UpdateCredentialInput;
     const existing = await app.uow.credentials.findById(req.params.id);
-    if (!existing || !ownsOrAdmin(existing, req.user!.id, req.user!.role)) {
+    if (!existing || !canManage(existing, req.user!.id, req.user!.role)) {
       throw new AppError('Credential not found', 404, 'CREDENTIAL_NOT_FOUND');
     }
 
@@ -125,7 +125,7 @@ export async function credentialsRoutes(app: FastifyInstance): Promise<void> {
   // ---- DELETE /api/credentials/:id ----
   app.delete<{ Params: { id: string } }>('/api/credentials/:id', guard, async (req) => {
     const existing = await app.uow.credentials.findById(req.params.id);
-    if (!existing || !ownsOrAdmin(existing, req.user!.id, req.user!.role)) {
+    if (!existing || !canManage(existing, req.user!.id, req.user!.role)) {
       throw new AppError('Credential not found', 404, 'CREDENTIAL_NOT_FOUND');
     }
     await app.uow.credentials.delete(existing.id);
@@ -133,7 +133,10 @@ export async function credentialsRoutes(app: FastifyInstance): Promise<void> {
   });
 }
 
-/** A record is actionable by the caller iff they own it (personal) or are admin. */
-function ownsOrAdmin(c: Credential, userId: string, role: 'admin' | 'user'): boolean {
-  return role === 'admin' || c.ownerId === userId;
+/**
+ * A record is manageable iff the owner (personal) or an admin on a global row
+ * — #36: admins curate the global library, not other users' personal secrets.
+ */
+function canManage(c: Credential, userId: string, role: 'admin' | 'user'): boolean {
+  return c.scope === 'global' ? role === 'admin' : c.ownerId === userId;
 }

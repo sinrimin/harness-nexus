@@ -9,8 +9,8 @@ import {
 
 /**
  * Workspace directory listing (Phase 9 W6) — one level of subdirectories
- * under the machine's base workspace, for the chat session picker. Owner-or-
- * admin read with 404-hiding (same convention as the other machine routes);
+ * under the machine's base workspace, for the chat session picker. Owner-only
+ * read with 404-hiding (#36 — same convention as the other machine routes);
  * listing rides the daemon (`workspace:list` over /ctl), so the machine must
  * be online and advertise the `workspace` capability. Containment (the
  * requested path must BE the root or sit under it) is enforced HERE, before
@@ -24,7 +24,7 @@ export async function workspaceRoutes(app: FastifyInstance): Promise<void> {
     guard,
     async (req) => {
       const machine = await app.uow.machines.findById(req.params.id);
-      if (!machine || (machine.ownerId !== req.user!.id && req.user!.role !== 'admin')) {
+      if (!machine || machine.ownerId !== req.user!.id) {
         throw new AppError('Machine not found', 404, 'MACHINE_NOT_FOUND');
       }
       if (machine.baseWorkspace === null) {

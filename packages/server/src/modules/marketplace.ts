@@ -37,7 +37,7 @@ export async function marketplaceRoutes(app: FastifyInstance): Promise<void> {
       const user = await resolveTokenUser(app, req);
       const profileId = req.params.file.replace(/\.zip$/, '');
       const profile = await app.uow.profiles.findById(profileId);
-      if (!profile || profile.target !== 'claude-code' || !visibleTo(profile, user.id, user.role)) {
+      if (!profile || profile.target !== 'claude-code' || !visibleTo(profile, user.id)) {
         throw new AppError('Profile not found', 404, 'PROFILE_NOT_FOUND');
       }
       const zip = await app.marketplaceEmitter.buildPluginZip(profile);
@@ -88,7 +88,7 @@ async function resolveTokenUser(
   throw new AppError('Marketplace not found', 404, 'MARKETPLACE_NOT_FOUND');
 }
 
-/** A profile is visible iff global, personal + owned, or admin. */
-function visibleTo(p: Profile, userId: string, role: 'admin' | 'user'): boolean {
-  return p.scope === 'global' || p.ownerId === userId || role === 'admin';
+/** A profile is visible iff global or personal + owned (#36). */
+function visibleTo(p: Profile, userId: string): boolean {
+  return p.scope === 'global' || p.ownerId === userId;
 }

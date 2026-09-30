@@ -7,17 +7,13 @@ import type { FastifyInstance } from 'fastify';
  * The one rule this endpoint exists for: **a figure must mean what the list
  * page it links to means.** Every count below re-derives its row set with the
  * same rule its owning module uses (cited per figure), and each figure carries
- * its own scope marker, because "admin sees everything" is NOT uniform across
- * modules:
+ * its own scope marker.
  *
- *   machines / agents / queuedJobs — admin sees every tenant's (machines.ts
- *     `visible`, jobs.ts `visibleMachine`).
- *   mcp / llmProviders — admin sees the same rows as anyone: own personal +
- *     global (`GET /api/mcp-servers`, llm-providers.ts list). Their `scope`
- *     marker stays `self` even for an admin, so the strip cannot claim a
- *     site-wide MCP number the MCP page will not show.
- *   channels — chat is owner-ONLY by design (an admin cannot see another
- *     user's channels), so this figure is always `self`.
+ * #36 — personal resources are owner-only for EVERY role (admins are curators
+ * of the global library, not tenant overseers), so every figure here is
+ * `self`: the caller's own machines/agents/jobs, own personal + global MCP
+ * rows, own personal + global LLM providers, own channels. The `scopes` map
+ * stays on the wire (it is the SDK contract) but never says `all` anymore.
  */
 export type PostureScope = 'self' | 'all';
 
@@ -32,7 +28,7 @@ export interface PostureScopes {
 }
 
 export interface Posture {
-  /** Headline scope: `all` iff the caller is an admin. */
+  /** Headline scope — `self` for every role since #36. */
   scope: PostureScope;
   /** Per-figure truth — the headline is a summary, this is what each number means. */
   scopes: PostureScopes;
@@ -84,18 +80,16 @@ async function computePosture(
   app: FastifyInstance,
   user: { id: string; role: 'admin' | 'user' },
 ): Promise<Posture> {
-  const isAdmin = user.role === 'admin';
   const generatedAt = new Date().toISOString();
 
-  // Machines — same rule as GET /api/machines (machines.ts).
-  const machines = isAdmin
-    ? await app.uow.machines.list()
-    : await app.uow.machines.list({ ownerId: user.id });
+  // Machines — same rule as GET /api/machines (machines.ts): own only, every
+  // role (#36).
+  const machines = await app.uow.machines.list({ ownerId: user.id });
   const machineIds = new Set(machines.map((m) => m.id));
   const online = machines.filter((m) => app.realtime.presence.isOnline(m.id)).length;
 
-  // Agents — deployed + detected instances on the machines the caller can see,
-  // i.e. the sum of GET /api/machines/:id/agents over the visible machines.
+  // Agents — deployed + detected instances on the caller's machines, i.e. the
+  // sum of GET /api/machines/:id/agents over the visible machines.
   let agents = 0;
   for (const machine of machines) {
     agents += (await app.uow.agentInstances.listByMachine(machine.id)).length;
@@ -130,13 +124,12 @@ async function computePosture(
   // the caller's own for every role.
   const channels = app.realtime.chat.snapshotFor(user.id).channels.length;
 
-  const machineScope: PostureScope = isAdmin ? 'all' : 'self';
   return {
-    scope: machineScope,
+    scope: 'self',
     scopes: {
-      machines: machineScope,
-      agents: machineScope,
-      queuedJobs: machineScope,
+      machines: 'self',
+      agents: 'self',
+      queuedJobs: 'self',
       mcp: 'self',
       llmProviders: 'self',
       channels: 'self',
