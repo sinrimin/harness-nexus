@@ -1,5 +1,5 @@
 import { arch, homedir, hostname, platform } from 'node:os';
-import { io } from 'socket.io-client';
+import { io, type Socket } from 'socket.io-client';
 import {
   compareVersions,
   inventoryCollectRequestSchema,
@@ -17,8 +17,10 @@ import { sweepAdapterLedger } from './adapter-ledger.js';
 import { attachCommLog, logOp } from './logbook.js';
 import { provisionAdapters } from './acp/adapter-provision.js';
 import { attachJobHandlers } from './jobs.js';
-import { attachChatHandlers } from './chat.js';
+import { attachChatHandlers, type ChatHandlersHandle } from './chat.js';
 import { attachSessionsHandlers } from './sessions.js';
+import { acquireDaemonLock } from './lock.js';
+import { InstallError } from '../errors.js';
 import { cliVersion } from '../version.js';
 
 /** Client daemon version (#37) — the CLI package version, reported in every
@@ -63,18 +65,32 @@ export interface DaemonOptions {
   machineId: string;
 }
 
+/** What `startDaemon` hands back: everything the TUI (#39) needs in-process. */
+export interface DaemonHandle {
+  socket: Socket;
+  /** #39 — the chat manager's introspection surface (TUI panes). */
+  chat: ChatHandlersHandle;
+  /** Close the socket and release the daemon lock. Idempotent. */
+  stop(): void;
+}
+
 /**
- * The on-demand Harness Nexus daemon (Phase 8 C1): connects to the server's
- * `/ctl` namespace, says `machine:hello` on every (re)connect so presence and
- * metadata stay fresh, and stays attached until SIGINT/SIGTERM. Socket.IO
- * handles reconnection with backoff; each reconnect re-runs hello and — since
- * C3 — re-reports every target's inventory (fresh snapshots whenever the
- * daemon comes up).
+ * Boot the daemon WITHOUT owning the process lifetime: connect, attach every
+ * handler, take the daemon lock. The TUI runs this in-process; `runDaemon`
+ * wraps it for the classic wait-forever `hnx daemon`.
  *
- * The machine shows online exactly while this process is running — that is
- * the honest-presence contract; MCP serving (C2) does NOT depend on it.
+ * Throws InstallError (DAEMON_LOCKED) when another daemon-owning process
+ * holds the machine — two /ctl sockets would double-run every dispatched job.
  */
-export function runDaemon(options: DaemonOptions): Promise<void> {
+export function startDaemon(options: DaemonOptions): DaemonHandle {
+  const lock = acquireDaemonLock(homedir());
+  if (!lock.ok) {
+    throw new InstallError(
+      `Another daemon is already running (pid ${String(lock.pid)}) — stop it first.`,
+      'DAEMON_LOCKED',
+    );
+  }
+
   // 9 W11 A — boot sweep BEFORE anything here can spawn an adapter: every
   // still-alive process group in the ledger was orphaned by a previous
   // instance's hard death (SIGKILL/OOM skips every teardown path while the
@@ -292,9 +308,35 @@ export function runDaemon(options: DaemonOptions): Promise<void> {
     console.error(`hnx daemon: disconnected (${reason})`);
   });
 
+  let stopped = false;
+  return {
+    socket,
+    chat,
+    stop: (): void => {
+      if (stopped) return;
+      stopped = true;
+      socket.close();
+      lock.release();
+    },
+  };
+}
+
+/**
+ * The on-demand Harness Nexus daemon (Phase 8 C1): connects to the server's
+ * `/ctl` namespace, says `machine:hello` on every (re)connect so presence and
+ * metadata stay fresh, and stays attached until SIGINT/SIGTERM. Socket.IO
+ * handles reconnection with backoff; each reconnect re-runs hello and — since
+ * C3 — re-reports every target's inventory (fresh snapshots whenever the
+ * daemon comes up).
+ *
+ * The machine shows online exactly while this process is running — that is
+ * the honest-presence contract; MCP serving (C2) does NOT depend on it.
+ */
+export function runDaemon(options: DaemonOptions): Promise<void> {
+  const daemon = startDaemon(options);
   return new Promise((resolve) => {
     const stop = (): void => {
-      socket.close();
+      daemon.stop();
       resolve();
     };
     process.once('SIGINT', stop);

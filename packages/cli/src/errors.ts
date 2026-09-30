@@ -8,7 +8,8 @@ export type InstallErrorCode =
   | 'RESOLVE_FAILED' // SDK fetch of profile or a referenced resource failed
   | 'VALIDATION_FAILED' // adapter.validate() returned blocking issues
   | 'APPLY_FAILED' // a filesystem operation failed during apply
-  | 'UNSAFE_DESTINATION'; // an operation tried to write outside the install root (#21)
+  | 'UNSAFE_DESTINATION' // an operation tried to write outside the install root (#21)
+  | 'DAEMON_LOCKED'; // another daemon-owning process holds the machine lock (#39)
 
 export class InstallError extends Error {
   constructor(
