@@ -106,10 +106,11 @@ export function Topbar({
           buttons, the chrome only owns the seat. */}
       <div ref={actionsRef} data-slot="page-actions" className="flex shrink-0 items-center gap-2" />
 
-      <div className="flex shrink-0 items-center gap-0.5 border-l pl-1.5">
+      <div className="flex shrink-0 items-center gap-1 border-l pl-1.5 min-[640px]:gap-0.5">
         <GithubStar />
         {/* #40 — on phones the corner keeps ONLY star + theme; language and
-            skin fold away here (they stay reachable at the drawer foot). */}
+            skin fold away here (they stay reachable at the drawer foot). The
+            wider phone gap (#41) keeps a slipped thumb off the star link. */}
         <div className="hidden items-center gap-0.5 min-[640px]:flex">
           <LanguageToggle />
           <SkinToggle />
