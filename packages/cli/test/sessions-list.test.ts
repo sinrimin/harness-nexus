@@ -309,3 +309,25 @@ describe('sessions:list TTL cache (9 W11 D)', () => {
     expect(adapter.spawns()).toBe(1);
   });
 });
+
+describe('parseSessionList cwd flavors (#43)', () => {
+  it('keeps Windows drive-letter cwds — the /-only check once emptied the whole rail', async () => {
+    const { parseSessionList, isAbsoluteCwd } = await import('../src/daemon/sessions.js');
+    expect(isAbsoluteCwd('/home/u/proj')).toBe(true);
+    expect(isAbsoluteCwd('D:\\workspace\\chat')).toBe(true);
+    expect(isAbsoluteCwd('D:/workspace/chat')).toBe(true);
+    expect(isAbsoluteCwd('relative/path')).toBe(false);
+    expect(isAbsoluteCwd('Ddrive-not-absolute')).toBe(false);
+
+    const rows = parseSessionList({
+      sessions: [
+        { sessionId: 'win-1', cwd: 'D:\\workspace\\chat', title: '你好', updatedAt: '2026-09-30T15:24:43.000Z' },
+        { sessionId: 'nix-1', cwd: '/home/u/proj' },
+        { sessionId: 'rel-1', cwd: 'workspace/chat' }, // dropped — not absolute anywhere
+      ],
+    });
+    expect(rows.map((r) => r.sessionId)).toEqual(['win-1', 'nix-1']);
+    expect(rows[0]!.cwd).toBe('D:\\workspace\\chat');
+    expect(rows[0]!.title).toBe('你好');
+  });
+});
