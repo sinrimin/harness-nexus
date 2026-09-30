@@ -264,7 +264,11 @@ export function modelOf(
   modelOptions?: readonly string[],
 ): string | null {
   const selected = config.options.find((o) => o.category === 'model');
-  if (selected !== undefined && selected.currentValue !== undefined && selected.currentValue !== '') {
+  if (
+    selected !== undefined &&
+    selected.currentValue !== undefined &&
+    selected.currentValue !== ''
+  ) {
     return selected.currentValue;
   }
   return modelOptions !== undefined && modelOptions.length > 0 ? (modelOptions[0] ?? null) : null;

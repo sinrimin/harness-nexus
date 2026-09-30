@@ -45,9 +45,9 @@ describe('normalizeUsage', () => {
   });
 
   it('ignores malformed values and the cache-miss field', () => {
-    expect(normalizeUsage({ inputTokens: -5, outputTokens: 'x', prompt_cache_miss_tokens: 10 })).toEqual(
-      {},
-    );
+    expect(
+      normalizeUsage({ inputTokens: -5, outputTokens: 'x', prompt_cache_miss_tokens: 10 }),
+    ).toEqual({});
     // deepseek's miss is UNCACHED input, not a cache write — never mapped.
     expect('cacheWriteTokens' in normalizeUsage({ prompt_cache_miss_tokens: 10 })).toBe(false);
   });
@@ -121,8 +121,20 @@ describe('UsageLedger', () => {
     // Unknown target (codex today): turn counts, usage ignored.
     ledger.recordTurn('c1', 'codex', 'gpt-5', { inputTokens: 500 }, 't0');
     // claude-code: CUMULATIVE responses — deltas credited, reset re-credits.
-    ledger.recordTurn('c2', 'claude-code', 'opus', { inputTokens: 100, cacheReadTokens: 500 }, 't1');
-    ledger.recordTurn('c2', 'claude-code', 'opus', { inputTokens: 200, cacheReadTokens: 1000 }, 't2');
+    ledger.recordTurn(
+      'c2',
+      'claude-code',
+      'opus',
+      { inputTokens: 100, cacheReadTokens: 500 },
+      't1',
+    );
+    ledger.recordTurn(
+      'c2',
+      'claude-code',
+      'opus',
+      { inputTokens: 200, cacheReadTokens: 1000 },
+      't2',
+    );
     ledger.recordTurn('c2', 'claude-code', 'opus', { inputTokens: 30 }, 't3'); // compaction reset
     // opencode: PER-TURN responses — summed straight in.
     ledger.recordTurn('c3', 'opencode', 'qwen', { inputTokens: 52 }, 't4');

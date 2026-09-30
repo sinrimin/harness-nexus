@@ -19,6 +19,8 @@ let jwt: string;
 let machineId: string;
 let machineToken: string;
 let daemon: Socket;
+/** #45 — tracks whether `daemon` is still connected (serializes connectDaemon). */
+let daemonConnected = false;
 let appSock: Socket;
 const jobUpdates: JobUpdateEvent[] = [];
 
@@ -80,6 +82,14 @@ async function connectDaemon(
   beforeConnect?: (sock: Socket) => void,
   capabilities: string[] = ['inventory', 'deploy'],
 ): Promise<Socket> {
+  // #45 — the server refuses a second live socket per machine, so the suite
+  // keeps EXACTLY ONE daemon socket at a time: connecting first closes (and
+  // waits out) any previous one; `daemon` always aliases the live socket.
+  if (daemonConnected) {
+    daemon.close();
+    await waitFor(() => !app.realtime.presence.isOnline(machineId));
+    daemonConnected = false;
+  }
   const sock = io(`${baseUrl}/ctl`, {
     auth: { token: machineToken, machineId },
     transports: ['websocket'],
@@ -90,6 +100,8 @@ async function connectDaemon(
     daemonVersion: '0.3.0-test',
     capabilities,
   });
+  daemon = sock;
+  daemonConnected = true;
   return sock;
 }
 
@@ -294,6 +306,13 @@ describe('recovery', () => {
 
   it('ack-timeout sweep reverts a dispatched job the daemon never started', async () => {
     // A daemon that acks nothing: dispatch, then don't run the job.
+    // #45 — one live socket per machine: drop the tracked daemon first, then
+    // this bespoke silent one is the machine's only daemon.
+    if (daemonConnected) {
+      daemon.close();
+      await waitFor(() => !app.realtime.presence.isOnline(machineId));
+      daemonConnected = false;
+    }
     const silent = io(`${baseUrl}/ctl`, {
       auth: { token: machineToken, machineId },
       transports: ['websocket'],
@@ -311,8 +330,6 @@ describe('recovery', () => {
         payload: { profileId: deployProfileId },
       });
       const job = created.json().job as JobView;
-      // daemon (main) may also be in the room; close it so only `silent` hears.
-      daemon.close();
       const heard = await once(silent, 'job:dispatch');
       expect((heard as { job: JobView }).job.id).toBe(job.id);
       // No progress arrives → sweep reverts after ackTimeout (700ms).

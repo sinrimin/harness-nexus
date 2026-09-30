@@ -122,7 +122,9 @@ export class PrewarmPool<T> {
   }
 
   /** Every live entry with its state and age (#39 — the TUI's pool rows). */
-  status(now: number = Date.now()): Array<{ key: string; state: 'pending' | 'ready'; ageMs: number }> {
+  status(
+    now: number = Date.now(),
+  ): Array<{ key: string; state: 'pending' | 'ready'; ageMs: number }> {
     return [...this.entries.entries()].map(([key, e]) => ({
       key,
       state: e.state,

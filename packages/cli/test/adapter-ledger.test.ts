@@ -151,9 +151,7 @@ describe('adapter ledger (9 W11 A)', () => {
     expect(groupSignalTargetFor('darwin', 4242)).toBe(-4242);
     expect(groupSignalTargetFor('win32', 4242)).toBe(4242);
     // On THIS platform the exported helper follows the platform branch.
-    expect(groupSignalTarget(4242)).toBe(
-      process.platform === 'win32' ? 4242 : -4242,
-    );
+    expect(groupSignalTarget(4242)).toBe(process.platform === 'win32' ? 4242 : -4242);
   });
 
   it('sweep and audit remove junk (torn writes, stranded .tmp) so the dir cannot accumulate', () => {

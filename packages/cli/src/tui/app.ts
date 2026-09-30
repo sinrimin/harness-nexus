@@ -203,7 +203,9 @@ export class TuiApp {
     if (layout.metrics !== null) lines.push(this.#metricsLine(w));
     for (const pane of layout.panes) {
       const id = pane.id as PaneId;
-      lines.push(...drawPane(PANE_TITLES[id], PANE_KEYS[id], pane.rect.w, pane.rect.h, content[id]));
+      lines.push(
+        ...drawPane(PANE_TITLES[id], PANE_KEYS[id], pane.rect.w, pane.rect.h, content[id]),
+      );
     }
     while (lines.length < layout.keybar.y) lines.push(' '.repeat(w)); // dropped-pane rows stay blank
     lines.push(this.#keybarLine(w));
@@ -244,11 +246,7 @@ export class TuiApp {
 }
 
 /** Interactive entry: capture console, run the app, always restore. */
-export function runTuiApp(
-  daemon: DaemonHandle,
-  screen: Screen,
-  header: TuiHeader,
-): Promise<void> {
+export function runTuiApp(daemon: DaemonHandle, screen: Screen, header: TuiHeader): Promise<void> {
   const restoreConsole = captureConsole();
   const app = new TuiApp(daemon, screen, header);
   // Raw mode normally swallows Ctrl-C as \x03 (handled as a key); this is

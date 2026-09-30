@@ -36,7 +36,10 @@ function timesOf(list: CpuInfo[]): CpuTimes {
   return { idle, total };
 }
 
-export function sampleMachineMetrics(baseline?: CpuTimes): { metrics: MachineMetrics; baseline: CpuTimes } {
+export function sampleMachineMetrics(baseline?: CpuTimes): {
+  metrics: MachineMetrics;
+  baseline: CpuTimes;
+} {
   const now = timesOf(cpus());
   let cpuPct: number | null = null;
   if (baseline !== undefined) {

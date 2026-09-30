@@ -81,13 +81,18 @@ function dumpTuiState(daemon: DaemonHandle, machineId: string): void {
 
   const sessions = daemon.chat.sessionsSnapshot();
   const prewarm = daemon.chat.prewarmStatus();
-  out.push('', `agents & sessions (${String(sessions.length)} channel(s), ${String(prewarm.length)} warm):`);
+  out.push(
+    '',
+    `agents & sessions (${String(sessions.length)} channel(s), ${String(prewarm.length)} warm):`,
+  );
   const agents = renderAgentsPane(sessions, prewarm, Date.now());
   out.push(...(agents.length > 0 ? agents.map((l) => `  ${l}`) : ['  (none)']));
 
   const rows = daemon.chat.usage.rows();
   out.push('', 'tokens (this daemon run):');
-  out.push(...(rows.length > 0 ? renderTokensPane(rows).map((l) => `  ${l}`) : ['  (no usage reported)']));
+  out.push(
+    ...(rows.length > 0 ? renderTokensPane(rows).map((l) => `  ${l}`) : ['  (no usage reported)']),
+  );
 
   const ops = logbook
     .recent(60)
