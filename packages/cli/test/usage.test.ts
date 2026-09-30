@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { UsageLedger, hasTokenCounts, normalizeUsage } from '../src/daemon/usage.js';
+import {
+  UsageLedger,
+  hasTokenCounts,
+  normalizeUsage,
+  responseUsageMode,
+} from '../src/daemon/usage.js';
 
 /**
  * #39 — the dialect pick (one place knows every upstream's spelling of a
@@ -18,6 +23,11 @@ describe('normalizeUsage', () => {
         cacheReadInputTokens: 5000,
       }),
     ).toEqual({ inputTokens: 10, outputTokens: 2, cacheWriteTokens: 300, cacheReadTokens: 5000 });
+    // The ACP end-turn strawman / claude wrapper response spellings.
+    expect(normalizeUsage({ cachedReadTokens: 6, cachedWriteTokens: 7 })).toEqual({
+      cacheReadTokens: 6,
+      cacheWriteTokens: 7,
+    });
     // deepseek's snake_case prompt cache (the tap/commit payload).
     expect(
       normalizeUsage({ inputTokens: 7, outputTokens: 1, prompt_cache_hit_tokens: 900 }),
@@ -48,6 +58,16 @@ describe('normalizeUsage', () => {
   });
 });
 
+describe('responseUsageMode (#44)', () => {
+  it('maps only the verified dialects; unknown targets are ignored', () => {
+    expect(responseUsageMode('claude-code')).toBe('cumulative');
+    expect(responseUsageMode('opencode')).toBe('perTurn');
+    expect(responseUsageMode('codex')).toBeNull();
+    expect(responseUsageMode('deepseek')).toBeNull();
+    expect(responseUsageMode('pi')).toBeNull();
+  });
+});
+
 describe('UsageLedger', () => {
   it('sums per-turn reports across sessions and turns', () => {
     const ledger = new UsageLedger();
@@ -60,7 +80,8 @@ describe('UsageLedger', () => {
     expect(row).toMatchObject({
       target: 'claude-code',
       model: 'sonnet',
-      turns: 3,
+      // Turns count ONLY on turn_result (#44) — usage events alone leave 0.
+      turns: 0,
       inputTokens: 1000,
       outputTokens: 15,
       sessions: 2,
@@ -93,5 +114,37 @@ describe('UsageLedger', () => {
     ledger.record('b', 'pi', 'm2', { inputTokens: 1 }, '2026-01-01T00:00:01Z');
     ledger.record('c', 'pi', 'm3', { inputTokens: 1 }, '2026-01-01T00:00:02Z');
     expect(ledger.rows().map((r) => r.model)).toEqual(['m1', 'm3', 'm2']);
+  });
+
+  it('recordTurn counts EVERY target and applies known response dialects', () => {
+    const ledger = new UsageLedger();
+    // Unknown target (codex today): turn counts, usage ignored.
+    ledger.recordTurn('c1', 'codex', 'gpt-5', { inputTokens: 500 }, 't0');
+    // claude-code: CUMULATIVE responses — deltas credited, reset re-credits.
+    ledger.recordTurn('c2', 'claude-code', 'opus', { inputTokens: 100, cacheReadTokens: 500 }, 't1');
+    ledger.recordTurn('c2', 'claude-code', 'opus', { inputTokens: 200, cacheReadTokens: 1000 }, 't2');
+    ledger.recordTurn('c2', 'claude-code', 'opus', { inputTokens: 30 }, 't3'); // compaction reset
+    // opencode: PER-TURN responses — summed straight in.
+    ledger.recordTurn('c3', 'opencode', 'qwen', { inputTokens: 52 }, 't4');
+    ledger.recordTurn('c3', 'opencode', 'qwen', { inputTokens: 80 }, 't5');
+
+    const rows = ledger.rows();
+    const codex = rows.find((r) => r.target === 'codex')!;
+    expect(codex).toMatchObject({ turns: 1, inputTokens: 0 });
+    const claude = rows.find((r) => r.target === 'claude-code')!;
+    expect(claude).toMatchObject({ turns: 3, inputTokens: 230, cacheReadTokens: 1000 });
+    const open = rows.find((r) => r.target === 'opencode')!;
+    expect(open).toMatchObject({ turns: 2, inputTokens: 132 });
+  });
+
+  it('delta-accounts the session-cumulative usage_update cost', () => {
+    const ledger = new UsageLedger();
+    ledger.record('s', 'claude-code', 'opus', { costUsd: 0.012 }, 't1');
+    ledger.record('s', 'claude-code', 'opus', { costUsd: 0.03 }, 't2');
+    ledger.record('s', 'claude-code', 'opus', { costUsd: 0.005 }, 't3'); // new session context
+    const [row] = ledger.rows();
+    expect(row.costUsd).toBeCloseTo(0.012 + 0.018 + 0.005, 9);
+    // Turns come ONLY from turn_result — cost events never bump them.
+    expect(row.turns).toBe(0);
   });
 });

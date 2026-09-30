@@ -55,7 +55,7 @@ import {
   writeAdapterLedgerEntry,
 } from './adapter-ledger.js';
 import { PrewarmPool } from './prewarm.js';
-import { UsageLedger, normalizeUsage } from './usage.js';
+import { UsageLedger, hasTokenCounts, normalizeUsage, responseUsageMode } from './usage.js';
 import { rewriteHistoryItems, rewriteSessionConfigOptions } from './model-options.js';
 import {
   createDshLiveMapper,
@@ -241,6 +241,8 @@ export interface SessionView {
   outputTokens: number;
   cacheReadTokens: number;
   cacheWriteTokens: number;
+  /** #44 — daemon-run spend accumulated from usage_update cost deltas. */
+  costUsd: number;
   events: number;
 }
 
@@ -318,16 +320,21 @@ export function attachChatHandlers(
   const usageLedger = new UsageLedger();
 
   const emitEvent = (session: DaemonSession, event: ChatStreamEvent): void => {
-    // #39 — token-bearing usage events feed the ledger; occupancy-only
-    // updates (dsh's wire usage_update) carry no counts and are skipped
-    // inside record(). History replays ride emitHistory, never here, so a
-    // resync cannot double-count.
+    // #39/#44 — the usage ledger. `usage` events carry per-turn tokens (dsh,
+    // pi) and the session-cumulative cost (claude; delta-accounted inside).
+    // `turn_result` counts a turn for EVERY target and applies response
+    // usage where the dialect is known (claude cumulative, opencode
+    // per-turn). Occupancy-only updates carry nothing countable. History
+    // replays ride emitHistory, never here, so a resync cannot double-count.
+    const model = modelOf(session.config, session.modelOptions) ?? '(unknown)';
     if (event.kind === 'usage') {
-      usageLedger.record(
+      usageLedger.record(session.sessionId, session.target, model, event, new Date().toISOString());
+    } else if (event.kind === 'turn_result') {
+      usageLedger.recordTurn(
         session.sessionId,
         session.target,
-        modelOf(session.config, session.modelOptions) ?? '(unknown)',
-        event,
+        model,
+        event.usage !== undefined ? event.usage : null,
         new Date().toISOString(),
       );
     }
@@ -1244,6 +1251,7 @@ export function attachChatHandlers(
             outputTokens: usage?.outputTokens ?? 0,
             cacheReadTokens: usage?.cacheReadTokens ?? 0,
             cacheWriteTokens: usage?.cacheWriteTokens ?? 0,
+            costUsd: usage?.costUsd ?? 0,
             events: s.history.length,
           };
         })
@@ -1464,12 +1472,17 @@ async function runPrompt(
       'session/prompt',
       { sessionId: session.acpSessionId, prompt },
       30 * 60 * 1000,
-    )) as { stopReason?: string };
+    )) as { stopReason?: string; usage?: unknown };
     const stopReason = (['end_turn', 'cancelled', 'max_tokens', 'refusal'] as const).includes(
       result?.stopReason as never,
     )
       ? (result!.stopReason as 'end_turn' | 'cancelled' | 'max_tokens' | 'refusal')
       : 'end_turn';
+    // #44 — the response may carry per-turn usage (the end-turn-token-usage
+    // RFD's v1 carrier). Only targets with a KNOWN dialect are surfaced; the
+    // rest keep reporting through `usage` events (dsh/pi) or nothing (codex).
+    const turnUsage =
+      responseUsageMode(session.target) !== null ? normalizeUsage(result?.usage) : null;
     // dsh: the wire settles when the agent idles, but the streaming source's
     // final bytes can land a beat LATER — the transcript's write-behind
     // batch (tail) or the bus `turn/end` (tap — typically already there,
@@ -1499,7 +1512,11 @@ async function runPrompt(
         await new Promise((r) => setTimeout(r, 25));
       }
     }
-    emitEvent(session, { kind: 'turn_result', stopReason });
+    emitEvent(session, {
+      kind: 'turn_result',
+      stopReason,
+      ...(turnUsage !== null && hasTokenCounts(turnUsage) ? { usage: turnUsage } : {}),
+    });
   } catch (e) {
     // A rejected prompt is a TURN error (adapters answer protocol failures —
     // "Authentication required", upstream API errors — through JSON-RPC
@@ -1744,9 +1761,21 @@ export function mapAcpUpdate(params: UnknownRecord): ChatStreamEvent | null {
     case 'usage_update': {
       // #39 — cache fields ride the same dialect-tolerant pick as in/out
       // (see usage.ts); dsh's occupancy (`used` of `size`) stays top-level.
+      // #44 — the session-usage RFD's optional CUMULATIVE cost; the ledger
+      // converts to increments. Non-USD currencies are not converted here.
+      const cost = asRecord(update.cost);
+      const costUsd =
+        cost !== null &&
+        typeof cost.amount === 'number' &&
+        Number.isFinite(cost.amount) &&
+        cost.amount >= 0 &&
+        (cost.currency === undefined || cost.currency === 'USD')
+          ? cost.amount
+          : undefined;
       return {
         kind: 'usage',
         ...normalizeUsage(update.usage),
+        ...(costUsd !== undefined ? { costUsd } : {}),
         ...(typeof update.used === 'number' ? { contextUsed: update.used } : {}),
         ...(typeof update.size === 'number' ? { contextSize: update.size } : {}),
       };

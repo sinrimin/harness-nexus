@@ -96,3 +96,8 @@ export function fmtDuration(sec: number): string {
   if (m > 0) return `${String(m)}m${String(s % 60).padStart(2, '0')}s`;
   return `${String(s)}s`;
 }
+
+/** USD spend: cents resolution below a dollar, plain cents above. */
+export function fmtUsd(n: number): string {
+  return `$${n >= 1 ? n.toFixed(2) : n.toFixed(3)}`;
+}

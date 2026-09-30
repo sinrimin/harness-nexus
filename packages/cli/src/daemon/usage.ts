@@ -1,24 +1,31 @@
 /**
- * #39 — token usage accounting for the TUI (and anyone else in-process).
+ * #39/#44 — token and cost accounting for the TUI (and anyone in-process).
  *
- * Two halves:
+ * Three halves:
  *
  *   normalizeUsage — one place that knows every upstream's spelling of a
- *     token count. The four targets speak three dialects of cache field
- *     (Anthropic's cache_creation/cache_read, deepseek's snake_case prompt
- *     cache, our own normalized shape); the mapping layers
+ *     token count. The targets speak several dialects of cache field
+ *     (Anthropic camelCase, deepseek snake_case prompt cache, the ACP
+ *     end-turn strawman's cachedRead/cachedWrite); the mapping layers
  *     (`mapAcpUpdate`, the dsh mapper, the pi connection) all funnel raw
  *     usage objects through here so the semantic event carries ONE shape.
  *     deepseek's `prompt_cache_miss_tokens` deliberately does NOT map to
  *     cacheWrite — "uncached input" is not "cache write".
  *
- *   UsageLedger — per-(target, model) and per-session totals, fed by the
- *     chat manager at every token-bearing usage event. Every adapter we
- *     ship reports PER-TURN counts (claude's usage_update at turn end,
- *     opencode per message, pi's message_end, dsh's committed block), so
- *     the ledger simply SUMS events; if a future target reports running
- *     counters instead, it needs a dialect flag here, not silence.
- *     Daemon-lifetime only — nothing persists across restarts.
+ *   responseUsageMode — whether a target's `session/prompt` RESPONSE carries
+ *     usage, and in which dialect (#44): the claude wrapper returns
+ *     session-CUMULATIVE totals (read straight off its accumulatedUsage);
+ *     opencode returns PER-TURN values. Targets not in the map are ignored —
+ *     counting an unknown dialect (or one that also reports through usage
+ *     events) would double-count, so we wait for rig verification instead.
+ *
+ *   UsageLedger — per-(target, model) and per-session totals. Usage EVENTS
+ *     (dsh/pi) carry per-turn counts and are summed. Response usage is
+ *     applied per dialect (cumulative → delta vs the session's last
+ *     cumulative snapshot, a reset re-credits the full value; per-turn →
+ *     summed). `usage_update.cost.amount` is session-CUMULATIVE by spec, so
+ *     it is also delta-accounted. Daemon-lifetime only — nothing persists
+ *     across restarts.
  */
 
 /** Dialect spellings for each normalized field, most-explicit first. */
@@ -26,6 +33,7 @@ const INPUT_KEYS = ['inputTokens', 'input'] as const;
 const OUTPUT_KEYS = ['outputTokens', 'output'] as const;
 const READ_KEYS = [
   'cacheReadTokens',
+  'cachedReadTokens', // ACP end-turn strawman + the claude wrapper's response
   'cacheReadInputTokens',
   'cache_read_input_tokens',
   'cachedInputTokens',
@@ -33,16 +41,12 @@ const READ_KEYS = [
 ] as const;
 const WRITE_KEYS = [
   'cacheWriteTokens',
+  'cachedWriteTokens', // ACP end-turn strawman + the claude wrapper's response
   'cacheCreationInputTokens',
   'cache_creation_input_tokens',
   'cacheWriteInputTokens',
 ] as const;
 
-/**
- * `| undefined` on every field (exactOptionalPropertyTypes): callers hand us
- * zod-inferred event objects whose optional properties may be explicitly
- * undefined; record() treats undefined and absent identically.
- */
 export interface UsageFields {
   inputTokens?: number | undefined;
   outputTokens?: number | undefined;
@@ -83,6 +87,19 @@ export function hasTokenCounts(f: UsageFields): boolean {
   );
 }
 
+/**
+ * #44 — does this target's `session/prompt` response carry usage, and is it
+ * session-cumulative or per-turn? Null = unknown/unreported → NOT counted.
+ */
+const RESPONSE_USAGE_MODES: Record<string, 'cumulative' | 'perTurn'> = {
+  'claude-code': 'cumulative', // wrapper's sessionUsage() off accumulatedUsage
+  opencode: 'perTurn', // verified against 1.15.11+ (issue #30118 example)
+};
+
+export function responseUsageMode(target: string): 'cumulative' | 'perTurn' | null {
+  return RESPONSE_USAGE_MODES[target] ?? null;
+}
+
 export interface UsageRow {
   target: string;
   model: string;
@@ -91,6 +108,8 @@ export interface UsageRow {
   outputTokens: number;
   cacheReadTokens: number;
   cacheWriteTokens: number;
+  /** Daemon-run spend accumulated from usage_update cost deltas (USD). */
+  costUsd: number;
   /** Distinct sessions that ever reported under this (target, model). */
   sessions: number;
   lastAt: string;
@@ -104,6 +123,7 @@ export interface SessionUsage {
   outputTokens: number;
   cacheReadTokens: number;
   cacheWriteTokens: number;
+  costUsd: number;
   lastAt: string;
 }
 
@@ -115,17 +135,41 @@ interface Acc {
   outputTokens: number;
   cacheReadTokens: number;
   cacheWriteTokens: number;
+  costUsd: number;
   sessions: Set<string>;
   lastAt: string;
 }
 
+/** Per-session counters the delta dialects need between reports. */
+interface SessionBaseline {
+  /** usage_update `cost.amount` — cumulative by spec. */
+  lastCostUsd?: number;
+  /** claude-style cumulative response-usage snapshot. */
+  lastCumulative?: UsageFields;
+}
+
+type TokenField =
+  | 'inputTokens'
+  | 'outputTokens'
+  | 'cacheReadTokens'
+  | 'cacheWriteTokens'
+  | 'costUsd';
+const TOKEN_FIELDS = ['inputTokens', 'outputTokens', 'cacheReadTokens', 'cacheWriteTokens'] as const;
+
+/**
+ * Credit rule for CUMULATIVE counters: first sighting = full value, later
+ * sightings = the increment, a backwards step = reset (credit full again).
+ */
+function cumulativeDelta(last: number | undefined, now: number): number {
+  if (last === undefined || now < last) return now;
+  return now - last;
+}
+
 export class UsageLedger {
   #rows = new Map<string, Acc>();
-  #sessions = new Map<string, Acc>();
+  #sessions = new Map<string, Acc & { baseline: SessionBaseline }>();
 
-  /** Feed one token-bearing usage event. Ignores occupancy-only payloads. */
-  record(sessionId: string, target: string, model: string, ev: UsageFields, at: string): void {
-    if (!hasTokenCounts(ev)) return;
+  #rowFor(sessionId: string, target: string, model: string, at: string): { row: Acc; sess: Acc & { baseline: SessionBaseline } } {
     const key = `${target}\u0000${model}`;
     let row = this.#rows.get(key);
     if (row === undefined) {
@@ -137,6 +181,7 @@ export class UsageLedger {
         outputTokens: 0,
         cacheReadTokens: 0,
         cacheWriteTokens: 0,
+        costUsd: 0,
         sessions: new Set<string>(),
         lastAt: at,
       };
@@ -144,6 +189,9 @@ export class UsageLedger {
     }
     let sess = this.#sessions.get(sessionId);
     if (sess === undefined) {
+      // Fresh ZEROED accumulator — never spread the row here: a new session
+      // joining an existing (target, model) row must not inherit another
+      // session's totals.
       sess = {
         target,
         model,
@@ -152,27 +200,97 @@ export class UsageLedger {
         outputTokens: 0,
         cacheReadTokens: 0,
         cacheWriteTokens: 0,
+        costUsd: 0,
         sessions: new Set<string>(),
         lastAt: at,
+        baseline: {},
       };
       this.#sessions.set(sessionId, sess);
     } else if (sess.model !== model) {
-      // A mid-session model switch re-labels the session view (the rows
-      // keep their per-model history; the session total spans models).
+      // A mid-session model switch re-labels the session view (the rows keep
+      // their per-model history; the session total spans models). Deltas
+      // restart: the new model's counters describe its own context.
       sess.model = model;
+      sess.baseline = {};
     }
-    const fields = ['inputTokens', 'outputTokens', 'cacheReadTokens', 'cacheWriteTokens'] as const;
-    for (const field of fields) {
-      const now = ev[field];
-      if (now === undefined || now <= 0) continue;
-      row[field] += now;
-      sess[field] += now;
-    }
-    row.turns += 1;
+    return { row, sess };
+  }
+
+  #credit(row: Acc, sess: Acc, field: TokenField, add: number): void {
+    if (add <= 0) return;
+    row[field] += add;
+    sess[field] += add;
+  }
+
+  #bump(row: Acc, sess: Acc, sessionId: string, at: string): void {
     row.sessions.add(sessionId);
     row.lastAt = at;
-    sess.turns += 1;
     sess.lastAt = at;
+  }
+
+  /**
+   * Feed one `usage` event. Token fields (per-turn dialects: dsh/pi) are
+   * summed; `costUsd` (cumulative by the ACP session-usage RFD) is
+   * delta-accounted. TURNS ARE NOT COUNTED HERE — turn_result is the only
+   * universal per-turn signal (#44), and counting here too would double-count
+   * every dsh/pi/claude turn. Count-less, cost-less events are ignored.
+   */
+  record(
+    sessionId: string,
+    target: string,
+    model: string,
+    ev: UsageFields & { costUsd?: number | undefined },
+    at: string,
+  ): void {
+    if (!hasTokenCounts(ev) && ev.costUsd === undefined) return;
+    const { row, sess } = this.#rowFor(sessionId, target, model, at);
+    for (const field of TOKEN_FIELDS) {
+      const now = ev[field];
+      if (now === undefined || now <= 0) continue;
+      this.#credit(row, sess, field, now);
+    }
+    if (ev.costUsd !== undefined && ev.costUsd >= 0) {
+      this.#credit(row, sess, 'costUsd', cumulativeDelta(sess.baseline.lastCostUsd, ev.costUsd));
+      sess.baseline.lastCostUsd = ev.costUsd;
+    }
+    this.#bump(row, sess, sessionId, at);
+  }
+
+  /**
+   * Feed one turn completion (#44). Turns count for EVERY target — the
+   * turn_result signal is universal. Response usage is applied only for
+   * targets with a known dialect: cumulative deltas vs the session snapshot,
+   * per-turn values summed straight in. `usage` may be null (unknown target
+   * or a response that carried none).
+   */
+  recordTurn(
+    sessionId: string,
+    target: string,
+    model: string,
+    usage: UsageFields | null,
+    at: string,
+  ): void {
+    const mode = responseUsageMode(target);
+    const { row, sess } = this.#rowFor(sessionId, target, model, at);
+    if (usage !== null && mode !== null && hasTokenCounts(usage)) {
+      if (mode === 'cumulative') {
+        for (const field of TOKEN_FIELDS) {
+          const now = usage[field];
+          if (now === undefined) continue;
+          this.#credit(row, sess, field, cumulativeDelta(sess.baseline.lastCumulative?.[field], now));
+        }
+        sess.baseline.lastCumulative = usage;
+      } else {
+        for (const field of TOKEN_FIELDS) {
+          const now = usage[field];
+          if (now === undefined || now <= 0) continue;
+          this.#credit(row, sess, field, now);
+        }
+      }
+    }
+    row.turns += 1;
+    sess.turns += 1;
+    this.#bump(row, sess, sessionId, at);
   }
 
   /** All (target, model) rows, most recently active first. */
@@ -186,13 +304,14 @@ export class UsageLedger {
         outputTokens: r.outputTokens,
         cacheReadTokens: r.cacheReadTokens,
         cacheWriteTokens: r.cacheWriteTokens,
+        costUsd: r.costUsd,
         sessions: r.sessions.size,
         lastAt: r.lastAt,
       }))
       .sort((a, b) => (a.lastAt < b.lastAt ? 1 : a.lastAt > b.lastAt ? -1 : 0));
   }
 
-  /** One session's totals, or null when it never reported tokens. */
+  /** One session's totals, or null when it never reported. */
   sessionUsage(sessionId: string): SessionUsage | null {
     const s = this.#sessions.get(sessionId);
     if (s === undefined) return null;
@@ -204,6 +323,7 @@ export class UsageLedger {
       outputTokens: s.outputTokens,
       cacheReadTokens: s.cacheReadTokens,
       cacheWriteTokens: s.cacheWriteTokens,
+      costUsd: s.costUsd,
       lastAt: s.lastAt,
     };
   }
