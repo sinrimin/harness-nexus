@@ -64,7 +64,7 @@ export function MobileNav({ children }: { children: ReactNode }) {
             {/* #37 — same version line as the plate foot, above the toggles. */}
             <VersionLine />
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <div className="flex items-center gap-0.5">
+              <div className="flex items-center gap-1">
                 <LanguageToggle />
                 <SkinToggle />
                 <ThemeToggle />
