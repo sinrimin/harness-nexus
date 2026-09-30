@@ -108,8 +108,12 @@ export function Topbar({
 
       <div className="flex shrink-0 items-center gap-0.5 border-l pl-1.5">
         <GithubStar />
-        <LanguageToggle />
-        <SkinToggle />
+        {/* #40 — on phones the corner keeps ONLY star + theme; language and
+            skin fold away here (they stay reachable at the drawer foot). */}
+        <div className="hidden items-center gap-0.5 min-[640px]:flex">
+          <LanguageToggle />
+          <SkinToggle />
+        </div>
         <ThemeToggle />
       </div>
     </header>
