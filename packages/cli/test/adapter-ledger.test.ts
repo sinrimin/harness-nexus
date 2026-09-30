@@ -6,6 +6,8 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   adapterLedgerDir,
   auditAdapterLedger,
+  groupSignalTarget,
+  groupSignalTargetFor,
   readAdapterLedger,
   sweepAdapterLedger,
   writeAdapterLedgerEntry,
@@ -140,6 +142,18 @@ describe('adapter ledger (9 W11 A)', () => {
     await waitFor(() => (gone(pgid) ? true : undefined));
     expect(auditAdapterLedger(home)).toBe(1);
     expect(readAdapterLedger(home)).toHaveLength(0);
+  });
+
+  it('#42 — the signal target is the GROUP on POSIX but the bare LEADER on win32', () => {
+    // Windows has no process groups: kill(-pid, …) just throws, which made
+    // every liveness probe report dead and the audit reap live sessions.
+    expect(groupSignalTargetFor('linux', 4242)).toBe(-4242);
+    expect(groupSignalTargetFor('darwin', 4242)).toBe(-4242);
+    expect(groupSignalTargetFor('win32', 4242)).toBe(4242);
+    // On THIS platform the exported helper follows the platform branch.
+    expect(groupSignalTarget(4242)).toBe(
+      process.platform === 'win32' ? 4242 : -4242,
+    );
   });
 
   it('sweep and audit remove junk (torn writes, stranded .tmp) so the dir cannot accumulate', () => {
