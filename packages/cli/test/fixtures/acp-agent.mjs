@@ -174,6 +174,17 @@ const elicitationWaiters = new Map();
 /** In-flight prompt ids — session/cancel resolves all of them as 'cancelled'. */
 const promptIds = new Set();
 
+// #44 — cumulative accumulators for the FIXTURE_RESPONSE_USAGE dialect: each
+// turn adds these per-turn amounts, and both the prompt response's usage and
+// the usage_update cost read the CUMULATIVE totals (claude-wrapper shape).
+const fixtureState = {
+  accumulatedInput: 0,
+  accumulatedOutput: 0,
+  accumulatedCacheRead: 0,
+  accumulatedCacheWrite: 0,
+  accumulatedCostUsd: 0,
+};
+
 let nextId = 1;
 
 function send(message) {
@@ -197,7 +208,17 @@ function update(sessionId, sessionUpdate) {
     sessionId,
     update: {
       sessionUpdate,
-      ...(sessionUpdate === 'usage_update' ? { usage: { inputTokens: 11, outputTokens: 7 } } : {}),
+      // #44: two dialects. Default = the dsh/pi style (per-turn token counts
+      // on the usage_update itself). FIXTURE_RESPONSE_USAGE=1 = the claude
+      // style — usage_update carries occupancy (and cost) only, tokens ride
+      // the session/prompt RESPONSE as cumulative totals.
+      ...(sessionUpdate === 'usage_update' &&
+      process.env.FIXTURE_RESPONSE_USAGE !== '1'
+        ? { usage: { inputTokens: 11, outputTokens: 7 } }
+        : {}),
+      ...(sessionUpdate === 'usage_update' && process.env.FIXTURE_RESPONSE_USAGE === '1'
+        ? { cost: { amount: fixtureState.accumulatedCostUsd, currency: 'USD' } }
+        : {}),
       // Occupancy, the way dsh reports it: FLAT on the update (`used`/`size`;
       // the daemon maps exactly those two). The Sender's context meter renders
       // them, so a rig that wants to see the meter (ring, bar, details) turns
@@ -416,9 +437,27 @@ function runPrompt(id, text, deferred = false) {
   const sessionId = 'fx-session'; // single-session fixture; content is what matters
   const finish = (stopReason) => {
     promptIds.delete(id);
-    respond(id, { stopReason });
+    // FIXTURE_RESPONSE_USAGE=1 (#44): the claude-wrapper dialect — the
+    // session/prompt RESPONSE carries session-CUMULATIVE token usage
+    // (input/output + cached read/write) while usage_update stays
+    // occupancy-only.
+    const usage =
+      process.env.FIXTURE_RESPONSE_USAGE === '1'
+        ? {
+            inputTokens: fixtureState.accumulatedInput,
+            outputTokens: fixtureState.accumulatedOutput,
+            cachedReadTokens: fixtureState.accumulatedCacheRead,
+            cachedWriteTokens: fixtureState.accumulatedCacheWrite,
+          }
+        : undefined;
+    respond(id, { stopReason, ...(usage !== undefined ? { usage } : {}) });
   };
   promptIds.add(id);
+  fixtureState.accumulatedInput += 100;
+  fixtureState.accumulatedOutput += 20;
+  fixtureState.accumulatedCacheRead += 500;
+  fixtureState.accumulatedCacheWrite += 50;
+  fixtureState.accumulatedCostUsd = Math.round((fixtureState.accumulatedCostUsd + 0.012) * 1000) / 1000;
 
   // Test seam: hold the plain echo turn so a test can append transcript
   // frames DURING generation (the dsh live-tail streaming path).

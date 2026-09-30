@@ -9,7 +9,7 @@
 import type { PrewarmView, SessionView } from '../daemon/chat.js';
 import type { LogLineEntry, OpEntry } from '../daemon/logbook.js';
 import type { UsageRow } from '../daemon/usage.js';
-import { fmtCount, fmtDuration } from './metrics.js';
+import { fmtCount, fmtDuration, fmtUsd } from './metrics.js';
 import { padEnd, padStart, strWidth, truncateToWidth } from './width.js';
 
 export const PANE_TITLES = {
@@ -68,7 +68,7 @@ export function renderTokensPane(rows: UsageRow[]): string[] {
     `${padEnd('target/model', COL_NAME)}${padStart('in', COL_FIELD)}${padStart('out', COL_FIELD)}${padStart(
       'cacheW',
       COL_FIELD,
-    )}${padStart('cacheR', COL_FIELD)}${padStart('ses', 5)}${padStart('turns', 7)}`,
+    )}${padStart('cacheR', COL_FIELD)}${padStart('$', 8)}${padStart('ses', 5)}${padStart('turns', 7)}`,
   ];
   for (const r of rows) {
     lines.push(
@@ -78,7 +78,7 @@ export function renderTokensPane(rows: UsageRow[]): string[] {
       )}${padStart(fmtCount(r.cacheWriteTokens), COL_FIELD)}${padStart(
         fmtCount(r.cacheReadTokens),
         COL_FIELD,
-      )}${padStart(String(r.sessions), 5)}${padStart(String(r.turns), 7)}`,
+      )}${padStart(fmtUsd(r.costUsd), 8)}${padStart(String(r.sessions), 5)}${padStart(String(r.turns), 7)}`,
     );
   }
   return lines;

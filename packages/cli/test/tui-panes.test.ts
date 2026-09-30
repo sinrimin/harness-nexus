@@ -76,17 +76,20 @@ describe('renderTokensPane', () => {
         outputTokens: 84_000,
         cacheReadTokens: 3_400_000,
         cacheWriteTokens: 210_000,
+        costUsd: 1.25,
         sessions: 3,
         lastAt: '2026-09-30T12:00:00.000Z',
       },
     ];
     const lines = renderTokensPane(rows);
     expect(lines[0]).toContain('target/model');
+    expect(lines[0]).toContain('$');
     expect(lines[1]).toContain('claude-code/sonnet-4.6');
     expect(lines[1]).toContain('1.2M');
     expect(lines[1]).toContain('84.0k');
     expect(lines[1]).toContain('3.4M');
     expect(lines[1]).toContain('210.0k');
+    expect(lines[1]).toContain('$1.25');
   });
 });
 

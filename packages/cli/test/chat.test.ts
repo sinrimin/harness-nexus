@@ -744,6 +744,74 @@ describe('session round-trip vs the fixture agent', () => {
     await waitFor(() => (handle.prewarmReady('codex') ? undefined : true));
   }, 20000);
 
+  it('claude dialect: response usage + cumulative cost feed the ledger (#44)', async () => {
+    const socket = new FakeSocket();
+    const handle = attachChatHandlers(socket as never, {
+      env: {
+        HN_ACP_COMMAND_CLAUDE_CODE: `node ${FIXTURE}`,
+        PATH: process.env.PATH ?? '',
+      },
+      spawnEnv: { FIXTURE_RESPONSE_USAGE: '1' },
+      homeDir: LEDGER_HOME,
+    });
+    socket.receive('chat:session.start', {
+      sessionId: 'sess-cc',
+      agentInstanceId: 'ag-1',
+      target: 'claude-code',
+      cwd: '/tmp',
+    });
+    const ready = await waitFor(
+      () =>
+        socket.emitted.find(
+          (e) =>
+            e.event === 'chat:session.ready' &&
+            (e.payload as { sessionId?: string }).sessionId === 'sess-cc',
+        )?.payload,
+    );
+    expect((ready as { error?: string }).error).toBeUndefined();
+
+    // Two turns of the claude dialect: usage_update carries occupancy+cost
+    // only; tokens ride the session/prompt RESPONSE as cumulative totals.
+    for (const n of [1, 2]) {
+      socket.receive('chat:message.send', {
+        sessionId: 'sess-cc',
+        prompt: [{ type: 'text', text: `turn ${String(n)}` }],
+      });
+      await waitFor(() => {
+        const results = socket.chatEvents().filter((e) => e.kind === 'turn_result');
+        return results.length >= n ? true : undefined;
+      });
+    }
+    const turns = socket.chatEvents().filter((e) => e.kind === 'turn_result');
+    // The response usage rides each turn_result (cumulative per the wrapper).
+    expect(turns[0]).toMatchObject({
+      kind: 'turn_result',
+      stopReason: 'end_turn',
+      usage: { inputTokens: 100, outputTokens: 20, cacheReadTokens: 500, cacheWriteTokens: 50 },
+    });
+    expect(turns[1]).toMatchObject({
+      kind: 'turn_result',
+      usage: { inputTokens: 200, cacheReadTokens: 1000 },
+    });
+    // usage_update carried cost (cumulative), no tokens.
+    const usages = socket.chatEvents().filter((e) => e.kind === 'usage');
+    expect(usages.some((e) => 'costUsd' in (e as object) && !('inputTokens' in (e as object)))).toBe(
+      true,
+    );
+
+    // Ledger: delta-accounted — 2 turns credit each per-turn amount once.
+    const [row] = handle.usage.rows();
+    expect(row).toMatchObject({
+      target: 'claude-code',
+      turns: 2,
+      inputTokens: 200,
+      outputTokens: 40,
+      cacheReadTokens: 1000,
+      cacheWriteTokens: 100,
+    });
+    expect(row.costUsd).toBeCloseTo(0.024, 9);
+  }, 15000);
+
   it('sessionsSnapshot + usage ledger track the live channel and its tokens (#39)', async () => {
     const socket = new FakeSocket();
     const handle = attachChatHandlers(socket as never, {
