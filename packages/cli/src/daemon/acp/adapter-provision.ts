@@ -1,4 +1,4 @@
-import { spawn } from 'node:child_process';
+import { spawn } from '../../proc.js';
 import { existsSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { PINNED_ADAPTER_SPECS, type PinnedAdapterSpec } from './adapters.js';

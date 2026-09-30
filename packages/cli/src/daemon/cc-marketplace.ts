@@ -1,5 +1,5 @@
 import type { Socket } from 'socket.io-client';
-import { spawn } from 'node:child_process';
+import { spawn } from '../proc.js';
 import { readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';

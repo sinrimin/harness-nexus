@@ -1,4 +1,5 @@
-import { spawn, type ChildProcess } from 'node:child_process';
+import { type ChildProcess } from 'node:child_process';
+import { spawn } from '../../proc.js';
 import { readdirSync, readFileSync } from 'node:fs';
 import { groupIsAlive } from '../adapter-ledger.js';
 import { piFindSessionFile, piSessionReplay, type PiReplayUpdate } from '../pi-sessions.js';
