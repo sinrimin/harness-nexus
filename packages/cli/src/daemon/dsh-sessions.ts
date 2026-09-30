@@ -1,5 +1,6 @@
 import * as zlib from 'node:zlib';
 import type { ChatStreamEvent, HistoryItem } from '@harness-nexus/shared';
+import { hasTokenCounts, normalizeUsage } from './usage.js';
 
 /**
  * dsh native session store reader (Phase 9 W7).
@@ -337,14 +338,9 @@ function stepKey(data: UnknownRecord): string | null {
 /** A usage event from a commit's `usage` payload (null when absent/malformed). */
 function usageEvent(raw: unknown): ChatStreamEvent | null {
   if (!isRecord(raw)) return null;
-  const input = raw['inputTokens'];
-  const output = raw['outputTokens'];
-  if (typeof input !== 'number' && typeof output !== 'number') return null;
-  return {
-    kind: 'usage',
-    ...(typeof input === 'number' ? { inputTokens: input } : {}),
-    ...(typeof output === 'number' ? { outputTokens: output } : {}),
-  };
+  const fields = normalizeUsage(raw);
+  if (!hasTokenCounts(fields)) return null;
+  return { kind: 'usage', ...fields };
 }
 
 /** The usage marker of a verbatim `assistant/chunk` row (history path). */

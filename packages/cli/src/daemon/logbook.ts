@@ -48,7 +48,14 @@ export interface CommEntry {
   bytes: number;
 }
 
-export type LogbookEntry = OpEntry | CommEntry;
+export interface LogLineEntry {
+  kind: 'log';
+  at: string;
+  level: 'log' | 'warn' | 'error';
+  text: string;
+}
+
+export type LogbookEntry = OpEntry | CommEntry | LogLineEntry;
 
 type Listener = (entry: LogbookEntry) => void;
 
@@ -174,6 +181,26 @@ function singleLine(text: string, cap: number): string {
   return squashed.length > cap ? `${squashed.slice(0, cap)}…"` : squashed;
 }
 
+/**
+ * #39 — one captured console line (the TUI redirects the daemon's console
+ * output here so stray prints reach the logbook instead of corrupting the
+ * alternate screen). Rides the ops file so `hnx logs` sees them too.
+ */
+export function logLine(level: 'log' | 'warn' | 'error', text: string): void {
+  const entry: LogLineEntry = {
+    kind: 'log',
+    at: new Date().toISOString(),
+    level,
+    text: singleLine(text, 500).slice(1, -1), // squashed, but unquoted: not a detail field
+  };
+  logbook.publish(entry);
+  try {
+    rotateAppend(opsLogPath(), `${entry.at} [${entry.level}] ${entry.text}`, OPS_MAX_BYTES, OPS_KEEP);
+  } catch {
+    // Never fatal.
+  }
+}
+
 // ---- comm ----
 
 /** Events whose consecutive runs collapse into one summary line per burst. */
@@ -191,8 +218,84 @@ interface Burst {
   lastAt: number;
 }
 
-let openBurst: Burst | null = null;
-let burstTimer: ReturnType<typeof setTimeout> | null = null;
+/**
+ * Burst-collapsing line producer (#39): feeds bus comm entries in, gets one
+ * display line per ordinary event out — a chatty event's consecutive run
+ * yields its opening line immediately (the liveness marker) and one summary
+ * line when the burst closes (different event, `idleMs` quiet, or an explicit
+ * flush). The comm FILE and the TUI's comm pane both render through this one
+ * class so the two views collapse identically.
+ */
+export class CommAggregator {
+  #open: Burst | null = null;
+  #timer: ReturnType<typeof setTimeout> | null = null;
+
+  constructor(
+    private readonly sink: (line: string) => void,
+    private readonly idleMs: number = BURST_IDLE_MS,
+  ) {}
+
+  push(entry: CommEntry): void {
+    if (entry.dir === '--') {
+      this.flush();
+      this.sink(`${entry.at} -- ${entry.event}`);
+      return;
+    }
+    if (this.#open !== null && this.#open.event === entry.event && this.#open.dir === entry.dir) {
+      this.#open.count += 1;
+      this.#open.bytes += entry.bytes;
+      this.#open.lastAt = Date.parse(entry.at);
+      this.#arm();
+      return;
+    }
+    this.flush();
+    const line = `${entry.at} ${entry.dir} ${entry.event} ${fmtBytes(entry.bytes)}`;
+    if (CHATTY_EVENTS.has(entry.event)) {
+      const now = Date.parse(entry.at);
+      this.#open = { dir: entry.dir, event: entry.event, count: 1, bytes: entry.bytes, firstAt: now, lastAt: now };
+      this.#arm();
+      // The opening line is the liveness marker; the summary covers the burst.
+      this.sink(line);
+      return;
+    }
+    this.sink(line);
+  }
+
+  /** Close the open burst (if any) with its summary line. */
+  flush(): void {
+    if (this.#timer !== null) {
+      clearTimeout(this.#timer);
+      this.#timer = null;
+    }
+    const burst = this.#open;
+    this.#open = null;
+    if (burst === null || burst.count <= 1) return;
+    const span = ((burst.lastAt - burst.firstAt) / 1000).toFixed(1);
+    this.sink(
+      `${new Date().toISOString()} ${burst.dir} ${burst.event} ×${String(burst.count)} total ${fmtBytes(
+        burst.bytes,
+      )} over ${span}s`,
+    );
+  }
+
+  #arm(): void {
+    if (this.#timer !== null) clearTimeout(this.#timer);
+    this.#timer = setTimeout(() => {
+      this.#timer = null;
+      this.flush();
+    }, this.idleMs);
+    this.#timer.unref();
+  }
+}
+
+/** The file view's aggregator instance (the sink rotates into comm.log). */
+const fileAggregator = new CommAggregator((line) => {
+  try {
+    rotateAppend(commLogPath(), line, COMM_MAX_BYTES, COMM_KEEP);
+  } catch {
+    // Never fatal.
+  }
+});
 
 /** The minimal socket surface `attachCommLog` needs (socket.io-client Socket
  * satisfies it; tests pass a fake). tx has no client-side catch-all
@@ -263,80 +366,12 @@ export function attachCommLog(socket: CommSocket): void {
 
 /** File-side feed: one line per event, except chatty bursts. */
 function commFileFeed(dir: CommDirection, event: string, bytes: number): void {
-  try {
-    if (dir === '--') {
-      flushCommBursts();
-      rotateAppend(
-        commLogPath(),
-        `${new Date().toISOString()} -- ${event}`,
-        COMM_MAX_BYTES,
-        COMM_KEEP,
-      );
-      return;
-    }
-    if (openBurst !== null && openBurst.event === event && openBurst.dir === dir) {
-      openBurst.count += 1;
-      openBurst.bytes += bytes;
-      openBurst.lastAt = Date.now();
-      armBurstTimer();
-      return;
-    }
-    flushCommBursts();
-    if (CHATTY_EVENTS.has(event)) {
-      const now = Date.now();
-      openBurst = { dir, event, count: 1, bytes, firstAt: now, lastAt: now };
-      armBurstTimer();
-      // The opening line is the liveness marker; the summary covers the burst.
-      rotateAppend(
-        commLogPath(),
-        `${new Date().toISOString()} ${dir} ${event} ${fmtBytes(bytes)}`,
-        COMM_MAX_BYTES,
-        COMM_KEEP,
-      );
-      return;
-    }
-    rotateAppend(
-      commLogPath(),
-      `${new Date().toISOString()} ${dir} ${event} ${fmtBytes(bytes)}`,
-      COMM_MAX_BYTES,
-      COMM_KEEP,
-    );
-  } catch {
-    // Never fatal.
-  }
+  fileAggregator.push({ kind: 'comm', at: new Date().toISOString(), dir, event, bytes });
 }
 
-function armBurstTimer(): void {
-  if (burstTimer !== null) clearTimeout(burstTimer);
-  burstTimer = setTimeout(() => {
-    burstTimer = null;
-    flushCommBursts();
-  }, BURST_IDLE_MS);
-  burstTimer.unref();
-}
-
-/** Close the open burst (if any) with its summary line. Public for tests. */
+/** Close the file view's open burst (if any). Public for tests. */
 export function flushCommBursts(): void {
-  if (burstTimer !== null) {
-    clearTimeout(burstTimer);
-    burstTimer = null;
-  }
-  const burst = openBurst;
-  openBurst = null;
-  if (burst === null || burst.count <= 1) return;
-  try {
-    const span = ((burst.lastAt - burst.firstAt) / 1000).toFixed(1);
-    rotateAppend(
-      commLogPath(),
-      `${new Date().toISOString()} ${burst.dir} ${burst.event} ×${String(burst.count)} total ${fmtBytes(
-        burst.bytes,
-      )} over ${span}s`,
-      COMM_MAX_BYTES,
-      COMM_KEEP,
-    );
-  } catch {
-    // Never fatal.
-  }
+  fileAggregator.flush();
 }
 
 function jsonBytes(args: unknown[]): number {

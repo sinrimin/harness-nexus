@@ -55,6 +55,7 @@ import {
   writeAdapterLedgerEntry,
 } from './adapter-ledger.js';
 import { PrewarmPool } from './prewarm.js';
+import { UsageLedger, normalizeUsage } from './usage.js';
 import { rewriteHistoryItems, rewriteSessionConfigOptions } from './model-options.js';
 import {
   createDshLiveMapper,
@@ -226,6 +227,47 @@ export interface ChatHandlersOptions {
 }
 
 /** What `attachChatHandlers` hands back for other daemon handlers (issue #2). */
+/** One live chat channel, as the TUI (#39) renders it. */
+export interface SessionView {
+  sessionId: string;
+  acpSessionId: string;
+  target: string;
+  command: string;
+  startedAt: number;
+  busy: boolean;
+  model: string | null;
+  turns: number;
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadTokens: number;
+  cacheWriteTokens: number;
+  events: number;
+}
+
+/** A pooled (pre-warmed) adapter, as the TUI renders it. */
+export interface PrewarmView {
+  key: string;
+  state: 'pending' | 'ready';
+  ageMs: number;
+}
+
+/**
+ * The session's current model: the W9 config snapshot's `model`-category
+ * select, falling back to the W13 configured set's head (a session started
+ * with a model set but before the adapter pushed its options). Null = the
+ * target gives us nothing to key usage on.
+ */
+export function modelOf(
+  config: { modes?: SessionModeState; options: SessionConfigOption[] },
+  modelOptions?: readonly string[],
+): string | null {
+  const selected = config.options.find((o) => o.category === 'model');
+  if (selected !== undefined && selected.currentValue !== undefined && selected.currentValue !== '') {
+    return selected.currentValue;
+  }
+  return modelOptions !== undefined && modelOptions.length > 0 ? (modelOptions[0] ?? null) : null;
+}
+
 export interface ChatHandlersHandle {
   /**
    * A live channel's adapter connection for the target (the newest
@@ -237,6 +279,12 @@ export interface ChatHandlersHandle {
   liveConnectionFor: (target: string) => AgentConnection | null;
   /** Issue #3 — is a prewarmed adapter READY (initialized, alive) for the target? */
   prewarmReady: (target: string) => boolean;
+  /** #39 — live channels for the TUI's agents pane (oldest first). */
+  sessionsSnapshot: () => SessionView[];
+  /** #39 — the pre-warm pool's live entries for the TUI's agents pane. */
+  prewarmStatus: () => PrewarmView[];
+  /** #39 — per-(target, model) and per-session token totals (this daemon run). */
+  usage: UsageLedger;
 }
 
 export function attachChatHandlers(
@@ -266,7 +314,23 @@ export function attachChatHandlers(
    */
   const inFlightStarts = new Set<string>();
 
+  /** #39 — token totals for the TUI (this daemon run, nothing persisted). */
+  const usageLedger = new UsageLedger();
+
   const emitEvent = (session: DaemonSession, event: ChatStreamEvent): void => {
+    // #39 — token-bearing usage events feed the ledger; occupancy-only
+    // updates (dsh's wire usage_update) carry no counts and are skipped
+    // inside record(). History replays ride emitHistory, never here, so a
+    // resync cannot double-count.
+    if (event.kind === 'usage') {
+      usageLedger.record(
+        session.sessionId,
+        session.target,
+        modelOf(session.config, session.modelOptions) ?? '(unknown)',
+        event,
+        new Date().toISOString(),
+      );
+    }
     pushHistory(session, { type: 'event', event });
     socket.emit('chat:event', { sessionId: session.sessionId, event });
   };
@@ -1162,6 +1226,31 @@ export function attachChatHandlers(
     liveConnectionFor,
     /** Issue #3 — is a prewarmed adapter READY (initialized, alive) for the target? */
     prewarmReady: (target: string): boolean => prewarmPool.readyKeys().includes(target),
+    /** #39 — live channels, oldest first (the TUI's agents pane). */
+    sessionsSnapshot: (): SessionView[] =>
+      [...sessions.values()]
+        .map((s) => {
+          const usage = usageLedger.sessionUsage(s.sessionId);
+          return {
+            sessionId: s.sessionId,
+            acpSessionId: s.acpSessionId,
+            target: s.target,
+            command: s.command,
+            startedAt: s.startedAt,
+            busy: s.busy,
+            model: modelOf(s.config, s.modelOptions),
+            turns: usage?.turns ?? 0,
+            inputTokens: usage?.inputTokens ?? 0,
+            outputTokens: usage?.outputTokens ?? 0,
+            cacheReadTokens: usage?.cacheReadTokens ?? 0,
+            cacheWriteTokens: usage?.cacheWriteTokens ?? 0,
+            events: s.history.length,
+          };
+        })
+        .sort((a, b) => a.startedAt - b.startedAt),
+    /** #39 — the pre-warm pool's live entries. */
+    prewarmStatus: (): PrewarmView[] => prewarmPool.status(),
+    usage: usageLedger,
   };
 }
 
@@ -1653,13 +1742,11 @@ export function mapAcpUpdate(params: UnknownRecord): ChatStreamEvent | null {
       };
     }
     case 'usage_update': {
-      const usage = (update.usage ?? {}) as UnknownRecord;
+      // #39 — cache fields ride the same dialect-tolerant pick as in/out
+      // (see usage.ts); dsh's occupancy (`used` of `size`) stays top-level.
       return {
         kind: 'usage',
-        ...(typeof usage.inputTokens === 'number' ? { inputTokens: usage.inputTokens } : {}),
-        ...(typeof usage.outputTokens === 'number' ? { outputTokens: usage.outputTokens } : {}),
-        // dsh reports context occupancy (`used` of `size`) instead of
-        // per-turn token counts.
+        ...normalizeUsage(update.usage),
         ...(typeof update.used === 'number' ? { contextUsed: update.used } : {}),
         ...(typeof update.size === 'number' ? { contextSize: update.size } : {}),
       };

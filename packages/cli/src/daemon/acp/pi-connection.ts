@@ -3,6 +3,7 @@ import { spawn } from '../../proc.js';
 import { readdirSync, readFileSync } from 'node:fs';
 import { groupIsAlive } from '../adapter-ledger.js';
 import { piFindSessionFile, piSessionReplay, type PiReplayUpdate } from '../pi-sessions.js';
+import { hasTokenCounts, normalizeUsage } from '../usage.js';
 import type {
   AgentConnection,
   AcpSessionCaps,
@@ -203,30 +204,14 @@ export function piEventToAcpUpdate(event: unknown): UnknownRecord | null {
     }
     case 'message_end': {
       // Deltas already streamed the content; message_end is authoritative
-      // CONTENT (ignored here) + USAGE (kept — feeds the turn tail).
+      // CONTENT (ignored here) + USAGE (kept — feeds the turn tail). The
+      // dialect pick (inputTokens/input, cache spellings) lives in one place.
       const message = (e['message'] ?? {}) as UnknownRecord;
       const usage = (message['usage'] ?? e['usage']) as UnknownRecord | undefined;
       if (usage === undefined || typeof usage !== 'object' || usage === null) return null;
-      const input =
-        typeof usage['inputTokens'] === 'number'
-          ? usage['inputTokens']
-          : typeof usage['input'] === 'number'
-            ? usage['input']
-            : undefined;
-      const output =
-        typeof usage['outputTokens'] === 'number'
-          ? usage['outputTokens']
-          : typeof usage['output'] === 'number'
-            ? usage['output']
-            : undefined;
-      if (input === undefined && output === undefined) return null;
-      return {
-        sessionUpdate: 'usage_update',
-        usage: {
-          ...(input !== undefined ? { inputTokens: input } : {}),
-          ...(output !== undefined ? { outputTokens: output } : {}),
-        },
-      };
+      const fields = normalizeUsage(usage);
+      if (!hasTokenCounts(fields)) return null;
+      return { sessionUpdate: 'usage_update', usage: fields };
     }
     default:
       return null; // agent_start/end/settled, turn_*, queue_*, compaction_*, extension_error…

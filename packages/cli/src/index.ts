@@ -36,6 +36,7 @@ import {
 } from './config.js';
 import { runDaemon } from './daemon/client.js';
 import { runMcpServe } from './mcp/serve.js';
+import { runTuiCommand } from './tui/command.js';
 import { cliVersion } from './version.js';
 import { runLogsCommand, type LogsArgs } from './logs.js';
 import { logOp } from './daemon/logbook.js';
@@ -50,6 +51,7 @@ Usage:
   hnx uninstall --target <t> [--out <dir>] [--apply]
   hnx enroll --server <url> --token <pat> [--name <name>]
   hnx daemon [--server <url>] [--token <machine-pat>] [--machine-id <id>]
+  hnx tui [--dump]
   hnx mcp serve --profile <id> [--server <url>] [--token <pat>]
   hnx logs [--tail <n>] [--bundle <file|->]
   hnx --version
@@ -97,6 +99,13 @@ MCP serve options (Phase 8 C2 — the stdio shim; spawned by Agent tools):
   --profile <id>     Profile to serve (required)
   --server <url>     Server base URL (default: ~/.hnx/config.json)
   --token <pat>      Machine PAT or user PAT (default: ~/.hnx/config.json)
+
+TUI options (#39 — the daemon's live console; replaces 'hnx daemon' for
+an interactive session, same identity/lock rules):
+  --dump             Print a one-shot text snapshot and exit (also the
+                     automatic fallback when stdout is not a terminal)
+  Keys: 1 agents · 2 ops · 3 comm · t tokens · m metrics bar · a all ·
+        space refresh · q quit (nmon-style pane toggles)
 
 To upgrade an install, run the same 'hnx install --apply' again — the plan
 rewrites its own entries (idempotent) and the ledger is refreshed.
@@ -527,6 +536,22 @@ function parseLogsArgs(argv: string[]): LogsArgs {
   return args;
 }
 
+interface TuiArgs {
+  dump: boolean;
+}
+
+function parseTuiArgs(argv: string[]): TuiArgs {
+  const args: TuiArgs = { dump: false };
+  for (const a of argv) {
+    if (a === '--dump') {
+      args.dump = true;
+      continue;
+    }
+    throw new InstallError(`Unknown argument: ${a}`, 'VALIDATION_FAILED');
+  }
+  return args;
+}
+
 async function runMcpServeCommand(args: McpServeArgs): Promise<void> {
   const config = loadDaemonConfig();
   const server = args.server ?? config?.server;
@@ -617,7 +642,7 @@ async function main(argv: string[]): Promise<number> {
     return runLogsCommand(parseLogsArgs(rest));
   }
 
-  if (subcommand === 'enroll' || subcommand === 'daemon' || subcommand === 'mcp') {
+  if (subcommand === 'enroll' || subcommand === 'daemon' || subcommand === 'tui' || subcommand === 'mcp') {
     if (rest.includes('-h') || rest.includes('--help')) {
       // eslint-disable-next-line no-console
       console.log(HELP);
@@ -631,6 +656,17 @@ async function main(argv: string[]): Promise<number> {
       if (subcommand === 'daemon') {
         await runDaemonCommand(parseDaemonArgs(rest));
         return 0;
+      }
+      if (subcommand === 'tui') {
+        const tuiArgs = parseTuiArgs(rest);
+        const merged = mergeDaemonConfig({}, loadDaemonConfig());
+        saveDaemonConfig(merged);
+        return await runTuiCommand({
+          server: merged.server,
+          token: merged.token,
+          machineId: merged.machineId,
+          dump: tuiArgs.dump,
+        });
       }
       const [serve, ...serveRest] = rest;
       if (serve !== 'serve') {
