@@ -16,9 +16,7 @@ const NOW = 1_800_000_000_000;
 
 describe('renderAgentsPane', () => {
   it('lists prewarm rows and session rows with clamped columns', () => {
-    const prewarm: PrewarmView[] = [
-      { key: 'claude-code', state: 'ready', ageMs: 41_000 },
-    ];
+    const prewarm: PrewarmView[] = [{ key: 'claude-code', state: 'ready', ageMs: 41_000 }];
     const sessions: SessionView[] = [
       {
         sessionId: 'f3c9aa11-2222',

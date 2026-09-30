@@ -321,7 +321,12 @@ describe('parseSessionList cwd flavors (#43)', () => {
 
     const rows = parseSessionList({
       sessions: [
-        { sessionId: 'win-1', cwd: 'D:\\workspace\\chat', title: '你好', updatedAt: '2026-09-30T15:24:43.000Z' },
+        {
+          sessionId: 'win-1',
+          cwd: 'D:\\workspace\\chat',
+          title: '你好',
+          updatedAt: '2026-09-30T15:24:43.000Z',
+        },
         { sessionId: 'nix-1', cwd: '/home/u/proj' },
         { sessionId: 'rel-1', cwd: 'workspace/chat' }, // dropped — not absolute anywhere
       ],

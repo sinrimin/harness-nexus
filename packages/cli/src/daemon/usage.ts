@@ -149,12 +149,13 @@ interface SessionBaseline {
 }
 
 type TokenField =
-  | 'inputTokens'
-  | 'outputTokens'
-  | 'cacheReadTokens'
-  | 'cacheWriteTokens'
-  | 'costUsd';
-const TOKEN_FIELDS = ['inputTokens', 'outputTokens', 'cacheReadTokens', 'cacheWriteTokens'] as const;
+  'inputTokens' | 'outputTokens' | 'cacheReadTokens' | 'cacheWriteTokens' | 'costUsd';
+const TOKEN_FIELDS = [
+  'inputTokens',
+  'outputTokens',
+  'cacheReadTokens',
+  'cacheWriteTokens',
+] as const;
 
 /**
  * Credit rule for CUMULATIVE counters: first sighting = full value, later
@@ -169,7 +170,12 @@ export class UsageLedger {
   #rows = new Map<string, Acc>();
   #sessions = new Map<string, Acc & { baseline: SessionBaseline }>();
 
-  #rowFor(sessionId: string, target: string, model: string, at: string): { row: Acc; sess: Acc & { baseline: SessionBaseline } } {
+  #rowFor(
+    sessionId: string,
+    target: string,
+    model: string,
+    at: string,
+  ): { row: Acc; sess: Acc & { baseline: SessionBaseline } } {
     const key = `${target}\u0000${model}`;
     let row = this.#rows.get(key);
     if (row === undefined) {
@@ -277,7 +283,12 @@ export class UsageLedger {
         for (const field of TOKEN_FIELDS) {
           const now = usage[field];
           if (now === undefined) continue;
-          this.#credit(row, sess, field, cumulativeDelta(sess.baseline.lastCumulative?.[field], now));
+          this.#credit(
+            row,
+            sess,
+            field,
+            cumulativeDelta(sess.baseline.lastCumulative?.[field], now),
+          );
         }
         sess.baseline.lastCumulative = usage;
       } else {

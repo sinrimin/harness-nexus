@@ -195,7 +195,12 @@ export function logLine(level: 'log' | 'warn' | 'error', text: string): void {
   };
   logbook.publish(entry);
   try {
-    rotateAppend(opsLogPath(), `${entry.at} [${entry.level}] ${entry.text}`, OPS_MAX_BYTES, OPS_KEEP);
+    rotateAppend(
+      opsLogPath(),
+      `${entry.at} [${entry.level}] ${entry.text}`,
+      OPS_MAX_BYTES,
+      OPS_KEEP,
+    );
   } catch {
     // Never fatal.
   }
@@ -252,7 +257,14 @@ export class CommAggregator {
     const line = `${entry.at} ${entry.dir} ${entry.event} ${fmtBytes(entry.bytes)}`;
     if (CHATTY_EVENTS.has(entry.event)) {
       const now = Date.parse(entry.at);
-      this.#open = { dir: entry.dir, event: entry.event, count: 1, bytes: entry.bytes, firstAt: now, lastAt: now };
+      this.#open = {
+        dir: entry.dir,
+        event: entry.event,
+        count: 1,
+        bytes: entry.bytes,
+        firstAt: now,
+        lastAt: now,
+      };
       this.#arm();
       // The opening line is the liveness marker; the summary covers the burst.
       this.sink(line);

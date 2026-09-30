@@ -642,7 +642,12 @@ async function main(argv: string[]): Promise<number> {
     return runLogsCommand(parseLogsArgs(rest));
   }
 
-  if (subcommand === 'enroll' || subcommand === 'daemon' || subcommand === 'tui' || subcommand === 'mcp') {
+  if (
+    subcommand === 'enroll' ||
+    subcommand === 'daemon' ||
+    subcommand === 'tui' ||
+    subcommand === 'mcp'
+  ) {
     if (rest.includes('-h') || rest.includes('--help')) {
       // eslint-disable-next-line no-console
       console.log(HELP);

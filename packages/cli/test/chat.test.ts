@@ -795,9 +795,9 @@ describe('session round-trip vs the fixture agent', () => {
     });
     // usage_update carried cost (cumulative), no tokens.
     const usages = socket.chatEvents().filter((e) => e.kind === 'usage');
-    expect(usages.some((e) => 'costUsd' in (e as object) && !('inputTokens' in (e as object)))).toBe(
-      true,
-    );
+    expect(
+      usages.some((e) => 'costUsd' in (e as object) && !('inputTokens' in (e as object))),
+    ).toBe(true);
 
     // Ledger: delta-accounted — 2 turns credit each per-turn amount once.
     const [row] = handle.usage.rows();
