@@ -12,6 +12,7 @@ export * from './trust.js';
 export * from './realtime.js';
 export * from './dial-site.js';
 export * from './profile-version.js';
+export * from './version.js';
 export * from './diff-inventory.js';
 export * from './utils/errors.js';
 export * from './utils/placeholders.js';

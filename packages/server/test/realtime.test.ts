@@ -70,7 +70,13 @@ describe('/ctl namespace', () => {
       hostname: 'testbox',
       capabilities: [],
     });
-    expect(ack).toEqual({ proto: 1, machineId });
+    expect(ack).toEqual({
+      proto: 1,
+      machineId,
+      // #37 — the ack carries the server build for client-side staleness
+      // warnings; it equals the manifest version (e.g. 0.1.0-alpha.7).
+      serverVersion: expect.stringMatching(/^\d+\.\d+\.\d+/),
+    });
 
     // Presence: /app saw the online push, REST reports online + metadata.
     await waitFor(() => statuses.some((s) => s.machineId === machineId && s.online));

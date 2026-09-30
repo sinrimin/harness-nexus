@@ -49,6 +49,8 @@ export const machineHelloSchema = z.object({
 export const machineHelloAckSchema = z.object({
   proto: z.number().int().min(1),
   machineId: z.string().min(1),
+  /** #37 — the server build version, so an older daemon can warn locally. */
+  serverVersion: z.string().min(1).max(64).optional(),
 });
 
 /** Ack error shape for any malformed event (`proto:invalid`). */
