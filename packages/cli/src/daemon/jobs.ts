@@ -13,6 +13,7 @@ import type { ResolvedProfile } from '../install/types.js';
 import { runHarnessJob } from './runtime.js';
 import { runApplyConfigJob } from './runtime-config.js';
 import { runMarketplaceDeploy } from './cc-marketplace.js';
+import { logOp } from './logbook.js';
 
 /**
  * Daemon-side job executor (Phase 8 C4 + Phase 9 W2).
@@ -94,11 +95,21 @@ async function runDeploy(socket: Socket, opts: JobExecutorOptions, job: JobView)
     return;
   }
   const payload = parsed.data;
+  const startedAt = Date.now();
   const progress = (phase: string, message?: string): void => {
     socket.emit('job:progress', { jobId: job.id, phase, ...(message ? { message } : {}) });
   };
   const result = (ok: boolean, extra: { error?: string; data?: unknown }): void => {
     socket.emit('job:result', { jobId: job.id, ok, ...extra });
+    // #38 — server-initiated deploys leave a trail on the machine they ran on.
+    const target = (extra.data as { target?: string } | undefined)?.target;
+    logOp({
+      op: 'deploy',
+      outcome: ok ? 'ok' : 'error',
+      ms: Date.now() - startedAt,
+      detail: `profile ${payload.profileId}${extra.error !== undefined ? ` — ${extra.error}` : ''}`,
+      ...(target !== undefined ? { target } : {}),
+    });
   };
 
   try {

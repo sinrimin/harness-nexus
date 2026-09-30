@@ -8,6 +8,7 @@ import {
   type JobView,
   type MarketplaceDeployArm,
 } from '@harness-nexus/shared';
+import { logOp } from './logbook.js';
 
 /**
  * claude-code marketplace deploy executor (#6).
@@ -68,6 +69,13 @@ export async function runMarketplaceDeploy(
   };
   const result = (ok: boolean, extra: { error?: string; data?: unknown }): void => {
     socket.emit('job:result', { jobId: job.id, ok, ...extra });
+    // #38 — CC plugin deploys ride CC's own CLI; the trail records what ran.
+    logOp({
+      op: 'cc-marketplace-deploy',
+      target: 'claude-code',
+      outcome: ok ? 'ok' : 'error',
+      ...(extra.error !== undefined ? { detail: extra.error } : {}),
+    });
   };
 
   // No trailing-slash games: PUBLIC_BASE_URL is normalized server-side, but a
