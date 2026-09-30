@@ -87,7 +87,21 @@ function pinnedAcpCommand(
 ): { command: string; args: string[] } | null {
   if (def.pkg === undefined) return null;
   const bin = join(home, '.hnx', 'acp-adapters', 'node_modules', '.bin', def.pkg[1]);
-  return existsSync(bin) ? { command: bin, args: [] } : null;
+  for (const candidate of pinnedBinCandidates(bin)) {
+    if (existsSync(candidate)) return { command: candidate, args: [] };
+  }
+  return null;
+}
+
+/**
+ * #34 — a pinned bin resolves differently per platform: Windows npm writes
+ * an extensionless POSIX sh shim next to `<bin>.cmd`, and only the `.cmd`
+ * executes. The sh file exists, so the extensionless candidate would match
+ * and then die at spawn ("not a valid Win32 application" → session-start
+ * timeout once #32 lets provisioning succeed on Windows).
+ */
+export function pinnedBinCandidates(bin: string, isWin = process.platform === 'win32'): string[] {
+  return isWin ? [`${bin}.cmd`, bin] : [bin];
 }
 
 /** The npx-backed rows' npm identities — what `adapter-provision.ts` installs. */
