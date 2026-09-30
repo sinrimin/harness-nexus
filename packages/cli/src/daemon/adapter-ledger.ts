@@ -156,6 +156,23 @@ function groupHasLiveMember(pgid: number): boolean {
 }
 
 /**
+ * The pid to signal for an adapter's "group": negative (the process GROUP)
+ * on POSIX; the bare LEADER pid on win32 (#42) — Windows has no process
+ * groups and `kill(-pid, …)` simply throws there, which made every liveness
+ * probe report dead. Signaling the leader alone can orphan grandchildren on
+ * Windows (a Job Object is the proper later hardening); liveness-wise the
+ * leader IS the channel — its stdin/stdout is what we talk to.
+ */
+export function groupSignalTarget(pgid: number): number {
+  return groupSignalTargetFor(process.platform, pgid);
+}
+
+/** Platform-parameterized for tests (#42). */
+export function groupSignalTargetFor(platform: NodeJS.Platform, pgid: number): number {
+  return platform === 'win32' ? pgid : -pgid;
+}
+
+/**
  * Whether the process GROUP still exists. EPERM (the group exists but is
  * owned by someone else — pid reuse made it foreign) counts as NOT ours:
  * every caller treats a false answer as "drop the file without signaling",
@@ -163,18 +180,22 @@ function groupHasLiveMember(pgid: number): boolean {
  */
 export function groupIsAlive(pgid: number): boolean {
   try {
-    process.kill(-pgid, 0);
+    process.kill(groupSignalTarget(pgid), 0);
   } catch {
     return false;
   }
+  // The /proc zombie walk is POSIX-only; on win32 the kill(0) answer stands
+  // (probe against the leader pid — no zombie pinning applies).
+  if (process.platform === 'win32') return true;
   return groupHasLiveMember(pgid);
 }
 
 /** SIGTERM the group, then SIGKILL after `graceMs` (unref'd — mirrors conn.kill). */
 export function killProcessGroup(pgid: number, graceMs = 3000): void {
+  const target = groupSignalTarget(pgid);
   const sig = (s: NodeJS.Signals): void => {
     try {
-      process.kill(-pgid, s);
+      process.kill(target, s);
     } catch {
       // group already gone
     }

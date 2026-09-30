@@ -1,7 +1,7 @@
 import { type ChildProcess } from 'node:child_process';
 import { spawn } from '../../proc.js';
 import { createInterface } from 'node:readline';
-import { groupIsAlive } from '../adapter-ledger.js';
+import { groupIsAlive, groupSignalTarget } from '../adapter-ledger.js';
 
 /**
  * Minimal ACP client over a subprocess's stdio (Phase 8 C5) — JSON-RPC 2.0,
@@ -343,7 +343,9 @@ export class AcpAgentConnection implements AgentConnection {
     const sigGroup = (sig: NodeJS.Signals): void => {
       if (pid === undefined) return;
       try {
-        process.kill(-pid, sig); // negative pid = the process group
+        // Negative pid = the process group on POSIX; the bare leader on
+        // win32 (#42 — no process groups there, -pid just throws).
+        process.kill(groupSignalTarget(pid), sig);
       } catch {
         // group already gone
       }

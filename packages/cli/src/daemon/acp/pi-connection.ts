@@ -1,7 +1,7 @@
 import { type ChildProcess } from 'node:child_process';
 import { spawn } from '../../proc.js';
 import { readdirSync, readFileSync } from 'node:fs';
-import { groupIsAlive } from '../adapter-ledger.js';
+import { groupIsAlive, groupSignalTarget } from '../adapter-ledger.js';
 import { piFindSessionFile, piSessionReplay, type PiReplayUpdate } from '../pi-sessions.js';
 import { hasTokenCounts, normalizeUsage } from '../usage.js';
 import type {
@@ -439,7 +439,9 @@ export class PiRpcConnection implements AgentConnection {
     const sigGroup = (sig: NodeJS.Signals): void => {
       if (pid === undefined) return;
       try {
-        process.kill(-pid, sig);
+        // Negative pid = the process group on POSIX; the bare leader on
+        // win32 (#42 — no process groups there, -pid just throws).
+        process.kill(groupSignalTarget(pid), sig);
       } catch {
         // group already gone
       }
