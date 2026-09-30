@@ -1,4 +1,5 @@
-import { spawn, type ChildProcess } from 'node:child_process';
+import { type ChildProcess } from 'node:child_process';
+import { spawn } from '../../proc.js';
 import { createInterface } from 'node:readline';
 import { groupIsAlive } from '../adapter-ledger.js';
 

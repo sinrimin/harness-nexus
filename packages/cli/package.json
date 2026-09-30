@@ -1,7 +1,7 @@
 {
   "name": "@harness-nexus/cli",
   "version": "0.1.0-alpha.7",
-  "description": "Harness Nexus one-click install CLI \u2014 pulls profiles/resources and writes them into a target Agent tool.",
+  "description": "Harness Nexus one-click install CLI — pulls profiles/resources and writes them into a target Agent tool.",
   "type": "module",
   "main": "./dist/index.js",
   "bin": {
@@ -23,10 +23,12 @@
     "@harness-nexus/sdk": "workspace:*",
     "@harness-nexus/shared": "workspace:*",
     "@modelcontextprotocol/sdk": "^1.29.0",
+    "cross-spawn": "^7.0.6",
     "js-yaml": "^4.1.0",
     "socket.io-client": "^4.8.3"
   },
   "devDependencies": {
+    "@types/cross-spawn": "^6.0.6",
     "@types/js-yaml": "^4.0.9",
     "@types/node": "^22.8.6",
     "tsx": "^4.19.2",
