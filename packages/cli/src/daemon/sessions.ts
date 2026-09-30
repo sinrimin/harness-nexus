@@ -226,8 +226,15 @@ async function listViaAdapter(
   }
 }
 
+/** Absolute in EITHER flavor: POSIX `/…` or a Windows drive letter (#43 —
+ * a `/`-only check silently dropped every Windows row and the rail showed
+ * nothing, live sessions included). */
+export function isAbsoluteCwd(cwd: string): boolean {
+  return cwd.startsWith('/') || /^[A-Za-z]:[\\/]/.test(cwd);
+}
+
 /** A raw `session/list` result → bounded rail rows (shared by both paths). */
-function parseSessionList(result: unknown): NativeSessionView[] {
+export function parseSessionList(result: unknown): NativeSessionView[] {
   const r0 = (result ?? {}) as { sessions?: unknown };
   const raw = Array.isArray(r0.sessions) ? (r0.sessions as unknown[]) : [];
   const out: NativeSessionView[] = [];
@@ -235,7 +242,7 @@ function parseSessionList(result: unknown): NativeSessionView[] {
     if (s === null || typeof s !== 'object') continue;
     const r = s as Record<string, unknown>;
     if (typeof r['sessionId'] !== 'string' || r['sessionId'] === '') continue;
-    if (typeof r['cwd'] !== 'string' || !r['cwd'].startsWith('/')) continue;
+    if (typeof r['cwd'] !== 'string' || !isAbsoluteCwd(r['cwd'])) continue;
     out.push({
       sessionId: r['sessionId'],
       cwd: r['cwd'],
