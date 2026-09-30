@@ -169,7 +169,10 @@ async function runClaude(
     try {
       // Inherit the daemon's environment: NODE_EXTRA_CA_CERTS (self-signed
       // marketplace origins) and proxy vars must reach the claude CLI.
-      child = spawn('claude', args, { env: opts.env ?? process.env });
+      child = spawn('claude', args, {
+        env: opts.env ?? process.env,
+        windowsHide: true, // #33 — no console window on Windows
+      });
     } catch (e) {
       resolve({ ok: false, tail: e instanceof Error ? e.message : String(e) });
       return;

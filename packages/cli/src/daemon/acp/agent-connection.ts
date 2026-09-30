@@ -186,6 +186,9 @@ export class AcpAgentConnection implements AgentConnection {
         cwd: opts.cwd,
         env: { ...process.env, ...(opts.env ?? {}) },
         stdio: ['pipe', 'pipe', 'pipe'],
+        // #33: no console window per child on Windows (each session spawn
+        // otherwise pops one up on the user's desktop).
+        windowsHide: true,
         // Own process group: adapters spawn their own trees (npm → sh →
         // wrapper → the vendor binary). Signaling only the direct child
         // orphaned the grandchildren — a bare `claude` binary survived every

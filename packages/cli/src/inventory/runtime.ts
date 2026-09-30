@@ -161,7 +161,10 @@ async function probeVersion(binPath: string, timeoutMs: number): Promise<string 
   return new Promise((resolve) => {
     let child: ReturnType<typeof spawn>;
     try {
-      child = spawn(binPath, ['--version'], { stdio: ['ignore', 'pipe', 'ignore'] });
+      child = spawn(binPath, ['--version'], {
+        stdio: ['ignore', 'pipe', 'ignore'],
+        windowsHide: true, // #33 — no console window on Windows
+      });
     } catch {
       resolve(null);
       return;

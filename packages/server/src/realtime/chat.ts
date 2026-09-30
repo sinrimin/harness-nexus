@@ -1,4 +1,4 @@
-import { resolve as resolvePath } from 'node:path';
+import { normalizeWorkspacePath, isWithinWorkspace } from '../paths.js';
 import type { UnitOfWork } from '@harness-nexus/core';
 import {
   DEFAULT_CHAT_PREWARM_SETTINGS,
@@ -219,9 +219,12 @@ export class ChatService {
       cwd = resume.cwd;
     } else if (directory !== undefined) {
       if (machine.baseWorkspace === null) return { ok: false, code: 'WORKSPACE_NOT_SET' };
-      const root = resolvePath(machine.baseWorkspace);
-      const wanted = resolvePath(directory);
-      if (wanted !== root && !wanted.startsWith(root + '/')) {
+      // #33: normalize WITHOUT the server's own filesystem semantics — the
+      // path belongs to the (possibly Windows) machine, and a Linux server's
+      // resolve() would garble `D:\code` into `/app/D:\code`.
+      const root = normalizeWorkspacePath(machine.baseWorkspace);
+      const wanted = normalizeWorkspacePath(directory);
+      if (!isWithinWorkspace(wanted, root)) {
         return { ok: false, code: 'WORKSPACE_INVALID' };
       }
       cwd = wanted;

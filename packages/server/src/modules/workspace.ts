@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { resolve as resolvePath } from 'node:path';
+import { normalizeWorkspacePath, isWithinWorkspace } from '../paths.js';
 import type { FastifyInstance } from 'fastify';
 import {
   AppError,
@@ -35,11 +35,14 @@ export async function workspaceRoutes(app: FastifyInstance): Promise<void> {
         );
       }
 
-      const root = resolvePath(machine.baseWorkspace);
-      const requested = resolvePath(
+      // #33: normalize WITHOUT the server's own filesystem semantics — the
+      // path belongs to the (possibly Windows) machine, and a Linux server's
+      // resolve() would garble `D:\code` into `/app/D:\code`.
+      const root = normalizeWorkspacePath(machine.baseWorkspace);
+      const requested = normalizeWorkspacePath(
         req.query.path && req.query.path !== '' ? req.query.path : root,
       );
-      if (requested !== root && !requested.startsWith(root + '/')) {
+      if (!isWithinWorkspace(requested, root)) {
         throw new AppError(
           'Path is outside the machine base workspace',
           400,
