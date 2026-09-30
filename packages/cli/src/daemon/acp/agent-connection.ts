@@ -193,7 +193,11 @@ export class AcpAgentConnection implements AgentConnection {
         // wrapper → the vendor binary). Signaling only the direct child
         // orphaned the grandchildren — a bare `claude` binary survived every
         // teardown, parented to init. kill() takes the whole group down.
-        detached: true,
+        // POSIX-only: kill(-pgid) has no Windows equivalent (it just throws
+        // into the catch), and detaching there only detaches the console —
+        // grandchildren then get auto-allocated VISIBLE consoles (#35).
+        // Attached on win32, the tree inherits the daemon's console.
+        detached: process.platform !== 'win32',
       });
     } catch (e) {
       throw new Error(`failed to spawn ACP adapter '${command}': ${errText(e)}`);

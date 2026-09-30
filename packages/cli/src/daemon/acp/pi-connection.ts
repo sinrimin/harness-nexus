@@ -321,7 +321,9 @@ export class PiRpcConnection implements AgentConnection {
         env: { ...process.env, ...(opts.env ?? {}) },
         stdio: ['pipe', 'pipe', 'pipe'],
         windowsHide: true, // #33 — no console window per child on Windows
-        detached: true, // own process group — kill() takes the whole tree
+        // #35 — process groups are POSIX-only (see agent-connection.ts);
+        // attached on win32 so the tree inherits the daemon's console.
+        detached: process.platform !== 'win32',
       });
     } catch (e) {
       throw new Error(`failed to spawn pi '${command}': ${errText(e)}`);
