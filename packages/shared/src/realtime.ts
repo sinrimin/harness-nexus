@@ -555,6 +555,14 @@ export const chatStreamEventSchema = z.discriminatedUnion('kind', [
     inputTokens: z.number().int().min(0).optional(),
     outputTokens: z.number().int().min(0).optional(),
     /**
+     * #39 — prompt-cache accounting, normalized from the per-target dialects
+     * (Anthropic cache_creation/cache_read, deepseek prompt_cache_hit, …) by
+     * the daemon. Optional because not every target reports them: a consumer
+     * must treat absence as "unknown", never zero.
+     */
+    cacheReadTokens: z.number().int().min(0).optional(),
+    cacheWriteTokens: z.number().int().min(0).optional(),
+    /**
      * dsh's ACP adapter reports CONTEXT OCCUPANCY instead of per-turn token
      * counts (`used` / `size` on its usage_update) — surfaced verbatim for
      * the turn tail's "ctx 8.5k/262k" readout.

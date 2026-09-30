@@ -4,8 +4,10 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
   attachCommLog,
+  CommAggregator,
   commLogPath,
   flushCommBursts,
+  logLine,
   logOp,
   logbook,
   opsLogPath,
@@ -176,5 +178,38 @@ describe('logbook bus', () => {
     off();
     logOp({ op: 'install', outcome: 'ok' });
     expect(logbook.recent(10).some((e) => e.kind === 'op' && e.op === 'install')).toBe(true);
+  });
+});
+
+describe('logLine (#39 console capture)', () => {
+  it('squashes onto one line, publishes to the bus, and rides the ops file', () => {
+    const seen: string[] = [];
+    const off = logbook.subscribe((e) => {
+      if (e.kind === 'log') seen.push(`${e.level}:${e.text}`);
+    });
+    logLine('warn', 'adapter provisioning — installed\n  second line');
+    off();
+    expect(seen).toEqual(['warn:adapter provisioning — installed second line']);
+    const line = readFileSync(opsLogPath(), 'utf8').trim();
+    expect(line).toMatch(/^\S+ \[warn\] adapter provisioning — installed second line$/);
+  });
+});
+
+describe('CommAggregator as a second view (#39)', () => {
+  it('collapses a burst identically for an independent TUI-side instance', () => {
+    const lines: string[] = [];
+    const agg = new CommAggregator((l) => lines.push(l), 60_000);
+    const at = '2026-09-30T04:00:00.000Z';
+    agg.push({ kind: 'comm', at, dir: 'tx', event: 'chat:event', bytes: 100 });
+    agg.push({ kind: 'comm', at, dir: 'tx', event: 'chat:event', bytes: 50 });
+    // A different event closes the burst: marker + summary, then its own line.
+    agg.push({ kind: 'comm', at, dir: 'rx', event: 'job:dispatch', bytes: 10 });
+    expect(lines).toEqual([
+      `${at} tx chat:event 100B`,
+      expect.stringMatching(/^.* tx chat:event ×2 total 150B over 0\.0s$/),
+      `${at} rx job:dispatch 10B`,
+    ]);
+    agg.flush(); // nothing was left open
+    expect(lines).toHaveLength(3);
   });
 });

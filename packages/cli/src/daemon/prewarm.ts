@@ -40,6 +40,8 @@ interface Entry<T> {
   state: 'pending' | 'ready';
   value: T | null;
   timer: NodeJS.Timeout | null;
+  /** When the entry was created (#39 — the TUI's pool rows show an age). */
+  bornAt: number;
 }
 
 export class PrewarmPool<T> {
@@ -62,7 +64,7 @@ export class PrewarmPool<T> {
         return;
       }
     }
-    const entry: Entry<T> = { state: 'pending', value: null, timer: null };
+    const entry: Entry<T> = { state: 'pending', value: null, timer: null, bornAt: Date.now() };
     this.entries.set(key, entry);
     void this.hooks
       .spawn(key)
@@ -117,6 +119,15 @@ export class PrewarmPool<T> {
     return [...this.entries.entries()]
       .filter(([, e]) => e.state === 'ready' && e.value !== null)
       .map(([k]) => k);
+  }
+
+  /** Every live entry with its state and age (#39 — the TUI's pool rows). */
+  status(now: number = Date.now()): Array<{ key: string; state: 'pending' | 'ready'; ageMs: number }> {
+    return [...this.entries.entries()].map(([key, e]) => ({
+      key,
+      state: e.state,
+      ageMs: Math.max(0, now - e.bornAt),
+    }));
   }
 
   private dropEntry(key: string, entry: Entry<T>): void {
