@@ -1,6 +1,6 @@
 {
   "name": "@harness-nexus/cli",
-  "version": "0.1.0-alpha.7",
+  "version": "0.1.0-alpha.8",
   "description": "Harness Nexus one-click install CLI — pulls profiles/resources and writes them into a target Agent tool.",
   "type": "module",
   "main": "./dist/index.js",
