@@ -48,6 +48,8 @@ const en = {
   readoutQueued: 'queued',
   readoutChannels: 'chan',
   readoutAria: 'Instance posture',
+  // #37 — the version line above the account block.
+  versionHint: 'Harness Nexus server build',
   // 403 view (guards.tsx).
   adminsOnlyTitle: 'Admins only',
   adminsOnlyBody:
@@ -99,6 +101,7 @@ const zh: typeof en = {
   readoutQueued: '排队',
   readoutChannels: '渠道',
   readoutAria: '实例姿态',
+  versionHint: 'Harness Nexus 服务端构建版本',
   adminsOnlyTitle: '仅限管理员',
   adminsOnlyBody: '你没有权限查看此页面。如需访问，请联系管理员。',
   backToOverview: '返回总览',

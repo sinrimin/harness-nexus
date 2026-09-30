@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
+import { compareVersions } from '@harness-nexus/sdk';
 import { LaptopIcon, MoreHorizontalIcon, PlusIcon, TrashIcon } from 'lucide-react';
 import { api } from '@/api';
 import { useAuth, withAuthGuard } from '@/auth';
 import { useI18n, dateLocale } from '@/i18n';
 import { patchMachineList } from '@/lib/machine-presence.js';
 import { useMachineStatus } from '@/components/shell/use-presence.js';
+import { useServerVersion } from '@/version';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
@@ -339,6 +341,11 @@ function MachineRow({
 }) {
   const { t, lang } = useI18n();
   const host = [machine.hostname, machine.os, machine.arch].filter(Boolean).join(' · ');
+  const serverVersion = useServerVersion();
+  const stale =
+    serverVersion !== null &&
+    machine.daemonVersion !== null &&
+    compareVersions(machine.daemonVersion, serverVersion) < 0;
 
   return (
     <>
@@ -367,7 +374,23 @@ function MachineRow({
         <TableCell>
           {machine.daemonVersion ? (
             <span className="flex items-center gap-1">
-              <DataText size="sm" className="shrink-0">
+              {/* #37 — the daemon reports its CLI version in every hello; an
+               * OLDER-than-server build gets the warn ink + an upgrade hint.
+               * It still connects (proto is the gate) — this is a nudge, not
+               * an alarm. */}
+              <DataText
+                size="sm"
+                className="shrink-0"
+                tone={stale ? 'warn' : 'default'}
+                title={
+                  stale
+                    ? t('machines.daemonOutdated', {
+                        client: machine.daemonVersion ?? '',
+                        server: serverVersion ?? '',
+                      })
+                    : undefined
+                }
+              >
                 {machine.daemonVersion}
               </DataText>
               {/* A daemon reports a dozen capabilities; the list shows the first

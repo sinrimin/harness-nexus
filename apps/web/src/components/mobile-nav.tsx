@@ -9,6 +9,7 @@ import { LanguageToggle } from '@/components/language-toggle';
 import { SkinToggle } from '@/components/skin-toggle';
 import { ThemeToggle } from '@/components/theme-toggle';
 import { UserBlock } from '@/components/user-block';
+import { VersionLine } from '@/components/version-line';
 import { Brand } from '@/components/brand-mark';
 
 /**
@@ -59,13 +60,17 @@ export function MobileNav({ children }: { children: ReactNode }) {
             </DialogPrimitive.Close>
           </div>
           <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-2.5 py-3">{children}</div>
-          <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-t p-3">
-            <div className="flex items-center gap-0.5">
-              <LanguageToggle />
-              <SkinToggle />
-              <ThemeToggle />
+          <div className="shrink-0 border-t p-3">
+            {/* #37 — same version line as the plate foot, above the toggles. */}
+            <VersionLine />
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center gap-0.5">
+                <LanguageToggle />
+                <SkinToggle />
+                <ThemeToggle />
+              </div>
+              <UserBlock />
             </div>
-            <UserBlock />
           </div>
         </DialogPrimitive.Content>
       </DialogPrimitive.Portal>

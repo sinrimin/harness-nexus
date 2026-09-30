@@ -11,6 +11,7 @@ import { createJwtService } from './infra/jwt.js';
 import { registerAuthHook, requireAuth, requireAdmin } from './plugins/auth.js';
 import { registerRealtime } from './plugins/realtime.js';
 import { healthRoutes } from './modules/health.js';
+import { systemRoutes } from './modules/system.js';
 import { statusRoutes, PostureCache } from './modules/status.js';
 import { authRoutes } from './modules/auth.js';
 import { usersRoutes } from './modules/users.js';
@@ -239,6 +240,7 @@ export async function buildApp(config: ServerConfig): Promise<FastifyInstance> {
 
   await app.register(async (api) => {
     await healthRoutes(api);
+    await systemRoutes(api);
     await statusRoutes(api);
     await authRoutes(api);
     await settingsRoutes(api);

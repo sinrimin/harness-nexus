@@ -35,6 +35,7 @@ import {
   workspaceListEventSchema,
 } from '@harness-nexus/shared';
 import { hashToken, PAT_PREFIX, generateId } from '../infra/crypto.js';
+import { serverVersion } from '../version.js';
 import { MachinePresence } from '../realtime/presence.js';
 import { InventoryCoordinator } from '../realtime/inventory.js';
 import { ConfigViewerCoordinator } from '../realtime/config-viewer.js';
@@ -292,7 +293,7 @@ export async function registerRealtime(
           arch: hello.arch ?? machine.arch,
           capabilities: hello.capabilities,
         });
-        ack?.({ proto: REALTIME_PROTO_VERSION, machineId });
+        ack?.({ proto: REALTIME_PROTO_VERSION, machineId, serverVersion: serverVersion() });
       })();
     });
 

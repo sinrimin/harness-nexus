@@ -54,6 +54,7 @@ export {
   HOOK_SUPPORT,
   resolveTrustTier,
   resolveDialSite,
+  compareVersions,
   transportPlaceholderNames,
   marketplacePluginToResourceSource,
   skillMetaToResourceSource,
@@ -102,12 +103,19 @@ export interface PatView {
 export interface MachineView extends Machine {
   online: boolean;
 }
-/** #23 D2 — whether a posture figure counts the caller's rows or every tenant's. */
+/** #37 — the server build version, for stale-daemon warnings in the UI. */
+export interface SystemInfo {
+  version: string;
+}
+/**
+ * #23 D2 — whether a posture figure counts the caller's rows or every tenant's.
+ * (#36: every figure is `self` for every role now; the field stays on the wire.)
+ */
 export type PostureScope = 'self' | 'all';
 /**
  * #23 D2 — the readout aggregate. Each figure re-derives its row set with the
  * same visibility rule as the list page it links to, and `scopes` says which
- * rows each number counted (chat stays `self` even for admins — owner-only).
+ * rows each number counted (#36: all figures are own-rows for every role).
  */
 export interface Posture {
   scope: PostureScope;
@@ -369,6 +377,11 @@ export class HarnessNexusClient {
   /** #23 D2 — the topbar readout: posture aggregate, scoped to the caller. */
   async getPosture(): Promise<Posture> {
     return this.request('GET', '/api/status/posture');
+  }
+
+  /** #37 — the server build version (compare against `Machine.daemonVersion`). */
+  async getSystemInfo(): Promise<SystemInfo> {
+    return this.request('GET', '/api/system/info');
   }
 
   async createMachine(input: { name: string }): Promise<{ machine: MachineView; token: string }> {

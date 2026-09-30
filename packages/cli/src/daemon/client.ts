@@ -1,6 +1,7 @@
 import { arch, homedir, hostname, platform } from 'node:os';
 import { io } from 'socket.io-client';
 import {
+  compareVersions,
   inventoryCollectRequestSchema,
   inventoryScanRequestSchema,
   runtimeConfigGetRequestSchema,
@@ -17,9 +18,11 @@ import { provisionAdapters } from './acp/adapter-provision.js';
 import { attachJobHandlers } from './jobs.js';
 import { attachChatHandlers } from './chat.js';
 import { attachSessionsHandlers } from './sessions.js';
+import { cliVersion } from '../version.js';
 
-/** Client-side daemon version, reported in every `machine:hello`. */
-export const DAEMON_VERSION = '0.25.0-i6';
+/** Client daemon version (#37) — the CLI package version, reported in every
+ * `machine:hello` and compared against the server's on connect. */
+export const DAEMON_VERSION = cliVersion();
 
 /**
  * Capabilities this daemon build carries (C3: inventory; C4: deploy; C5:
@@ -143,10 +146,23 @@ export function runDaemon(options: DaemonOptions): Promise<void> {
           console.error(`hnx daemon: hello rejected: ${ack.error}`);
           return;
         }
+        const hello = ack as MachineHelloAck;
         // eslint-disable-next-line no-console
         console.log(
-          `hnx daemon: online (proto ${(ack as MachineHelloAck).proto}, machine ${(ack as MachineHelloAck).machineId})`,
+          `hnx daemon: online (cli ${DAEMON_VERSION}, proto ${hello.proto}, machine ${hello.machineId})`,
         );
+        // #37 — an older CLI warns once per connect (never blocks: the proto
+        // number above is the compatibility gate, and the five packages
+        // version in lockstep so a skew means an un-upgraded client).
+        if (
+          hello.serverVersion !== undefined &&
+          compareVersions(DAEMON_VERSION, hello.serverVersion) < 0
+        ) {
+          // eslint-disable-next-line no-console
+          console.warn(
+            `hnx daemon: client ${DAEMON_VERSION} is older than server ${hello.serverVersion} — upgrade with: npm install -g @harness-nexus/cli@latest`,
+          );
+        }
         reportAll();
       },
     );

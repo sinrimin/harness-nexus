@@ -36,6 +36,7 @@ import {
 } from './config.js';
 import { runDaemon } from './daemon/client.js';
 import { runMcpServe } from './mcp/serve.js';
+import { cliVersion } from './version.js';
 import { HarnessNexusClient } from '@harness-nexus/sdk';
 import type { InstallPlan } from './install/types.js';
 import type { AgentTarget } from '@harness-nexus/core';
@@ -48,6 +49,7 @@ Usage:
   hnx enroll --server <url> --token <pat> [--name <name>]
   hnx daemon [--server <url>] [--token <machine-pat>] [--machine-id <id>]
   hnx mcp serve --profile <id> [--server <url>] [--token <pat>]
+  hnx --version
 
 Install options:
   --profile <id>     Profile to install (required)
@@ -497,6 +499,12 @@ async function runMcpServeCommand(args: McpServeArgs): Promise<void> {
 
 async function main(argv: string[]): Promise<number> {
   const [, , subcommand, ...rest] = argv;
+
+  if (subcommand === '--version' || subcommand === '-v') {
+    // eslint-disable-next-line no-console
+    console.log(cliVersion());
+    return 0;
+  }
 
   if (!subcommand || subcommand === '-h' || subcommand === '--help') {
     // eslint-disable-next-line no-console
