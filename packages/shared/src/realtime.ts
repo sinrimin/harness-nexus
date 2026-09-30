@@ -56,6 +56,17 @@ export const machineHelloAckSchema = z.object({
 /** Ack error shape for any malformed event (`proto:invalid`). */
 export const protoErrorAckSchema = z.object({ error: z.string().min(1) });
 
+/**
+ * #45 — server → daemon, fatal. A second live daemon socket for this machine
+ * connected (bypassed/deleted lock): the newcomer is being refused, or — via
+ * this event — told to stand down because it lost the connection race. Every
+ * room broadcast reaches every socket, so two sockets mean prompts AND
+ * dispatched jobs run twice; the daemon exits on this event.
+ */
+export const ctlDuplicateEventSchema = z.object({
+  reason: z.literal('machine-already-connected'),
+});
+
 // ---- /app events (C1) ----
 
 /** server → browser: a machine's live presence changed. `online` is socket presence — never faked. */
@@ -1061,6 +1072,7 @@ export type ChatChannelsPush = z.infer<typeof chatChannelsPushSchema>;
 
 export type CtlHandshakeAuth = z.infer<typeof ctlHandshakeAuthSchema>;
 export type AppHandshakeAuth = z.infer<typeof appHandshakeAuthSchema>;
+export type CtlDuplicateEvent = z.infer<typeof ctlDuplicateEventSchema>;
 export type MachineHello = z.infer<typeof machineHelloSchema>;
 export type MachineHelloAck = z.infer<typeof machineHelloAckSchema>;
 export type MachineStatusEvent = z.infer<typeof machineStatusEventSchema>;

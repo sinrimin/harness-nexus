@@ -229,6 +229,15 @@ export async function registerRealtime(
     const machine = await app.uow.machines.findByEnrollmentPatId(record.id);
     if (!machine || machine.id !== machineId) return next(new Error('machine mismatch'));
 
+    // #45 — one daemon per machine, enforced HERE (the pid lock is advisory
+    // and deletable). A second live socket would receive every room
+    // broadcast: prompts would bill N× and dispatched jobs would run N×. The
+    // NEWCOMER is refused — first-come stays; a genuine restart drops its old
+    // socket before reconnecting, and a transport blip recovers once the
+    // stale socket times out (the client retries connect_error with backoff).
+    const existing = await ctl.in(`machine:${machine.id}`).fetchSockets();
+    if (existing.length > 0) return next(new Error('machine already connected'));
+
     socket.data.machineId = machine.id;
     next();
   });
@@ -248,6 +257,28 @@ export async function registerRealtime(
     app.posture.invalidate();
 
     void (async () => {
+      // #45 second fence — two sockets can both pass the middleware when
+      // they arrive in the same tick (each saw an empty room). Whoever lost
+      // the race is told to stand down. Presence is un-registered BEFORE the
+      // disconnect (the handler's first line then finds nothing and returns),
+      // so the keeper's channels are not reaped as if the daemon left, and the
+      // teardown is delayed one beat so the `ctl:duplicate` event flushes.
+      const others = (await ctl.in(`machine:${machineId}`).fetchSockets()).filter(
+        (s) => s.id !== socket.id,
+      );
+      if (others.length > 0) {
+        app.log.warn(
+          { machineId, socketId: socket.id, kept: others[0]?.id },
+          'duplicate /ctl socket refused post-handshake',
+        );
+        socket.emit('ctl:duplicate', { reason: 'machine-already-connected' });
+        presence.disconnected(socket.id);
+        const doomed = socket;
+        const t = setTimeout(() => doomed.disconnect(true), 100);
+        t.unref();
+        return;
+      }
+
       const machine = await app.uow.machines.findById(machineId);
       if (!machine) {
         // Deleted between handshake and connection — drop immediately (the

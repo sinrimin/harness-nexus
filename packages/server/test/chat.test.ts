@@ -25,6 +25,8 @@ let machineId: string;
 let machineToken: string;
 let agentId: string;
 let daemon: Socket;
+/** #45 — tracks whether `daemon` is still connected (serializes connectDaemon). */
+let daemonConnected = false;
 let browser: Socket;
 
 const authed = (token: string): { authorization: string } => ({ authorization: `Bearer ${token}` });
@@ -150,6 +152,16 @@ async function connectDaemon(
   capabilities: string[],
   opts: { heldIds?: () => string[] } = {},
 ): Promise<Socket> {
+  // #45 — the server refuses a second live socket per machine, so the suite
+  // keeps EXACTLY ONE daemon socket at a time: connecting first closes (and
+  // waits out) any previous one. `daemon` always aliases the live socket, so
+  // the suites' `daemon.emit(...)` lines keep working against whichever
+  // connection is current.
+  if (daemonConnected) {
+    daemon.close();
+    await waitFor(() => !app.realtime.presence.isOnline(machineId));
+    daemonConnected = false;
+  }
   const sock = io(`${baseUrl}/ctl`, {
     auth: { token: machineToken, machineId },
     transports: ['websocket'],
@@ -163,6 +175,8 @@ async function connectDaemon(
   });
   await once(sock, 'connect');
   await emitAck(sock, 'machine:hello', { daemonVersion: '0.4.0-test', capabilities });
+  daemon = sock;
+  daemonConnected = true;
   return sock;
 }
 
@@ -464,6 +478,12 @@ describe('workspace directories (9 W6)', () => {
 });
 
 describe('session lifecycle', () => {
+  // #45 — the suite speaks through the shared `daemon` alias; every test
+  // starts from ONE freshly connected socket (connectDaemon serializes).
+  beforeEach(async () => {
+    daemon = await connectDaemon(['chat']);
+  });
+
   it(
     'open → start → ready → prompt round-trip with streaming + permission',
     { timeout: 15000 },
@@ -930,52 +950,6 @@ describe('session lifecycle', () => {
       daemon.close();
       const closed = (await once(browser, 'chat:session.closed', 6000)) as { reason: string };
       expect(closed.reason).toBe('connection-lost');
-    },
-  );
-
-  it(
-    'a daemon RECONNECT reaps the previous connection’s channels even when the machine never went offline',
-    { timeout: 10000 },
-    async () => {
-      // The reconnect race: the replacement socket registers BEFORE the old
-      // one's disconnect is processed, so presence never flips and the
-      // offline-transition reap is skipped. The old channels are dead (the
-      // daemon tears sessions down with its socket) yet they kept their slots
-      // — every later open answered SESSION_LIMIT_REACHED until a server
-      // restart. Reaping on connection is what makes a daemon restart
-      // recoverable.
-      // The daemon that came back is tracked locally so the test can close it:
-      // a socket left connected here makes the suite's `app.close()` hang.
-      const reconnected = await connectDaemon(['chat']);
-      daemon = reconnected;
-      const startP = once(reconnected, 'chat:session.start');
-      await openSession(browser, agentId);
-      const start = (await startP) as { sessionId: string };
-      const readyP = once(browser, 'chat:session.ready');
-      readyFor(reconnected, start);
-      await readyP;
-
-      // The old socket stays connected on purpose (no offline transition).
-      // The listener must be attached BEFORE the replacement connects: the reap
-      // fires on connection, i.e. before `connectDaemon` even returns.
-      const closedP = once(browser, 'chat:session.closed', 6000);
-      const replacement = await connectDaemon(['chat']);
-      const closed = (await closedP) as { reason: string };
-      expect(closed.reason).toBe('connection-lost');
-
-      try {
-        // And the cap is free again — a fresh open is accepted.
-        const startP2 = once(replacement, 'chat:session.start');
-        const again = await openSession(browser, agentId);
-        expect(again.error).toBeUndefined();
-        const start2 = (await startP2) as { sessionId: string };
-        const closed2P = once(browser, 'chat:session.closed');
-        await emitAck(browser, 'chat:session.close', { sessionId: start2.sessionId });
-        await closed2P;
-      } finally {
-        replacement.close();
-        reconnected.close();
-      }
     },
   );
 
@@ -1567,6 +1541,50 @@ describe('disconnect grace + reconcile (9 W11 E)', () => {
         };
         expect(snap.channels.some((c) => c.sessionId === sessionId)).toBe(true);
         await emitAck(browser, 'chat:session.close', { sessionId, reason: 'user' });
+      } finally {
+        back.disconnect();
+        await new Promise((r) => setTimeout(r, 150));
+      }
+    } finally {
+      d.disconnect();
+      await new Promise((r) => setTimeout(r, 150));
+    }
+  }, 15000);
+
+  it('a reconnect whose ack holds NOTHING reaps the ghost rows and frees the cap (the restart-race shape, post-#45)', async () => {
+    // The pre-#45 variant of this scenario forced the reconnect race by
+    // keeping BOTH sockets alive; a second live socket is now refused at the
+    // /ctl handshake, so the race converges through the returning client
+    // instead. What must survive is the OUTCOME: the daemon that comes back
+    // acks it holds nothing, so the pre-blip rows are ghosts — reconcile
+    // closes them (not the grace timer) and the session cap is free again.
+    const d = await connectBlipDaemon();
+    try {
+      const sessionId = await openReady(d);
+      engineKill(d);
+      await new Promise((r) => setTimeout(r, 150));
+
+      // Reconcile fires DURING connectDaemon (the ack round-trips before it
+      // returns), so the closed push is already in flight by then — the
+      // listener must be up BEFORE the connection.
+      const closedP = once(browser, 'chat:session.closed', 6000);
+      const back = await connectDaemon(['chat']);
+      try {
+        const closed = (await closedP) as {
+          sessionId: string;
+          reason: string;
+        };
+        expect(closed.sessionId).toBe(sessionId);
+        expect(closed.reason).toBe('connection-lost');
+
+        // And the cap is free again — a fresh open is accepted.
+        const startP2 = once(back, 'chat:session.start');
+        const again = await openSession(browser, agentId);
+        expect(again.error).toBeUndefined();
+        const start2 = (await startP2) as { sessionId: string };
+        const closed2P = once(browser, 'chat:session.closed');
+        await emitAck(browser, 'chat:session.close', { sessionId: start2.sessionId });
+        await closed2P;
       } finally {
         back.disconnect();
         await new Promise((r) => setTimeout(r, 150));

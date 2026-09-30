@@ -63,6 +63,13 @@ export interface DaemonOptions {
   /** Machine PAT (scopes ['machine-ctl']). */
   token: string;
   machineId: string;
+  /**
+   * #45 — invoked when the server rules this daemon must stand down (a second
+   * daemon socket per machine means every prompt and dispatched job would run
+   * twice). Defaults to exiting the process; the TUI keeps the default too —
+   * there is no meaningful degraded mode for a duplicate daemon.
+   */
+  onFatal?: (message: string) => void;
 }
 
 /** What `startDaemon` hands back: everything the TUI (#39) needs in-process. */
@@ -299,11 +306,72 @@ export function startDaemon(options: DaemonOptions): DaemonHandle {
     })();
   });
 
+  // #45 — the server refuses a second daemon socket per machine. A refusal
+  // CAN be transient (a blip whose stale socket has not timed out yet), so
+  // retries ride the normal reconnect backoff; but a persistent refusal means
+  // another daemon genuinely owns this machine — after enough consecutive
+  // ones there is nothing to do but stand down (running anyway would bill
+  // every prompt twice and run every dispatched job twice).
+  const ALREADY_CONNECTED_LIMIT = 10;
+  let alreadyConnectedStreak = 0;
+  let fatalFired = false;
+  const fatal = (message: string): void => {
+    if (fatalFired) return;
+    fatalFired = true;
+    // eslint-disable-next-line no-console
+    console.error(`hnx daemon: ${message}`);
+    (options.onFatal ?? ((_: string) => process.exit(1)))(message);
+  };
+
+  socket.on('connect', () => {
+    alreadyConnectedStreak = 0;
+  });
   socket.on('connect_error', (err: Error) => {
+    if (err.message.includes('machine already connected')) {
+      alreadyConnectedStreak += 1;
+      // eslint-disable-next-line no-console
+      console.error(
+        `hnx daemon: server refuses this machine's second daemon socket ` +
+          `(attempt ${String(alreadyConnectedStreak)}/${String(ALREADY_CONNECTED_LIMIT)}) — ` +
+          `another daemon is live, or a stale socket has not timed out yet`,
+      );
+      if (alreadyConnectedStreak >= ALREADY_CONNECTED_LIMIT) {
+        fatal(
+          'another daemon holds this machine (10 straight refusals) — stop it ' +
+            '(or remove a stale ~/.hnx/daemon.lock) before starting this one',
+        );
+        return;
+      }
+      // Socket.IO treats a middleware refusal as PERMANENT (it tears the
+      // manager down instead of retrying, and an idle daemon process then
+      // exits). A refusal can be transient — a blip whose stale socket has
+      // not timed out yet (~ping timeout) — so this daemon retries itself,
+      // long enough to outlive any stale socket. NOT unref'd: this timer is
+      // what keeps a rejected-but-not-yet-fatal daemon alive.
+      const delay = Math.min(2000 * 2 ** (alreadyConnectedStreak - 1), 30000);
+      setTimeout(() => socket.connect(), delay);
+      return;
+    }
+    alreadyConnectedStreak = 0;
     // eslint-disable-next-line no-console
     console.error(`hnx daemon: connection error: ${err.message}`);
   });
+  // The post-handshake duplicate fence disconnects us with this event; the
+  // reason fallback covers a lost event packet.
+  socket.on('ctl:duplicate', () => {
+    fatal(
+      'the server stood this daemon down: another daemon socket already holds ' +
+        'this machine (duplicate /ctl socket refused)',
+    );
+  });
   socket.on('disconnect', (reason: string) => {
+    if (reason === 'io server disconnect') {
+      // Server-initiated and NOT the duplicate fence's delayed teardown
+      // (that one exits through ctl:duplicate above): still fatal — a daemon
+      // the server cut loose must not linger socketless forever.
+      fatal(`server disconnected this daemon (${reason})`);
+      return;
+    }
     // eslint-disable-next-line no-console
     console.error(`hnx daemon: disconnected (${reason})`);
   });

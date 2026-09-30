@@ -121,6 +121,88 @@ describe('/ctl namespace', () => {
     expect(ack).toEqual({ error: 'proto:invalid' });
     ctl.close();
   });
+
+  // #45 — one daemon per machine, enforced at the handshake: a second live
+  // socket would receive every room broadcast (prompts AND dispatched jobs
+  // would run N×). The newcomer is refused; the incumbent keeps working; a
+  // replacement connects once the old socket is gone (restart semantics).
+  it('refuses a SECOND live socket for the same machine, incumbent unaffected', async () => {
+    const first = io(`${baseUrl}/ctl`, {
+      auth: { token: machineToken, machineId },
+      transports: ['websocket'],
+    });
+    await once(first, 'connect');
+
+    const second = io(`${baseUrl}/ctl`, {
+      auth: { token: machineToken, machineId },
+      transports: ['websocket'],
+    });
+    const err = (await once(second, 'connect_error')) as Error;
+    expect(err.message).toBe('machine already connected');
+    second.close();
+
+    // The incumbent still works (hello acks normally).
+    const ack = await emitAck(first, 'machine:hello', {
+      daemonVersion: '0.1.0-test',
+      os: 'linux',
+      arch: 'x64',
+      hostname: 'incumbent',
+      capabilities: [],
+    });
+    expect(ack).toMatchObject({ proto: 1, machineId });
+    first.close();
+    await waitFor(() => !app.realtime.presence.isOnline(machineId));
+  }, 15000);
+
+  it('a replacement connects once the old socket is gone (restart semantics)', async () => {
+    const old = io(`${baseUrl}/ctl`, {
+      auth: { token: machineToken, machineId },
+      transports: ['websocket'],
+    });
+    await once(old, 'connect');
+    old.close();
+    await waitFor(() => !app.realtime.presence.isOnline(machineId));
+
+    const replacement = io(`${baseUrl}/ctl`, {
+      auth: { token: machineToken, machineId },
+      transports: ['websocket'],
+    });
+    await once(replacement, 'connect');
+    const ack = await emitAck(replacement, 'machine:hello', {
+      daemonVersion: '0.1.0-test',
+      capabilities: [],
+    });
+    expect(ack).toMatchObject({ proto: 1, machineId });
+    replacement.close();
+    await waitFor(() => !app.realtime.presence.isOnline(machineId));
+  }, 15000);
+
+  it('a second socket for a DIFFERENT machine is fine (the guard is per machine)', async () => {
+    const enroll = await app.inject({
+      method: 'POST',
+      url: '/api/machines',
+      headers: { authorization: `Bearer ${jwt}` },
+      payload: { name: 'other-box' },
+    });
+    const otherId: string = enroll.json().machine.id;
+    const otherToken: string = enroll.json().token;
+
+    const a = io(`${baseUrl}/ctl`, {
+      auth: { token: machineToken, machineId },
+      transports: ['websocket'],
+    });
+    await once(a, 'connect');
+    const b = io(`${baseUrl}/ctl`, {
+      auth: { token: otherToken, machineId: otherId },
+      transports: ['websocket'],
+    });
+    await once(b, 'connect');
+    const ack = await emitAck(b, 'machine:hello', { daemonVersion: '0.1.0-test' });
+    expect(ack).toMatchObject({ proto: 1, machineId: otherId });
+    a.close();
+    b.close();
+    await waitFor(() => !app.realtime.presence.isOnline(otherId));
+  }, 15000);
 });
 
 describe('/app namespace', () => {
