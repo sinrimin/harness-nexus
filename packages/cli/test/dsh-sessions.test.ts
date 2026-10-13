@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import * as zlib from 'node:zlib';
 import {
   createDshLiveMapper,
+  currentSessionLog,
   dshHistoryItems,
   dshListSessions,
   decodeTranscript,
@@ -13,9 +14,12 @@ import {
 } from '../src/daemon/dsh-sessions.js';
 
 /**
- * dsh native session store tests (Phase 9 W7). The frame decoder is injected
- * everywhere so the logic runs on any Node; a real zstd round-trip is
- * additionally exercised when the running Node has the binding (≥ 22.15).
+ * dsh native session store tests (Phase 9 W7; #46 ground truth dsh
+ * 0.2.0-rc.2 — session-log generation v4, flat tool results, settlement-only
+ * rows, `agent/assistant-stream` frames for token deltas). The frame decoder
+ * is injected everywhere so the logic runs on any Node; a real zstd
+ * round-trip is additionally exercised when the running Node has the binding
+ * (≥ 22.15).
  */
 
 const MAGIC = Buffer.from([0x28, 0xb5, 0x2f, 0xfd]);
@@ -73,7 +77,9 @@ describe('scanSummary', () => {
     const buf = fakeTranscript([
       {
         type: 'session',
+        version: 4,
         id: 's1',
+        isSeeded: false,
         cwd: '/root/projects/demo',
         createdAt: 1789008798907,
         delegationDepth: 0,
@@ -92,32 +98,75 @@ describe('scanSummary', () => {
   });
 });
 
+describe('currentSessionLog (generation-versioned discovery)', () => {
+  const dir = '/root/.dsh/sessions/--x--/s1';
+  const readdirOf =
+    (names: string[] | null) =>
+    (p: string): string[] => {
+      if (p !== dir || names === null) throw new Error('ENOENT');
+      return names;
+    };
+
+  it('selects the numerically highest canonical generation', () => {
+    expect(
+      currentSessionLog(dir, readdirOf(['session.jsonl.zstd', 'session.v4.jsonl.zstd'])),
+    ).toEqual({ file: `${dir}/session.v4.jsonl.zstd`, generation: 4 });
+    // A future v5 is higher still — the daemon reads whatever dsh writes, so a
+    // new generation only needs a mapper update, never a discovery change.
+    expect(
+      currentSessionLog(dir, readdirOf(['session.v4.jsonl.zstd', 'session.v5.jsonl.zstd'])),
+    ).toEqual({ file: `${dir}/session.v5.jsonl.zstd`, generation: 5 });
+  });
+
+  it('reads a pre-v4-only directory as absent (#46: no back-compat)', () => {
+    expect(currentSessionLog(dir, readdirOf(['session.jsonl.zstd']))).toBeNull();
+    expect(currentSessionLog(dir, readdirOf(['session.v3.jsonl.zstd']))).toBeNull();
+  });
+
+  it('returns the expected current name for a lazily-materialized session dir', () => {
+    expect(currentSessionLog(dir, readdirOf([]))).toEqual({
+      file: `${dir}/session.v4.jsonl.zstd`,
+      generation: 4,
+    });
+  });
+
+  it('ignores non-canonical names and absent dirs', () => {
+    expect(currentSessionLog(dir, readdirOf(['session.tmp', 'session.v0.jsonl']))).toEqual({
+      file: `${dir}/session.v4.jsonl.zstd`,
+      generation: 4,
+    });
+    expect(currentSessionLog(dir, readdirOf(null))).toBeNull();
+  });
+});
+
 describe('dshListSessions', () => {
   const root = '~/.dsh/sessions';
 
-  /** Fake store shaped like the disk: root → slug → session id → transcript. */
+  /** Fake store shaped like the disk: root → slug → session id → { filename: transcript }. */
   function fsFor(
     store: Record<string, Record<string, Record<string, Buffer>>>,
     mtimeMs = 1_789_000_000_000,
   ) {
     const readdir = (p: string): string[] => {
       if (p === root) return Object.keys(store[root] ?? {});
-      if (p.startsWith(`${root}/`))
-        return Object.keys(store[root]?.[p.slice(root.length + 1)] ?? {});
+      const rest = p.slice(root.length + 1).split('/');
+      if (rest.length === 1) return Object.keys(store[root]?.[rest[0]!] ?? {});
+      if (rest.length === 2) return Object.keys(store[root]?.[rest[0]!]?.[rest[1]!] ?? {});
       throw new Error('ENOENT');
     };
     return {
       readdir,
       readFile: (p: string) => {
-        // p = <root>/<slug>/<id>/session.jsonl.zstd
         const rest = p.slice(root.length + 1).split('/');
-        const buf = store[root]?.[rest[0]]?.[rest[1]];
+        const buf = store[root]?.[rest[0]!]?.[rest[1]!]?.[rest[2]!];
         if (buf === undefined) throw new Error('ENOENT');
         return buf;
       },
       stat: () => ({ mtimeMs }),
     };
   }
+
+  const v4 = (buf: Buffer): Record<string, Buffer> => ({ 'session.v4.jsonl.zstd': buf });
 
   it('lists ROOT sessions newest-first, skipping subagents and empty (no-turn) sessions', () => {
     // NB: the header entry carries its fields at the TOP level (no `data`).
@@ -127,34 +176,56 @@ describe('dshListSessions', () => {
     const store = {
       [root]: {
         '--root-demo--': {
-          'aaa-1': transcript({ cwd: '/root/demo', createdAt: 100, delegationDepth: 0 }, [
-            { type: 'session/title', data: { title: 'first' } },
-            turn,
-          ]),
-          'bbb-2': transcript({ cwd: '/root/demo', createdAt: 200, delegationDepth: 0 }, [turn]),
-          'ccc-sub': transcript({ cwd: '/root/demo', createdAt: 300, delegationDepth: 1 }, [turn]),
-          'ddd-parent': transcript(
-            {
-              cwd: '/root/demo',
-              createdAt: 400,
-              delegationDepth: 0,
-              parentSession: 'aaa-1',
-            },
-            [turn],
+          'aaa-1': v4(
+            transcript({ cwd: '/root/demo', createdAt: 100, delegationDepth: 0 }, [
+              { type: 'session/title', data: { title: 'first' } },
+              turn,
+            ]),
           ),
-          // Config-preamble only (what every fresh dsh spawn writes before the
-          // first turn — and what the -32605 retry race leaves behind): the
-          // "second unnamed session" of the double-row complaint. NOT listed.
-          'fff-empty': transcript({ cwd: '/root/demo', createdAt: 500, delegationDepth: 0 }),
-          'eee-broken': fakeTranscript([{ type: 'turn/start', data: {} }]),
+          'bbb-2': v4(
+            transcript({ cwd: '/root/demo', createdAt: 200, delegationDepth: 0 }, [turn]),
+          ),
+          'ccc-sub': v4(
+            transcript({ cwd: '/root/demo', createdAt: 300, delegationDepth: 1 }, [turn]),
+          ),
+          'ddd-parent': v4(
+            transcript(
+              {
+                cwd: '/root/demo',
+                createdAt: 400,
+                delegationDepth: 0,
+                parentSession: 'aaa-1',
+              },
+              [turn],
+            ),
+          ),
+          // Header-only artifact (an explicitly flushed empty session): NOT a
+          // conversation. The "second unnamed session" of the double-row
+          // complaint. Not listed.
+          'fff-empty': v4(transcript({ cwd: '/root/demo', createdAt: 500, delegationDepth: 0 })),
+          'eee-broken': v4(fakeTranscript([{ type: 'turn/start', data: {} }])),
+          // #46 — a pre-v4-only session is unsupported: not listed.
+          'ggg-old': { 'session.jsonl.zstd': transcript({ cwd: '/root/demo', createdAt: 600 }) },
+          // A migrated session: the historical v0 artifact survives next to the
+          // published v4 successor (dsh keeps the source byte-identical) — the
+          // CURRENT generation is what we read.
+          'hhh-migrated': {
+            'session.jsonl.zstd': fakeTranscript([
+              { type: 'session', cwd: '/root/demo', createdAt: 700 },
+            ]),
+            'session.v4.jsonl.zstd': transcript(
+              { cwd: '/root/demo', createdAt: 700, delegationDepth: 0 },
+              [turn],
+            ),
+          },
         },
       },
     };
     const fs = fsFor(store);
     const out = dshListSessions(root, fs, stripMagic);
-    expect(out.map((s) => s.sessionId)).toEqual(['bbb-2', 'aaa-1']);
-    expect(out[0]).toMatchObject({ sessionId: 'bbb-2', cwd: '/root/demo', title: null });
-    expect(out[1]).toMatchObject({ title: 'first', createdAt: new Date(100).toISOString() });
+    expect(out.map((s) => s.sessionId)).toEqual(['hhh-migrated', 'bbb-2', 'aaa-1']);
+    expect(out[1]).toMatchObject({ sessionId: 'bbb-2', cwd: '/root/demo', title: null });
+    expect(out[2]).toMatchObject({ title: 'first', createdAt: new Date(100).toISOString() });
     // Post-W8: sessions with a live channel stay LISTED (the server marks them
     // `open`; the rail offers a rejoin) — no exclusion flag exists anymore.
   });
@@ -181,7 +252,7 @@ describe('dshListSessions', () => {
 describe('dshHistoryItems', () => {
   it('maps a two-turn transcript: real user inputs, complete blocks, tool pair, turn ends', () => {
     const entries = [
-      { type: 'session', cwd: '/root/demo', createdAt: 1, delegationDepth: 0 },
+      { type: 'session', version: 4, cwd: '/root/demo', createdAt: 1, delegationDepth: 0 },
       { type: 'permission/preset', data: { preset: 'workspace-write' } },
       {
         type: 'agent/inbox/spliced',
@@ -252,31 +323,28 @@ describe('dshHistoryItems', () => {
         data: { callId: 'call-1', name: 'bash', arguments: '{"command":"ls"}' },
       },
       {
+        // v4: a first-class tool-role message — FLAT content, toolCallId on
+        // the message (the v0 nesting under source/tool-result is gone).
         type: 'tool/result',
         data: {
           message: {
+            role: 'tool',
+            toolCallId: 'call-1',
             source: { kind: 'tool', callId: 'call-1' },
-            content: [
-              {
-                type: 'tool-result',
-                toolCallId: 'call-1',
-                content: [{ type: 'text', text: 'a.txt\nb.txt' }],
-              },
-            ],
+            content: [{ type: 'text', text: 'a.txt\nb.txt' }],
           },
         },
       },
       {
-        type: 'assistant/chunk',
+        // v4: usage rides the settlement row (the v0 assistant/chunk usage
+        // marker is gone).
+        type: 'assistant/message',
         data: {
           turn: 2,
-          step: 1,
-          chunk: { type: 'usage', usage: { inputTokens: 20, outputTokens: 4 } },
+          step: 2,
+          message: { content: [{ type: 'text', text: 'Two files.' }] },
+          usage: { inputTokens: 20, outputTokens: 4 },
         },
-      },
-      {
-        type: 'assistant/message',
-        data: { turn: 2, step: 2, message: { content: [{ type: 'text', text: 'Two files.' }] } },
       },
       { type: 'turn/end', data: { turn: 2, reason: { kind: 'completed' } } },
     ];
@@ -292,8 +360,8 @@ describe('dshHistoryItems', () => {
       'tool_call', // from the assistant/message tool-call block
       'tool_call', // from tool/call (same callId — the fold merges)
       'tool_call', // completed + output from tool/result
-      'usage',
       'message_delta',
+      'usage',
       'turn_result',
     ]);
 
@@ -327,8 +395,30 @@ describe('dshHistoryItems', () => {
     ).toHaveLength(0); // synthesized context noise never leaks into history
   });
 
-  it('maps a cancelled turn end', () => {
-    const items = dshHistoryItems([{ type: 'turn/end', data: { reason: { kind: 'cancelled' } } }]);
+  it('falls back to source.callId when the flat toolCallId is absent', () => {
+    const items = dshHistoryItems([
+      {
+        type: 'tool/result',
+        data: {
+          message: {
+            role: 'tool',
+            source: { kind: 'tool', callId: 'call-9' },
+            content: [{ type: 'text', text: 'ok' }],
+          },
+        },
+      },
+    ]);
+    expect(items[0]).toEqual({
+      type: 'event',
+      event: {
+        kind: 'tool_call',
+        call: { toolCallId: 'call-9', status: 'completed', output: 'ok' },
+      },
+    });
+  });
+
+  it('maps an aborted turn end (v4 renamed the v0 `cancelled`)', () => {
+    const items = dshHistoryItems([{ type: 'turn/end', data: { reason: { kind: 'aborted' } } }]);
     expect(items[0]).toEqual({
       type: 'event',
       event: { kind: 'turn_result', stopReason: 'cancelled' },
@@ -344,7 +434,7 @@ describe('real zstd round-trip (Node >= 22.15 only)', () => {
 
   maybe('decodes a dsh-shaped multi-frame file through the native binding', () => {
     const entries = [
-      { type: 'session', cwd: '/root/demo', createdAt: 1, delegationDepth: 0 },
+      { type: 'session', version: 4, cwd: '/root/demo', createdAt: 1, delegationDepth: 0 },
       { type: 'session/title', data: { title: 'hello' } },
       {
         type: 'agent/inbox/spliced',
@@ -371,57 +461,43 @@ describe('real zstd round-trip (Node >= 22.15 only)', () => {
   });
 });
 
-describe('createDshLiveMapper (reference semantics: dsh 0.1.2-rc.1 chunk-rows)', () => {
-  const run = (...entries: unknown[]): { kind: string; delta?: string }[] => {
+describe('createDshLiveMapper (frames + settlement rows: dsh 0.2.0-rc.2)', () => {
+  type Ev = { kind: string; delta?: string; inputTokens?: number; outputTokens?: number };
+
+  /** Drive the mapper with frames and/or settlement rows in order. */
+  const run = (...inputs: ({ frame: unknown } | { event: unknown })[]): Ev[] => {
     const mapper = createDshLiveMapper();
-    const events: { kind: string; delta?: string }[] = [];
-    for (const entry of entries) {
-      for (const e of mapper(entry as Record<string, unknown>)) {
-        events.push(e as { kind: string; delta?: string });
-      }
+    const events: Ev[] = [];
+    for (const input of inputs) {
+      const out =
+        'frame' in input
+          ? mapper.frame(input.frame as Record<string, unknown>)
+          : mapper.event(input.event as Record<string, unknown>);
+      for (const e of out) events.push(e as Ev);
     }
     return events;
   };
 
-  it('maps packed rows AND verbatim chunk events (MIN_RUN=3 fall-through)', () => {
-    // A packed run…
-    expect(
-      run({
-        type: 'text-chunks',
-        seq0: 1,
-        time0: 1,
-        data: { turn: 1, step: 0, index: 0, dt: [1], texts: ['你好', '，'] },
-      }),
-    ).toEqual([{ kind: 'message_delta', delta: '你好，' }]);
-    expect(
-      run({
-        type: 'reasoning-chunks',
-        seq0: 3,
-        time0: 2,
-        data: { turn: 1, step: 0, index: 1, dt: [], texts: ['think'] },
-      }),
-    ).toEqual([{ kind: 'thought_delta', delta: 'think' }]);
-    // …and the 1–2 member runs the codec stores verbatim.
-    expect(
-      run({
-        type: 'assistant/chunk',
-        seq: 5,
-        time: 9,
-        data: { turn: 1, step: 1, chunk: { type: 'text-delta', index: 0, text: 'tail' } },
-      }),
-    ).toEqual([{ kind: 'message_delta', delta: 'tail' }]);
-    expect(
-      run({
-        type: 'assistant/chunk',
-        seq: 6,
-        time: 10,
-        data: { turn: 1, step: 1, chunk: { type: 'reasoning-delta', index: 1, text: 'hmm' } },
-      }),
-    ).toEqual([{ kind: 'thought_delta', delta: 'hmm' }]);
+  const start = (attemptId: string, turn: number, step: number): { frame: unknown } => ({
+    frame: { type: 'start', attemptId, revision: 1, turn, step },
   });
-
-  it('committed message: usage only for streamed steps, full blocks otherwise', () => {
-    const commit = (turn: number, step: number, text: string): unknown => ({
+  const delta = (attemptId: string, text: string, kind = 'text-delta'): { frame: unknown } => ({
+    frame: {
+      type: 'chunk',
+      attemptId,
+      revision: 2,
+      index: 0,
+      time: 1,
+      chunk: { type: kind, index: 0, text },
+    },
+  });
+  const commit = (
+    turn: number,
+    step: number,
+    text: string,
+    usage: unknown = { inputTokens: 5, outputTokens: 2 },
+  ): { event: unknown } => ({
+    event: {
       type: 'assistant/message',
       seq: 9,
       time: 20,
@@ -434,76 +510,128 @@ describe('createDshLiveMapper (reference semantics: dsh 0.1.2-rc.1 chunk-rows)',
             { type: 'text', text },
           ],
         },
-        usage: { inputTokens: 5, outputTokens: 2 },
+        usage,
       },
-    });
-    const delta = (turn: number, step: number, text: string): unknown => ({
-      type: 'text-chunks',
-      seq0: 1,
-      time0: 1,
-      data: { turn, step, index: 0, dt: [], texts: [text] },
-    });
-    // Step WITH streamed deltas → no text re-send, usage rides through.
-    expect(run(delta(1, 0, 'streamed '), commit(1, 0, 'streamed full'))).toEqual([
+    },
+  });
+
+  it('frame arm: start registers the attempt, chunk deltas map by kind', () => {
+    expect(run(start('a:1', 1, 0))).toEqual([]);
+    expect(run(start('a:1', 1, 0), delta('a:1', '你好'))).toEqual([
+      { kind: 'message_delta', delta: '你好' },
+    ]);
+    expect(run(start('a:1', 1, 0), delta('a:1', 'hmm', 'reasoning-delta'))).toEqual([
+      { kind: 'thought_delta', delta: 'hmm' },
+    ]);
+    // A chunk frame whose attempt never started still maps (identity only
+    // gates the settlement dedup, not the rendering).
+    expect(run(delta('never', 'x'))).toEqual([{ kind: 'message_delta', delta: 'x' }]);
+  });
+
+  it('frame arm: non-delta chunks and non-chunk frames map to nothing', () => {
+    expect(
+      run(
+        start('a:1', 1, 0),
+        {
+          frame: {
+            type: 'chunk',
+            attemptId: 'a:1',
+            revision: 2,
+            index: 0,
+            time: 1,
+            chunk: { type: 'block-start', index: 0, blockType: 'text' },
+          },
+        },
+        {
+          frame: {
+            type: 'chunk',
+            attemptId: 'a:1',
+            revision: 3,
+            index: 1,
+            time: 2,
+            chunk: { type: 'tool-call-delta', index: 1, id: 'c1', argumentsDelta: '{"a":' },
+          },
+        },
+        {
+          frame: {
+            type: 'chunk',
+            attemptId: 'a:1',
+            revision: 4,
+            index: 2,
+            time: 3,
+            chunk: { type: 'usage', usage: { inputTokens: 1 } },
+          },
+        },
+        {
+          frame: {
+            type: 'chunk',
+            attemptId: 'a:1',
+            revision: 5,
+            index: 3,
+            time: 4,
+            chunk: { type: 'finish', reason: { kind: 'stop' } },
+          },
+        },
+        {
+          frame: {
+            type: 'end',
+            attemptId: 'a:1',
+            revision: 6,
+            index: 4,
+            outcome: { kind: 'committed', eventType: 'assistant/message', seq: 9 },
+          },
+        },
+      ),
+    ).toEqual([]);
+  });
+
+  it('settlement: usage only for frame-streamed steps, full blocks otherwise', () => {
+    // Step streamed by frames → no text re-send, usage rides through.
+    expect(
+      run(start('a:1', 1, 0), delta('a:1', 'streamed '), commit(1, 0, 'streamed full')),
+    ).toEqual([
       { kind: 'message_delta', delta: 'streamed ' },
       { kind: 'usage', inputTokens: 5, outputTokens: 2 },
     ]);
-    // Step the tail NEVER saw deltas for (late attach) → complete blocks.
+    // Step the frames NEVER covered (late tap attach) → complete blocks.
     expect(run(commit(1, 1, 'never streamed'))).toEqual([
       { kind: 'thought_delta', delta: 'R' },
       { kind: 'message_delta', delta: 'never streamed' },
       { kind: 'usage', inputTokens: 5, outputTokens: 2 },
     ]);
-    // A verbatim delta marks the step just like a packed row.
+    // The dedup is per turn:step and one-shot: a second commit for the same
+    // step falls back to full blocks.
     expect(
-      run(
-        {
-          type: 'assistant/chunk',
-          seq: 2,
-          time: 2,
-          data: { turn: 2, step: 0, chunk: { type: 'text-delta', index: 0, text: 'v' } },
-        },
-        commit(2, 0, 'v full'),
-      ),
+      run(start('a:1', 2, 0), delta('a:1', 'v'), commit(2, 0, 'v full'), commit(2, 0, 'again')),
     ).toEqual([
       { kind: 'message_delta', delta: 'v' },
+      { kind: 'usage', inputTokens: 5, outputTokens: 2 },
+      { kind: 'thought_delta', delta: 'R' },
+      { kind: 'message_delta', delta: 'again' },
       { kind: 'usage', inputTokens: 5, outputTokens: 2 },
     ]);
   });
 
-  it('ignores non-text chunk variants, tool-call-chunks rows, and turn/user rows', () => {
+  it('settlement: assistant/attempt and turn/user rows map to nothing; tools still map', () => {
     expect(
       run(
+        { event: { type: 'assistant/attempt', data: { turn: 1, step: 0, stream: [] } } },
+        { event: { type: 'turn/start', data: { turn: 2 } } },
         {
-          type: 'assistant/chunk',
-          data: { turn: 1, step: 0, chunk: { type: 'usage', usage: { inputTokens: 1 } } },
+          event: {
+            type: 'user/message',
+            data: { source: { kind: 'user' }, content: [{ type: 'text', text: 'hi' }] },
+          },
         },
-        {
-          type: 'assistant/chunk',
-          data: { turn: 1, step: 0, chunk: { type: 'block-start', index: 0, blockType: 'text' } },
-        },
-        {
-          type: 'assistant/chunk',
-          data: { turn: 1, step: 0, chunk: { type: 'finish', reason: 'stop' } },
-        },
-        {
-          type: 'tool-call-chunks',
-          seq0: 1,
-          time0: 1,
-          data: { turn: 1, step: 0, index: 2, id: 'c1', dt: [], args: ['{"a":'] },
-        },
-        { type: 'turn/start', data: { turn: 2 } },
-        {
-          type: 'user/message',
-          data: { source: { kind: 'user' }, content: [{ type: 'text', text: 'hi' }] },
-        },
+        { event: { type: 'turn/end', data: { turn: 1, reason: { kind: 'completed' } } } },
       ),
     ).toEqual([]);
-    // Tools still map from their committed rows.
     expect(
       run({
-        type: 'tool/call',
-        data: { callId: 'c1', name: 'bash', arguments: '{"command":"ls"}' },
+        event: {
+          type: 'tool/call',
+          data: { callId: 'c1', name: 'bash', arguments: '{"command":"ls"}' },
+        },
       }),
     ).toEqual([
       {
@@ -515,6 +643,19 @@ describe('createDshLiveMapper (reference semantics: dsh 0.1.2-rc.1 chunk-rows)',
           rawInput: { command: 'ls' },
         },
       },
+    ]);
+    // Flat tool/result (v4) maps through the event arm too.
+    expect(
+      run({
+        event: {
+          type: 'tool/result',
+          data: {
+            message: { role: 'tool', toolCallId: 'c1', content: [{ type: 'text', text: 'ok' }] },
+          },
+        },
+      }),
+    ).toEqual([
+      { kind: 'tool_call', call: { toolCallId: 'c1', status: 'completed', output: 'ok' } },
     ]);
   });
 });
@@ -531,18 +672,18 @@ describe('TranscriptTail (dsh live streaming)', () => {
     return body;
   };
 
-  it('streams token batches as they are appended, recovering partial frames', async () => {
+  it('streams settlement batches as they are appended, recovering partial frames', async () => {
     const events: { kind: string; delta?: string }[] = [];
     // An appendable in-memory file the tail reads through the TailFs seam.
     let file = fakeTranscript([
-      { type: 'session', cwd: '/root/demo', createdAt: 1, delegationDepth: 0 },
+      { type: 'session', version: 4, cwd: '/root/demo', createdAt: 1, delegationDepth: 0 },
     ]);
     const fs = {
       size: () => file.length,
       readEnd: (_p: string, start: number) => file.subarray(start),
     };
     const tail = new TranscriptTail(
-      '/x/session.jsonl.zstd',
+      '/x/session.v4.jsonl.zstd',
       fs,
       checkedDecoder,
       (e) => events.push(e as { kind: string; delta?: string }),
@@ -551,86 +692,64 @@ describe('TranscriptTail (dsh live streaming)', () => {
     tail.start(); // skips existing bytes (the header)
     await new Promise((r) => setTimeout(r, 20));
 
-    // A batch arrives mid-generation…
-    file = Buffer.concat([
-      file,
-      fakeTranscript([
-        {
-          type: 'reasoning-chunks',
-          seq0: 1,
-          time0: 1,
-          data: { turn: 1, step: 0, index: 1, dt: [1], texts: ['The ', 'user'] },
-        },
-      ]),
-    ]);
-    await new Promise((r) => setTimeout(r, 20));
-    // …a frame cut MID-WRITE (its tail bytes missing)…
-    const whole = fakeTranscript([
-      {
-        type: 'text-chunks',
-        seq0: 3,
-        time0: 2,
-        data: { turn: 1, step: 0, index: 0, dt: [], texts: ['1\n2\n'] },
-      },
-    ]);
-    file = Buffer.concat([file, whole.subarray(0, whole.length - 4)]);
-    await new Promise((r) => setTimeout(r, 20));
-    expect(events).toEqual([{ kind: 'thought_delta', delta: 'The user' }]); // partial held back
-    // …the rest of the frame lands.
-    file = Buffer.concat([file, whole.subarray(whole.length - 4)]);
-    await new Promise((r) => setTimeout(r, 20));
-    expect(events).toEqual([
-      { kind: 'thought_delta', delta: 'The user' },
-      { kind: 'message_delta', delta: '1\n2\n' },
-    ]);
-
-    // Tools + the commit's usage stream; the streamed step's commit does NOT
-    // re-send its text; the unstreamed step's commit DOES (fallback).
+    // A batch arrives mid-generation — a tool call…
     file = Buffer.concat([
       file,
       fakeTranscript([
         { type: 'tool/call', data: { callId: 'c1', name: 'bash', arguments: '{"command":"ls"}' } },
+      ]),
+    ]);
+    await new Promise((r) => setTimeout(r, 20));
+    // …a commit frame cut MID-WRITE (its tail bytes missing)…
+    const whole = fakeTranscript([
+      {
+        type: 'assistant/message',
+        data: {
+          turn: 1,
+          step: 0,
+          message: {
+            content: [
+              { type: 'reasoning', text: 'R' },
+              { type: 'text', text: '1\n2\n' },
+            ],
+          },
+          usage: { inputTokens: 5, outputTokens: 2 },
+        },
+      },
+    ]);
+    file = Buffer.concat([file, whole.subarray(0, whole.length - 4)]);
+    await new Promise((r) => setTimeout(r, 20));
+    expect(events).toEqual([
+      { kind: 'tool_call', call: expect.objectContaining({ toolCallId: 'c1' }) },
+    ]); // partial held back
+    // …the rest of the frame lands: unstreamed step → complete blocks + usage.
+    file = Buffer.concat([file, whole.subarray(whole.length - 4)]);
+    await new Promise((r) => setTimeout(r, 20));
+    expect(events.map((e) => e.kind)).toEqual([
+      'tool_call',
+      'thought_delta',
+      'message_delta',
+      'usage',
+    ]);
+    expect(events[2]).toEqual({ kind: 'message_delta', delta: '1\n2\n' });
+
+    // The flat tool/result completes the pair (callId carries the join).
+    file = Buffer.concat([
+      file,
+      fakeTranscript([
         {
           type: 'tool/result',
           data: {
-            message: {
-              source: { kind: 'tool', callId: 'c1' },
-              content: [
-                { type: 'tool-result', toolCallId: 'c1', content: [{ type: 'text', text: 'a' }] },
-              ],
-            },
-          },
-        },
-        {
-          type: 'assistant/message',
-          data: {
-            turn: 1,
-            step: 0,
-            message: { content: [{ type: 'text', text: 'committed full text' }] },
-            usage: { inputTokens: 5, outputTokens: 2 },
-          },
-        },
-        {
-          type: 'assistant/message',
-          data: {
-            turn: 1,
-            step: 1,
-            message: { content: [{ type: 'text', text: 'never streamed block' }] },
+            message: { role: 'tool', toolCallId: 'c1', content: [{ type: 'text', text: 'a' }] },
           },
         },
       ]),
     ]);
     await new Promise((r) => setTimeout(r, 20));
-    const kinds = events.map((e) => e.kind);
-    expect(kinds).toEqual([
-      'thought_delta',
-      'message_delta',
-      'tool_call',
-      'tool_call',
-      'usage', // step 0: streamed → usage only
-      'message_delta', // step 1: unstreamed → complete block
-    ]);
-    expect(events.at(-1)).toEqual({ kind: 'message_delta', delta: 'never streamed block' });
+    expect(events.at(-1)).toEqual({
+      kind: 'tool_call',
+      call: { toolCallId: 'c1', status: 'completed', output: 'a' },
+    });
 
     // flush() drains synchronously; a turn/end row arms the settle signal;
     // stop() freezes the stream.
@@ -651,10 +770,8 @@ describe('TranscriptTail (dsh live streaming)', () => {
       file,
       fakeTranscript([
         {
-          type: 'text-chunks',
-          seq0: 9,
-          time0: 9,
-          data: { turn: 2, step: 0, index: 0, dt: [], texts: ['post-stop'] },
+          type: 'assistant/message',
+          data: { turn: 2, step: 0, message: { content: [{ type: 'text', text: 'post-stop' }] } },
         },
       ]),
     ]);
@@ -665,9 +782,11 @@ describe('TranscriptTail (dsh live streaming)', () => {
   it('stops and reports fatal on a bounded frame that will not decode', async () => {
     const events: { kind: string }[] = [];
     const fatal: string[] = [];
-    let file = fakeTranscript([{ type: 'session', cwd: '/x', createdAt: 1, delegationDepth: 0 }]);
+    let file = fakeTranscript([
+      { type: 'session', version: 4, cwd: '/x', createdAt: 1, delegationDepth: 0 },
+    ]);
     const tail = new TranscriptTail(
-      '/x/session.jsonl.zstd',
+      '/x/session.v4.jsonl.zstd',
       { size: () => file.length, readEnd: (_p: string, start: number) => file.subarray(start) },
       checkedDecoder,
       (e) => events.push(e as { kind: string }),
@@ -682,10 +801,8 @@ describe('TranscriptTail (dsh live streaming)', () => {
       Buffer.from('garbage-not-zstd'),
       fakeTranscript([
         {
-          type: 'text-chunks',
-          seq0: 1,
-          time0: 1,
-          data: { turn: 1, step: 0, index: 0, dt: [], texts: ['after'] },
+          type: 'assistant/message',
+          data: { turn: 1, step: 0, message: { content: [{ type: 'text', text: 'after' }] } },
         },
       ]),
     ]);
@@ -697,7 +814,7 @@ describe('TranscriptTail (dsh live streaming)', () => {
 });
 
 describe('findTranscript', () => {
-  it('locates the session dir across slugs', () => {
+  it('locates the session dir across slugs and names the CURRENT generation', () => {
     const sessions = '/root/.dsh/sessions';
     const dirs = new Set([
       sessions, // the sessions root itself
@@ -710,12 +827,23 @@ describe('findTranscript', () => {
       return p === sessions ? ['--a--', '--b--'] : ['whatever'];
     };
     expect(findTranscript(sessions, 'id-1', readdir)).toBe(
-      `${sessions}/--a--/id-1/session.jsonl.zstd`,
+      `${sessions}/--a--/id-1/session.v4.jsonl.zstd`,
     );
     expect(
       findTranscript(sessions, 'nope', () => {
         throw new Error('ENOENT');
       }),
     ).toBeNull();
+  });
+
+  it('reads a pre-v4-only session dir as absent (#46)', () => {
+    const sessions = '/root/.dsh/sessions';
+    const readdir = (p: string): string[] => {
+      if (p === sessions) return ['--a--'];
+      if (p === `${sessions}/--a--`) return ['id-1'];
+      if (p === `${sessions}/--a--/id-1`) return ['session.jsonl.zstd'];
+      throw new Error('ENOENT');
+    };
+    expect(findTranscript(sessions, 'id-1', readdir)).toBeNull();
   });
 });

@@ -1,13 +1,13 @@
-// Harness Nexus dsh event tap (Phase 9 W7.1).
+// Harness Nexus dsh event tap (Phase 9 W7.1; #46 tap v2 for dsh ≥0.1.3).
 // wiki design-phase-9-w7.1-dsh-event-tap.md
 //
 // A ZERO-DEPENDENCY cordis plugin, insert-mounted at SPAWN TIME via
 // `dsh --patch <yml>` (the daemon renders the patch next to this file's
 // absolute path — it never touches ~/.dsh). It subscribes dsh's in-process
-// session event bus and forwards every event — verbatim, for ALL sessions —
-// as JSON lines to the daemon's localhost TapListener (HNX_TAP_PORT /
-// HNX_TAP_TOKEN ride the child env). The DAEMON filters by session id; this
-// plugin stays deliberately dumb.
+// session event bus AND the agent-scoped assistant-stream frames, and
+// forwards both — verbatim, for ALL sessions — as JSON lines to the daemon's
+// localhost TapListener (HNX_TAP_PORT / HNX_TAP_TOKEN ride the child env).
+// The DAEMON filters by session id; this plugin stays deliberately dumb.
 //
 // Constraints (spike-verified — see the design doc §Spike results):
 // - dsh's stdio belongs to the ACP JSON-RPC protocol: this file NEVER writes
@@ -15,8 +15,11 @@
 //   degrade to the daemon's transcript-tail fallback, never break the agent.
 // - Bus events arrive zero-latency in the verbatim SessionEvent envelope
 //   (`{type, seq, time, data}`) — the same shape the file tail parses, so
-//   both sources feed one mapper. Persistence packing (`text-chunks` rows)
-//   never appears on the bus.
+//   both sources feed one mapper. Since dsh 0.1.3 (#46) the bus carries
+//   settlement rows only; per-token deltas ride `agent/assistant-stream`
+//   frames (`{type:'start'|'chunk'|'end', attemptId, revision, ...}`), which
+//   the second subscription forwards as `frame` lines (session identity is
+//   the emitting agent's session id).
 // - Depends ONLY on the `apply(ctx)` / `ctx.on` / `ctx.effect` surface —
 //   the same surface the reference bridge uses in production.
 
@@ -56,6 +59,26 @@ export function apply(ctx) {
     socket.write(`${line}\n`);
   });
 
+  // #46 — dsh ≥0.1.3: token deltas left the session bus; they ride the
+  // agent-scoped `agent/assistant-stream` frames. `start` frames carry the
+  // (turn, step) the daemon's settlement dedup keys on; chunk frames carry
+  // the delta text.
+  const offFrames = ctx.on('agent/assistant-stream', ({ agent, frame }) => {
+    if (stopped || !writable || socket === null) return;
+    const session = agent !== null && typeof agent === 'object' ? agent.session : null;
+    const sessionId =
+      session !== null && typeof session === 'object' && typeof session.id === 'string'
+        ? session.id
+        : null;
+    let line;
+    try {
+      line = JSON.stringify({ type: 'frame', sessionId, frame });
+    } catch {
+      return; // unserializable frame — skip rather than break the turn
+    }
+    socket.write(`${line}\n`);
+  });
+
   const connect = () => {
     if (stopped) return;
     const s = netConnect(port, '127.0.0.1');
@@ -91,6 +114,7 @@ export function apply(ctx) {
   ctx.effect(() => () => {
     stopped = true;
     offEvent();
+    offFrames();
     if (retryTimer !== null) clearTimeout(retryTimer);
     socket?.destroy();
   });

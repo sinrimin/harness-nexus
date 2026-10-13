@@ -28,6 +28,13 @@ interface AcpAdapterSpec {
   readonly pkg?: readonly [string, string];
   /** Extra spawn env, layered UNDER the daemon's spawn env (9 W14.1). */
   readonly env?: Readonly<Record<string, string>>;
+  /**
+   * #46 — the minimum CLIENT version this daemon's integration targets.
+   * Fast-moving targets (dsh) get NO back-compat: the daemon supports one
+   * ground-truth version line and refuses to connect below the floor
+   * (`version-gate.ts` probes `<bin> --version` before every spawn).
+   */
+  readonly minVersion?: string;
 }
 
 const DEFAULT_ACP_COMMANDS: Record<AgentTarget, AcpAdapterSpec | null> = {
@@ -57,8 +64,12 @@ const DEFAULT_ACP_COMMANDS: Record<AgentTarget, AcpAdapterSpec | null> = {
     pkg: ['@zed-industries/codex-acp@0.16.0', 'codex-acp'],
   },
   // DeepSeek Harness ships a native ACP v1 profile (needs `dsh` on PATH and a
-  // configured provider route — T1 research § ACP).
-  deepseek: { command: ['dsh', '--profile', 'acp'] },
+  // configured provider route — T1 research § ACP). #46: integration ground
+  // truth is dsh 0.2.0-rc.2 (session-log v4, deltas on
+  // `agent/assistant-stream`, flat tool results) and NOTHING older is
+  // supported — the version gate refuses to connect below this floor with an
+  // upgrade hint.
+  deepseek: { command: ['dsh', '--profile', 'acp'], minVersion: '0.2.0-rc.2' },
   // Hermes ships a native ACP adapter as an install extra.
   hermes: { command: ['python3', '-m', 'acp_adapter'] },
   // 9 W12 — OpenCode speaks ACP NATIVELY: `opencode acp` (official docs
@@ -133,4 +144,18 @@ export function resolveAcpCommand(
           args: def.command.slice(1),
         });
   return { ...base, ...(def.env !== undefined ? { env: { ...def.env } } : {}) };
+}
+
+/**
+ * #46 — the version floor a target's CLIENT must meet before the daemon
+ * connects (see `version-gate.ts`). Null when the target has no floor, or
+ * when an `HN_ACP_COMMAND_<TARGET>` override owns the command line: an
+ * operator-pinned install is managed by hand (and the test fixtures that
+ * ride the override must not be gated on a real dsh).
+ */
+export function acpMinVersion(target: AgentTarget, env: NodeJS.ProcessEnv): string | null {
+  const def = DEFAULT_ACP_COMMANDS[target];
+  if (def?.minVersion === undefined) return null;
+  const override = env[`HN_ACP_COMMAND_${target.toUpperCase().replace(/-/g, '_')}`];
+  return override !== undefined && override.trim() !== '' ? null : def.minVersion;
 }

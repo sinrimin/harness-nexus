@@ -48,6 +48,7 @@ import {
   type JsonRpcId,
 } from './acp/agent-connection.js';
 import { resolveAcpCommand } from './acp/adapters.js';
+import { checkAcpVersion, type VersionGateResult } from './acp/version-gate.js';
 import { PiRpcConnection, resolvePiCommand } from './acp/pi-connection.js';
 import {
   auditAdapterLedger,
@@ -59,6 +60,7 @@ import { UsageLedger, hasTokenCounts, normalizeUsage, responseUsageMode } from '
 import { rewriteHistoryItems, rewriteSessionConfigOptions } from './model-options.js';
 import {
   createDshLiveMapper,
+  currentSessionLog,
   decodeTranscript,
   dshHistoryItems,
   findTranscript,
@@ -92,21 +94,26 @@ import {
  * keeps a bounded history ring (forwarded prompts + mapped events) so a
  * `chat:session.resync` (page refresh rejoin) can rebuild the browser's fold.
  *
- * dsh STREAMING (9 W7.1): its ACP adapter only commits whole blocks at turn
- * end (rig-verified — zero notifications during generation), so deepseek
- * channels stream from an auxiliary source with a purely-additive priority
- * chain: (1) the IN-PROCESS EVENT TAP — the daemon insert-mounts a zero-dep
- * cordis plugin at spawn (`dsh --patch`, assets in `daemon/dsh-tap/`) which
- * forwards the session event bus over a localhost JSON-line socket
- * (`dsh-tap-listener.ts`; zero latency, verbatim events); (2) on no
- * handshake within 3s (old dsh, plugin failure, `HN_DISABLE_DSH_TAP=1` A/B
- * switch) the W7 TRANSCRIPT-FILE TAIL (`TranscriptTail` — batches land as
- * zstd frames ~100–300ms behind); (3) neither → committed-only. Whichever
- * source is live feeds ONE `createDshLiveMapper` per session (deltas AND
- * complete blocks for unstreamed steps), so the wire's committed text chunks
- * are suppressed wholesale while it is live (letting them through would
- * double-render). A tap that dies mid-session leaves that session
- * committed-only — a fresh mapper cannot know what was already streamed.
+ * dsh STREAMING (9 W7.1; #46 ground truth dsh 0.2.0-rc.2): its ACP adapter
+ * only commits whole blocks at turn end (rig-verified — zero notifications
+ * during generation), so deepseek channels stream from an auxiliary source
+ * with a purely-additive priority chain: (1) the IN-PROCESS EVENT TAP — the
+ * daemon insert-mounts a zero-dep cordis plugin at spawn (`dsh --patch`,
+ * assets in `daemon/dsh-tap/`) which forwards BOTH the `session/event` bus
+ * (settlement rows, tools, turn markers) and the agent-scoped
+ * `agent/assistant-stream` FRAMES (the per-token deltas — dsh ≥0.1.3 moved
+ * them off the bus) over a localhost JSON-line socket (`dsh-tap-listener.ts`);
+ * (2) on no handshake within 3s (plugin failure, `HN_DISABLE_DSH_TAP=1` A/B
+ * switch) the W7 TRANSCRIPT-FILE TAIL (`TranscriptTail` on the
+ * generation-versioned log — settlement rows land as zstd frames ~100–300ms
+ * behind, so the fallback streams blocks at commit granularity); (3) neither
+ * → committed-only. Whichever source is live feeds ONE live mapper per
+ * session (frame deltas AND complete blocks for unstreamed steps), so the
+ * wire's committed text chunks are suppressed wholesale while it is live
+ * (letting them through would double-render). A tap that dies mid-session
+ * leaves that session committed-only — a fresh mapper cannot know what was
+ * already streamed. Out-of-range dsh never gets this far: the #46 version
+ * gate refuses the spawn with an upgrade hint.
  */
 
 interface DaemonSession {
@@ -224,6 +231,11 @@ export interface ChatHandlersOptions {
    * assert file lifetimes drive `auditAdapterLedger` directly).
    */
   auditIntervalMs?: number;
+  /**
+   * #46 — override the ACP client version-gate check (tests inject canned
+   * verdicts; default probes `<bin> --version` for gated targets).
+   */
+  versionGate?: (target: AgentTarget, env: NodeJS.ProcessEnv) => Promise<VersionGateResult>;
 }
 
 /** What `attachChatHandlers` hands back for other daemon handlers (issue #2). */
@@ -299,6 +311,9 @@ export function attachChatHandlers(
 ): ChatHandlersHandle {
   const env = opts.env ?? process.env;
   const home = opts.homeDir ?? homedir();
+  // #46 — the client version gate (channel open AND the prewarm pool).
+  const versionGate =
+    opts.versionGate ?? ((target: AgentTarget, e: NodeJS.ProcessEnv) => checkAcpVersion(target, e));
   const sessions = new Map<string, DaemonSession>();
   /**
    * Ids whose `chat:session.close` arrived BEFORE the session registered. A
@@ -442,7 +457,11 @@ export function attachChatHandlers(
     listener: TapListener;
     patchPath: string;
     hello: Promise<boolean>;
-    bind(sink: (sessionId: string, event: Record<string, unknown>) => void, loss: () => void): void;
+    bind(
+      sink: (sessionId: string, event: Record<string, unknown>) => void,
+      loss: () => void,
+      frameSink: (sessionId: string, frame: Record<string, unknown>) => void,
+    ): void;
   }
 
   /**
@@ -462,18 +481,21 @@ export function attachChatHandlers(
     const patchPath = writeTapPatch(home, tapPluginPath());
     if (patchPath === null) return Promise.resolve(null);
     let sink: ((sessionId: string, event: Record<string, unknown>) => void) | null = null;
+    let frameSink: ((sessionId: string, frame: Record<string, unknown>) => void) | null = null;
     let loss: (() => void) | null = null;
     return TapListener.create({
       onEvent: (sessionId, event) => sink?.(sessionId, event),
+      onFrame: (sessionId, frame) => frameSink?.(sessionId, frame),
       onLoss: () => loss?.(),
     })
       .then((listener): TapArm => ({
         listener,
         patchPath,
         hello: listener.waitHello(Date.now() + TAP_HANDSHAKE_MS),
-        bind: (fnSink, fnLoss) => {
+        bind: (fnSink, fnLoss, fnFrameSink) => {
           sink = fnSink;
           loss = fnLoss;
+          frameSink = fnFrameSink;
         },
       }))
       .catch(() => null);
@@ -560,6 +582,11 @@ export function attachChatHandlers(
     spawn: async (key) => {
       const cmd = resolveAcpCommand(key as AgentTarget, env, { homeDir: home });
       if (cmd === null) return null;
+      // #46 — never pre-warm an out-of-range client: the channel open would
+      // refuse it anyway (and surface the upgrade hint), so a pool entry
+      // would be a wasted spawn.
+      const gate = await versionGate(key as AgentTarget, env);
+      if (!gate.ok) return null;
       const tapArmed = await armTap(key);
       // Same env layering as the channel spawn (target env + test spawnEnv),
       // minus the cwd — a prewarm has no session yet, so it boots in `home`.
@@ -651,6 +678,14 @@ export function attachChatHandlers(
           sessionId,
           error: `no ACP adapter for target '${target}'`,
         });
+        return;
+      }
+      // #46 — the client version gate: a fast-moving target's out-of-range
+      // client is refused BEFORE any spawn/consume with an actionable upgrade
+      // hint (override-managed command lines skip the gate — see adapters.ts).
+      const gate = await versionGate(target, env);
+      if (!gate.ok) {
+        socket.emit('chat:session.ready', { sessionId, error: gate.message });
         return;
       }
       // Issue #3 — adopt a READY prewarmed adapter (skip spawn + initialize;
@@ -875,7 +910,7 @@ export function attachChatHandlers(
               (sid, busEvent) => {
                 if (sessions.get(sessionId) !== session || sid !== session.acpSessionId) return;
                 if (busEvent['type'] === 'turn/end') session.tapTurnEndAt = Date.now();
-                for (const event of session.tapMapper?.(busEvent) ?? []) {
+                for (const event of session.tapMapper?.event(busEvent) ?? []) {
                   emitEvent(session, event);
                 }
               },
@@ -887,6 +922,13 @@ export function attachChatHandlers(
                 console.warn(
                   '[chat] dsh event tap lost — committed-only streaming for this session',
                 );
+              },
+              // #46 — the token-delta arm: `agent/assistant-stream` frames.
+              (sid, frame) => {
+                if (sessions.get(sessionId) !== session || sid !== session.acpSessionId) return;
+                for (const event of session.tapMapper?.frame(frame) ?? []) {
+                  emitEvent(session, event);
+                }
               },
             );
           } else {
@@ -1324,9 +1366,10 @@ function finishCaptured(items: HistoryItem[]): HistoryItem[] {
 
 /**
  * dsh resume history — the adapter restores the log WITHOUT replaying, so the
- * transcript file is the source. Best-effort by design: a missing/unreadable
- * transcript (or no zstd on this Node) resumes WITHOUT history rather than
- * failing the channel.
+ * transcript file is the source (the CURRENT generation-versioned artifact,
+ * #46 — a pre-v4 log reads as absent and resumes without history).
+ * Best-effort by design: a missing/unreadable transcript (or no zstd on this
+ * Node) resumes WITHOUT history rather than failing the channel.
  */
 async function dshTranscriptHistory(home: string, sessionId: string): Promise<HistoryItem[]> {
   try {
@@ -1334,11 +1377,18 @@ async function dshTranscriptHistory(home: string, sessionId: string): Promise<Hi
     const zstd = nativeZstd();
     if (zstd === null) return [];
     for (const slug of readdirSync(root)) {
-      const candidate = join(root, slug, sessionId, 'session.jsonl.zstd');
+      const dir = join(root, slug, sessionId);
       try {
-        return dshHistoryItems(decodeTranscript(readFileSync(candidate), zstd));
+        readdirSync(dir); // the session directory exists — a log may follow
       } catch {
-        // not under this slug (or undecodable) — try the next
+        continue; // not under this slug
+      }
+      const log = currentSessionLog(dir, (p) => readdirSync(p));
+      if (log === null) return []; // only pre-v4 artifacts — unsupported (#46)
+      try {
+        return dshHistoryItems(decodeTranscript(readFileSync(log.file), zstd));
+      } catch {
+        return []; // lazily materialized (no log yet) or undecodable
       }
     }
     return [];

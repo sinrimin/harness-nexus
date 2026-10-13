@@ -117,7 +117,7 @@ describe('the tap plugin (index.mjs) vs a local net server', () => {
     ctx.emit(
       'session/event',
       { id: 's1' },
-      { type: 'assistant/chunk', seq: 1, time: 1, data: { turn: 1, step: 0, chunk: {} } },
+      { type: 'assistant/message', seq: 1, time: 1, data: { turn: 1, step: 0 } },
     );
     const forwarded = await waitFor(() =>
       collected[1] !== undefined
@@ -127,13 +127,42 @@ describe('the tap plugin (index.mjs) vs a local net server', () => {
     expect(forwarded).toEqual({
       type: 'event',
       sessionId: 's1',
-      event: { type: 'assistant/chunk', seq: 1, time: 1, data: { turn: 1, step: 0, chunk: {} } },
+      event: { type: 'assistant/message', seq: 1, time: 1, data: { turn: 1, step: 0 } },
     });
 
+    // #46 — the second subscription: agent/assistant-stream frames ride
+    // `frame` lines, session identity from agent.session.id.
+    const frame = {
+      type: 'chunk',
+      attemptId: 's1:1',
+      revision: 2,
+      index: 0,
+      time: 1,
+      chunk: { type: 'text-delta', index: 0, text: 'tok' },
+    };
+    ctx.emit('agent/assistant-stream', { agent: { session: { id: 's1' } }, frame });
+    const forwardedFrame = await waitFor(() =>
+      collected[2] !== undefined
+        ? (JSON.parse(collected[2]!) as Record<string, unknown>)
+        : undefined,
+    );
+    expect(forwardedFrame).toEqual({ type: 'frame', sessionId: 's1', frame });
+    // A malformed frame payload (no session identity) still forwards — the
+    // DAEMON filters; the plugin stays deliberately dumb.
+    ctx.emit('agent/assistant-stream', { agent: null, frame });
+    await waitFor(() => (collected[3] !== undefined ? true : undefined));
+    expect(JSON.parse(collected[3]!)).toEqual({ type: 'frame', sessionId: null, frame });
+
     ctx.disposeNow();
-    await sleep(150); // disposed — a further bus event must not write
-    ctx.emit('session/event', { id: 's1' }, { type: 'assistant/chunk', seq: 2, time: 2, data: {} });
-    expect(collected.length).toBe(2);
+    await sleep(150); // disposed — further bus lines must not write
+    const disposed = collected.length;
+    ctx.emit(
+      'session/event',
+      { id: 's1' },
+      { type: 'assistant/message', seq: 2, time: 2, data: {} },
+    );
+    ctx.emit('agent/assistant-stream', { agent: { session: { id: 's1' } }, frame });
+    expect(collected.length).toBe(disposed);
     await new Promise<void>((r) => srv.close(() => r()));
   });
 
@@ -190,9 +219,11 @@ describe('the tap plugin (index.mjs) vs a local net server', () => {
 describe('TapListener', () => {
   it('gates on the hello token, dispatches events, reports loss, memoizes the handshake', async () => {
     const events: [string, Record<string, unknown>][] = [];
+    const frames: [string, Record<string, unknown>][] = [];
     let losses = 0;
     const listener = await TapListener.create({
       onEvent: (sid, ev) => events.push([sid, ev]),
+      onFrame: (sid, fr) => frames.push([sid, fr]),
       onLoss: () => losses++,
     });
     expect(listener.port).toBeGreaterThan(0);
@@ -222,18 +253,23 @@ describe('TapListener', () => {
 
     // Event lines dispatch; malformed ones are dropped, never fatal.
     const ev = {
-      type: 'assistant/chunk',
+      type: 'assistant/message',
       seq: 1,
       time: 1,
-      data: { chunk: { type: 'text-delta', text: 'x' } },
+      data: {},
     };
     good.write(`${JSON.stringify({ type: 'event', sessionId: 's1', event: ev })}\n`);
     good.write(`${JSON.stringify({ type: 'event', event: ev })}\n`);
     good.write(`${JSON.stringify({ type: 'event', sessionId: 's2', event: 42 })}\n`);
     good.write('not json\n');
-    await waitFor(() => (events.length > 0 ? true : undefined));
+    // #46 — frame lines dispatch through onFrame with the same gating.
+    const fr = { type: 'start', attemptId: 's1:1', revision: 1, turn: 1, step: 0 };
+    good.write(`${JSON.stringify({ type: 'frame', sessionId: 's1', frame: fr })}\n`);
+    good.write(`${JSON.stringify({ type: 'frame', sessionId: 's2', frame: 42 })}\n`);
+    await waitFor(() => (events.length > 0 && frames.length > 0 ? true : undefined));
     await sleep(80);
     expect(events).toEqual([['s1', ev]]);
+    expect(frames).toEqual([['s1', fr]]);
 
     // Post-hello socket loss → onLoss; an intentional close does not fire it.
     good.destroy();
