@@ -5,19 +5,21 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 /**
- * Daemon side of the dsh in-process event tap (Phase 9 W7.1).
+ * Daemon side of the dsh in-process event tap (Phase 9 W7.1; #46 tap v2).
  * wiki design-phase-9-w7.1-dsh-event-tap.md
  *
  * `dsh --patch` insert-mounts the zero-dep plugin shipped at
  * `daemon/dsh-tap/index.mjs`; the plugin dials back this localhost listener
  * (one per chat channel: ephemeral port, one-time token) and streams dsh's
- * in-process `session/event` bus as JSON lines — zero latency, verbatim
- * `SessionEvent` envelopes, no persistence encoding involved. The events
- * feed the SAME `createDshLiveMapper` the transcript tail uses (chat.ts),
- * so the wire's committed chunks stay suppressed exactly as in the tail
- * path. Everything here is best-effort by construction: any failure (old
- * dsh without `--patch`, plugin load error, listen failure) degrades to
- * the W7 file tail — worst case equals the shipped behavior.
+ * in-process buses as JSON lines — zero latency, verbatim shapes, no
+ * persistence encoding involved. Two line kinds feed the SAME live mapper
+ * the transcript tail uses (chat.ts): `session/event` bus rows (settlement,
+ * tools, turn markers — the `{type, seq, time, data}` envelope) and, since
+ * dsh 0.1.3 (#46), `agent/assistant-stream` FRAMES carrying the per-token
+ * deltas. The wire's committed chunks stay suppressed while the tap is live.
+ * Everything here is best-effort by construction: any failure (plugin load
+ * error, listen failure) degrades to the W7 file tail — worst case equals
+ * block-at-commit streaming.
  */
 
 /** Absolute path of the shipped tap plugin (dist in builds, src under tsx dev). */
@@ -63,8 +65,10 @@ export function tapPluginAvailable(): boolean {
 }
 
 export interface TapListenerEvents {
-  /** Every bus event of every session — the daemon filters by acp session id. */
+  /** Every `session/event` bus row of every session — settlement, tools, turn markers. */
   onEvent: (sessionId: string, event: Record<string, unknown>) => void;
+  /** Every `agent/assistant-stream` frame (dsh ≥0.1.3) — the token-delta arm. */
+  onFrame?: (sessionId: string, frame: Record<string, unknown>) => void;
   /** A post-handshake socket loss: the tap is dead (committed-only ensues). */
   onLoss?: () => void;
 }
@@ -74,9 +78,11 @@ export interface TapListenerEvents {
  * the plugin's first line must be `{"type":"hello","token","pid"}` — a token
  * mismatch gets a `{"type":"reject"}` and the socket destroyed (the plugin
  * then stops; the port is not its listener). Every later line is
- * `{"type":"event","sessionId","event"}`. `waitHello(deadlineAt)` is the
- * handshake race: true once a valid hello landed, false past the deadline
- * or after `close()` — the caller treats false as "no tap, fall back".
+ * `{"type":"event","sessionId","event"}` (bus rows) or
+ * `{"type":"frame","sessionId","frame"}` (assistant-stream frames).
+ * `waitHello(deadlineAt)` is the handshake race: true once a valid hello
+ * landed, false past the deadline or after `close()` — the caller treats
+ * false as "no tap, fall back".
  */
 export class TapListener {
   readonly token: string;
@@ -177,7 +183,13 @@ export class TapListener {
     } catch {
       return; // noise on the wire — skip
     }
-    const m = msg as { type?: unknown; token?: unknown; sessionId?: unknown; event?: unknown };
+    const m = msg as {
+      type?: unknown;
+      token?: unknown;
+      sessionId?: unknown;
+      event?: unknown;
+      frame?: unknown;
+    };
     if (!this.helloSeen) {
       if (m.type === 'hello' && m.token === this.token) {
         this.helloSeen = true;
@@ -195,6 +207,13 @@ export class TapListener {
       const event = (m.event ?? {}) as Record<string, unknown>;
       if (event !== null && typeof event === 'object' && !Array.isArray(event)) {
         this.events.onEvent(m.sessionId, event);
+      }
+      return;
+    }
+    if (m.type === 'frame' && typeof m.sessionId === 'string' && m.sessionId !== '') {
+      const frame = (m.frame ?? {}) as Record<string, unknown>;
+      if (frame !== null && typeof frame === 'object' && !Array.isArray(frame)) {
+        this.events.onFrame?.(m.sessionId, frame);
       }
     }
   }

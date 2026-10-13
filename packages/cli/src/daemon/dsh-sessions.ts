@@ -3,27 +3,32 @@ import type { ChatStreamEvent, HistoryItem } from '@harness-nexus/shared';
 import { hasTokenCounts, normalizeUsage } from './usage.js';
 
 /**
- * dsh native session store reader (Phase 9 W7).
- * wiki design-phase-9-w7-native-sessions.md § ground truth.
+ * dsh native session store reader (Phase 9 W7; format ground truth dsh
+ * 0.2.0-rc.2 — wiki design-phase-9-w7-native-sessions.md § ground truth).
  *
- * dsh persists every session at `~/.dsh/sessions/<cwd-slug>/<uuid>/
- * session.jsonl.zstd` as MULTI-FRAME zstd — one frame per write batch (the
- * engine appends every LLM chunk as a `assistant/chunk` session event; a
- * bounded write-behind window coalesces them ~100–300ms apart). Node's
- * one-shot AND stream zstd decoders stop after the first frame, so the reader
- * scans the frame magic (`28 B5 2F FD`), slices, and decodes each frame
- * separately. Delta runs reach disk in TWO shapes — packed `text-chunks`/
- * `reasoning-chunks`/`tool-call-chunks` rows (runs of ≥3 seq-contiguous
- * same-block deltas) and verbatim `assistant/chunk` events below that
- * (MIN_RUN=3 fall-through; shapes verified against dsh 0.1.2-rc.1 source).
- * Everything here is pure/bounded and injectable for tests; the zstd binding
- * is feature-detected (needs Node ≥ 22.15 — machines running dsh already
- * require it, but the daemon degrades gracefully below it).
+ * dsh persists every session at `~/.dsh/sessions/<cwd-slug>/<uuid>/` as a
+ * GENERATION-VERSIONED multi-frame zstd log — `session.v4.jsonl.zstd` is the
+ * current artifact (v0 was the unversioned `session.jsonl.zstd`). One
+ * checksummed zstd frame per write batch (~100–300ms apart); Node's one-shot
+ * AND stream zstd decoders stop after the first frame, so the reader scans
+ * the frame magic (`28 B5 2F FD`), slices, and decodes each frame separately.
+ * Since format v3 every physical row is ONE durable event: the v0 packed
+ * `text-chunks` rows and the per-token `assistant/chunk` events are gone —
+ * settlement `assistant/message` / `assistant/attempt` rows embed the exact
+ * timed `stream[]` instead. #46: NO back-compat — the daemon understands only
+ * the CURRENT generation (`SUPPORTED_SESSION_GENERATION`), and out-of-range
+ * dsh clients are refused at connect time (adapters.ts `minVersion` + the
+ * ACP version gate), so pre-v4 artifacts read as absent.
  *
  * dsh's ACP adapter surfaces only COMMITTED updates — a whole reasoning/text
- * block arrives as ONE chunk when the turn ends, so there is no streaming
- * over the protocol. The transcript file, however, is appended LIVE with the
- * token batches, which is what `TranscriptTail` turns into real-time deltas.
+ * block arrives as ONE chunk when the turn ends. Live per-token deltas exist
+ * ONLY on the agent-scoped `agent/assistant-stream` frames (dsh ≥0.1.3; the
+ * W7.1 tap's second subscription — `frame()` on the live mapper); the
+ * transcript receives them embedded in the settlement row's `stream[]`, so
+ * the tail fallback streams blocks at commit granularity. Everything here is
+ * pure/bounded and injectable for tests; the zstd binding is feature-detected
+ * (needs Node ≥ 22.15 — machines running dsh already require ≥22.19, but the
+ * daemon degrades gracefully below it).
  */
 
 /** zstd frame magic, big-endian as stored. */
@@ -87,6 +92,61 @@ export function decodeTranscript(
   return entries;
 }
 
+// ---- generation-versioned log discovery (dsh ≥0.1.3; #46) ----
+
+/** Canonical generation-versioned log name: `session.jsonl.zstd` (v0) or `session.vN.jsonl.zstd`. */
+const SESSION_LOG_RE = /^session(?:\.v([1-9][0-9]*))?\.jsonl\.zstd$/;
+
+/**
+ * The minimum session-log generation this daemon reads (dsh 0.2.0-rc.2 — the
+ * version-gate floor — writes v4). Older generations are unsupported by
+ * policy: their packed rows and `assistant/chunk` deltas do not parse, and
+ * the gate already refuses the dsh builds that write them.
+ */
+export const SUPPORTED_SESSION_GENERATION = 4;
+
+export interface SessionLog {
+  file: string;
+  generation: number;
+}
+
+/**
+ * A session-owned directory's CURRENT log: the numerically highest canonical
+ * generation (dsh's own selection rule — a resumed old session leaves the
+ * historical file byte-identical and publishes the successor alongside it).
+ * Directories whose best generation is below the supported floor read as
+ * absent. When the directory exists but holds no log yet (a new session is
+ * lazily materialized on its first append), the expected CURRENT name is
+ * returned so a tail can poll for the file's appearance.
+ */
+export function currentSessionLog(
+  dir: string,
+  readdir: (path: string) => string[],
+): SessionLog | null {
+  let names: string[];
+  try {
+    names = readdir(dir);
+  } catch {
+    return null;
+  }
+  let best: SessionLog | null = null;
+  for (const name of names) {
+    const match = SESSION_LOG_RE.exec(name);
+    if (match === null) continue;
+    const generation = match[1] === undefined ? 0 : Number(match[1]);
+    if (best === null || generation > best.generation) {
+      best = { file: `${dir}/${name}`, generation };
+    }
+  }
+  if (best !== null) {
+    return best.generation >= SUPPORTED_SESSION_GENERATION ? best : null;
+  }
+  return {
+    file: `${dir}/session.v${SUPPORTED_SESSION_GENERATION}.jsonl.zstd`,
+    generation: SUPPORTED_SESSION_GENERATION,
+  };
+}
+
 // ---- listing ----
 
 export interface DshSessionSummary {
@@ -95,7 +155,7 @@ export interface DshSessionSummary {
   title: string | null;
   createdAt: string | null;
   updatedAt: string | null;
-  /** The model route the session pinned (`request/header.config.model`). */
+  /** The model route the session pinned (`request/header`). */
   model: string | null;
 }
 
@@ -109,9 +169,10 @@ interface DshHeader {
 /**
  * Header + derived title + pinned model from the FRONT of a transcript
  * (dsh's own `session/list` exposes none of these). Stops as soon as all are
- * found; bounded read so a huge transcript costs at most `maxBytes`. NB: the
- * `session` HEADER entry carries its fields at the TOP level (no `data`
- * wrapper), unlike every other entry type.
+ * found; bounded read so a huge transcript costs at most `maxBytes`. The
+ * `session` HEADER row carries its fields at the TOP level (no `data`
+ * wrapper), unlike every other row; v4 adds `version`/`id`/`isSeeded` we do
+ * not read.
  */
 export function scanSummary(
   buf: Buffer,
@@ -123,9 +184,10 @@ export function scanSummary(
   let title: string | null = null;
   let model: string | null = null;
   // A real user turn (`agent/inbox/spliced`) — the marker that separates a
-  // LIVED-IN session from dsh's config-preamble-only files (every fresh
-  // session writes session/permission-preset/sandbox-mode/approval-policy
-  // rows before any conversation, so header presence is NOT enough).
+  // LIVED-IN session from a never-appended one. Sessions materialize lazily
+  // (nothing hits disk before the first turn's events flush), but a
+  // header-only artifact (an explicit empty-session flush) is still not a
+  // conversation, so the spliced marker stays the gate.
   let hasTurn = false;
   for (const frame of splitZstdFrames(bounded)) {
     let text: string;
@@ -212,20 +274,19 @@ export function dshListSessions(
       // the server marks them `open` and the rail offers a rejoin. dsh itself
       // still refuses a fresh resume of an active session; that failure path
       // is exactly why the row must rejoin the existing channel instead.
-      const file = `${sessionsDir}/${slug}/${id}/session.jsonl.zstd`;
+      const log = currentSessionLog(`${sessionsDir}/${slug}/${id}`, fs.readdir);
+      if (log === null) continue; // pre-v4 artifact only — unsupported (#46)
       let buf: Buffer;
       try {
-        buf = fs.readFile(file);
+        buf = fs.readFile(log.file);
       } catch {
-        continue;
+        continue; // lazily materialized — nothing durable yet
       }
       const { header, title, model, hasTurn } = scanSummary(buf, decompress);
-      // Header-only/config-preamble transcripts are NOT conversations: every
-      // dsh spawn writes them before any turn, and the -32605 startup-race
-      // retry leaves one behind per lost race (the "two unnamed sessions"
-      // double). Listing only lived-in sessions matches claude-code's
-      // transcript-on-first-message semantics; a live-but-still-empty channel
-      // still shows via the server's synthesized open row.
+      // Header-only artifacts are NOT conversations: listing only lived-in
+      // sessions matches claude-code's transcript-on-first-message semantics;
+      // a live-but-still-empty channel still shows via the server's
+      // synthesized open row.
       if (!hasTurn) continue;
       if (header === null) continue;
       if (typeof header.cwd !== 'string' || header.cwd === '' || !header.cwd.startsWith('/')) {
@@ -234,7 +295,7 @@ export function dshListSessions(
       if (header.parentSession !== undefined || header.delegationDepth !== 0) continue;
       let mtimeMs: number;
       try {
-        mtimeMs = fs.stat(file).mtimeMs;
+        mtimeMs = fs.stat(log.file).mtimeMs;
       } catch {
         mtimeMs = 0;
       }
@@ -271,7 +332,7 @@ function bounded(raw: unknown, max: number): string | undefined {
   return raw.length <= max ? raw : raw.slice(0, max);
 }
 
-/** Parse dsh's tool `arguments` (a JSON string) into a bounded rawInput map. */
+/** Parse dsh tool `arguments` (a JSON string) into a bounded rawInput map. */
 function parseArguments(raw: unknown): Record<string, unknown> | undefined {
   if (typeof raw !== 'string' || raw === '') return undefined;
   try {
@@ -283,7 +344,7 @@ function parseArguments(raw: unknown): Record<string, unknown> | undefined {
   return undefined;
 }
 
-/** The `tool/call` shape — in_progress with parsed arguments (shared: history + live tail). */
+/** The `tool/call` shape — in_progress with parsed arguments (shared: history + live). */
 function toolStartEvent(callId: unknown, name: unknown, args: unknown): ChatStreamEvent | null {
   if (typeof callId !== 'string' || callId === '') return null;
   return {
@@ -299,23 +360,25 @@ function toolStartEvent(callId: unknown, name: unknown, args: unknown): ChatStre
   };
 }
 
-/** The `tool/result` shape — completed with the joined output text (shared). */
-function toolResultEvent(message: UnknownRecord | null): ChatStreamEvent | null {
-  const source = message !== null && isRecord(message['source']) ? message['source'] : null;
-  const callId = source !== null ? source['callId'] : undefined;
-  if (typeof callId !== 'string' || callId === '') return null;
+/**
+ * The `tool/result` shape (v4): a first-class tool-role message — FLAT
+ * `content: ContentBlock[]` with `toolCallId`/`isError` on the message (the
+ * v0 shape nested one block under `content[0].content`; `source.callId`
+ * survives and stays the fallback id). Completed with the joined output text.
+ */
+function toolResultEvent(data: UnknownRecord): ChatStreamEvent | null {
+  const message = isRecord(data['message']) ? (data['message'] as UnknownRecord) : null;
+  if (message === null) return null;
+  const direct = typeof message['toolCallId'] === 'string' ? message['toolCallId'] : undefined;
+  const source = isRecord(message['source']) ? (message['source'] as UnknownRecord) : null;
+  const fallback = typeof source?.['callId'] === 'string' ? source['callId'] : undefined;
+  const callId = direct !== undefined && direct !== '' ? direct : fallback;
+  if (callId === undefined || callId === '') return null;
   const texts: string[] = [];
-  const content = message !== null ? message['content'] : undefined;
-  if (Array.isArray(content)) {
-    for (const c of content) {
-      if (!isRecord(c)) continue;
-      const inner = c['content'];
-      if (!Array.isArray(inner)) continue;
-      for (const piece of inner) {
-        if (isRecord(piece) && piece['type'] === 'text' && typeof piece['text'] === 'string') {
-          texts.push(piece['text']);
-        }
-      }
+  if (Array.isArray(message['content'])) {
+    for (const c of message['content']) {
+      if (isRecord(c) && c['type'] === 'text' && typeof c['text'] === 'string')
+        texts.push(c['text']);
     }
   }
   return {
@@ -328,14 +391,14 @@ function toolResultEvent(message: UnknownRecord | null): ChatStreamEvent | null 
   };
 }
 
-/** The `turn:step` dedup key, or null when the entry carries no coordinates. */
+/** The `turn:step` dedup key, or null when the record carries no coordinates. */
 function stepKey(data: UnknownRecord): string | null {
   const turn = data['turn'];
   const step = data['step'];
   return typeof turn === 'number' && typeof step === 'number' ? `${turn}:${step}` : null;
 }
 
-/** A usage event from a commit's `usage` payload (null when absent/malformed). */
+/** A usage event from an `assistant/message` commit's `usage` payload (null when absent/malformed). */
 function usageEvent(raw: unknown): ChatStreamEvent | null {
   if (!isRecord(raw)) return null;
   const fields = normalizeUsage(raw);
@@ -343,100 +406,73 @@ function usageEvent(raw: unknown): ChatStreamEvent | null {
   return { kind: 'usage', ...fields };
 }
 
-/** The usage marker of a verbatim `assistant/chunk` row (history path). */
-export function usageFromChunk(entry: UnknownRecord): ChatStreamEvent | null {
-  const data = isRecord(entry['data']) ? (entry['data'] as UnknownRecord) : null;
-  if (data === null) return null;
-  const chunk = isRecord(data['chunk']) ? (data['chunk'] as UnknownRecord) : null;
-  if (chunk === null || chunk['type'] !== 'usage') return null;
-  return usageEvent(chunk['usage']);
+/**
+ * Flat `ContentBlock[]` → bounded deltas (text and reasoning only — the
+ * `tool/call` row owns tool-call blocks).
+ */
+function blockDeltas(content: unknown, out: ChatStreamEvent[]): void {
+  if (!Array.isArray(content)) return;
+  for (const raw of content) {
+    if (!isRecord(raw)) continue;
+    if (raw['type'] !== 'text' && raw['type'] !== 'reasoning') continue;
+    const text = bounded(raw['text'], 100_000);
+    if (text === undefined || text === '') continue;
+    out.push({
+      kind: raw['type'] === 'reasoning' ? 'thought_delta' : 'message_delta',
+      delta: text,
+    });
+  }
+}
+
+/** The live mapper's two intake arms (see `createDshLiveMapper`). */
+export interface DshLiveMapper {
+  /**
+   * One durable SessionEvent row (transcript tail OR the tap's `session/event`
+   * bus arm) → 0..n stream events. Settlement `assistant/message` carries the
+   * step's dedup key: if tap frames already streamed deltas for that
+   * `turn:step`, ONLY the usage rides through (re-sending the complete blocks
+   * would double-render); if none did (late tail attach, tap-less fallback),
+   * the complete blocks are emitted — the wire's committed chunk is
+   * suppressed while a streaming source is live, so this fallback is the only
+   * copy. `assistant/attempt` (a failed/retried attempt that committed no
+   * surface message) maps to nothing. Turn markers and user inputs never map
+   * live — the prompt response owns turn_result, and the browser echoes the
+   * user's own prompt.
+   */
+  event(entry: UnknownRecord): ChatStreamEvent[];
+  /**
+   * One `agent/assistant-stream` frame (the tap's delta arm) → 0..n events.
+   * `start` records the attempt's `turn:step` (chunk frames carry only the
+   * attemptId); `chunk` maps text/reasoning deltas and marks the step
+   * streamed (the settlement dedup key); every other frame kind/chunk type —
+   * block markers, tool-call deltas, usage (rides the commit), finish — maps
+   * to nothing.
+   */
+  frame(frame: UnknownRecord): ChatStreamEvent[];
 }
 
 /**
- * The stateful LIVE mapper: one dsh transcript entry → 0..n stream events.
- * Mirrors the semantics of dsh's own in-process bridge mapper (reference:
- * `updates.js` `createEventMapper`, engine/storage shapes verified against
- * dsh 0.1.2-rc.1 — the exact rig version):
- *
- * - Deltas arrive in TWO on-disk shapes: packed `text-chunks`/
- *   `reasoning-chunks` rows (runs of ≥3 seq-contiguous same-block deltas) and
- *   verbatim `assistant/chunk` events (shorter runs — the codec's MIN_RUN=3
- *   falls through). Both map; skipping either would silently drop content.
- * - Committed `assistant/message` carries the step's dedup key: if deltas for
- *   that `turn:step` were already emitted, ONLY the usage rides through
- *   (re-sending the full block would double-render); if none were (late tail
- *   attach, block-only adapters), the complete blocks are emitted — the wire's
- *   committed chunk is suppressed while the tail is live, so this fallback is
- *   the only copy. Tool-call blocks are skipped: the `tool/call` row owns them.
- * - Turn markers and user inputs never map live — the prompt response owns
- *   turn_result, and the browser echoes the user's own prompt.
+ * The stateful LIVE mapper for dsh ≥0.1.3: durable settlement rows + live
+ * `agent/assistant-stream` frames → stream events (shapes verified against
+ * dsh 0.2.0-rc.2 source — wiki research-phase-9-w7-native-sessions.md).
  */
-export type DshLiveMapper = (entry: UnknownRecord) => ChatStreamEvent[];
-
 export function createDshLiveMapper(): DshLiveMapper {
+  /** (turn:step) keys whose deltas were streamed from tap frames. */
   const stepsWithDeltas = new Set<string>();
-  return (entry) => {
+  /** attemptId → its step key (frames carry turn/step only on `start`). */
+  const attemptSteps = new Map<string, string>();
+
+  const event = (entry: UnknownRecord): ChatStreamEvent[] => {
     const data = isRecord(entry['data']) ? (entry['data'] as UnknownRecord) : null;
     if (data === null) return [];
     switch (entry['type']) {
-      case 'text-chunks':
-      case 'reasoning-chunks': {
-        const texts = data['texts'];
-        if (!Array.isArray(texts)) return [];
-        const delta = bounded(
-          texts.filter((t): t is string => typeof t === 'string').join(''),
-          100_000,
-        );
-        if (delta === undefined || delta === '') return [];
-        const key = stepKey(data);
-        if (key !== null) stepsWithDeltas.add(key);
-        return [
-          {
-            kind: entry['type'] === 'reasoning-chunks' ? 'thought_delta' : 'message_delta',
-            delta,
-          },
-        ];
-      }
-      case 'assistant/chunk': {
-        // Verbatim delta events (runs below the codec's MIN_RUN). The usage /
-        // block-start / block-end / finish / tool-call-delta chunks carry no
-        // renderable text — usage rides the commit instead.
-        const chunk = isRecord(data['chunk']) ? (data['chunk'] as UnknownRecord) : null;
-        if (chunk === null) return [];
-        const kind =
-          chunk['type'] === 'text-delta'
-            ? 'message_delta'
-            : chunk['type'] === 'reasoning-delta'
-              ? 'thought_delta'
-              : null;
-        if (kind === null) return [];
-        const text = bounded(chunk['text'], 100_000);
-        if (text === undefined || text === '') return [];
-        const key = stepKey(data);
-        if (key !== null) stepsWithDeltas.add(key);
-        return [{ kind, delta: text }];
-      }
       case 'assistant/message': {
         const out: ChatStreamEvent[] = [];
         const key = stepKey(data);
         const streamed = key !== null && stepsWithDeltas.delete(key);
         if (!streamed) {
           const message = isRecord(data['message']) ? (data['message'] as UnknownRecord) : null;
-          const content = message !== null ? message['content'] : undefined;
-          if (Array.isArray(content)) {
-            for (const rawBlock of content) {
-              if (!isRecord(rawBlock)) continue;
-              const block = rawBlock as UnknownRecord;
-              if (block['type'] !== 'text' && block['type'] !== 'reasoning') continue;
-              const text = bounded(block['text'], 100_000);
-              if (text !== undefined && text !== '') {
-                out.push({
-                  kind: block['type'] === 'reasoning' ? 'thought_delta' : 'message_delta',
-                  delta: text,
-                });
-              }
-            }
-          }
+          blockDeltas(message !== null ? message['content'] : undefined, out);
         }
         const usage = usageEvent(data['usage']);
         if (usage !== null) out.push(usage);
@@ -447,21 +483,51 @@ export function createDshLiveMapper(): DshLiveMapper {
         return event === null ? [] : [event];
       }
       case 'tool/result': {
-        const message = isRecord(data['message']) ? (data['message'] as UnknownRecord) : null;
-        const event = toolResultEvent(message);
+        const event = toolResultEvent(data);
         return event === null ? [] : [event];
       }
       default:
         return [];
     }
   };
+
+  const frame = (raw: UnknownRecord): ChatStreamEvent[] => {
+    const attemptId = typeof raw['attemptId'] === 'string' ? raw['attemptId'] : null;
+    if (raw['type'] === 'start') {
+      if (attemptId !== null) {
+        const key = stepKey(raw); // start frames carry turn/step at the top level
+        if (key !== null) attemptSteps.set(attemptId, key);
+      }
+      return [];
+    }
+    if (raw['type'] !== 'chunk') return [];
+    const chunk = isRecord(raw['chunk']) ? (raw['chunk'] as UnknownRecord) : null;
+    if (chunk === null) return [];
+    const kind =
+      chunk['type'] === 'text-delta'
+        ? 'message_delta'
+        : chunk['type'] === 'reasoning-delta'
+          ? 'thought_delta'
+          : null;
+    if (kind === null) return [];
+    const text = bounded(chunk['text'], 100_000);
+    if (text === undefined || text === '') return [];
+    if (attemptId !== null) {
+      const key = attemptSteps.get(attemptId);
+      if (key !== undefined) stepsWithDeltas.add(key);
+    }
+    return [{ kind, delta: text }];
+  };
+
+  return { event, frame };
 }
 
 /**
- * Map dsh transcript entries onto history items (user blocks + ordinary
- * stream events — ONE fold path in the browser). Genuine user turns are the
+ * Map dsh transcript rows onto history items (user blocks + ordinary stream
+ * events — ONE fold path in the browser). Genuine user turns are the
  * `agent/inbox/spliced` inserts; `user/message` echoes and the synthesized
- * runtime-context messages are skipped.
+ * runtime-context messages are skipped. Usage rides each `assistant/message`
+ * commit (v4 — the v0 `assistant/chunk` usage markers are gone).
  */
 export function dshHistoryItems(entries: UnknownRecord[]): HistoryItem[] {
   const items: HistoryItem[] = [];
@@ -484,26 +550,29 @@ export function dshHistoryItems(entries: UnknownRecord[]): HistoryItem[] {
       }
       case 'assistant/message': {
         const message = isRecord(data['message']) ? (data['message'] as UnknownRecord) : null;
-        const content = message !== null ? message['content'] : data['content'];
-        if (!Array.isArray(content)) break;
-        for (const rawBlock of content) {
-          if (!isRecord(rawBlock)) continue;
-          const block = rawBlock as UnknownRecord;
-          if (block['type'] === 'reasoning') {
-            const text = bounded(block['text'], 100_000);
-            if (text !== undefined && text !== '') {
-              items.push({ type: 'event', event: { kind: 'thought_delta', delta: text } });
+        const content = message !== null ? message['content'] : undefined;
+        if (Array.isArray(content)) {
+          for (const rawBlock of content) {
+            if (!isRecord(rawBlock)) continue;
+            const block = rawBlock as UnknownRecord;
+            if (block['type'] === 'reasoning') {
+              const text = bounded(block['text'], 100_000);
+              if (text !== undefined && text !== '') {
+                items.push({ type: 'event', event: { kind: 'thought_delta', delta: text } });
+              }
+            } else if (block['type'] === 'text') {
+              const text = bounded(block['text'], 100_000);
+              if (text !== undefined && text !== '') {
+                items.push({ type: 'event', event: { kind: 'message_delta', delta: text } });
+              }
+            } else if (block['type'] === 'tool-call') {
+              const event = toolStartEvent(block['id'], block['name'], block['arguments']);
+              if (event !== null) items.push({ type: 'event', event });
             }
-          } else if (block['type'] === 'text') {
-            const text = bounded(block['text'], 100_000);
-            if (text !== undefined && text !== '') {
-              items.push({ type: 'event', event: { kind: 'message_delta', delta: text } });
-            }
-          } else if (block['type'] === 'tool-call') {
-            const event = toolStartEvent(block['id'], block['name'], block['arguments']);
-            if (event !== null) items.push({ type: 'event', event });
           }
         }
+        const usage = usageEvent(data['usage']);
+        if (usage !== null) items.push({ type: 'event', event: usage });
         break;
       }
       case 'tool/call': {
@@ -512,15 +581,7 @@ export function dshHistoryItems(entries: UnknownRecord[]): HistoryItem[] {
         break;
       }
       case 'tool/result': {
-        const message = isRecord(data['message']) ? (data['message'] as UnknownRecord) : null;
-        const event = toolResultEvent(message);
-        if (event !== null) items.push({ type: 'event', event });
-        break;
-      }
-      case 'assistant/chunk': {
-        // Only the usage marker rides the history (the text chunks are
-        // superseded by assistant/message's complete blocks).
-        const event = usageFromChunk(entry);
+        const event = toolResultEvent(data);
         if (event !== null) items.push({ type: 'event', event });
         break;
       }
@@ -530,13 +591,13 @@ export function dshHistoryItems(entries: UnknownRecord[]): HistoryItem[] {
           type: 'event',
           event: {
             kind: 'turn_result',
-            stopReason: reason?.['kind'] === 'cancelled' ? 'cancelled' : 'end_turn',
+            stopReason: reason?.['kind'] === 'aborted' ? 'cancelled' : 'end_turn',
           },
         });
         break;
       }
       default:
-        break; // presets, request/*, step markers, deltas, title — not history
+        break; // presets, request/*, step markers, attempts, title — not history
     }
   }
   return items;
@@ -554,9 +615,9 @@ function toPromptBlocks(content: unknown): { type: 'text'; text: string }[] {
   return blocks;
 }
 
-// ---- live transcript tail (dsh's streaming source) ----
+// ---- live transcript tail (the tap-down streaming fallback) ----
 
-/** Locate a session's transcript by id across the slug dirs (null = absent). */
+/** Locate a session's current log by id across the slug dirs (null = absent/unsupported). */
 export function findTranscript(
   sessionsDir: string,
   sessionId: string,
@@ -569,13 +630,13 @@ export function findTranscript(
     return null;
   }
   for (const slug of slugs) {
-    const candidate = `${sessionsDir}/${slug}/${sessionId}/session.jsonl.zstd`;
+    const dir = `${sessionsDir}/${slug}/${sessionId}`;
     try {
-      readdir(`${sessionsDir}/${slug}/${sessionId}`);
-      return candidate; // the session dir exists — the file follows on first write
+      readdir(dir); // the session directory exists — the log follows on first write
     } catch {
-      // not under this slug
+      continue; // not under this slug
     }
+    return currentSessionLog(dir, readdir)?.file ?? null;
   }
   return null;
 }
@@ -601,14 +662,14 @@ export interface TailOptions {
 }
 
 /**
- * Tails a dsh transcript for LIVE token streaming. Ground truth (dsh
- * 0.1.2-rc.1 write path): every engine `assistant/chunk` event rides the
- * session bus into a bounded write-behind batch (~100–300ms window) and lands
- * as one zstd frame per batch — so polling the file yields token batches
- * roughly one write window behind the model, while dsh's ACP adapter stays
- * silent until commit. New bytes are split into frames, decoded, and mapped
- * through a stateful `createDshLiveMapper` (packed rows AND verbatim chunk
- * events, with the `turn:step` committed-dedup — see its doc).
+ * Tails a dsh transcript as the FALLBACK streaming source (the tap is
+ * preferred; #46-gated dsh ≥0.2.0-rc.2). Ground truth (v4 write path): every
+ * durable append batch lands as one checksummed zstd frame, so polling the
+ * file yields SETTLEMENT rows (blocks, tool events, usage) roughly one write
+ * window behind — token-granular deltas ride only the tap's
+ * `agent/assistant-stream` frames. New bytes are split into frames, decoded,
+ * and mapped through a stateful live mapper's `event` arm (with the
+ * `turn:step` committed-dedup against tap-streamed steps — see its doc).
  *
  * A trailing frame cut mid-write decodes only once its remaining bytes
  * arrive: the last undecodable slice is buffered for the next poll (the
@@ -712,7 +773,7 @@ export class TranscriptTail {
       }
       if (!isRecord(entry)) continue;
       if (entry['type'] === 'turn/end') this.lastTurnEndAt = Date.now();
-      for (const event of this.mapper(entry)) this.onEvent(event);
+      for (const event of this.mapper.event(entry)) this.onEvent(event);
     }
   }
 }

@@ -1857,12 +1857,12 @@ describe('dsh live streaming via transcript tail (9 W7)', () => {
     const sid = 'fx-tail-1';
     const dir = join(home, '.dsh', 'sessions', '--tail--', sid);
     mkdirSync(dir, { recursive: true });
-    const transcript = join(dir, 'session.jsonl.zstd');
+    const transcript = join(dir, 'session.v4.jsonl.zstd');
     const frame = (entries: unknown[]): Buffer =>
       Buffer.concat(entries.map((e) => zstd(Buffer.from(`${JSON.stringify(e)}\n`))));
     writeFileSync(
       transcript,
-      frame([{ type: 'session', cwd: '/tmp', createdAt: 1, delegationDepth: 0 }]),
+      frame([{ type: 'session', version: 4, cwd: '/tmp', createdAt: 1, delegationDepth: 0 }]),
     );
 
     const socket = new FakeSocket();
@@ -1891,16 +1891,22 @@ describe('dsh live streaming via transcript tail (9 W7)', () => {
     expect(ready.nativeSessionId).toBe(sid);
 
     // The turn is in flight (the fixture waits FIXTURE_DELAY_PROMPT_MS) —
-    // "dsh" appends token batches to the transcript DURING generation.
+    // "dsh" appends settlement batches to the transcript DURING generation
+    // (v4 rows carry the blocks; token deltas ride only the tap, which this
+    // test disables — the tail streams at commit granularity).
     setTimeout(() => {
       appendFileSync(
         transcript,
         frame([
           {
-            type: 'text-chunks',
-            seq0: 1,
-            time0: 1,
-            data: { turn: 1, step: 0, index: 0, dt: [1], texts: ['你好', '，'] },
+            type: 'assistant/message',
+            seq: 1,
+            time: 1,
+            data: {
+              turn: 1,
+              step: 0,
+              message: { content: [{ type: 'text', text: '你好，' }] },
+            },
           },
         ]),
       );
@@ -1910,12 +1916,16 @@ describe('dsh live streaming via transcript tail (9 W7)', () => {
         transcript,
         frame([
           {
-            type: 'text-chunks',
-            seq0: 3,
-            time0: 2,
-            data: { turn: 1, step: 0, index: 0, dt: [], texts: ['世界'] },
+            type: 'assistant/message',
+            seq: 2,
+            time: 2,
+            data: {
+              turn: 1,
+              step: 1,
+              message: { content: [{ type: 'text', text: '世界' }] },
+            },
           },
-          { type: 'turn/end', seq: 4, time: 3, data: { turn: 1, reason: { kind: 'completed' } } },
+          { type: 'turn/end', seq: 3, time: 3, data: { turn: 1, reason: { kind: 'completed' } } },
         ]),
       );
     }, 600);
@@ -2000,7 +2010,7 @@ describe('dsh live streaming via transcript tail (9 W7)', () => {
     const sid = 'fx-lazy-1';
     const dir = join(home, '.dsh', 'sessions', '--lazy--', sid);
     mkdirSync(dir, { recursive: true });
-    const transcript = join(dir, 'session.jsonl.zstd');
+    const transcript = join(dir, 'session.v4.jsonl.zstd');
     const frame = (entries: unknown[]): Buffer =>
       Buffer.concat(entries.map((e) => zstd(Buffer.from(`${JSON.stringify(e)}\n`))));
 
@@ -2038,12 +2048,16 @@ describe('dsh live streaming via transcript tail (9 W7)', () => {
       writeFileSync(
         transcript,
         frame([
-          { type: 'session', cwd: '/tmp', createdAt: 1, delegationDepth: 0 },
+          { type: 'session', version: 4, cwd: '/tmp', createdAt: 1, delegationDepth: 0 },
           {
-            type: 'text-chunks',
-            seq0: 1,
-            time0: 1,
-            data: { turn: 1, step: 0, index: 0, dt: [1], texts: ['早到的批次'] },
+            type: 'assistant/message',
+            seq: 1,
+            time: 1,
+            data: {
+              turn: 1,
+              step: 0,
+              message: { content: [{ type: 'text', text: '早到的批次' }] },
+            },
           },
         ]),
       );
@@ -2053,12 +2067,16 @@ describe('dsh live streaming via transcript tail (9 W7)', () => {
         transcript,
         frame([
           {
-            type: 'text-chunks',
-            seq0: 3,
-            time0: 2,
-            data: { turn: 1, step: 0, index: 0, dt: [], texts: ['后到的批次'] },
+            type: 'assistant/message',
+            seq: 2,
+            time: 2,
+            data: {
+              turn: 1,
+              step: 1,
+              message: { content: [{ type: 'text', text: '后到的批次' }] },
+            },
           },
-          { type: 'turn/end', seq: 4, time: 3, data: { turn: 1, reason: { kind: 'completed' } } },
+          { type: 'turn/end', seq: 3, time: 3, data: { turn: 1, reason: { kind: 'completed' } } },
         ]),
       );
     }, 900);
@@ -2637,4 +2655,99 @@ describe('adapter report (9 W11 C)', () => {
     expect(ack).toHaveBeenCalledWith({ error: 'proto:invalid' });
     expect(socket.emitted.filter((e) => e.event === 'adapters:report:result')).toHaveLength(0);
   });
+});
+
+describe('ACP client version gate (#46)', () => {
+  function waitFor<T>(fn: () => T | undefined, ms = 5000): Promise<T> {
+    const started = Date.now();
+    return new Promise((resolve, reject) => {
+      const tick = (): void => {
+        const v = fn();
+        if (v !== undefined) return resolve(v);
+        if (Date.now() - started > ms) return reject(new Error('waitFor: timeout'));
+        setTimeout(tick, 20);
+      };
+      tick();
+    });
+  }
+
+  const REFUSED = {
+    ok: false as const,
+    version: '0.1.2-rc.1',
+    min: '0.2.0-rc.2',
+    message:
+      'dsh 0.1.2-rc.1 is not supported (minimum 0.2.0-rc.2) — upgrade with: npm install -g @deepseek-ai/dsh@latest',
+  };
+
+  it('an out-of-range client is refused at open AND never pre-warmed', async () => {
+    const { mkdtempSync } = await import('node:fs');
+    const { tmpdir } = await import('node:os');
+    const { join } = await import('node:path');
+    const home = mkdtempSync(join(tmpdir(), 'hnx-dsh-gate-'));
+    // No HN_ACP_COMMAND_DEEPSEEK: the gate owns this spawn decision.
+    const versionGate = vi.fn(async () => REFUSED);
+
+    const socket = new FakeSocket();
+    attachChatHandlers(socket as never, {
+      env: { PATH: process.env.PATH ?? '' },
+      versionGate,
+      homeDir: home,
+    });
+
+    // The prewarm pool refuses to warm an out-of-range client (silent — the
+    // pool is a cache), and no adapter process may have been ledgered.
+    const pAck = vi.fn();
+    socket.receive('chat:adapter.prewarm', { target: 'deepseek' }, pAck);
+    expect(pAck).toHaveBeenCalledWith({ accepted: true });
+    await waitFor(() => (versionGate.mock.calls.length >= 1 ? true : undefined));
+    expect(readAdapterLedger(home)).toHaveLength(0);
+
+    // The open is refused with the actionable upgrade hint — BEFORE any spawn.
+    socket.receive('chat:session.start', {
+      sessionId: 'sess-gate',
+      agentInstanceId: 'ag-1',
+      target: 'deepseek',
+      cwd: '/tmp',
+    });
+    const ready = await waitFor(
+      () =>
+        socket.emitted.find((e) => e.event === 'chat:session.ready')?.payload as
+          { error?: string } | undefined,
+    );
+    expect(ready.error).toBe(REFUSED.message);
+    expect(readAdapterLedger(home)).toHaveLength(0);
+    expect(versionGate).toHaveBeenCalledWith('deepseek', expect.anything());
+  }, 10000);
+
+  it('the default gate refuses a real (fake) out-of-range `dsh` on PATH', async () => {
+    // No injected gate and no HN_ACP_COMMAND_DEEPSEEK override: the DEFAULT
+    // check runs `<dsh> --version` against the env's PATH — a fake old dsh
+    // must be refused with the upgrade hint and no spawn.
+    const { mkdtempSync, writeFileSync } = await import('node:fs');
+    const { tmpdir } = await import('node:os');
+    const { join } = await import('node:path');
+    const home = mkdtempSync(join(tmpdir(), 'hnx-dsh-gate2-'));
+    const binDir = mkdtempSync(join(tmpdir(), 'hnx-dsh-bin-'));
+    writeFileSync(join(binDir, 'dsh'), '#!/bin/sh\necho 0.1.2-rc.1\n', { mode: 0o755 });
+
+    const socket = new FakeSocket();
+    attachChatHandlers(socket as never, {
+      env: { PATH: binDir }, // process.env.PATH deliberately EXCLUDED
+      homeDir: home,
+    });
+    socket.receive('chat:session.start', {
+      sessionId: 'sess-gate2',
+      agentInstanceId: 'ag-1',
+      target: 'deepseek',
+      cwd: '/tmp',
+    });
+    const ready = await waitFor(
+      () =>
+        socket.emitted.find((e) => e.event === 'chat:session.ready')?.payload as
+          { error?: string } | undefined,
+    );
+    expect(ready.error).toContain('dsh 0.1.2-rc.1 is not supported');
+    expect(ready.error).toContain('@deepseek-ai/dsh@latest');
+    expect(readAdapterLedger(home)).toHaveLength(0);
+  }, 10000);
 });

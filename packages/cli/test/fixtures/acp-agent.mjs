@@ -24,12 +24,13 @@
  *   session/cancel → the pending prompt resolves {stopReason: 'cancelled'}
  *   session/close → {}
  *
- * FIXTURE_TAP_SPEAKER=1 (9 W7.1): emulate the hnx dsh tap PLUGIN — dial the
- *   daemon's HNX_TAP_PORT/HNX_TAP_TOKEN listener, say hello, and replay
- *   canned session-event-BUS rows during a plain echo turn (deltas during
- *   generation, a streamed-step commit, then turn/end AFTER the wire
- *   settles). Tests must pin FIXTURE_SESSION_ID — the daemon filters tap
- *   events by the acp session id.
+ * FIXTURE_TAP_SPEAKER=1 (9 W7.1; #46 frame protocol): emulate the hnx dsh
+ *   tap PLUGIN — dial the daemon's HNX_TAP_PORT/HNX_TAP_TOKEN listener, say
+ *   hello, replay canned `agent/assistant-stream` FRAMES (the per-token
+ *   deltas, dsh ≥0.1.3) and session-event-BUS rows during a plain echo turn
+ *   (frames during generation, a streamed-step commit, then turn/end AFTER
+ *   the wire settles). Tests must pin FIXTURE_SESSION_ID — the daemon filters
+ *   tap lines by the acp session id.
  *
  * FIXTURE_CONTEXT=1 (#26): usage_update also carries the context OCCUPANCY
  *   (`used`/`size`, the way the claude wrapper reports it), which is what the
@@ -95,37 +96,56 @@ function tapEvent(sessionId, event) {
   }
 }
 
+/** One assistant-stream frame for `sessionId` — the tap v2 delta arm (#46). */
+function tapFrame(sessionId, frame) {
+  if (!tapReady || tapSock === null) return;
+  try {
+    tapSock.write(`${JSON.stringify({ type: 'frame', sessionId, frame })}\n`);
+  } catch {
+    /* best effort */
+  }
+}
+
 /**
- * The tap-speaker echo turn: bus deltas stream DURING generation (incl. one
- * SUBAGENT session's event the daemon must filter out), the commit for the
+ * The tap-speaker echo turn: frame deltas stream DURING generation (incl. one
+ * SUBAGENT session's frame the daemon must filter out), the commit for the
  * already-streamed step carries only usage, the wire settles, and the bus
  * `turn/end` lands ~150ms AFTER the wire — the daemon must wait for it
  * before turn_result (the settle-from-tap contract).
  */
 function runTapSpeakerTurn(id, text, finish) {
   const sid = process.env.FIXTURE_SESSION_ID || 'fx-session';
-  tapEvent(sid, {
-    type: 'assistant/chunk',
-    seq: 1,
+  const attempt = `${sid}:1`;
+  tapFrame(sid, { type: 'start', attemptId: attempt, revision: 1, turn: 1, step: 0 });
+  tapFrame(sid, {
+    type: 'chunk',
+    attemptId: attempt,
+    revision: 2,
+    index: 0,
     time: 1,
-    data: { turn: 1, step: 0, chunk: { type: 'text-delta', text: 'tap-流式-1 ' } },
+    chunk: { type: 'text-delta', index: 0, text: 'tap-流式-1 ' },
   });
-  tapEvent('fx-subagent-session', {
-    type: 'assistant/chunk',
-    seq: 1,
+  tapFrame('fx-subagent-session', {
+    type: 'chunk',
+    attemptId: 'fx-subagent-session:1',
+    revision: 1,
+    index: 0,
     time: 1,
-    data: { turn: 1, step: 0, chunk: { type: 'text-delta', text: 'SUBAGENT-NOISE' } },
+    chunk: { type: 'text-delta', index: 0, text: 'SUBAGENT-NOISE' },
   });
   setTimeout(() => {
-    tapEvent(sid, {
-      type: 'assistant/chunk',
-      seq: 2,
+    tapFrame(sid, {
+      type: 'chunk',
+      attemptId: attempt,
+      revision: 3,
+      index: 1,
       time: 2,
-      data: { turn: 1, step: 0, chunk: { type: 'text-delta', text: 'tap-流式-2' } },
+      chunk: { type: 'text-delta', index: 0, text: 'tap-流式-2' },
     });
   }, 150);
   setTimeout(() => {
-    // Commit of the streamed step: the mapper must NOT re-render its blocks.
+    // Commit of the frame-streamed step: the mapper must NOT re-render its
+    // blocks (the frame arm already marked the step) — usage rides through.
     tapEvent(sid, {
       type: 'assistant/message',
       seq: 3,

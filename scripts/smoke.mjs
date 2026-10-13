@@ -1785,6 +1785,12 @@ process.exit(1);
 );
 chmodSync(pathMod.join(ccShimDir, 'claude'), 0o755);
 
+// #45 — one daemon per HOME (the ~/.hnx/daemon.lock is per-home, atomic): the
+// [8 C4] daemon is STILL ALIVE at this point, so the #6 daemon needs its own
+// home or it refuses with DAEMON_LOCKED (which is exactly the correct
+// behavior this section used to trip over).
+const c4CcHome = mkdtempSync(pathMod.join(tmpdir(), 'hnx-smoke-c4cc-'));
+
 const c4CcDaemon = spawn(
   process.execPath,
   [
@@ -1798,7 +1804,7 @@ const c4CcDaemon = spawn(
     c4CcMachineId,
   ],
   {
-    env: { ...process.env, HOME: c4Home, PATH: `${ccShimDir}:${process.env.PATH}` },
+    env: { ...process.env, HOME: c4CcHome, PATH: `${ccShimDir}:${process.env.PATH}` },
     stdio: ['ignore', 'pipe', 'pipe'],
   },
 );
@@ -1806,10 +1812,35 @@ let c4CcErr = '';
 c4CcDaemon.stderr.on('data', (d) => {
   c4CcErr += d.toString();
 });
+// Consume stdout too: a full unconsumed pipe would block the child.
+let c4CcOut = '';
+c4CcDaemon.stdout.on('data', (d) => {
+  c4CcOut += d.toString();
+});
+let c4CcExited = null;
+c4CcDaemon.on('exit', (code, signal) => {
+  c4CcExited = `code=${code} signal=${signal}`;
+});
+let c4CcOnline = false;
 for (let i = 0; i < 50; i++) {
   r = await req('GET', `/api/machines/${c4CcMachineId}`, { token: userToken });
-  if (r.json.machine?.online) break;
+  if (r.json.machine?.online) {
+    c4CcOnline = true;
+    break;
+  }
   await new Promise((s2) => setTimeout(s2, 200));
+}
+expect('c4-cc daemon online', c4CcOnline, true);
+expect(
+  'c4-cc daemon advertises marketplace-deploy',
+  (r.json.machine?.capabilities ?? []).includes('marketplace-deploy'),
+  true,
+);
+if (!c4CcOnline) {
+  log(
+    `(c4-cc daemon diagnose): pid=${c4CcDaemon.pid} exited=${c4CcExited ?? 'no'}\n` +
+      `(stdout): ${c4CcOut.slice(-1000)}\n(stderr): ${c4CcErr.slice(-1000)}`,
+  );
 }
 
 r = await req('POST', `/api/machines/${c4CcMachineId}/jobs`, {
@@ -1834,8 +1865,17 @@ for (let i = 0; i < 100; i++) {
 expect('marketplace deploy succeeded', ccJob?.status, 'succeeded');
 expect('result method', ccJob?.result?.method, 'marketplace');
 expect('result installedVersion', ccJob?.result?.installedVersion, '1.0.0');
+if (ccJob?.status !== 'succeeded' && c4CcErr !== '') {
+  log(`(c4-cc daemon stderr): ${c4CcErr.slice(-2000)}`);
+}
 
-const ccArgv = readFileSync(pathMod.join(c4Home, '.claude', 'plugins', 'argv.log'), 'utf8');
+const ccArgv = (() => {
+  try {
+    return readFileSync(pathMod.join(c4CcHome, '.claude', 'plugins', 'argv.log'), 'utf8');
+  } catch {
+    return ''; // the deploy never ran — the FAILs above carry the verdict
+  }
+})();
 expect(
   'marketplace add URL carries the machine PAT',
   ccArgv.includes(`plugin marketplace add ${ccBase}/api/marketplace/${c4CcToken}/marketplace.json`),
@@ -1900,7 +1940,7 @@ for (let i = 0; i < 100; i++) {
 }
 expect('marketplace update job succeeded', ccJob?.status, 'succeeded');
 expect('update reports the new version', ccJob?.result?.installedVersion, '2.0.0');
-const ccArgv2 = readFileSync(pathMod.join(c4Home, '.claude', 'plugins', 'argv.log'), 'utf8');
+const ccArgv2 = readFileSync(pathMod.join(c4CcHome, '.claude', 'plugins', 'argv.log'), 'utf8');
 expect('second run used plugin update', ccArgv2.includes(`plugin update c4-cc@${ccMp} -y`), true);
 
 // claude-code deploys never register an AgentInstance (chat keys off the
@@ -1919,7 +1959,8 @@ await new Promise((resolve) => {
 });
 await req('DELETE', `/api/machines/${c4CcMachineId}`, { token: userToken });
 rmSync(ccShimDir, { recursive: true, force: true });
-rmSync(pathMod.join(c4Home, '.claude'), { recursive: true, force: true });
+rmSync(pathMod.join(c4CcHome, '.claude'), { recursive: true, force: true });
+rmSync(c4CcHome, { recursive: true, force: true });
 if (c4CcErr.includes('Error:')) {
   log(
     `(c4-cc daemon stderr note): ${c4CcErr
@@ -2191,7 +2232,7 @@ const w1BinScript = (name, out) => {
   chmodSync(file, 0o755);
 };
 w1BinScript('claude', '9.9.7-fake (Claude Code)');
-w1BinScript('dsh', '0.1.2-fake');
+w1BinScript('dsh', '0.2.0');
 // claude + codex artifacts: items nest under the Agent card
 mkdirSync(pathMod.join(w1Home, '.claude/skills/cc-w1'), { recursive: true });
 writeFileSync(
@@ -2464,7 +2505,7 @@ r = await req('POST', `/api/machines/${w2MachineId}/jobs`, {
   token: adminToken,
   body: { type: 'harness', action: 'install', target: 'deepseek' },
 });
-expect('admin harness mutation refused (owner-only)', r.status, 403);
+expect('admin harness mutation hidden as 404 (owner-only, #36)', r.status, 404);
 
 w2Daemon.kill('SIGTERM');
 await req('DELETE', `/api/machines/${w2MachineId}`, { token: userToken });
@@ -2627,16 +2668,16 @@ const w3Env = readFileSync(pathMod.join(w3Home, '.dsh', '.env'), 'utf8');
 expect('dsh: user env var survives', w3Env.includes('DEEPSEEK_API_KEY=user-key'), true);
 expect('dsh: managed key written', w3Env.includes('HARNESS_NEXUS_API_KEY=sk-w3-secret'), true);
 
-log('\n--- [9 W3] gates: GET echo, machine-PAT bundle, admin 403, flavor 409 ---');
+log('\n--- [9 W3] gates: GET echo, machine-PAT bundle, admin 404, flavor 409 ---');
 r = await req('GET', `/api/machines/${w3MachineId}/runtime-config/codex`, { token: userToken });
 expect('GET echoes the stored spec', r.json.config.model, 'w3-model');
 r = await req('GET', `/api/machines/${w3MachineId}/runtime-config/codex`, { token: adminToken });
-expect('admin may view the spec', r.status, 200);
+expect('admin GET hidden as 404 (owner-only, #36)', r.status, 404);
 r = await req('PUT', `/api/machines/${w3MachineId}/runtime-config/codex`, {
   token: adminToken,
   body: w3CodexSpec,
 });
-expect('admin mutation refused (owner-only)', r.status, 403);
+expect('admin mutation hidden as 404 (owner-only, #36)', r.status, 404);
 r = await req('PUT', `/api/machines/${w3MachineId}/runtime-config/claude-code`, {
   token: userToken,
   body: { ...w3CodexSpec, api: 'openai' },
@@ -2705,9 +2746,9 @@ expect(
   true,
 );
 
-log('\n--- [9 W4] gates: admin view ok, bad target 400 ---');
+log('\n--- [9 W4] gates: admin view 404 (owner-only), bad target 400 ---');
 r = await req('GET', `/api/machines/${w3MachineId}/runtimes/codex/config`, { token: adminToken });
-expect('admin may view the redacted config', r.status, 200);
+expect('admin redacted-config view hidden as 404 (owner-only, #36)', r.status, 404);
 r = await req('GET', `/api/machines/${w3MachineId}/runtimes/hermes/config`, { token: userToken });
 expect('non-runtime target rejected (400)', r.status, 400);
 
@@ -2878,7 +2919,7 @@ expect('subdirectory listing is empty', JSON.stringify(r.json.directories), '[]'
 
 log('\n--- [9 W6] workspace gates: ownership + offline ---');
 r = await req('GET', `/api/machines/${w6MachineId}/workspace`, { token: adminToken });
-expect('admin may also browse (owner-or-admin read)', r.status, 200);
+expect('admin workspace browse hidden as 404 (owner-only, #36)', r.status, 404);
 await req('POST', '/api/users', {
   token: adminToken,
   body: { username: 'w6stranger', password: 'stranger-pass-123', role: 'user' },
@@ -2930,7 +2971,9 @@ const w7BinScript = (name, out) => {
   chmodSync(file, 0o755);
 };
 w7BinScript('claude', '9.9.7-fake (Claude Code)');
-w7BinScript('dsh', '0.1.2-rc.1');
+// #46 — the ground-truth line: at/above the daemon's dsh floor (0.2.0-rc.2),
+// so the ACP version gate would admit this fake client if a chat opened here.
+w7BinScript('dsh', '0.2.0-rc.2');
 
 // A dsh-shaped transcript: header + title + one full turn, multi-frame zstd.
 const w7Proj = pathMod.join(w7Home, 'proj');
@@ -2945,7 +2988,7 @@ if (w7HasZstd) {
   const dshEntries = [
     {
       type: 'session',
-      version: 0,
+      version: 4,
       id: w7DshId,
       createdAt: Date.now(),
       cwd: w7Proj,
@@ -2975,7 +3018,8 @@ if (w7HasZstd) {
     { type: 'turn/end', data: { reason: { kind: 'completed' } } },
   ];
   writeFileSync(
-    pathMod.join(dshDir, 'session.jsonl.zstd'),
+    // #46 — the CURRENT generation-versioned artifact (pre-v4 reads as absent).
+    pathMod.join(dshDir, 'session.v4.jsonl.zstd'),
     Buffer.concat(
       dshEntries.map((e) => w7Zstd.zstdCompressSync(Buffer.from(`${JSON.stringify(e)}\n`))),
     ),
