@@ -42,6 +42,18 @@ import type { ChatConfigSetPayload, PromptBlock } from '@/realtime';
 
 type Phase = 'idle' | 'ready' | 'closed';
 
+/**
+ * Open-race buffer (the AgentSession SwitchRaceBuffer pattern): the server
+ * pushes ready/history/config into the room DURING the open ack, which can
+ * predate this page's sessionId-keyed listeners (the ack resolves before
+ * React re-renders). A STABLE listener buffers the LATEST per-session
+ * pushes; the sessionId effect replays them after the pane reset.
+ */
+interface OpenRaceBuffer {
+  history?: AssistantHistoryEvent['items'];
+  configDone?: boolean;
+}
+
 /** The last-used assistant config (localStorage — same stance as the 端 pin). */
 const AGENT_KEY = 'hnx.chat.agent';
 
@@ -91,13 +103,15 @@ export function AssistantSessionPage() {
   }, [refreshAssistants]);
 
   // The 端's default agent: ?a= (a picker hand-off) → the pinned one → the
-  // first config. Persisted so the next visit opens where the user left off.
-  const assistantId =
-    searchParams.get('a') ?? localStorage.getItem(AGENT_KEY) ?? assistants?.[0]?.id ?? '';
+  // first config. Persisted so the next visit opens where the user left off;
+  // a STALE pin (deleted config, another server's data) falls back to the
+  // first config instead of dead-ending the page.
+  const requestedId = searchParams.get('a') ?? localStorage.getItem(AGENT_KEY) ?? '';
   const assistant = useMemo(
-    () => assistants?.find((c) => c.id === assistantId) ?? null,
-    [assistants, assistantId],
+    () => assistants?.find((c) => c.id === requestedId) ?? assistants?.[0] ?? null,
+    [assistants, requestedId],
   );
+  const assistantId = assistant?.id ?? '';
   useEffect(() => {
     if (assistantId !== '') localStorage.setItem(AGENT_KEY, assistantId);
   }, [assistantId]);
@@ -109,7 +123,38 @@ export function AssistantSessionPage() {
     socket.emit('assistant:sessions.sync', {}, () => undefined);
   }, []);
 
-  // Reset the pane whenever the channel changes.
+  const raceBufferRef = useRef(new Map<string, OpenRaceBuffer>());
+
+  // STABLE (non-keyed) listener — buffers the open-race pushes.
+  useEffect(() => {
+    const socket = appSocket();
+    const entry = (sid: string): OpenRaceBuffer => {
+      let e = raceBufferRef.current.get(sid);
+      if (e === undefined) {
+        if (raceBufferRef.current.size >= 16) {
+          const oldest = raceBufferRef.current.keys().next().value;
+          if (oldest !== undefined) raceBufferRef.current.delete(oldest);
+        }
+        e = {};
+        raceBufferRef.current.set(sid, e);
+      }
+      return e;
+    };
+    const onHistory = (push: AssistantHistoryEvent): void => {
+      entry(push.sessionId).history = push.items;
+    };
+    const onEvent = (envelope: AssistantEventEnvelope): void => {
+      if (envelope.event.kind === 'session_config') entry(envelope.sessionId).configDone = true;
+    };
+    socket.on('assistant:history', onHistory);
+    socket.on('assistant:event', onEvent);
+    return () => {
+      socket.off('assistant:history', onHistory);
+      socket.off('assistant:event', onEvent);
+    };
+  }, []);
+
+  // Reset the pane whenever the channel changes; replay the buffered pushes.
   useEffect(() => {
     dispatch({ type: 'reset' });
     if (sessionId === '') {
@@ -117,6 +162,16 @@ export function AssistantSessionPage() {
       return;
     }
     setPhase('ready');
+    const buffered = raceBufferRef.current.get(sessionId);
+    if (buffered === undefined) return;
+    raceBufferRef.current.delete(sessionId);
+    if (buffered.history !== undefined) dispatch({ type: 'history', items: buffered.history });
+    // configDone: the session_config push raced ahead; ask the server to
+    // re-emit it (idempotent, room-scoped).
+    if (buffered.configDone === true) {
+      appSocket().emit('assistant:session.sync', { sessionId }, () => undefined);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId]);
 
   // Live wiring — the assistant:* family.

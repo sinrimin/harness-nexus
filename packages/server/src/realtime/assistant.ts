@@ -98,6 +98,7 @@ export class AssistantRealtimeService {
         {
           id: 'model',
           name: 'Model',
+          category: 'model',
           currentValue: ch.modelId,
           options: models.map((m) => ({
             value: m.id,
@@ -410,6 +411,33 @@ export class AssistantRealtimeService {
     const rows = await this.deps.uow.assistants.listMessages(sessionId);
     const seq = rows.reduce((max, r) => Math.max(max, r.seq), 0) + 1;
     await this.deps.uow.assistants.appendMessage(sessionId, { seq, type: 'note', text });
+  }
+
+  /**
+   * `assistant:session.sync` — re-push the open-time bundle (ready + history
+   * + config) into the room. Idempotent (history ingestion rebuilds), and it
+   * closes the open-ack/listener race for freshly mounted panes.
+   */
+  async resync(sessionId: string, socketId: string): Promise<boolean> {
+    const ch = this.live.get(sessionId);
+    if (ch === undefined) return false;
+    this.io.joinChannel(socketId, sessionId);
+    const config = await this.configOf(ch.ownerId, ch.assistantId);
+    this.io.toChannel(sessionId, 'assistant:session.ready', {
+      sessionId,
+      assistantId: ch.assistantId,
+      assistantName: config?.name ?? '',
+    });
+    const rows = await this.deps.uow.assistants.listMessages(sessionId);
+    this.io.toChannel(sessionId, 'assistant:history', {
+      sessionId,
+      items: rowsToHistoryItems(rows),
+    });
+    this.emit(sessionId, await this.sessionConfigEvent(ch));
+    if (this.running.get(ch.ownerId) === sessionId) {
+      this.emit(sessionId, { kind: 'session_status', state: 'active' });
+    }
+    return true;
   }
 
   /** History for a session (used by tests / future re-sync paths). */

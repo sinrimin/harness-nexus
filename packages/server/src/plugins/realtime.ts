@@ -824,7 +824,24 @@ export async function registerRealtime(
     // A freshly MOUNTED rail asks for the current snapshot (the connect-time
     // push predates SPA navigations — the socket survives them).
     socket.on('assistant:sessions.sync', (_payload: unknown, ack?: (res: unknown) => void) => {
-      ack?.(realtime.assistant.snapshotFor(socket.data.userId as string));
+      void realtime.assistant
+        .snapshotFor(socket.data.userId as string)
+        .then((snap) => ack?.(snap));
+    });
+
+    // Re-push one session's open bundle (the open-ack/listener race).
+    socket.on('assistant:session.sync', (payload: unknown, ack?: (res: unknown) => void) => {
+      const sid =
+        typeof payload === 'object' && payload !== null && 'sessionId' in payload
+          ? String((payload as { sessionId: unknown }).sessionId)
+          : '';
+      if (sid === '') {
+        ack?.({ error: 'proto:invalid' });
+        return;
+      }
+      void realtime.assistant
+        .resync(sid, socket.id)
+        .then((ok) => ack?.(ok ? { synced: true } : { error: 'SESSION_NOT_FOUND' }));
     });
 
     socket.on('assistant:message.send', (payload: unknown, ack?: (res: unknown) => void) => {
