@@ -46,9 +46,10 @@ export const assistantConfigCreateSchema = z.object({
   /** Must be a `type:'chat'` entry on that provider's registry (service-validated). */
   defaultModel: z.string().min(1).max(128),
   systemPromptOverride: z.string().max(32_000).optional(),
-  enabledToolGroups: z.array(assistantToolGroupSchema).max(16).default([
-    ...DEFAULT_ASSISTANT_TOOL_GROUPS,
-  ]),
+  enabledToolGroups: z
+    .array(assistantToolGroupSchema)
+    .max(16)
+    .default([...DEFAULT_ASSISTANT_TOOL_GROUPS]),
 });
 export type AssistantConfigCreateInput = z.input<typeof assistantConfigCreateSchema>;
 

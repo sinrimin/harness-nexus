@@ -421,7 +421,10 @@ export function createMemoryUnitOfWork(): UnitOfWork {
     },
     async listSessions(ownerId, assistantId) {
       return [...assistantSessions.values()]
-        .filter((s) => s.ownerId === ownerId && (assistantId === undefined || s.assistantId === assistantId))
+        .filter(
+          (s) =>
+            s.ownerId === ownerId && (assistantId === undefined || s.assistantId === assistantId),
+        )
         .sort(
           (a, b) =>
             (b.lastMessageAt ?? b.createdAt).localeCompare(a.lastMessageAt ?? a.createdAt) ||

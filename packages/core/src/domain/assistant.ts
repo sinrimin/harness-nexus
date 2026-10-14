@@ -12,7 +12,8 @@
  */
 
 /** Tool groups the assistant may call (v1: read-heavy, NO delete/credential tools). */
-export type AssistantToolGroup = 'resources' | 'profiles' | 'mcp' | 'skills-hub' | 'machines' | 'system';
+export type AssistantToolGroup =
+  'resources' | 'profiles' | 'mcp' | 'skills-hub' | 'machines' | 'system';
 
 /** One named assistant configuration — many per user, name unique per owner. */
 export interface AssistantConfig {

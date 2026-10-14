@@ -4,7 +4,11 @@ import type {
   AssistantSession,
   AssistantToolGroup,
 } from '@harness-nexus/core';
-import { AppError, type AssistantConfigCreateInput, type AssistantConfigUpdateInput } from '@harness-nexus/shared';
+import {
+  AppError,
+  type AssistantConfigCreateInput,
+  type AssistantConfigUpdateInput,
+} from '@harness-nexus/shared';
 import { generateId } from '../infra/crypto.js';
 import type { Principal, ServiceDeps } from './principal.js';
 
@@ -31,7 +35,10 @@ async function requireVisibleProvider(deps: ServiceDeps, principal: Principal, p
 }
 
 /** The default model must be a configured `type:'chat'` entry on that provider. */
-function assertModelOnProvider(defaultModel: string, models: { id: string; type: 'chat' | 'embedding' }[]) {
+function assertModelOnProvider(
+  defaultModel: string,
+  models: { id: string; type: 'chat' | 'embedding' }[],
+) {
   const model = models.find((m) => m.id === defaultModel);
   if (model === undefined || model.type !== 'chat') {
     throw new AppError(
@@ -250,10 +257,7 @@ export async function listAssistantMessages(
 }
 
 /** The next transcript seq for a session (caller-allocated seq = max + 1). */
-export async function nextAssistantSeq(
-  deps: ServiceDeps,
-  sessionId: string,
-): Promise<number> {
+export async function nextAssistantSeq(deps: ServiceDeps, sessionId: string): Promise<number> {
   const rows = await deps.uow.assistants.listMessages(sessionId);
   return rows.reduce((max, r) => Math.max(max, r.seq), 0) + 1;
 }

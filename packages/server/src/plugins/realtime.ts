@@ -15,6 +15,14 @@ import {
 } from '@harness-nexus/shared';
 import { jobProgressEventSchema, jobResultEventSchema, type JobView } from '@harness-nexus/shared';
 import {
+  assistantConfigSetRequestSchema,
+  assistantMessageSendRequestSchema,
+  assistantQueueCancelRequestSchema,
+  assistantSessionCloseRequestSchema,
+  assistantSessionOpenRequestSchema,
+  assistantTurnCancelRequestSchema,
+} from '@harness-nexus/shared';
+import {
   chatChannelsCloseAllRequestSchema,
   chatChannelsSyncRequestSchema,
   chatHistoryEventSchema,
@@ -44,6 +52,7 @@ import { SessionsCoordinator } from '../realtime/sessions.js';
 import { AdaptersReportCoordinator } from '../realtime/adapters.js';
 import { DetectedInstanceSync } from '../realtime/runtime-instances.js';
 import { ChatService } from '../realtime/chat.js';
+import { AssistantRealtimeService } from '../realtime/assistant.js';
 import { ReconnectGuard } from '../realtime/reconnect.js';
 import { JobService } from '../jobs/service.js';
 
@@ -70,6 +79,8 @@ export interface RealtimeService {
   jobs: JobService;
   /** Chat routing/gating/audit (C5) — /app ↔ /ctl with permission watchdogs. */
   chat: ChatService;
+  /** Platform assistant turns (#52) — /app rooms over persisted sessions. */
+  assistant: AssistantRealtimeService;
   /** Redacted config-view waiters (Phase 9 W4). */
   configView: ConfigViewerCoordinator;
   /** Workspace directory-listing waiters (Phase 9 W6 chat picker). */
@@ -150,6 +161,30 @@ export async function registerRealtime(
       idleTtlMs: opts.chatIdleTtlMs,
     },
   );
+  const assistant = new AssistantRealtimeService(
+    {
+      uow: app.uow,
+      credentialEncryptionKey: app.credentialEncryptionKey,
+      skills: {
+        search: app.skillSearch,
+        catalog: app.skillCatalog,
+        allowlist: app.marketplaceAllowlist,
+      },
+    },
+    {
+      toChannel: (sessionId, event, payload) => {
+        appNs.to(`chan:${sessionId}`).emit(event, payload);
+      },
+      toUser: (userId, event, payload) => {
+        appNs.to(`user:${userId}`).emit(event, payload);
+      },
+      joinChannel: (socketId, sessionId) => {
+        const socket = appNs.sockets.get(socketId);
+        if (socket) void socket.join(`chan:${sessionId}`);
+      },
+    },
+  );
+
   const jobs = new JobService(
     {
       uow: app.uow,
@@ -184,6 +219,7 @@ export async function registerRealtime(
     inventory,
     jobs,
     chat,
+    assistant,
     configView,
     workspace,
     sessions,
@@ -760,6 +796,111 @@ export async function registerRealtime(
         return;
       }
       ack?.(realtime.chat.snapshotFor(socket.data.userId as string));
+    });
+
+    // ---- #52 — platform assistant handlers (same envelope discipline) ----
+
+    socket.on('assistant:session.open', (payload: unknown, ack?: (res: unknown) => void) => {
+      const parsed = assistantSessionOpenRequestSchema.safeParse(payload);
+      if (!parsed.success) {
+        ack?.({ error: 'proto:invalid' });
+        return;
+      }
+      void (async () => {
+        const result = await realtime.assistant.open(
+          socket.data.userId as string,
+          parsed.data.assistantId,
+          parsed.data.sessionId,
+          socket.id,
+        );
+        if (!result.ok) {
+          ack?.({ error: result.code });
+          return;
+        }
+        ack?.({ sessionId: result.sessionId, assistantName: result.assistantName });
+      })();
+    });
+
+    socket.on('assistant:message.send', (payload: unknown, ack?: (res: unknown) => void) => {
+      const parsed = assistantMessageSendRequestSchema.safeParse(payload);
+      if (!parsed.success) {
+        ack?.({ error: 'proto:invalid' });
+        return;
+      }
+      void (async () => {
+        const result = await realtime.assistant.onMessageSend(
+          socket.data.userId as string,
+          parsed.data.sessionId,
+          parsed.data.content,
+        );
+        ack?.(
+          result.ok
+            ? { accepted: true, ...(result.queued !== undefined ? { queued: result.queued } : {}) }
+            : { error: result.code },
+        );
+      })();
+    });
+
+    socket.on('assistant:turn.cancel', (payload: unknown, ack?: (res: unknown) => void) => {
+      const parsed = assistantTurnCancelRequestSchema.safeParse(payload);
+      if (!parsed.success) {
+        ack?.({ error: 'proto:invalid' });
+        return;
+      }
+      const result = realtime.assistant.onTurnCancel(
+        socket.data.userId as string,
+        parsed.data.sessionId,
+      );
+      ack?.(result.ok ? { accepted: true } : { error: result.code });
+    });
+
+    socket.on('assistant:queue.cancel', (payload: unknown, ack?: (res: unknown) => void) => {
+      const parsed = assistantQueueCancelRequestSchema.safeParse(payload);
+      if (!parsed.success) {
+        ack?.({ error: 'proto:invalid' });
+        return;
+      }
+      const result = realtime.assistant.onQueueCancel(
+        socket.data.userId as string,
+        parsed.data.sessionId,
+      );
+      ack?.(result.ok ? { accepted: true } : { error: result.code });
+    });
+
+    socket.on('assistant:config.set', (payload: unknown, ack?: (res: unknown) => void) => {
+      const parsed = assistantConfigSetRequestSchema.safeParse(payload);
+      if (!parsed.success) {
+        ack?.({ error: 'proto:invalid' });
+        return;
+      }
+      void (async () => {
+        const { sessionId, configId, value } = parsed.data;
+        const result = await realtime.assistant.onConfigSet(
+          socket.data.userId as string,
+          sessionId,
+          {
+            configId,
+            value,
+          },
+        );
+        ack?.(result.ok ? { accepted: true } : { error: result.code });
+      })();
+    });
+
+    socket.on('assistant:session.close', (payload: unknown, ack?: (res: unknown) => void) => {
+      const parsed = assistantSessionCloseRequestSchema.safeParse(payload);
+      if (!parsed.success) {
+        ack?.({ error: 'proto:invalid' });
+        return;
+      }
+      void (async () => {
+        const result = await realtime.assistant.close(
+          socket.data.userId as string,
+          parsed.data.sessionId,
+          parsed.data.reason ?? 'user',
+        );
+        ack?.(result.ok ? { closed: true } : { error: result.code });
+      })();
     });
 
     // A viewer socket died (tab closed / full page refresh — SPA navigation

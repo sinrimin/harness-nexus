@@ -1387,15 +1387,20 @@ export function sqliteAssistantRepository(db: Database): AssistantRepository {
 
     async appendMessage(sessionId, row) {
       const { seq, ...item } = row;
-      db.prepare(
-        'INSERT INTO assistant_messages (session_id, seq, item) VALUES (?, ?, ?)',
-      ).run(sessionId, seq, JSON.stringify(item));
+      db.prepare('INSERT INTO assistant_messages (session_id, seq, item) VALUES (?, ?, ?)').run(
+        sessionId,
+        seq,
+        JSON.stringify(item),
+      );
     },
     async listMessages(sessionId) {
       const rows = db
         .prepare('SELECT * FROM assistant_messages WHERE session_id = ? ORDER BY seq')
         .all(sessionId) as AssistantMessageRow_[];
-      return rows.map((r) => ({ seq: r.seq, ...(JSON.parse(r.item) as object) })) as AssistantMessageRow[];
+      return rows.map((r) => ({
+        seq: r.seq,
+        ...(JSON.parse(r.item) as object),
+      })) as AssistantMessageRow[];
     },
     async clearMessages(sessionId) {
       db.prepare('DELETE FROM assistant_messages WHERE session_id = ?').run(sessionId);

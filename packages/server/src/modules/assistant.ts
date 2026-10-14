@@ -62,10 +62,14 @@ export async function assistantRoutes(app: FastifyInstance): Promise<void> {
 
   // ---- sessions ----
 
-  app.post<{ Params: { id: string } }>('/api/assistants/:id/sessions', guard, async (req, reply) => {
-    const session = await createAssistantSession(deps(), principalOf(req), req.params.id);
-    return reply.code(201).send({ session: toSessionView(session) });
-  });
+  app.post<{ Params: { id: string } }>(
+    '/api/assistants/:id/sessions',
+    guard,
+    async (req, reply) => {
+      const session = await createAssistantSession(deps(), principalOf(req), req.params.id);
+      return reply.code(201).send({ session: toSessionView(session) });
+    },
+  );
 
   app.get<{ Params: { id: string } }>('/api/assistants/:id/sessions', guard, async (req) => {
     const sessions = await listAssistantSessions(deps(), principalOf(req), req.params.id);
@@ -97,10 +101,14 @@ export async function assistantRoutes(app: FastifyInstance): Promise<void> {
     return { ok: true };
   });
 
-  app.get<{ Params: { id: string } }>('/api/assistant-sessions/:id/messages', guard, async (req) => {
-    const rows = await listAssistantMessages(deps(), principalOf(req), req.params.id);
-    return { messages: rows };
-  });
+  app.get<{ Params: { id: string } }>(
+    '/api/assistant-sessions/:id/messages',
+    guard,
+    async (req) => {
+      const rows = await listAssistantMessages(deps(), principalOf(req), req.params.id);
+      return { messages: rows };
+    },
+  );
 }
 
 function toConfigView(c: AssistantConfig): AssistantConfigView {
