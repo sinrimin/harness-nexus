@@ -15,12 +15,13 @@ version: '3'
 vars:
   PNPM: pnpm
   # CI parity gate: the workflow (.github/workflows/ci.yml) runs the quartet
-  # below on Node 20 — the documented engine floor. Dev machines usually run
-  # a newer Node, whose EXTRA APIs (e.g. zlib zstd, ≥22.15) mask floor-only
-  # code paths: a test guard that calls `it.skip()` inside a running test
-  # passed on Node 22 and errored in CI. Point NODE20_BIN at a Node 20
-  # install to run the exact CI matrix locally before pushing.
-  NODE20_BIN: /opt/node-v20.20.2-linux-x64/bin
+  # below on Node 22.19 — the SERVER engine floor (>=22.19.0, #50; the five
+  # published npm packages keep >=20). Dev machines usually run a newer Node,
+  # whose EXTRA APIs mask floor-only code paths: a test guard that calls
+  # `it.skip()` inside a running test once passed locally and errored in CI.
+  # Point NODE22_BIN at a Node 22.19.x install to run the exact CI matrix
+  # locally before pushing.
+  NODE22_BIN: /opt/node-v22.19.0-linux-x64/bin
 
 tasks:
   default:
@@ -29,12 +30,12 @@ tasks:
       - task --list
 
   verify:
-    desc: CI parity gate — build+typecheck+test under the Node 20 engine floor
+    desc: CI parity gate — build+typecheck+test under the Node 22.19 engine floor
     cmds:
-      - test -x '{{.NODE20_BIN}}/node' || { echo "Node 20 toolchain missing at {{.NODE20_BIN}} — install one or override NODE20_BIN"; exit 1; }
-      - 'PATH="{{.NODE20_BIN}}:{{.PATH}}" {{.PNPM}} -r run build'
-      - 'PATH="{{.NODE20_BIN}}:{{.PATH}}" {{.PNPM}} -r run typecheck'
-      - 'PATH="{{.NODE20_BIN}}:{{.PATH}}" {{.PNPM}} -r run test'
+      - test -x '{{.NODE22_BIN}}/node' || { echo "Node 22.19 toolchain missing at {{.NODE22_BIN}} — install one or override NODE22_BIN"; exit 1; }
+      - 'PATH="{{.NODE22_BIN}}:{{.PATH}}" {{.PNPM}} -r run build'
+      - 'PATH="{{.NODE22_BIN}}:{{.PATH}}" {{.PNPM}} -r run typecheck'
+      - 'PATH="{{.NODE22_BIN}}:{{.PATH}}" {{.PNPM}} -r run test'
 
   install:
     desc: Install workspace dependencies

@@ -54,8 +54,8 @@ Every unit of work is anchored to an issue (`#N`):
    the web UI "Signal" design system, i18n rules).
 4. **Verify before merging**: `pnpm -r typecheck` plus the tests covering the
    touched surfaces; extend `scripts/smoke.mjs` for new endpoints. Changes
-   heading for a release must pass `task verify` (the Node 20 CI-parity
-   gate).
+   heading for a release must pass `task verify` (the Node 22.19 CI-parity
+   gate — the server engine floor; the five published packages keep >=20).
 5. **Merge with context**: merges use `git merge --no-ff` with a closing
    reference (`closes #123`) in the commit message, which auto-closes the
    issue. Commit message prefixes: `feat:`, `fix:`, `docs:`, `chore:`.

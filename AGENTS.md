@@ -24,7 +24,7 @@ pillars:
 
 ## Stack
 
-Node.js ≥20 · TypeScript (strict) · Fastify · pnpm workspaces · zod ·
+Node.js ≥20 (server: ≥22.19, #50) · TypeScript (strict) · Fastify · pnpm workspaces · zod ·
 SQLite (`better-sqlite3`, default; pluggable) · official `@modelcontextprotocol/sdk` ·
 React + Vite (web).
 
@@ -101,13 +101,14 @@ docs/          architecture.md + adr/ — code-coupled contract docs ONLY
     and `scripts/ui-snap.mjs` when a shared surface (tokens, kit, skin CSS) moved.
   - _Before pushing (and before any release tag):_ the full CI-parity quartet —
     CI (`.github/workflows/ci.yml`) is `pnpm -r build` + `pnpm -r typecheck` +
-    `pnpm -r test` on **Node 20**, the documented engine floor. A dev box on a
-    newer Node masks floor-only paths (e.g. `zlib.zstd*` exists ≥22.15; a
-    zstd-absent test guard once errored only in CI). `task verify` (Taskfile)
-    runs the same quartet with a Node 20 toolchain from
-    `/opt/node-v20.20.2-linux-x64/bin` (override via `NODE20_BIN`); without
-    `task`, prepend that bin dir to PATH and run the three `pnpm -r` commands
-    yourself. Green locally ⇒ green in CI.
+    `pnpm -r test` on **Node 22.19** — the SERVER engine floor (#50:
+    `packages/server` declares `>=22.19.0`; the five published npm packages
+    keep `>=20`, now CI-untested). A dev box on a newer Node masks floor-only
+    paths (e.g. `zlib.zstd*` exists ≥22.15; a zstd-absent test guard once
+    errored only in CI). `task verify` (Taskfile) runs the same quartet with a
+    Node 22.19 toolchain from `/opt/node-v22.19.0-linux-x64/bin` (override via
+    `NODE22_BIN`); without `task`, prepend that bin dir to PATH and run the
+    three `pnpm -r` commands yourself. Green locally ⇒ green in CI.
 
   Nothing reaches `main` unverified; nothing is pushed with the quartet
   unrun. An unfamiliar surface or a security-shaped change is the case to run
@@ -146,7 +147,7 @@ Five packages publish in lockstep (`@harness-nexus/{core,shared,mcp-runtime,sdk,
 **The flow is tag-driven (2026-09-11 onward):**
 
 1. Bump `version` in all five manifests on a branch, merge to main — after the
-   CI-parity gate (`task verify`, Node 20) ran green.
+   CI-parity gate (`task verify`, Node 22.19) ran green.
 2. `git tag vX.Y.Z && git push origin vX.Y.Z` — pushing the tag triggers the
    `release` workflow. The tag MUST equal the manifests' version (the workflow
    guards it and fails on mismatch); the tag is the release record.
