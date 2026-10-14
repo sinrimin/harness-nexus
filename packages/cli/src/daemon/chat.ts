@@ -186,8 +186,18 @@ interface DaemonSession {
 
 const HISTORY_MAX = 2000;
 
-/** How long after arming the tap plugin may take to say hello (design: 3s). */
-const TAP_HANDSHAKE_MS = 3000;
+/**
+ * How long the tap plugin may take to say hello AFTER the adapter start
+ * (initialize, or the pool's boot-to-initialize) has completed. The deadline
+ * rides the START, not the arm: a fixed arm-time window (the original 3s)
+ * lost slow cold boots — a small machine's first dsh spawn under load can
+ * legitimately outlive it, and on v4 session logs (no intra-turn rows) a
+ * tap-less channel then has NO streaming source at all for its whole life.
+ * Healthy taps say hello long before initialize resolves, so the grace is
+ * paid only when the plugin is truly absent (the channel opens
+ * committed-only, slightly later). Env-tunable (`HN_TAP_HELLO_GRACE_MS`).
+ */
+const TAP_HELLO_GRACE_DEFAULT_MS = 2500;
 
 /**
  * codex-acp's unknown-model notice (see `mapAcpUpdate`'s agent_message_chunk
@@ -456,7 +466,8 @@ export function attachChatHandlers(
   interface TapArm {
     listener: TapListener;
     patchPath: string;
-    hello: Promise<boolean>;
+    /** Resolves once the plugin says hello by `deadlineAt` (idempotent). */
+    waitHello: (deadlineAt: number) => Promise<boolean>;
     bind(
       sink: (sessionId: string, event: Record<string, unknown>) => void,
       loss: () => void,
@@ -470,10 +481,10 @@ export function attachChatHandlers(
    * `~/.hnx/dsh-tap.patch.yml` and open the localhost listener the plugin
    * dials. Null = not applicable (non-deepseek, `HN_DISABLE_DSH_TAP=1` A/B
    * switch, assets missing, patch write or listen failure) — the transcript
-   * tail then streams exactly as before. The handshake races the spawn (the
-   * plugin loads during dsh's composition, i.e. typically before initialize
-   * resolves); no hello within the window → the caller closes the listener
-   * and falls through to the tail.
+   * tail then streams exactly as before. The plugin loads during dsh's
+   * composition and says hello typically before initialize resolves; the
+   * callers race it against start-completion + the tap hello grace (see
+   * there) — a miss closes the listener and falls through to the tail.
    */
   const armTap = (target: string): Promise<TapArm | null> => {
     if (target !== 'deepseek' || env.HN_DISABLE_DSH_TAP === '1') return Promise.resolve(null);
@@ -491,7 +502,7 @@ export function attachChatHandlers(
       .then((listener): TapArm => ({
         listener,
         patchPath,
-        hello: listener.waitHello(Date.now() + TAP_HANDSHAKE_MS),
+        waitHello: (deadlineAt) => listener.waitHello(deadlineAt),
         bind: (fnSink, fnLoss, fnFrameSink) => {
           sink = fnSink;
           loss = fnLoss;
@@ -558,6 +569,12 @@ export function attachChatHandlers(
     return Number.isFinite(raw) && raw >= 0 ? raw : 120_000;
   })();
 
+  /** #47 — the tap hello grace after start-completion (see its doc). */
+  const tapHelloGraceMs = (() => {
+    const raw = Number.parseInt(env.HN_TAP_HELLO_GRACE_MS ?? '', 10);
+    return Number.isFinite(raw) && raw >= 0 ? raw : TAP_HELLO_GRACE_DEFAULT_MS;
+  })();
+
   /**
    * A prewarmed adapter: the FULL `start` result (the session caps and agent
    * identity came from initialize — already paid) plus the dsh tap that raced
@@ -610,8 +627,10 @@ export function attachChatHandlers(
             onSpawned: ledgerPrewarm,
           });
         } else {
-          [started, tapLive] = await Promise.all([
-            AcpAgentConnection.start(cmd.command, [...cmd.args, '--patch', tapArmed.patchPath], {
+          started = await AcpAgentConnection.start(
+            cmd.command,
+            [...cmd.args, '--patch', tapArmed.patchPath],
+            {
               cwd: home,
               env: {
                 ...baseEnv,
@@ -619,15 +638,19 @@ export function attachChatHandlers(
                 HNX_TAP_TOKEN: tapArmed.listener.token,
               },
               onSpawned: ledgerPrewarm,
-            }),
-            tapArmed.hello,
-          ]);
+            },
+          );
+          tapLive = await tapArmed.waitHello(Date.now() + tapHelloGraceMs);
           if (!tapLive) {
-            // A session-less listener that never handshook is dead weight; the
-            // consuming channel falls back to the transcript tail, same as a
-            // tap-less spawn.
+            // NEVER pool a tap-less streaming adapter: on v4 session logs
+            // (no intra-turn rows) a channel that adopts one has no
+            // streaming source at all for its whole life. Kill the boot and
+            // publish nothing — the next open spawns fresh with a new arm
+            // (the ledger entry stays behind for the W11 audit, as with any
+            // deliberate kill).
             tapArmed.listener.close();
-            return { started, tapArmed: null, tapLive: false };
+            started.conn.kill();
+            return null;
           }
         }
         return { started, tapArmed, tapLive };
@@ -775,10 +798,10 @@ export function attachChatHandlers(
           } else if (tapArmed === null) {
             started = await AcpAgentConnection.start(cmd.command, args, spawnOpts);
           } else {
-            [started, tapLive] = await Promise.all([
-              AcpAgentConnection.start(cmd.command, args, spawnOpts),
-              tapArmed.hello,
-            ]);
+            started = await AcpAgentConnection.start(cmd.command, args, spawnOpts);
+            // The hello deadline rides the START (not the arm) — see
+            // the tap hello grace. Healthy taps resolve instantly here.
+            tapLive = await tapArmed.waitHello(Date.now() + tapHelloGraceMs);
           }
         }
         const { conn, agentInfo, sessionCaps, promptCaps } = started;

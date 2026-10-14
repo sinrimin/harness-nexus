@@ -76,14 +76,35 @@ if (process.env.FIXTURE_TAP_SPEAKER === '1') {
   const port = Number(process.env.HNX_TAP_PORT);
   const token = process.env.HNX_TAP_TOKEN;
   if (Number.isInteger(port) && port > 0 && token) {
-    const s = netConnect(port, '127.0.0.1');
-    tapSock = s;
-    s.on('connect', () => {
-      tapReady = true;
-      s.write(`${JSON.stringify({ type: 'hello', token, pid: process.pid })}\n`);
-    });
-    s.on('error', () => {});
+    // #47 — FIXTURE_TAP_DELAY_MS delays the plugin's dial (a slow cold boot:
+    // the daemon's hello grace must still catch it).
+    const delay = Number(process.env.FIXTURE_TAP_DELAY_MS ?? '0');
+    const dial = () => {
+      const s = netConnect(port, '127.0.0.1');
+      tapSock = s;
+      s.on('connect', () => {
+        tapReady = true;
+        s.write(`${JSON.stringify({ type: 'hello', token, pid: process.pid })}\n`);
+      });
+      s.on('error', () => {});
+    };
+    if (delay > 0) setTimeout(dial, delay);
+    else dial();
   }
+}
+
+// #47 — append a line on exit so tests can observe deliberate kills. Node's
+// default SIGTERM disposition skips 'exit' handlers, so exit cleanly instead.
+if (process.env.FIXTURE_EXIT_FILE) {
+  const exitFile = process.env.FIXTURE_EXIT_FILE;
+  process.on('exit', () => {
+    try {
+      appendFileSync(exitFile, `exit ${process.pid}\n`);
+    } catch {
+      /* best effort */
+    }
+  });
+  process.on('SIGTERM', () => process.exit(0));
 }
 
 /** One bus event for `sessionId` — verbatim SessionEvent envelope. */
