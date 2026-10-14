@@ -80,10 +80,9 @@ export async function createAssistant(
       : {}),
     // Route-parsed input always carries the zod default; direct callers
     // (tests, future in-process doors) may omit it — same default applies.
-    enabledToolGroups:
-      (input.enabledToolGroups as AssistantToolGroup[] | undefined) ?? [
-        ...DEFAULT_ASSISTANT_TOOL_GROUPS,
-      ],
+    enabledToolGroups: (input.enabledToolGroups as AssistantToolGroup[] | undefined) ?? [
+      ...DEFAULT_ASSISTANT_TOOL_GROUPS,
+    ],
     createdAt: now,
     updatedAt: now,
   };

@@ -422,6 +422,7 @@ covers layering; `docs/adr/` the stack decisions.
 | Provider model registry (#51)          | `design-provider-model-registry.md`                 | Models live ON the LlmProvider row (`models: ProviderModelConfig[]`, JSON column); consumer forms pick from the registry — query-models survives ONLY as the provider-dialog seeder; spec snapshots carry `modelEntries` (metadata subset; advanced params never leave the server)                                                                                                                                                                       |
 | Client logbook (#38)                   | `design-client-logbook.md`                          | `~/.hnx/logs/`: ops.log (operation trail, 256KB×3) + comm.log (metadata-level /ctl traffic, chat:event bursts → one summary line, 1MB×5, connect/disconnect markers); ring-buffered BUS with file sinks as subscribers (TUI #39 groundwork); `hnx logs [--tail\|--bundle]`; `HNX_LOG_COMM=payload` is debug-only                                                                                                                                         |
 | TUI mode (#39)                         | `design-cli-tui.md`                                 | `hnx tui` runs the daemon in-process + a zero-dep nmon-style dashboard (metrics bar, agents/ops/comm/tokens panes, keys 1/2/3/t/m/a/q); ONE daemon per machine — atomic pid lock (`DAEMON_LOCKED`) AND server-side second-socket refusal with daemon self-exit (#45); turns count on `turn_result` only, response usage per known dialect (claude cumulative-delta, opencode per-turn), `cost.amount` delta-accounted (#44); non-TTY → `--dump` snapshot |
+| Platform assistant M1 (#52)            | `design-platform-assistant.md`                      | Server-embedded pi agent, OWNER-ONLY rows (configs/sessions/transcript/audit, migration v20); tools call #53 services with the session owner as principal (no tokens, no self-HTTP); transcript = role-bearing rows → history replays as `ChatStreamEvent`s; `/app` `assistant:*` family (per-user busy gate + depth-1 queue, `config.set` agent/model = next-turn); web: config page + `/chat` 端 resolver (cards page retired)                         |
 
 ## Authentication & authorization (permission interceptors)
 
@@ -475,7 +476,10 @@ harness jobs, provider config push, config viewer, portal chat UI, native
 sessions W7/W7.1, composer W8–W9, LLM providers W10, adapter lifecycle W11,
 opencode W12, multi-model W13, plan/todo W14, elicitation W14.1, commands
 W15, pi W16); and the issue-era fast session pipeline (#2) + adapter
-pre-warm pool (#3–#4). Release state: the five `@harness-nexus/*` packages
+pre-warm pool (#3–#4), the provider model registry (#51), the service
+layer (#53), and the platform assistant M1 skeleton (#52 — MCP bridge +
+skills wiring are its open follow-ups). Release state: the five
+`@harness-nexus/*` packages
 are on npm (pre-1.0 alphas ARE `latest` by design, so `npx` works), with CI,
 OIDC trusted publishing, and tag-driven Docker images — see "Releasing to
 npm & Docker Hub" above.

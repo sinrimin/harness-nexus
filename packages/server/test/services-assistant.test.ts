@@ -71,11 +71,19 @@ describe('#52 assistant service', () => {
 
     // A foreign provider is invisible → 404, not 403.
     await expect(
-      createAssistant({ uow }, stranger, { name: 'X', providerId: 'prov-1', defaultModel: 'chat-a' }),
+      createAssistant({ uow }, stranger, {
+        name: 'X',
+        providerId: 'prov-1',
+        defaultModel: 'chat-a',
+      }),
     ).rejects.toMatchObject({ statusCode: 404, code: 'PROVIDER_NOT_FOUND' });
 
     await expect(
-      createAssistant({ uow }, owner, { name: 'Ops', providerId: 'prov-1', defaultModel: 'chat-a' }),
+      createAssistant({ uow }, owner, {
+        name: 'Ops',
+        providerId: 'prov-1',
+        defaultModel: 'chat-a',
+      }),
     ).rejects.toMatchObject({ statusCode: 409, code: 'ASSISTANT_NAME_TAKEN' });
 
     expect(await listAssistants({ uow }, owner)).toHaveLength(1);
