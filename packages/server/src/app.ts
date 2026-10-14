@@ -31,6 +31,7 @@ import { workspaceRoutes } from './modules/workspace.js';
 import { clientConfigRoutes } from './modules/client-config.js';
 import { mountMcpProxy } from './mcp/proxy.js';
 import { marketplaceRoutes } from './modules/marketplace.js';
+import { assistantRoutes } from './modules/assistant.js';
 import { MarketplaceEmitter } from './marketplace/emitter.js';
 import { SkillCatalogService } from './infra/source-fetchers/catalog-service.js';
 import { parseAllowlist, type MarketplaceEntry } from './infra/source-fetchers/allowlist.js';
@@ -259,6 +260,7 @@ export async function buildApp(config: ServerConfig): Promise<FastifyInstance> {
     await workspaceRoutes(api);
     await clientConfigRoutes(api);
     await marketplaceRoutes(api);
+    await assistantRoutes(api);
   });
 
   await mountMcpProxy(app);

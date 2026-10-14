@@ -19,13 +19,14 @@ export interface AssistantConfig {
   id: string;
   ownerId: string;
   name: string;
-  description?: string;
+  /** `| undefined` for exactOptionalPropertyTypes — updates clear via null (#51 pattern). */
+  description?: string | undefined;
   /** The LlmProvider row whose credential + registry serve the model calls. */
   providerId: string;
   /** A `type:'chat'` model id from that provider's #51 registry. */
   defaultModel: string;
   /** Replaces the platform's default assistant prompt when set. */
-  systemPromptOverride?: string;
+  systemPromptOverride?: string | undefined;
   enabledToolGroups: AssistantToolGroup[];
   createdAt: string;
   updatedAt: string;
