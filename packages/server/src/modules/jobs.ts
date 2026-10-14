@@ -1,6 +1,5 @@
 import type { FastifyInstance } from 'fastify';
 import { randomUUID } from 'node:crypto';
-import type { Machine } from '@harness-nexus/core';
 import {
   AppError,
   adaptersReportRequestSchema,
@@ -11,60 +10,45 @@ import {
 import { jobView } from '../jobs/service.js';
 import { marketplaceNameFor } from '../marketplace/emitter.js';
 import { principalOf } from './principal.js';
+import { getMachine } from '../services/machines.js';
 import { getAgentInstance, listMachineAgents } from '../services/agent-instances.js';
+import {
+  assertDeployableTarget,
+  assertHarnessJobAllowed,
+  getVisibleDeployProfile,
+  isDeployableTarget,
+  listMachineJobs,
+  requireProfileInOwnerMarketplace,
+} from '../services/jobs.js';
 
 /**
  * Deploy jobs + harness jobs + agent instances (Phase 8 C4 · Phase 9 W2).
  * wiki design-phase-8-c4.md · phase-9-harness-runtime.md §4.2.
  *
- * All machine-scoped endpoints inherit the machine OWNER guard with 404
- * existence-hiding (#36: admins are not tenant overseers — a machine is
- * personal like a credential). A deploy job is fire-and-forget replayable
- * work: it queues when the daemon is offline and drains on reconnect; the
- * daemon executes it through the unchanged 3.3 pipeline against a deploy
- * bundle fetched with its own machine PAT. A harness job (W2)
- * installs/upgrades/pins the harness runtime — OWNER-ONLY to create and gated
- * on the daemon's `harness` capability when online.
+ * The pure decisions live in `services/jobs.ts` + `services/agent-instances.ts`
+ * (#53 slices 16 + 3); this file owns the realtime orchestration that remains:
+ * the soft capability gates (they read LIVE presence — an online daemon
+ * without the executor is refused early; an offline machine may queue), every
+ * `createJob` dispatch, and the /ctl round-trips (sessions rail, adapters
+ * report). All machine-scoped endpoints inherit the machine OWNER guard with
+ * 404 existence-hiding (#36: admins are not tenant overseers — a machine is
+ * personal like a credential).
  */
-
-/**
- * Targets that have a local-write install adapter in the CLI registry.
- * claude-code branches BEFORE this list (#6): its deploys ride the 3.5
- * marketplace emitter — the daemon drives CC's own `claude plugin` CLI, not
- * an adapter. deepseek (T1) writes skills + a home cordis-patch MCP row like
- * the others.
- */
-export const DEPLOYABLE_TARGETS = ['hermes', 'codex', 'deepseek', 'pi'] as const;
 
 export async function jobsRoutes(app: FastifyInstance): Promise<void> {
   const guard = { preHandler: [app.requireAuth] };
 
-  const visibleMachine = async (id: string, requester: { id: string }): Promise<Machine> => {
-    const machine = await app.uow.machines.findById(id);
-    if (!machine || machine.ownerId !== requester.id) {
-      throw new AppError('Machine not found', 404, 'MACHINE_NOT_FOUND');
-    }
-    return machine;
-  };
-
   // ---- POST /api/machines/:id/jobs — create a deploy or harness job ----
   app.post<{ Params: { id: string } }>('/api/machines/:id/jobs', guard, async (req, reply) => {
-    const machine = await visibleMachine(req.params.id, req.user!);
+    const machine = await getMachine({ uow: app.uow }, principalOf(req), req.params.id);
     const input = createMachineJobSchema.parse(req.body);
 
     if (input.type === 'harness') {
-      if (input.action === 'apply-config') {
-        // Provider config is managed as a SPEC (upsert + queue), not a bare
-        // job body — point the caller at the dedicated surface.
-        throw new AppError(
-          'Use PUT /api/machines/:id/runtime-config/:target to apply provider config',
-          409,
-          'USE_RUNTIME_CONFIG_ENDPOINT',
-        );
-      }
-      // Soft capability gate (deploy's rule): an ONLINE daemon without the
-      // harness executor would settle every job as unsupported — refuse early.
-      // An OFFLINE machine may queue; capability is knowable once hello'd.
+      assertHarnessJobAllowed(input);
+      // #53 residue: the soft capability gate reads LIVE presence (deploy's
+      // rule): an ONLINE daemon without the harness executor would settle
+      // every job as unsupported — refuse early. An OFFLINE machine may
+      // queue; capability is knowable once hello'd.
       if (app.realtime.presence.isOnline(machine.id) && !machine.capabilities.includes('harness')) {
         throw new AppError(
           'Daemon does not advertise the harness capability (upgrade hnx on the machine)',
@@ -72,6 +56,7 @@ export async function jobsRoutes(app: FastifyInstance): Promise<void> {
           'DAEMON_NO_HARNESS',
         );
       }
+      // #53 residue: dispatch (job state machine + /ctl emit + /app push).
       const job = await app.realtime.jobs.createJob({
         machineId: machine.id,
         ownerId: req.user!.id,
@@ -85,16 +70,15 @@ export async function jobsRoutes(app: FastifyInstance): Promise<void> {
       profileId: input.profileId,
       ...(input.directory !== undefined ? { directory: input.directory } : {}),
     });
-    const profile = await app.uow.profiles.findById(deployInput.profileId);
-    const profileVisible =
-      profile && (profile.scope === 'global' || profile.ownerId === req.user!.id);
-    if (!profile || !profileVisible) {
-      throw new AppError('Profile not found', 404, 'PROFILE_NOT_FOUND');
-    }
-    // Soft capability gate: an online daemon without the 'deploy' capability
-    // would silently abandon-cycle (dispatch → ack-timeout → requeue). An
-    // OFFLINE machine is allowed to queue — capability is only knowable once
-    // the daemon says hello.
+    const profile = await getVisibleDeployProfile(
+      { uow: app.uow },
+      principalOf(req),
+      deployInput.profileId,
+    );
+    // #53 residue: the soft capability gate reads LIVE presence: an online
+    // daemon without the 'deploy' capability would silently abandon-cycle
+    // (dispatch → ack-timeout → requeue). An OFFLINE machine is allowed to
+    // queue — capability is only knowable once the daemon says hello.
     if (app.realtime.presence.isOnline(machine.id) && !machine.capabilities.includes('deploy')) {
       throw new AppError(
         'Daemon does not advertise the deploy capability (upgrade hnx on the machine)',
@@ -102,14 +86,14 @@ export async function jobsRoutes(app: FastifyInstance): Promise<void> {
         'DAEMON_NO_DEPLOY',
       );
     }
-    if (!DEPLOYABLE_TARGETS.includes(profile.target as (typeof DEPLOYABLE_TARGETS)[number])) {
+    if (!isDeployableTarget(profile.target)) {
       if (profile.target === 'claude-code') {
         // #6 — marketplace deploy: the daemon drives CC's own plugin CLI with
-        // its machine PAT (the emitter accepts machine-ctl tokens). The
-        // catalog the daemon reads belongs to the MACHINE OWNER, so the
-        // profile must be visible to them — global, or personal + theirs.
-        // (An admin deploying their own personal profile onto a user's
-        // machine would emit a catalog that never contains it.)
+        // its machine PAT (the emitter accepts machine-ctl tokens).
+        // #53 residue: the marketplace-deploy capability gate reads LIVE
+        // presence and must fire BEFORE the owner-marketplace 409 below
+        // (jobs.test.ts pins: an online daemon without the capability answers
+        // DAEMON_NO_MARKETPLACE_DEPLOY, not a profile error).
         if (
           app.realtime.presence.isOnline(machine.id) &&
           !machine.capabilities.includes('marketplace-deploy')
@@ -120,15 +104,9 @@ export async function jobsRoutes(app: FastifyInstance): Promise<void> {
             'DAEMON_NO_MARKETPLACE_DEPLOY',
           );
         }
-        if (profile.scope !== 'global' && profile.ownerId !== machine.ownerId) {
-          throw new AppError(
-            "claude-code deploys install from the machine owner's marketplace — the profile must be global or owned by the machine owner",
-            409,
-            'PROFILE_NOT_IN_OWNER_MARKETPLACE',
-          );
-        }
-        const owner = await app.uow.users.findById(machine.ownerId);
-        if (!owner) throw new AppError('Machine not found', 404, 'MACHINE_NOT_FOUND');
+        const owner = await requireProfileInOwnerMarketplace({ uow: app.uow }, profile, machine);
+        // #53 residue: dispatch — the payload arm is emitter-shaped (baseUrl
+        // from config, marketplace name from the owner's username).
         const job = await app.realtime.jobs.createJob({
           machineId: machine.id,
           ownerId: req.user!.id,
@@ -144,13 +122,10 @@ export async function jobsRoutes(app: FastifyInstance): Promise<void> {
         });
         return reply.code(201).send({ job: jobView(job) });
       }
-      throw new AppError(
-        `Profiles for target '${profile.target}' are deployed via a path this instance does not serve`,
-        409,
-        'TARGET_NOT_DEPLOYABLE',
-      );
+      assertDeployableTarget(profile.target);
     }
 
+    // #53 residue: dispatch — the ordinary adapter pipeline (3.3).
     const job = await app.realtime.jobs.createJob({
       machineId: machine.id,
       ownerId: req.user!.id,
@@ -165,12 +140,13 @@ export async function jobsRoutes(app: FastifyInstance): Promise<void> {
 
   // ---- GET /api/machines/:id/jobs — newest first ----
   app.get<{ Params: { id: string } }>('/api/machines/:id/jobs', guard, async (req) => {
-    const machine = await visibleMachine(req.params.id, req.user!);
-    const jobs = await app.uow.jobs.listByMachine(machine.id);
+    const jobs = await listMachineJobs({ uow: app.uow }, principalOf(req), req.params.id);
     return { jobs: jobs.map(jobView) };
   });
 
   // ---- POST /api/jobs/:jobId/cancel — queued only ----
+  // #53 residue: cancellation runs on the realtime JobService (owner check +
+  // queued-only transition + /app push live with the state machine).
   app.post<{ Params: { jobId: string } }>('/api/jobs/:jobId/cancel', guard, async (req) => {
     const job = await app.realtime.jobs.cancel(req.params.jobId, req.user!);
     return { job: jobView(job) };
@@ -210,13 +186,16 @@ export async function jobsRoutes(app: FastifyInstance): Promise<void> {
   // fetched live through the daemon (`sessions:list` over /ctl). Listing is
   // owner-or-admin like every machine-scoped read; CHATTING is owner-only
   // (enforced in the chat service, not here).
+  // #53 residue: the whole handler below the owner gates is a live /ctl
+  // round-trip (presence, capability, emit, waiter, outcome mapping) plus
+  // live-channel stitching — realtime-only concerns.
   app.get<{ Params: { id: string }; Querystring: { refresh?: string } }>(
     '/api/agent-instances/:id/sessions',
     guard,
     async (req) => {
       const agent = await app.uow.agentInstances.findById(req.params.id);
       if (!agent) throw new AppError('Agent instance not found', 404, 'AGENT_INSTANCE_NOT_FOUND');
-      const machine = await visibleMachine(agent.machineId, req.user!);
+      const machine = await getMachine({ uow: app.uow }, principalOf(req), agent.machineId);
       if (!app.realtime.presence.isOnline(machine.id)) {
         throw new AppError('Machine daemon is offline', 409, 'MACHINE_OFFLINE');
       }
@@ -287,8 +266,9 @@ export async function jobsRoutes(app: FastifyInstance): Promise<void> {
   // PROCESS truth from the daemon's live sessions map (never the ledger —
   // that is crash accounting), for the machine panel. Owner-or-admin like
   // every machine-scoped read; on-demand (the rail does not call this).
+  // #53 residue: like the sessions rail — a live /ctl round-trip.
   app.get<{ Params: { id: string } }>('/api/machines/:id/adapters', guard, async (req) => {
-    const machine = await visibleMachine(req.params.id, req.user!);
+    const machine = await getMachine({ uow: app.uow }, principalOf(req), req.params.id);
     if (!app.realtime.presence.isOnline(machine.id)) {
       throw new AppError('Machine daemon is offline', 409, 'MACHINE_OFFLINE');
     }
@@ -320,11 +300,12 @@ export async function jobsRoutes(app: FastifyInstance): Promise<void> {
   // ---- POST /api/machines/:id/adapters/:sessionId/close — operator kill ----
   // The panel's 终止: closes the CHANNEL (daemon teardown + ledger audit
   // cleanup ride the ordinary close path). 404-hides an id that is not live.
+  // #53 residue: force-close talks to the live channel registry.
   app.post<{ Params: { id: string; sessionId: string } }>(
     '/api/machines/:id/adapters/:sessionId/close',
     guard,
     async (req) => {
-      await visibleMachine(req.params.id, req.user!);
+      await getMachine({ uow: app.uow }, principalOf(req), req.params.id);
       const closed = await app.realtime.chat.forceCloseSession(req.params.sessionId, 'operator');
       if (!closed) {
         throw new AppError('Adapter channel not found', 404, 'ADAPTER_NOT_FOUND');

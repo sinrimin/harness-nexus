@@ -1,5 +1,10 @@
 import type { User, Credential, Resource, Machine } from '@harness-nexus/core';
 
+/**
+ * #53: stays as-is on purpose — shared REPLY-view helpers (secret stripping,
+ * derived presence), not domain logic. View shaping is the routes' concern;
+ * services return domain rows and call these from their HTTP shells.
+
 /** Strip secrets from a user for API responses. */
 export function publicUser(u: User): Omit<User, 'passwordHash'> {
   const { passwordHash: _omit, ...rest } = u;

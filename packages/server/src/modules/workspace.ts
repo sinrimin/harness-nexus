@@ -1,20 +1,22 @@
 import { randomUUID } from 'node:crypto';
-import { normalizeWorkspacePath, isWithinWorkspace } from '../paths.js';
 import type { FastifyInstance } from 'fastify';
 import {
   AppError,
   workspaceListRequestSchema,
   type WorkspaceDirectory,
 } from '@harness-nexus/shared';
+import { principalOf } from './principal.js';
+import { prepareWorkspaceListing } from '../services/workspace.js';
 
 /**
- * Workspace directory listing (Phase 9 W6) — one level of subdirectories
- * under the machine's base workspace, for the chat session picker. Owner-only
- * read with 404-hiding (#36 — same convention as the other machine routes);
- * listing rides the daemon (`workspace:list` over /ctl), so the machine must
- * be online and advertise the `workspace` capability. Containment (the
- * requested path must BE the root or sit under it) is enforced HERE, before
- * anything is emitted — the daemon only ever returns directory names.
+ * Workspace directory listing routes (Phase 9 W6) — the HTTP shell over the
+ * pure decisions in `services/workspace.ts` (#53 slice 12) plus the daemon
+ * round-trip, which is inherently realtime and stays HERE: one level of
+ * subdirectories under the machine's base workspace for the chat session
+ * picker, fetched via `workspace:list` over /ctl (the machine must be online
+ * and advertise the `workspace` capability). The daemon only ever returns
+ * directory names — containment is enforced in the service BEFORE anything
+ * is emitted.
  */
 export async function workspaceRoutes(app: FastifyInstance): Promise<void> {
   const guard = { preHandler: [app.requireAuth] };
@@ -23,32 +25,18 @@ export async function workspaceRoutes(app: FastifyInstance): Promise<void> {
     '/api/machines/:id/workspace',
     guard,
     async (req) => {
-      const machine = await app.uow.machines.findById(req.params.id);
-      if (!machine || machine.ownerId !== req.user!.id) {
-        throw new AppError('Machine not found', 404, 'MACHINE_NOT_FOUND');
-      }
-      if (machine.baseWorkspace === null) {
-        throw new AppError(
-          'Base workspace is not configured for this machine',
-          400,
-          'WORKSPACE_ROOT_NOT_SET',
-        );
-      }
-
-      // #33: normalize WITHOUT the server's own filesystem semantics — the
-      // path belongs to the (possibly Windows) machine, and a Linux server's
-      // resolve() would garble `D:\code` into `/app/D:\code`.
-      const root = normalizeWorkspacePath(machine.baseWorkspace);
-      const requested = normalizeWorkspacePath(
-        req.query.path && req.query.path !== '' ? req.query.path : root,
+      const { machine, requested } = await prepareWorkspaceListing(
+        { uow: app.uow },
+        principalOf(req),
+        req.params.id,
+        req.query.path,
       );
-      if (!isWithinWorkspace(requested, root)) {
-        throw new AppError(
-          'Path is outside the machine base workspace',
-          400,
-          'WORKSPACE_OUTSIDE_ROOT',
-        );
-      }
+
+      // #53 residue: everything below is the daemon round-trip — presence,
+      // the capability the LIVE daemon advertised, the ctl emit, and the
+      // waiter are realtime-only concerns (services decide, callers act).
+      // Order matters: an offline machine (capabilities not yet mirrored
+      // onto the row) must answer MACHINE_OFFLINE, not DAEMON_NO_WORKSPACE.
       if (!app.realtime.presence.isOnline(machine.id)) {
         throw new AppError('Machine daemon is offline', 409, 'MACHINE_OFFLINE');
       }

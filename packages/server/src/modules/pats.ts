@@ -1,45 +1,26 @@
 import type { FastifyInstance } from 'fastify';
-import { AppError, createPatSchema, type CreatePatInput } from '@harness-nexus/shared';
-import { generatePat, hashToken, patDisplayPrefix, generateId } from '../infra/crypto.js';
+import { createPatSchema, type CreatePatInput } from '@harness-nexus/shared';
+import { principalOf } from './principal.js';
+import { createPat, deletePat, listPats } from '../services/pats.js';
 
-/** Personal access token management — each user manages their own. */
+/**
+ * PAT routes — thin HTTP adapters over the domain service
+ * (`services/pats.ts`, #53 slice 11). Generation, hashing, server-assigned
+ * scopes, and the emit-token URL live in the service; this file frames the
+ * reply — the shown-once raw token and, for marketplace tokens, the
+ * ready-to-paste `claude plugin marketplace add` line.
+ */
 export async function patsRoutes(app: FastifyInstance): Promise<void> {
   const guard = { preHandler: [app.requireAuth] };
+  const deps = () => ({ uow: app.uow, publicBaseUrl: app.publicBaseUrl });
 
   // ---- POST /api/pats ----
   app.post('/api/pats', guard, async (req, reply) => {
     const input = createPatSchema.parse(req.body) as CreatePatInput;
-    const rawToken = generatePat();
-    const now = new Date().toISOString();
-    // Scopes are SERVER-assigned (#21): an api token carries none, a
-    // marketplace (emit) token exactly ['marketplace']. Client-supplied
-    // scope lists are ignored — capability tags must never be self-issued
-    // (today every acceptance path re-derives the user, but the tag should
-    // not be forgeable in the first place).
-    const scopes: string[] = input.kind === 'marketplace' ? ['marketplace'] : [];
-
-    const pat = await app.uow.tokens.save({
-      id: generateId(),
-      userId: req.user!.id,
-      name: input.name,
-      tokenHash: hashToken(rawToken),
-      prefix: patDisplayPrefix(rawToken),
-      scopes,
-      expiresAt: input.expiresAt ?? null,
-      lastUsedAt: null,
-      createdAt: now,
-    });
-
-    // The raw token is returned exactly once. For marketplace tokens, also
-    // return the ready-to-paste `claude plugin marketplace add` command — the
-    // server is the only side that knows PUBLIC_BASE_URL.
-    const marketplaceUrl =
-      input.kind === 'marketplace'
-        ? `${app.publicBaseUrl}/api/marketplace/${rawToken}/marketplace.json`
-        : undefined;
+    const { pat, token, marketplaceUrl } = await createPat(deps(), principalOf(req), input);
     return reply.code(201).send({
       pat: stripSecret(pat),
-      token: rawToken,
+      token,
       ...(marketplaceUrl
         ? {
             marketplaceUrl,
@@ -51,17 +32,13 @@ export async function patsRoutes(app: FastifyInstance): Promise<void> {
 
   // ---- GET /api/pats ----
   app.get('/api/pats', guard, async (req) => {
-    const pats = await app.uow.tokens.listByUser(req.user!.id);
+    const pats = await listPats({ uow: app.uow }, principalOf(req));
     return { pats: pats.map(stripSecret) };
   });
 
   // ---- DELETE /api/pats/:id ----
   app.delete<{ Params: { id: string } }>('/api/pats/:id', guard, async (req) => {
-    const pat = await app.uow.tokens.findById(req.params.id);
-    if (!pat || pat.userId !== req.user!.id) {
-      throw new AppError('Token not found', 404, 'PAT_NOT_FOUND');
-    }
-    await app.uow.tokens.delete(pat.id);
+    await deletePat({ uow: app.uow }, principalOf(req), req.params.id);
     return { ok: true };
   });
 }
