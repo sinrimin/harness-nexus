@@ -109,14 +109,18 @@ export class AssistantRealtimeService {
   }
 
   /** The rail's truth: the owner's sessions + live busy flags. */
-  async pushSessions(userId: string): Promise<void> {
-    const sessions = await this.deps.uow.assistants.listSessions(userId);
-    this.io.toUser(userId, 'assistant:sessions', {
+  snapshotFor(userId: string): Promise<{ sessions: (AssistantSession & { busy: boolean })[] }> {
+    return this.deps.uow.assistants.listSessions(userId).then((sessions) => ({
       sessions: sessions.map((s) => ({
         ...s,
         busy: this.running.get(userId) === s.id,
       })),
-    });
+    }));
+  }
+
+  /** Push the snapshot to the user's /app room (every table change). */
+  async pushSessions(userId: string): Promise<void> {
+    this.io.toUser(userId, 'assistant:sessions', await this.snapshotFor(userId));
   }
 
   // ---- open / close ----

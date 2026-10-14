@@ -821,6 +821,12 @@ export async function registerRealtime(
       })();
     });
 
+    // A freshly MOUNTED rail asks for the current snapshot (the connect-time
+    // push predates SPA navigations — the socket survives them).
+    socket.on('assistant:sessions.sync', (_payload: unknown, ack?: (res: unknown) => void) => {
+      ack?.(realtime.assistant.snapshotFor(socket.data.userId as string));
+    });
+
     socket.on('assistant:message.send', (payload: unknown, ack?: (res: unknown) => void) => {
       const parsed = assistantMessageSendRequestSchema.safeParse(payload);
       if (!parsed.success) {

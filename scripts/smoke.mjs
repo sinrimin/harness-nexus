@@ -3260,7 +3260,14 @@ await new Promise((resolve) => {
   setTimeout(resolve, 3000);
 });
 await req('DELETE', `/api/machines/${w7MachineId}`, { token: userToken });
-rmSync(w7Home, { recursive: true, force: true });
+// Best-effort: the dsh daemon can still be writing its session store when we
+// tear down here (ENOTEMPTY race) — a stale dir is swept by the hygiene pass
+// at the top of the next run.
+try {
+  rmSync(w7Home, { recursive: true, force: true });
+} catch {
+  /* best-effort */
+}
 if (w7Err.includes('Error:')) {
   log(
     `(w7 daemon stderr note): ${w7Err
@@ -3321,6 +3328,74 @@ expect(
   JSON.stringify({ 'claude-code': false, codex: true, deepseek: true, opencode: false }),
 );
 await req('DELETE', `/api/machines/${pwMachineId}`, { token: userToken });
+
+
+// ===========================================================================
+// [#52] Platform assistant — config CRUD (owner-only, model coherence),
+// sessions, and the soft-delete lifecycle. The pi turn itself is covered by
+// the faux-driven server tests; the smoke pins the REST door.
+// ===========================================================================
+log('\n--- [#52] assistant config CRUD + owner-only + soft delete ---');
+r = await req('POST', '/api/llm-providers', {
+  token: userToken,
+  body: {
+    name: 'asst-gw',
+    api: 'openai-chat',
+    baseUrl: 'https://gw.example.com/v1',
+    credentialName: 'w3-gw-key',
+    models: [{ id: 'smoke-model', type: 'chat' }],
+  },
+});
+expect('assistant smoke provider created', r.status, 201);
+const asstProviderId = r.json.provider.id;
+
+r = await req('POST', '/api/assistants', {
+  token: userToken,
+  body: { name: 'smoke-ops', providerId: asstProviderId, defaultModel: 'smoke-model' },
+});
+expect('assistant created', r.status, 201);
+const asstId = r.json.assistant.id;
+expect('assistant defaults all tool groups', Array.isArray(r.json.assistant.enabledToolGroups), true);
+
+r = await req('POST', '/api/assistants', {
+  token: userToken,
+  body: { name: 'smoke-ops', providerId: asstProviderId, defaultModel: 'smoke-model' },
+});
+expect('duplicate name 409', r.status, 409);
+r = await req('POST', '/api/assistants', {
+  token: userToken,
+  body: { name: 'bad-model', providerId: asstProviderId, defaultModel: 'not-configured' },
+});
+expect('model not on provider 409', r.status, 409);
+
+r = await req('GET', '/api/assistants', { token: adminToken });
+expect('foreign list empty (owner-only)', r.json.assistants.length, 0);
+r = await req('GET', `/api/assistants/${asstId}`, { token: adminToken });
+expect('foreign get 404 (admin gets the same 404)', r.status, 404);
+
+r = await req('POST', `/api/assistants/${asstId}/sessions`, { token: userToken });
+expect('session created', r.status, 201);
+const asstSessionId = r.json.session.id;
+r = await req('GET', '/api/assistant-sessions', { token: userToken });
+expect('session listed', r.json.sessions.length, 1);
+r = await req('GET', `/api/assistant-sessions/${asstSessionId}/messages`, { token: userToken });
+expect('transcript readable (empty)', r.json.messages.length, 0);
+
+r = await req('PATCH', `/api/assistants/${asstId}`, {
+  token: userToken,
+  body: { name: 'smoke-ops-2', enabledToolGroups: ['system'] },
+});
+expect('assistant renamed', r.json.assistant.name, 'smoke-ops-2');
+
+r = await req('DELETE', `/api/assistants/${asstId}`, { token: userToken });
+expect('assistant soft-deleted', r.status, 200);
+r = await req('GET', '/api/assistants', { token: userToken });
+expect('deleted config gone from pickers', r.json.assistants.length, 0);
+r = await req('GET', `/api/assistant-sessions/${asstSessionId}`, { token: userToken });
+expect('session of deleted config still resolves', r.status, 200);
+r = await req('DELETE', `/api/assistant-sessions/${asstSessionId}`, { token: userToken });
+expect('session deleted', r.status, 200);
+await req('DELETE', `/api/llm-providers/${asstProviderId}`, { token: userToken });
 
 log(`\n=== ${pass} passed, ${fail} failed ===`);
 process.exit(fail ? 1 : 0);

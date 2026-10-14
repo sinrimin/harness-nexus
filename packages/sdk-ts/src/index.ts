@@ -724,7 +724,10 @@ export class HarnessNexusClient {
     return this.request('GET', `/api/assistant-sessions/${id}`);
   }
 
-  async renameAssistantSession(id: string, title: string): Promise<{ session: AssistantSessionView }> {
+  async renameAssistantSession(
+    id: string,
+    title: string,
+  ): Promise<{ session: AssistantSessionView }> {
     return this.request('PATCH', `/api/assistant-sessions/${id}`, { title });
   }
 
@@ -732,9 +735,7 @@ export class HarnessNexusClient {
     await this.request('DELETE', `/api/assistant-sessions/${id}`);
   }
 
-  async listAssistantSessionMessages(
-    id: string,
-  ): Promise<{ messages: unknown[] }> {
+  async listAssistantSessionMessages(id: string): Promise<{ messages: unknown[] }> {
     return this.request('GET', `/api/assistant-sessions/${id}/messages`);
   }
 

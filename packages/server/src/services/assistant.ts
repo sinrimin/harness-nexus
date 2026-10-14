@@ -6,6 +6,7 @@ import type {
 } from '@harness-nexus/core';
 import {
   AppError,
+  DEFAULT_ASSISTANT_TOOL_GROUPS,
   type AssistantConfigCreateInput,
   type AssistantConfigUpdateInput,
 } from '@harness-nexus/shared';
@@ -77,7 +78,12 @@ export async function createAssistant(
     ...(input.systemPromptOverride !== undefined && input.systemPromptOverride !== ''
       ? { systemPromptOverride: input.systemPromptOverride }
       : {}),
-    enabledToolGroups: input.enabledToolGroups as AssistantToolGroup[],
+    // Route-parsed input always carries the zod default; direct callers
+    // (tests, future in-process doors) may omit it — same default applies.
+    enabledToolGroups:
+      (input.enabledToolGroups as AssistantToolGroup[] | undefined) ?? [
+        ...DEFAULT_ASSISTANT_TOOL_GROUPS,
+      ],
     createdAt: now,
     updatedAt: now,
   };
