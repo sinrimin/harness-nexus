@@ -2230,6 +2230,116 @@ describe('dsh live streaming via the in-process event tap (9 W7.1)', () => {
     expect(closeAck).toHaveBeenCalledWith({ closed: true });
   }, 20000);
 
+  it('prewarm NEVER publishes a tap-less deepseek adapter — the boot is killed and the next open spawns fresh (#47)', async () => {
+    const { mkdtempSync, writeFileSync, readFileSync } = await import('node:fs');
+    const { tmpdir } = await import('node:os');
+    const { join } = await import('node:path');
+    const home = mkdtempSync(join(tmpdir(), 'hnx-dsh-pw-notap-'));
+    const exitFile = join(home, 'exits.txt');
+    writeFileSync(exitFile, '', 'utf8');
+
+    const socket = new FakeSocket();
+    const handle = attachChatHandlers(socket as never, {
+      env: { HN_ACP_COMMAND_DEEPSEEK: `node ${FIXTURE}`, PATH: process.env.PATH ?? '' },
+      // No FIXTURE_TAP_SPEAKER: the prewarmed boot gets the tap env but
+      // never dials. On v4 session logs a channel that adopted it would have
+      // NO streaming source at all (the tail settles, it does not stream) —
+      // the pool must drop the boot instead of caching it.
+      spawnEnv: { ...process.env, FIXTURE_SESSION_ID: 'fx-pw-notap', FIXTURE_EXIT_FILE: exitFile },
+      homeDir: home,
+    });
+
+    const ack = vi.fn();
+    socket.receive('chat:adapter.prewarm', { target: 'deepseek' }, ack);
+    expect(ack).toHaveBeenCalledWith({ accepted: true });
+
+    // The deliberate kill leaves its exit marker (boot + grace), and the
+    // pool published nothing.
+    await waitFor(
+      () => (readFileSync(exitFile, 'utf8').match(/^exit \d+$/m) ? true : undefined),
+      8000,
+    );
+    expect(handle.prewarmReady('deepseek')).toBe(false);
+
+    // The miss is recoverable: the next open spawns FRESH and works
+    // (committed-only here — the worst-case lane, never a dead adoption).
+    socket.receive('chat:session.start', {
+      sessionId: 'pw-nt3',
+      agentInstanceId: 'ag-1',
+      target: 'deepseek',
+      cwd: '/tmp',
+    });
+    const ready = await waitFor(
+      () =>
+        socket.emitted.find((e) => e.event === 'chat:session.ready')?.payload as
+          { error?: string } | undefined,
+    );
+    expect(ready.error).toBeUndefined();
+    socket.receive('chat:message.send', {
+      sessionId: 'pw-nt3',
+      prompt: [{ type: 'text', text: 'hi recover' }],
+    });
+    await waitFor(() =>
+      socket.chatEvents().find((e) => e.kind === 'message_delta' && e.delta === 'echo: hi recover'),
+    );
+    const closeAck = vi.fn();
+    socket.receive('chat:session.close', { sessionId: 'pw-nt3', reason: 'user' }, closeAck);
+    expect(closeAck).toHaveBeenCalledWith({ closed: true });
+  }, 20000);
+
+  it('slow tap hello — past the retired arm-time window, inside start+grace — still wins the streaming lane (#47)', async () => {
+    const { mkdtempSync } = await import('node:fs');
+    const { tmpdir } = await import('node:os');
+    const { join } = await import('node:path');
+    const home = mkdtempSync(join(tmpdir(), 'hnx-dsh-slowtap-'));
+
+    const socket = new FakeSocket();
+    attachChatHandlers(socket as never, {
+      env: {
+        HN_ACP_COMMAND_DEEPSEEK: `node ${FIXTURE}`,
+        PATH: process.env.PATH ?? '',
+        HN_TAP_HELLO_GRACE_MS: '6000',
+      },
+      // The plugin dials 4s after boot: a slow cold boot that the old
+      // fixed arm-time 3s window used to lose (the channel then streamed
+      // nothing for its whole life).
+      spawnEnv: {
+        ...process.env,
+        FIXTURE_SESSION_ID: 'fx-slowtap',
+        FIXTURE_TAP_SPEAKER: '1',
+        FIXTURE_TAP_DELAY_MS: '4000',
+      },
+      homeDir: home,
+    });
+    socket.receive('chat:session.start', {
+      sessionId: 'sess-slow',
+      agentInstanceId: 'ag-1',
+      target: 'deepseek',
+      cwd: '/tmp',
+    });
+    const ready = await waitFor(
+      () =>
+        socket.emitted.find((e) => e.event === 'chat:session.ready')?.payload as
+          { error?: string } | undefined,
+      12000,
+    );
+    expect(ready.error).toBeUndefined();
+    socket.receive('chat:message.send', {
+      sessionId: 'sess-slow',
+      prompt: [{ type: 'text', text: 'slow tap' }],
+    });
+    // The frame deltas streamed via the late-but-live tap (under the old
+    // window this turn would render committed-only).
+    await waitFor(() =>
+      socket
+        .chatEvents()
+        .find((e) => e.kind === 'message_delta' && String(e.delta).includes('tap-流式-1')),
+    );
+    const closeAck = vi.fn();
+    socket.receive('chat:session.close', { sessionId: 'sess-slow', reason: 'user' }, closeAck);
+    expect(closeAck).toHaveBeenCalledWith({ closed: true });
+  }, 20000);
+
   it('HN_DISABLE_DSH_TAP=1 spawns the adapter with NO tap at all (the A/B switch)', async () => {
     const { mkdtempSync, readFileSync, writeFileSync } = await import('node:fs');
     const { tmpdir } = await import('node:os');
