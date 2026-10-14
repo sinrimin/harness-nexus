@@ -12,6 +12,10 @@ import type {
   Resource,
   ResourceSource,
   AgentTarget,
+  AssistantConfig,
+  AssistantMessageRow,
+  AssistantRepository,
+  AssistantSession,
   Machine,
   MachineInventorySnapshot,
   InventoryAgentData,
@@ -1199,6 +1203,234 @@ export function sqliteLlmProviderRepository(db: Database): LlmProviderRepository
     },
     async delete(id) {
       db.prepare('DELETE FROM llm_providers WHERE id = ?').run(id);
+    },
+  };
+}
+
+// ---- assistant repository (#52) ----
+
+interface AssistantConfigRow {
+  id: string;
+  owner_id: string;
+  name: string;
+  description: string | null;
+  provider_id: string;
+  default_model: string;
+  system_prompt_override: string | null;
+  enabled_tool_groups: string;
+  deleted_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+interface AssistantSessionRow {
+  id: string;
+  owner_id: string;
+  assistant_id: string;
+  title: string;
+  created_at: string;
+  updated_at: string;
+  last_message_at: string | null;
+}
+
+interface AssistantMessageRow_ {
+  session_id: string;
+  seq: number;
+  item: string;
+}
+
+interface AssistantToolCallRow {
+  id: string;
+  session_id: string;
+  user_id: string;
+  tool: string;
+  args: string;
+  status: string;
+  duration_ms: number;
+  created_at: string;
+}
+
+function mapAssistantConfig(r: AssistantConfigRow): AssistantConfig {
+  return {
+    id: r.id,
+    ownerId: r.owner_id,
+    name: r.name,
+    ...(r.description !== null ? { description: r.description } : {}),
+    providerId: r.provider_id,
+    defaultModel: r.default_model,
+    ...(r.system_prompt_override !== null
+      ? { systemPromptOverride: r.system_prompt_override }
+      : {}),
+    enabledToolGroups: JSON.parse(r.enabled_tool_groups) as AssistantConfig['enabledToolGroups'],
+    ...(r.deleted_at !== null ? { deletedAt: r.deleted_at } : {}),
+    createdAt: r.created_at,
+    updatedAt: r.updated_at,
+  };
+}
+
+function mapAssistantSession(r: AssistantSessionRow): AssistantSession {
+  return {
+    id: r.id,
+    ownerId: r.owner_id,
+    assistantId: r.assistant_id,
+    title: r.title,
+    createdAt: r.created_at,
+    updatedAt: r.updated_at,
+    lastMessageAt: r.last_message_at,
+  };
+}
+
+export function sqliteAssistantRepository(db: Database): AssistantRepository {
+  return {
+    async findById(id) {
+      const row = db.prepare('SELECT * FROM assistant_configs WHERE id = ?').get(id) as
+        AssistantConfigRow | undefined;
+      return row ? mapAssistantConfig(row) : null;
+    },
+    async listByOwner(ownerId) {
+      const rows = db
+        .prepare(
+          'SELECT * FROM assistant_configs WHERE owner_id = ? AND deleted_at IS NULL ORDER BY created_at',
+        )
+        .all(ownerId) as AssistantConfigRow[];
+      return rows.map(mapAssistantConfig);
+    },
+    async findByName(ownerId, name) {
+      const row = db
+        .prepare(
+          'SELECT * FROM assistant_configs WHERE owner_id = ? AND name = ? AND deleted_at IS NULL',
+        )
+        .get(ownerId, name) as AssistantConfigRow | undefined;
+      return row ? mapAssistantConfig(row) : null;
+    },
+    async save(config) {
+      db.prepare(
+        `INSERT INTO assistant_configs
+           (id, owner_id, name, description, provider_id, default_model,
+            system_prompt_override, enabled_tool_groups, deleted_at, created_at, updated_at)
+         VALUES (@id, @owner_id, @name, @description, @provider_id, @default_model,
+                 @system_prompt_override, @enabled_tool_groups, @deleted_at, @created_at, @updated_at)
+         ON CONFLICT(id) DO UPDATE SET
+           name                   = excluded.name,
+           description            = excluded.description,
+           provider_id            = excluded.provider_id,
+           default_model          = excluded.default_model,
+           system_prompt_override = excluded.system_prompt_override,
+           enabled_tool_groups    = excluded.enabled_tool_groups,
+           deleted_at             = excluded.deleted_at,
+           updated_at             = excluded.updated_at`,
+      ).run({
+        id: config.id,
+        owner_id: config.ownerId,
+        name: config.name,
+        description: config.description ?? null,
+        provider_id: config.providerId,
+        default_model: config.defaultModel,
+        system_prompt_override: config.systemPromptOverride ?? null,
+        enabled_tool_groups: JSON.stringify(config.enabledToolGroups),
+        deleted_at: config.deletedAt ?? null,
+        created_at: config.createdAt,
+        updated_at: config.updatedAt,
+      });
+      return config;
+    },
+    async delete(id) {
+      db.prepare('DELETE FROM assistant_configs WHERE id = ?').run(id);
+    },
+
+    async findSessionById(id) {
+      const row = db.prepare('SELECT * FROM assistant_sessions WHERE id = ?').get(id) as
+        AssistantSessionRow | undefined;
+      return row ? mapAssistantSession(row) : null;
+    },
+    async listSessions(ownerId, assistantId) {
+      const rows = (
+        assistantId === undefined
+          ? db
+              .prepare(
+                `SELECT * FROM assistant_sessions WHERE owner_id = ?
+                 ORDER BY COALESCE(last_message_at, created_at) DESC, created_at DESC`,
+              )
+              .all(ownerId)
+          : db
+              .prepare(
+                `SELECT * FROM assistant_sessions WHERE owner_id = ? AND assistant_id = ?
+                 ORDER BY COALESCE(last_message_at, created_at) DESC, created_at DESC`,
+              )
+              .all(ownerId, assistantId)
+      ) as AssistantSessionRow[];
+      return rows.map(mapAssistantSession);
+    },
+    async saveSession(session) {
+      db.prepare(
+        `INSERT INTO assistant_sessions
+           (id, owner_id, assistant_id, title, created_at, updated_at, last_message_at)
+         VALUES (@id, @owner_id, @assistant_id, @title, @created_at, @updated_at, @last_message_at)
+         ON CONFLICT(id) DO UPDATE SET
+           title           = excluded.title,
+           updated_at      = excluded.updated_at,
+           last_message_at = excluded.last_message_at`,
+      ).run({
+        id: session.id,
+        owner_id: session.ownerId,
+        assistant_id: session.assistantId,
+        title: session.title,
+        created_at: session.createdAt,
+        updated_at: session.updatedAt,
+        last_message_at: session.lastMessageAt,
+      });
+      return session;
+    },
+    async deleteSession(id) {
+      db.prepare('DELETE FROM assistant_sessions WHERE id = ?').run(id);
+    },
+
+    async appendMessage(sessionId, row) {
+      const { seq, ...item } = row;
+      db.prepare(
+        'INSERT INTO assistant_messages (session_id, seq, item) VALUES (?, ?, ?)',
+      ).run(sessionId, seq, JSON.stringify(item));
+    },
+    async listMessages(sessionId) {
+      const rows = db
+        .prepare('SELECT * FROM assistant_messages WHERE session_id = ? ORDER BY seq')
+        .all(sessionId) as AssistantMessageRow_[];
+      return rows.map((r) => ({ seq: r.seq, ...(JSON.parse(r.item) as object) })) as AssistantMessageRow[];
+    },
+    async clearMessages(sessionId) {
+      db.prepare('DELETE FROM assistant_messages WHERE session_id = ?').run(sessionId);
+    },
+
+    async appendToolCallAudit(audit) {
+      db.prepare(
+        `INSERT INTO assistant_tool_calls
+           (id, session_id, user_id, tool, args, status, duration_ms, created_at)
+         VALUES (@id, @session_id, @user_id, @tool, @args, @status, @duration_ms, @created_at)`,
+      ).run({
+        id: audit.id,
+        session_id: audit.sessionId,
+        user_id: audit.userId,
+        tool: audit.tool,
+        args: audit.args,
+        status: audit.status,
+        duration_ms: audit.durationMs,
+        created_at: audit.createdAt,
+      });
+    },
+    async listToolCallAudits(sessionId) {
+      const rows = db
+        .prepare('SELECT * FROM assistant_tool_calls WHERE session_id = ? ORDER BY created_at')
+        .all(sessionId) as AssistantToolCallRow[];
+      return rows.map((r) => ({
+        id: r.id,
+        sessionId: r.session_id,
+        userId: r.user_id,
+        tool: r.tool,
+        args: r.args,
+        status: r.status as 'ok' | 'error' | 'blocked',
+        durationMs: r.duration_ms,
+        createdAt: r.created_at,
+      }));
     },
   };
 }
