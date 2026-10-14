@@ -1,9 +1,17 @@
 import type { FastifyInstance } from 'fastify';
-import { AppError } from '@harness-nexus/shared';
-import { resolveAllowlistId } from '../infra/source-fetchers/allowlist.js';
+import { principalOf } from './principal.js';
+import {
+  listMarketplacePlugins,
+  listSkillMarketplaces,
+  searchSkills,
+  type SkillsDeps,
+} from '../services/skills.js';
 
 /**
- * Skill hub routes (Phase 7.2) — browse marketplace plugin catalogs.
+ * Skill hub routes (Phase 7.2/7.4) — thin HTTP adapters over the domain
+ * service (`services/skills.ts`, #53 slice 2). Every decision (query required,
+ * limit clamp, allowlist 404) lives in the service; this file only
+ * authenticates, reads the query, and frames the reply.
  *
  * This is the server's only outbound-fetch surface. All fetches go through the
  * allowlist (parsed at boot from `MARKETPLACE_ALLOWLIST`) and the
@@ -14,6 +22,11 @@ import { resolveAllowlistId } from '../infra/source-fetchers/allowlist.js';
 
 export async function skillsRoutes(app: FastifyInstance): Promise<void> {
   const guard = { preHandler: [app.requireAuth] };
+  const deps = (): SkillsDeps => ({
+    search: app.skillSearch,
+    catalog: app.skillCatalog,
+    allowlist: app.marketplaceAllowlist,
+  });
 
   // ---- GET /api/skills/search ----
   // Multi-source search across all configured SkillSources (Phase 7.4). The
@@ -24,43 +37,25 @@ export async function skillsRoutes(app: FastifyInstance): Promise<void> {
     '/api/skills/search',
     guard,
     async (req) => {
-      const q = req.query.q?.trim();
-      if (!q) {
-        throw new AppError('A search query (?q=) is required', 400, 'VALIDATION_ERROR');
-      }
-      // Clamp 1..200 — the value fans out to every source (#21).
-      const raw = req.query.limit ? Number(req.query.limit) : 50;
-      const limit = Number.isFinite(raw) ? Math.min(Math.max(Math.trunc(raw), 1), 200) : 50;
-      const result = await app.skillSearch.search(q, limit);
-      return result;
+      return searchSkills(deps(), principalOf(req), req.query);
     },
   );
 
   // ---- GET /api/skills/marketplaces ----
   // List the configured allowlist (no fetch — cheap).
-  app.get('/api/skills/marketplaces', guard, async () => {
-    return { marketplaces: app.marketplaceAllowlist.map((e) => ({ id: e.id })) };
+  app.get('/api/skills/marketplaces', guard, async (req) => {
+    const marketplaces = listSkillMarketplaces(deps(), principalOf(req));
+    return { marketplaces: marketplaces.map((e) => ({ id: e.id })) };
   });
 
   // ---- GET /api/skills/marketplaces/:id/plugins ----
-  // Fetch (with cache) and return a marketplace's plugins. Optional `?category=`
-  // and `?q=` filters narrow the list. Non-allowlisted id → 404 (not 403, to
-  // avoid leaking which ids are configured). Fetch failure → 502.
+  // Fetch (with cache) and return a marketplace's plugins.
   app.get<{ Params: { id: string } }>(
     '/api/skills/marketplaces/:id/plugins',
     guard,
     async (req) => {
-      const id = req.params.id;
-      const url = resolveAllowlistId(app.marketplaceAllowlist, id);
-      if (!url) {
-        throw new AppError(
-          `Marketplace "${id}" is not in the allowlist`,
-          404,
-          'MARKETPLACE_NOT_ALLOWED',
-        );
-      }
       const q = req.query as { category?: string; q?: string };
-      const plugins = await app.skillCatalog.listPlugins(id, url, {
+      const plugins = await listMarketplacePlugins(deps(), principalOf(req), req.params.id, {
         ...(q.category ? { category: q.category } : {}),
         ...(q.q ? { q: q.q } : {}),
       });
