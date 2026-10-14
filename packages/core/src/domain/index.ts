@@ -9,3 +9,4 @@ export * from './inventory.js';
 export * from './job.js';
 export * from './runtime-config.js';
 export * from './llm-provider.js';
+export * from './assistant.js';

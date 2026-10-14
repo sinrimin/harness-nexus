@@ -17,6 +17,7 @@ import {
   sqliteAgentInstanceRepository,
   sqliteRuntimeConfigRepository,
   sqliteLlmProviderRepository,
+  sqliteAssistantRepository,
 } from './repos.js';
 
 /**
@@ -48,5 +49,6 @@ export function createSqliteUnitOfWork(dbPath: string): UnitOfWork {
     agentInstances: sqliteAgentInstanceRepository(db),
     runtimeConfigs: sqliteRuntimeConfigRepository(db),
     llmProviders: sqliteLlmProviderRepository(db),
+    assistants: sqliteAssistantRepository(db),
   };
 }

@@ -376,6 +376,66 @@ ALTER TABLE machines ADD COLUMN chat_default_mode TEXT;
 ALTER TABLE llm_providers ADD COLUMN models TEXT;
     `,
   },
+  {
+    version: 20,
+    description: 'issue #52 — platform assistant (configs, sessions, transcript, tool-call audit)',
+    sql: `
+-- All owner-only rows (no scope column: personal by construction, the #36
+-- owner rule with no admin arm). Configs are soft-deleted (deleted_at set =
+-- gone from pickers, sessions stay readable). The transcript is append-only
+-- JSON items in seq order; the seq is caller-allocated and monotonic per
+-- session, so (session_id, seq) is the natural identity.
+CREATE TABLE IF NOT EXISTS assistant_configs (
+  id                    TEXT PRIMARY KEY,
+  owner_id              TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  name                  TEXT NOT NULL,
+  description           TEXT,
+  provider_id           TEXT NOT NULL,
+  default_model         TEXT NOT NULL,
+  system_prompt_override TEXT,
+  enabled_tool_groups   TEXT NOT NULL DEFAULT '[]',
+  deleted_at            TEXT,
+  created_at            TEXT NOT NULL,
+  updated_at            TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_assistant_configs_owner ON assistant_configs(owner_id);
+-- PARTIAL: a soft-deleted config frees its name for reuse; live rows stay
+-- unique per owner.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_assistant_configs_owner_name
+  ON assistant_configs(owner_id, name) WHERE deleted_at IS NULL;
+
+CREATE TABLE IF NOT EXISTS assistant_sessions (
+  id              TEXT PRIMARY KEY,
+  owner_id        TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  assistant_id    TEXT NOT NULL REFERENCES assistant_configs(id) ON DELETE CASCADE,
+  title           TEXT NOT NULL DEFAULT '',
+  created_at      TEXT NOT NULL,
+  updated_at      TEXT NOT NULL,
+  last_message_at TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_assistant_sessions_owner ON assistant_sessions(owner_id);
+CREATE INDEX IF NOT EXISTS idx_assistant_sessions_assistant ON assistant_sessions(assistant_id);
+
+CREATE TABLE IF NOT EXISTS assistant_messages (
+  session_id TEXT NOT NULL REFERENCES assistant_sessions(id) ON DELETE CASCADE,
+  seq        INTEGER NOT NULL,
+  item       TEXT NOT NULL,
+  PRIMARY KEY (session_id, seq)
+);
+
+CREATE TABLE IF NOT EXISTS assistant_tool_calls (
+  id          TEXT PRIMARY KEY,
+  session_id  TEXT NOT NULL REFERENCES assistant_sessions(id) ON DELETE CASCADE,
+  user_id     TEXT NOT NULL,
+  tool        TEXT NOT NULL,
+  args        TEXT NOT NULL DEFAULT '',
+  status      TEXT NOT NULL,
+  duration_ms INTEGER NOT NULL DEFAULT 0,
+  created_at  TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_assistant_tool_calls_session ON assistant_tool_calls(session_id);
+    `,
+  },
 ] as const;
 
 /**

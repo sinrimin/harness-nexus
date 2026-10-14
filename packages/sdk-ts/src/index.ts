@@ -44,6 +44,9 @@ import type {
   ProviderModelConfig,
   ProviderModelConfigInput,
   ProviderModelsQueryInput,
+  AssistantConfigView,
+  AssistantSessionView,
+  AssistantToolGroup,
 } from '@harness-nexus/shared';
 export {
   SCANNABLE_TARGETS,
@@ -80,6 +83,9 @@ export type {
   ProviderApiKind,
   ProviderModelConfig,
   ProviderModelConfigInput,
+  AssistantConfigView,
+  AssistantSessionView,
+  AssistantToolGroup,
   MarketplaceCatalog,
   MarketplacePlugin,
   MarketplaceSource,
@@ -656,6 +662,81 @@ export class HarnessNexusClient {
 
   async deleteLlmProvider(id: string): Promise<void> {
     await this.request('DELETE', `/api/llm-providers/${id}`);
+  }
+
+  // ---- platform assistant (#52 — configs, sessions, transcript) ----
+  async listAssistants(): Promise<AssistantConfigView[]> {
+    const res = await this.request('GET', '/api/assistants');
+    return res.assistants;
+  }
+
+  async createAssistant(input: {
+    name: string;
+    description?: string;
+    providerId: string;
+    defaultModel: string;
+    systemPromptOverride?: string;
+    enabledToolGroups?: AssistantToolGroup[];
+  }): Promise<{ assistant: AssistantConfigView }> {
+    return this.request('POST', '/api/assistants', input);
+  }
+
+  async getAssistant(id: string): Promise<{ assistant: AssistantConfigView }> {
+    return this.request('GET', `/api/assistants/${id}`);
+  }
+
+  async updateAssistant(
+    id: string,
+    input: {
+      name?: string;
+      description?: string | null;
+      providerId?: string;
+      defaultModel?: string;
+      systemPromptOverride?: string | null;
+      enabledToolGroups?: AssistantToolGroup[];
+    },
+  ): Promise<{ assistant: AssistantConfigView }> {
+    return this.request('PATCH', `/api/assistants/${id}`, input);
+  }
+
+  /** Soft-delete: pickers drop it, its sessions stay readable. */
+  async deleteAssistant(id: string): Promise<void> {
+    await this.request('DELETE', `/api/assistants/${id}`);
+  }
+
+  async listAssistantSessions(assistantId?: string): Promise<AssistantSessionView[]> {
+    const res = await this.request(
+      'GET',
+      assistantId === undefined
+        ? '/api/assistant-sessions'
+        : `/api/assistants/${assistantId}/sessions`,
+    );
+    return res.sessions;
+  }
+
+  async createAssistantSession(assistantId: string): Promise<{ session: AssistantSessionView }> {
+    return this.request('POST', `/api/assistants/${assistantId}/sessions`);
+  }
+
+  async getAssistantSession(
+    id: string,
+  ): Promise<{ session: AssistantSessionView; assistant: AssistantConfigView }> {
+    return this.request('GET', `/api/assistant-sessions/${id}`);
+  }
+
+  async renameAssistantSession(
+    id: string,
+    title: string,
+  ): Promise<{ session: AssistantSessionView }> {
+    return this.request('PATCH', `/api/assistant-sessions/${id}`, { title });
+  }
+
+  async deleteAssistantSession(id: string): Promise<void> {
+    await this.request('DELETE', `/api/assistant-sessions/${id}`);
+  }
+
+  async listAssistantSessionMessages(id: string): Promise<{ messages: unknown[] }> {
+    return this.request('GET', `/api/assistant-sessions/${id}/messages`);
   }
 
   /** 获取模型 — discover the endpoint's model list (server-side fetch). */

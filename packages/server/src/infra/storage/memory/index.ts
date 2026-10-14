@@ -8,6 +8,11 @@ import type {
   McpServer,
   Profile,
   Resource,
+  AssistantConfig,
+  AssistantMessageRow,
+  AssistantRepository,
+  AssistantSession,
+  AssistantToolCallAudit,
   Machine,
   MachineInventorySnapshot,
   InventoryRepository,
@@ -52,6 +57,11 @@ export function createMemoryUnitOfWork(): UnitOfWork {
   const agentInstances = new Map<string, AgentInstance>();
   const runtimeConfigs = new Map<string, RuntimeConfig>();
   const llmProviders = new Map<string, LlmProvider>();
+  const assistantConfigs = new Map<string, AssistantConfig>();
+  const assistantSessions = new Map<string, AssistantSession>();
+  // key: `${sessionId}\u0000${seq}` — the append-only transcript.
+  const assistantMessages = new Map<string, AssistantMessageRow>();
+  const assistantAudits = new Map<string, AssistantToolCallAudit>();
   let settings: SystemSettings = {
     allowRegistration: DEFAULT_SYSTEM_SETTINGS.allowRegistration,
     updatedAt: new Date(0).toISOString(),
@@ -382,6 +392,81 @@ export function createMemoryUnitOfWork(): UnitOfWork {
     },
   };
 
+  const assistantRepo: AssistantRepository = {
+    async findById(id) {
+      return assistantConfigs.get(id) ?? null;
+    },
+    async listByOwner(ownerId) {
+      return [...assistantConfigs.values()]
+        .filter((c) => c.ownerId === ownerId && c.deletedAt === undefined)
+        .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+    },
+    async findByName(ownerId, name) {
+      return (
+        [...assistantConfigs.values()].find(
+          (c) => c.ownerId === ownerId && c.name === name && c.deletedAt === undefined,
+        ) ?? null
+      );
+    },
+    async save(config) {
+      assistantConfigs.set(config.id, config);
+      return config;
+    },
+    async delete(id) {
+      assistantConfigs.delete(id);
+    },
+
+    async findSessionById(id) {
+      return assistantSessions.get(id) ?? null;
+    },
+    async listSessions(ownerId, assistantId) {
+      return [...assistantSessions.values()]
+        .filter(
+          (s) =>
+            s.ownerId === ownerId && (assistantId === undefined || s.assistantId === assistantId),
+        )
+        .sort(
+          (a, b) =>
+            (b.lastMessageAt ?? b.createdAt).localeCompare(a.lastMessageAt ?? a.createdAt) ||
+            b.createdAt.localeCompare(a.createdAt),
+        );
+    },
+    async saveSession(session) {
+      assistantSessions.set(session.id, session);
+      return session;
+    },
+    async deleteSession(id) {
+      assistantSessions.delete(id);
+      for (const key of [...assistantMessages.keys()]) {
+        if (key.split('\u0000')[0] === id) assistantMessages.delete(key);
+      }
+    },
+
+    async appendMessage(sessionId, row) {
+      assistantMessages.set(`${sessionId}\u0000${String(row.seq)}`, row);
+    },
+    async listMessages(sessionId) {
+      return [...assistantMessages.entries()]
+        .filter(([key]) => key.split('\u0000')[0] === sessionId)
+        .map(([, row]) => row)
+        .sort((a, b) => a.seq - b.seq);
+    },
+    async clearMessages(sessionId) {
+      for (const key of [...assistantMessages.keys()]) {
+        if (key.split('\u0000')[0] === sessionId) assistantMessages.delete(key);
+      }
+    },
+
+    async appendToolCallAudit(audit) {
+      assistantAudits.set(audit.id, audit);
+    },
+    async listToolCallAudits(sessionId) {
+      return [...assistantAudits.values()]
+        .filter((a) => a.sessionId === sessionId)
+        .sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id));
+    },
+  };
+
   return {
     users: userRepo,
     tokens: tokenRepo,
@@ -396,5 +481,6 @@ export function createMemoryUnitOfWork(): UnitOfWork {
     agentInstances: agentInstanceRepo,
     runtimeConfigs: runtimeConfigRepo,
     llmProviders: llmProviderRepo,
+    assistants: assistantRepo,
   };
 }

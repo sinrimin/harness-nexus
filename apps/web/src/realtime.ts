@@ -292,3 +292,42 @@ export function emitWithAck<T>(event: string, payload: unknown, timeoutMs = 1000
     });
   });
 }
+
+// ---- #52 — the platform assistant's /app family (mirrors shared schemas) ----
+
+export interface AssistantSessionView {
+  id: string;
+  ownerId: string;
+  assistantId: string;
+  title: string;
+  createdAt: string;
+  updatedAt: string;
+  lastMessageAt: string | null;
+}
+
+export type AssistantLiveSessionView = AssistantSessionView & { busy: boolean };
+
+export interface AssistantSessionsPush {
+  sessions: AssistantLiveSessionView[];
+}
+
+export interface AssistantReadyPush {
+  sessionId: string;
+  assistantId: string;
+  assistantName: string;
+}
+
+export interface AssistantEventEnvelope {
+  sessionId: string;
+  event: ChatStreamEvent;
+}
+
+export interface AssistantHistoryEvent {
+  sessionId: string;
+  items: HistoryItem[];
+}
+
+export interface AssistantClosedPush {
+  sessionId: string;
+  reason: string;
+}

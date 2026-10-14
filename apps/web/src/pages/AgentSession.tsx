@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'r
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import {
-  ArrowLeftIcon,
   ListIcon,
   BotIcon,
   ChevronRightIcon,
@@ -39,6 +38,7 @@ import { cn } from '@/lib/utils';
 import { Dialog as DialogPrimitive } from 'radix-ui';
 import { ChatStream } from '@/components/chat/chat-stream.js';
 import { ChannelTabs } from '@/components/chat/channel-tabs.js';
+import { EndSwitcher } from '@/components/chat/end-switcher.js';
 import { useChatChannels } from '@/components/chat/use-chat-channels.js';
 import {
   Composer,
@@ -217,7 +217,7 @@ function SessionRail({
   onOpenChannel,
   onNewSession,
   onRefresh,
-  showBack,
+  end,
 }: {
   rail: RailState;
   groups: SessionGroup[];
@@ -234,21 +234,14 @@ function SessionRail({
   ) => Promise<void>;
   onNewSession: () => void;
   onRefresh: () => void;
-  /** The drawer keeps no back-to-list button: closing it IS the way back. */
-  showBack?: boolean;
+  /** The desktop rail carries the 端 switcher; the drawer keeps none. */
+  end?: { agentInstanceId: string } | null;
 }) {
   const { t, lang } = useI18n();
   return (
     <>
-      <div className="flex items-center gap-2 border-b px-3 py-2.5">
-        {showBack === true ? (
-          <Button asChild variant="ghost" size="sm" className="gap-1.5 px-2">
-            <Link to="/chat">
-              <ArrowLeftIcon className="size-3.5" />
-              <span className="text-xs">{t('chat.backToAgents')}</span>
-            </Link>
-          </Button>
-        ) : null}
+      <div className="flex items-center gap-1 border-b px-2 py-2.5">
+        {end !== undefined && end !== null ? <EndSwitcher current={end} /> : null}
         <span className="min-w-0 flex-1" />
         <Button
           variant="ghost"
@@ -1085,7 +1078,7 @@ export function AgentSessionPage() {
               onOpenChannel={openChannel}
               onNewSession={() => setPickerOpen(true)}
               onRefresh={() => void refreshSessions(true)}
-              showBack
+              end={{ agentInstanceId: agentId }}
             />
           </aside>
 

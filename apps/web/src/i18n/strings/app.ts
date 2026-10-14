@@ -20,6 +20,7 @@ const en = {
   // Nav items + page titles (single source of truth in nav.tsx).
   navHome: 'Home',
   navChat: 'Chat',
+  navAssistants: 'Assistants',
   navMachines: 'Machines',
   navSkills: 'Skills',
   navSubAgents: 'Sub-agents',
@@ -76,6 +77,7 @@ const zh: typeof en = {
   jumpToPage: '跳转到页面',
   navHome: '总览',
   navChat: '聊天',
+  navAssistants: '平台助理',
   navMachines: '机器',
   navSkills: '技能',
   navSubAgents: '子代理',

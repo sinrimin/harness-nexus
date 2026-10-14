@@ -1,6 +1,7 @@
 import {
   HomeIcon,
   MessageSquareIcon,
+  Wand2Icon,
   LaptopIcon,
   SparklesIcon,
   BotIcon,
@@ -78,6 +79,8 @@ export type RouteId =
   | 'home'
   | 'chat'
   | 'chatSession'
+  | 'assistantSession'
+  | 'assistants'
   | 'machines'
   | 'machineDetail'
   | 'skills'
@@ -132,6 +135,15 @@ export const ROUTES: RouteDef[] = [
   {
     id: 'chatSession',
     path: '/chat/agents/:agentId',
+    group: 'nav',
+    titleKey: 'chat.title',
+    parent: 'chat',
+    layout: 'panes',
+  },
+  {
+    // #52 — the assistant 端's session page (the /chat default lands here).
+    id: 'assistantSession',
+    path: '/chat/assistants',
     group: 'nav',
     titleKey: 'chat.title',
     parent: 'chat',
@@ -220,6 +232,14 @@ export const ROUTES: RouteDef[] = [
     group: 'access',
     titleKey: 'llmProviders.title',
     nav: { icon: PlugZapIcon },
+  },
+  {
+    // #52 — the assistant config page (list + FormDialog).
+    id: 'assistants',
+    path: '/assistants',
+    group: 'access',
+    titleKey: 'assistants.title',
+    nav: { icon: Wand2Icon },
   },
   {
     id: 'tokens',
