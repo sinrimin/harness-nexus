@@ -436,6 +436,17 @@ CREATE TABLE IF NOT EXISTS assistant_tool_calls (
 CREATE INDEX IF NOT EXISTS idx_assistant_tool_calls_session ON assistant_tool_calls(session_id);
     `,
   },
+  {
+    version: 21,
+    description: 'issue #52 M2 — assistant config MCP server + skill resource references',
+    sql: `
+-- JSON of string ids (full replace on update). NULL on rows written before
+-- M2 → readers map it to []. Visibility is enforced at save; dialability and
+-- readability resolve at turn time (the pool / resource store decide).
+ALTER TABLE assistant_configs ADD COLUMN mcp_server_ids TEXT;
+ALTER TABLE assistant_configs ADD COLUMN skill_resource_ids TEXT;
+    `,
+  },
 ] as const;
 
 /**

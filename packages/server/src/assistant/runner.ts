@@ -6,7 +6,8 @@ import { decryptSecret, generateId } from '../infra/crypto.js';
 import { findCredentialForOwner } from '../infra/credential-scope.js';
 import { buildGatewayModel, type GatewayModel } from './provider.js';
 import { rowsToPiMessages, piStopToWire } from './history.js';
-import { buildAssistantTools, TOOL_NAMES_BY_GROUP, type AssistantToolDeps } from './tools.js';
+import { buildAssistantTools, type AssistantToolDeps } from './tools.js';
+import { buildTurnExtras, type AssistantMcpDeps } from './context.js';
 import { DEFAULT_ASSISTANT_SYSTEM_PROMPT } from './prompt.js';
 
 /**
@@ -32,6 +33,8 @@ export interface AssistantRunnerDeps extends AssistantToolDeps {
     modelId: string;
     ownerId: string;
   }) => Promise<{ model: GatewayModel['model']; streamFn: GatewayModel['streamFn'] }>;
+  /** M2 — the MCP registry seam (server-dialed pool). Absent = no MCP tools. */
+  mcp?: AssistantMcpDeps;
 }
 
 /** Where live events go (the realtime service wires this to the room). */
@@ -145,21 +148,45 @@ export function startAssistantTurn(
 
     const tools = buildAssistantTools(deps, principal, config.enabledToolGroups);
 
+    // M2 — configured skills (prompt index + read_skill) and MCP servers
+    // (pooled tools wrapped as AgentTools). Availability resolves against
+    // live rows + the pool's posture; what cannot serve the turn notes
+    // honestly in the prompt.
+    const extras = await buildTurnExtras({
+      config,
+      resolveSkill: async (id) => {
+        const resource = await deps.uow.resources.findById(id);
+        if (
+          resource === null ||
+          resource.deletedAt !== undefined ||
+          (resource.scope === 'personal' && resource.ownerId !== session.ownerId)
+        ) {
+          return null;
+        }
+        return resource;
+      },
+      ...(deps.mcp !== undefined ? { mcp: deps.mcp } : {}),
+    });
+    tools.push(...extras.tools);
+    // The gate is the turn's ACTUAL toolset (static groups + dynamic MCP
+    // names + read_skill) — belt-and-braces against rebind races.
+    const allowed = new Set(tools.map((t) => t.name));
+
+    const systemPrompt =
+      extras.promptAddendum === ''
+        ? (config.systemPromptOverride ?? DEFAULT_ASSISTANT_SYSTEM_PROMPT)
+        : `${config.systemPromptOverride ?? DEFAULT_ASSISTANT_SYSTEM_PROMPT}\n\n${extras.promptAddendum}`;
+
     const agent = new Agent({
       initialState: {
-        systemPrompt: config.systemPromptOverride ?? DEFAULT_ASSISTANT_SYSTEM_PROMPT,
+        systemPrompt,
         model: gateway.model,
         tools,
         messages: rowsToPiMessages(input.rows, gateway.model.api, gateway.model.id),
       },
       streamFn: gateway.streamFn,
       beforeToolCall: async ({ toolCall }) => {
-        // Belt-and-braces group gate — the toolset is already built from the
-        // enabled groups, this catches rebind races and rogue names.
-        const group = Object.entries(TOOL_NAMES_BY_GROUP).find(([, names]) =>
-          names.includes(toolCall.name),
-        )?.[0];
-        if (group === undefined || !config.enabledToolGroups.includes(group as never)) {
+        if (!allowed.has(toolCall.name)) {
           return {
             block: true,
             reason: `tool "${toolCall.name}" is not enabled on this assistant`,

@@ -3397,5 +3397,95 @@ r = await req('DELETE', `/api/assistant-sessions/${asstSessionId}`, { token: use
 expect('session deleted', r.status, 200);
 await req('DELETE', `/api/llm-providers/${asstProviderId}`, { token: userToken });
 
+
+// ===========================================================================
+// [#52 M2] — MCP/skill references on the assistant config: visibility gate,
+// skill kind/source rules, and the view echo.
+// ===========================================================================
+log('\n--- [#52 M2] assistant MCP/skill references ---');
+r = await req('POST', '/api/llm-providers', {
+  token: userToken,
+  body: {
+    name: 'asst-gw-2',
+    api: 'openai-chat',
+    baseUrl: 'https://gw.example.com/v1',
+    credentialName: 'w3-gw-key',
+    models: [{ id: 'smoke-model', type: 'chat' }],
+  },
+});
+expect('m2 provider created', r.status, 201);
+const asstProviderId2 = r.json.provider.id;
+
+r = await req('POST', '/api/mcp-servers', {
+  token: userToken,
+  body: {
+    name: 'asst-mcp',
+    transport: { type: 'streamable-http', url: 'https://mcp.example.com/mcp' },
+    dialSite: 'server',
+    scope: 'personal',
+  },
+});
+expect('mcp row created', r.status, 201);
+const asstMcpId = r.json.mcpServer.id;
+
+r = await req('POST', '/api/resources', {
+  token: userToken,
+  body: {
+    key: 'skill:asst-smoke',
+    kind: 'skill',
+    name: 'asst-smoke-skill',
+    source: { type: 'inline', content: '# smoke\nBe terse.' },
+    scope: 'personal',
+    targets: [],
+  },
+});
+expect('skill resource created', r.status, 201);
+const asstSkillId = r.json.resource.id;
+
+r = await req('POST', '/api/assistants', {
+  token: userToken,
+  body: {
+    name: 'asst-m2',
+    providerId: asstProviderId2,
+    defaultModel: 'smoke-model',
+    mcpServerIds: [asstMcpId],
+    skillResourceIds: [asstSkillId],
+  },
+});
+expect('assistant with references created', r.status, 201);
+const asstM2Id = r.json.assistant.id;
+expect('view echoes mcpServerIds', JSON.stringify(r.json.assistant.mcpServerIds), JSON.stringify([asstMcpId]));
+expect('view echoes skillResourceIds', JSON.stringify(r.json.assistant.skillResourceIds), JSON.stringify([asstSkillId]));
+
+// A non-skill resource is refused.
+r = await req('POST', '/api/resources', {
+  token: userToken,
+  body: {
+    key: 'rule:asst-smoke',
+    kind: 'rule',
+    name: 'asst-smoke-rule',
+    source: { type: 'inline', content: 'x' },
+    scope: 'personal',
+    targets: [],
+  },
+});
+expect('rule resource created', r.status, 201);
+const asstRuleId = r.json.resource.id;
+r = await req('PATCH', `/api/assistants/${asstM2Id}`, {
+  token: userToken,
+  body: { skillResourceIds: [asstRuleId] },
+});
+expect('non-skill resource 409', r.status, 409);
+await req('DELETE', `/api/resources/${asstRuleId}`, { token: userToken });
+await req('DELETE', `/api/resources/${asstSkillId}`, { token: userToken });
+await req('DELETE', `/api/assistants/${asstM2Id}`, { token: userToken });
+await req('DELETE', `/api/llm-providers/${asstProviderId2}`, { token: userToken });
+
+r = await req('PATCH', `/api/assistants/${asstM2Id}`, {
+  token: userToken,
+  body: { mcpServerIds: ['nope'] },
+});
+expect('foreign mcp id 404', r.status, 404);
+
 log(`\n=== ${pass} passed, ${fail} failed ===`);
 process.exit(fail ? 1 : 0);
