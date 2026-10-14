@@ -410,6 +410,60 @@ describe('workspace directories (9 W6)', () => {
     }
   }, 15000);
 
+  it('session start stamps the machine defaultMode for claude-code (issue #49)', async () => {
+    const now = new Date().toISOString();
+    const ownerId = (await app.uow.users.findByUsername('chatter'))!.id;
+    await app.uow.agentInstances.save({
+      id: 'agent-chat-cc',
+      machineId,
+      ownerId,
+      target: 'claude-code',
+      profileId: 'profile-chat-1',
+      profileVersion: '1.0.0',
+      name: 'cc agent',
+      directory: '/home/tester/.claude',
+      jobId: 'job-chat-cc',
+      createdAt: now,
+      updatedAt: now,
+    });
+    const machine = (await app.uow.machines.findById(machineId))!;
+    // Open-gate fixtures a bare isolated run cannot inherit from earlier
+    // tests (full-file runs set them along the way): chat on + a workspace.
+    const base = {
+      ...machine,
+      remoteChatEnabled: true as const,
+      baseWorkspace: '/home/tester/work',
+    };
+    await app.uow.machines.save({ ...base, chatDefaultMode: { 'claude-code': 'auto' } });
+    const d = await connectDaemon(['chat']);
+    try {
+      const startPromise = once(d, 'chat:session.start');
+      const res = await openSession(browser, 'agent-chat-cc');
+      expect(res.sessionId).toBeTruthy();
+      const start = (await startPromise) as { defaultMode?: string; target: string };
+      expect(start.target).toBe('claude-code');
+      expect(start.defaultMode).toBe('auto');
+      await emitAck(d, 'chat:session.closed', { sessionId: res.sessionId!, reason: 'user' });
+
+      // Cleared (null) → the field is omitted entirely.
+      // Re-fetch: the daemon hello since `base` was captured stamped live
+      // capabilities onto the row — saving the stale copy would wipe them.
+      const fresh = (await app.uow.machines.findById(machineId))!;
+      await app.uow.machines.save({ ...fresh, chatDefaultMode: { 'claude-code': null } });
+      const p2 = once(d, 'chat:session.start');
+      const res2 = await openSession(browser, 'agent-chat-cc');
+      if (res2.error !== undefined) throw new Error(`second open: ${res2.error}`);
+      expect(res2.sessionId).toBeTruthy();
+      const start2 = (await p2) as { defaultMode?: string };
+      expect(start2.defaultMode).toBeUndefined();
+      await emitAck(d, 'chat:session.closed', { sessionId: res2.sessionId!, reason: 'user' });
+    } finally {
+      await app.uow.machines.save({ ...machine });
+      await app.uow.agentInstances.delete('agent-chat-cc');
+      d.disconnect();
+    }
+  });
+
   it('session start carries modelOptions from the stored RuntimeConfig (9 W13)', async () => {
     const now = new Date().toISOString();
     const ownerId = (await app.uow.users.findByUsername('chatter'))!.id;

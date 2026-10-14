@@ -37,6 +37,10 @@ const en = {
   runtimeNotInstalled: 'Agent not installed',
   runtimeNotProbed: 'runtime unknown',
   prewarm: 'Adapter pre-warm',
+  defaultMode: 'Default permission mode',
+  defaultModeDesc:
+    'Applied once when a chat session opens; switch anytime mid-session. Auto falls back if the model lacks support.',
+  defaultModeNone: 'Adapter default',
   prewarmDesc:
     'Keep one warmed-up adapter for this Agent while a chat session page is open — clicking a session skips the adapter boot.',
   installButton: 'Install',
@@ -245,6 +249,9 @@ const zh: typeof en = {
   runtimeNotInstalled: '代理未安装',
   runtimeNotProbed: '运行时状态未知',
   prewarm: '适配器预连接',
+  defaultMode: '默认权限模式',
+  defaultModeDesc: '聊天会话建立时应用一次，会话中可随时切换；模型不支持 Auto 时会自动回落。',
+  defaultModeNone: '跟随适配器',
   prewarmDesc: '会话页面打开期间为该代理常备一个预热适配器，点击会话时跳过适配器启动。',
   installButton: '安装',
   upgradeButton: '升级',

@@ -2499,6 +2499,70 @@ describe('session config (9 W9 A)', () => {
     });
   });
 
+  it('#49 — defaultMode from the start event is applied via set_mode before the config snapshot', async () => {
+    const socket = new FakeSocket();
+    attachChatHandlers(socket as never, {
+      env: { HN_ACP_COMMAND_HERMES: `node ${FIXTURE}`, PATH: process.env.PATH ?? '' },
+      spawnEnv: { FIXTURE_SESSION_CONFIG: '1', FIXTURE_SESSION_ID: 'fx-defmode' },
+      homeDir: LEDGER_HOME,
+    });
+    socket.receive('chat:session.start', {
+      sessionId: 'sess-dm',
+      agentInstanceId: 'ag-1',
+      target: 'hermes',
+      cwd: '/tmp',
+      defaultMode: 'auto',
+    });
+    const ready = await waitFor(
+      () =>
+        socket.emitted.find((e) => e.event === 'chat:session.ready')?.payload as
+          { error?: string } | undefined,
+    );
+    expect(ready.error).toBeUndefined();
+    // The FIRST config snapshot already carries the applied mode (set_mode
+    // precedes the emit — no default→auto flicker on the wire).
+    const snapshot = await waitFor(() => {
+      const first = socket.chatEvents().find((e) => e.kind === 'session_config');
+      return first;
+    });
+    if (snapshot.kind !== 'session_config') throw new Error('unreachable');
+    expect(snapshot.modes?.currentModeId).toBe('auto');
+    const closeAck = vi.fn();
+    socket.receive('chat:session.close', { sessionId: 'sess-dm', reason: 'user' }, closeAck);
+    expect(closeAck).toHaveBeenCalledWith({ closed: true });
+  }, 15000);
+
+  it('#49 — a defaultMode the session does NOT advertise is an honest no-op', async () => {
+    const socket = new FakeSocket();
+    attachChatHandlers(socket as never, {
+      env: { HN_ACP_COMMAND_HERMES: `node ${FIXTURE}`, PATH: process.env.PATH ?? '' },
+      spawnEnv: { FIXTURE_SESSION_CONFIG: '1', FIXTURE_SESSION_ID: 'fx-defmode2' },
+      homeDir: LEDGER_HOME,
+    });
+    socket.receive('chat:session.start', {
+      sessionId: 'sess-dm2',
+      agentInstanceId: 'ag-1',
+      target: 'hermes',
+      cwd: '/tmp',
+      defaultMode: 'bypassPermissions',
+    });
+    const ready = await waitFor(
+      () =>
+        socket.emitted.find((e) => e.event === 'chat:session.ready')?.payload as
+          { error?: string } | undefined,
+    );
+    expect(ready.error).toBeUndefined();
+    const snapshot = await waitFor(() =>
+      socket.chatEvents().find((e) => e.kind === 'session_config'),
+    );
+    if (snapshot.kind !== 'session_config') throw new Error('unreachable');
+    // Not in availableModes → the adapter-resolved mode stands.
+    expect(snapshot.modes?.currentModeId).toBe('default');
+    const closeAck = vi.fn();
+    socket.receive('chat:session.close', { sessionId: 'sess-dm2', reason: 'user' }, closeAck);
+    expect(closeAck).toHaveBeenCalledWith({ closed: true });
+  }, 15000);
+
   it('establishment snapshot → ready caps → config.set round-trip → pushes merge', async () => {
     const socket = new FakeSocket();
     attachChatHandlers(socket as never, {
@@ -2558,6 +2622,7 @@ describe('session config (9 W9 A)', () => {
       'default',
       'acceptEdits',
       'plan',
+      'auto',
     ]);
 
     // Option switch: the fixture's config_option_update REPLACES the option

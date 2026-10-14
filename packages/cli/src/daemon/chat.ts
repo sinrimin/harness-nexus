@@ -689,7 +689,7 @@ export function attachChatHandlers(
       return;
     }
     ack?.({ accepted: true });
-    const { sessionId, target, cwd, resume, modelOptions, prewarm } = parsed.data;
+    const { sessionId, target, cwd, resume, modelOptions, defaultMode, prewarm } = parsed.data;
     void (async () => {
       inFlightStarts.add(sessionId);
       // 9 W16 — pi rides the in-daemon ACP façade (PiRpcConnection), not an
@@ -964,6 +964,28 @@ export function attachChatHandlers(
         // pending attach, so it cannot be active without the tail.
         ensureTail(session);
         emitHistory(session, history);
+        // Issue #49 — apply the platform's default permission mode BEFORE the
+        // config snapshot emits (one event, already the final mode). The
+        // claude wrapper resolves an EXPLICIT mode at session/new (CC's own
+        // auto default can never reach an ACP session — the wire carries no
+        // mode field), so the daemon re-issues the W9 set_mode lane here.
+        // OPAQUE value; applied ONLY when the session advertises it (honest
+        // absence = no-op); an adapter refusal keeps its own resolved mode.
+        if (
+          defaultMode !== undefined &&
+          session.config.modes?.availableModes.some((m) => m.id === defaultMode) === true
+        ) {
+          try {
+            await conn.request(
+              'session/set_mode',
+              { sessionId: acpSessionId, modeId: defaultMode },
+              15000,
+            );
+            session.config.modes = { ...session.config.modes, currentModeId: defaultMode };
+          } catch {
+            // keep the adapter-resolved mode
+          }
+        }
         // 9 W9 A — the authoritative config snapshot rides AFTER the replayed
         // history (a load's replay patches settle first; last write wins) and
         // enters the ring, so a resync restores the selectors.

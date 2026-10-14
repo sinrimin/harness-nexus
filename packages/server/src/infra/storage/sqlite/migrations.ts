@@ -357,6 +357,15 @@ ALTER TABLE mcp_servers ADD COLUMN deleted_at TEXT;
 ALTER TABLE resources ADD COLUMN deleted_at TEXT;
     `,
   },
+  {
+    version: 18,
+    description: 'issue #49 — per-target default chat permission modes (machine-scoped)',
+    sql: `
+-- JSON of { 'claude-code': string | null } per MACHINE; NULL on rows written
+-- before the feature → no platform default (adapter-resolved mode).
+ALTER TABLE machines ADD COLUMN chat_default_mode TEXT;
+    `,
+  },
 ] as const;
 
 /**
