@@ -987,8 +987,11 @@ export function attachChatHandlers(
             session.config.options = session.config.options.map((o) =>
               o.id === 'mode' ? { ...o, currentValue: defaultMode } : o,
             );
-          } catch {
+          } catch (e) {
             // keep the adapter-resolved mode
+            console.warn(
+              `[chat] #49 set_mode(${String(defaultMode)}) failed: ${e instanceof Error ? e.message : String(e)}`,
+            );
           }
         }
         // 9 W9 A — the authoritative config snapshot rides AFTER the replayed

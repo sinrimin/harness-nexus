@@ -2532,6 +2532,35 @@ describe('session config (9 W9 A)', () => {
     expect(closeAck).toHaveBeenCalledWith({ closed: true });
   }, 15000);
 
+  it('#49 — defaultMode applies on RESUME too (the load path)', async () => {
+    const socket = new FakeSocket();
+    attachChatHandlers(socket as never, {
+      env: { HN_ACP_COMMAND_HERMES: `node ${FIXTURE}`, PATH: process.env.PATH ?? '' },
+      spawnEnv: { FIXTURE_SESSION_CONFIG: '1', FIXTURE_SESSION_ID: 'fx-defmode-r' },
+      homeDir: LEDGER_HOME,
+    });
+    socket.receive('chat:session.start', {
+      sessionId: 'sess-dm-r',
+      agentInstanceId: 'ag-1',
+      target: 'hermes',
+      cwd: '/tmp',
+      resume: { sessionId: 'fx-native-1', cwd: '/tmp' },
+      defaultMode: 'auto',
+    });
+    const ready = await waitFor(
+      () =>
+        socket.emitted.find((e) => e.event === 'chat:session.ready')?.payload as
+          { error?: string } | undefined,
+    );
+    expect(ready.error).toBeUndefined();
+    const snapshot = await waitFor(() => socket.chatEvents().find((e) => e.kind === 'session_config'));
+    if (snapshot.kind !== 'session_config') throw new Error('unreachable');
+    expect(snapshot.modes?.currentModeId).toBe('auto');
+    const closeAck = vi.fn();
+    socket.receive('chat:session.close', { sessionId: 'sess-dm-r', reason: 'user' }, closeAck);
+    expect(closeAck).toHaveBeenCalledWith({ closed: true });
+  }, 15000);
+
   it('#49 — a defaultMode the session does NOT advertise is an honest no-op', async () => {
     const socket = new FakeSocket();
     attachChatHandlers(socket as never, {
