@@ -14,6 +14,15 @@ import type { FastifyInstance } from 'fastify';
  * `self`: the caller's own machines/agents/jobs, own personal + global MCP
  * rows, own personal + global LLM providers, own channels. The `scopes` map
  * stays on the wire (it is the SDK contract) but never says `all` anymore.
+ *
+ * #53 residue: deliberately NOT extracted into a service (slice 8 looked and
+ * left it whole). Every figure interleaves UnitOfWork reads with LIVE
+ * realtime truth — `app.realtime.presence` (online), `app.mcpRegistry`
+ * (connected), `app.realtime.chat` (channels) — and this module's contract
+ * is that each count sits right next to the citation of the list-page rule
+ * it re-derives. Splitting the uow halves from the realtime halves into two
+ * files would fragment exactly that; the aggregate is one read of one
+ * moment, not a set of independent domain decisions.
  */
 export type PostureScope = 'self' | 'all';
 
