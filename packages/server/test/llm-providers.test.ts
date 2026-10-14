@@ -419,3 +419,84 @@ describe('runtime-config PUT — providerId + models arms', () => {
     expect(res.json().error).toBe('RUNTIME_CONFIG_UNSUPPORTED');
   });
 });
+
+describe('#51 — provider model registry', () => {
+  it('creates with models (type defaults), round-trips, and rejects duplicate ids', async () => {
+    const created = await app.inject({
+      method: 'POST',
+      url: '/api/llm-providers',
+      headers: auth(ownerJwt),
+      payload: {
+        name: 'registry-gw',
+        api: 'openai-chat',
+        baseUrl: 'https://gw2.example.com/v1',
+        credentialName: 'gw-key',
+        models: [
+          {
+            id: 'gw-large',
+            displayName: 'Gateway Large',
+            contextWindow: 256_000,
+            maxOutputTokens: 32_000,
+          },
+          { id: 'gw-embed', type: 'embedding' },
+        ],
+      },
+    });
+    expect(created.statusCode).toBe(201);
+    const provider = created.json().provider;
+    expect(provider.models).toEqual([
+      {
+        id: 'gw-large',
+        type: 'chat',
+        displayName: 'Gateway Large',
+        contextWindow: 256_000,
+        maxOutputTokens: 32_000,
+      },
+      { id: 'gw-embed', type: 'embedding' },
+    ]);
+
+    const dup = await app.inject({
+      method: 'POST',
+      url: '/api/llm-providers',
+      headers: auth(ownerJwt),
+      payload: {
+        name: 'registry-gw-2',
+        api: 'openai-chat',
+        credentialName: 'gw-key',
+        models: [{ id: 'a' }, { id: 'a' }],
+      },
+    });
+    expect(dup.statusCode).toBe(400);
+
+    const replaced = await app.inject({
+      method: 'PATCH',
+      url: `/api/llm-providers/${provider.id}`,
+      headers: auth(ownerJwt),
+      payload: { models: [{ id: 'only-one', temperature: 0.3 }] },
+    });
+    expect(replaced.statusCode).toBe(200);
+    expect(replaced.json().provider.models).toEqual([
+      { id: 'only-one', type: 'chat', temperature: 0.3 },
+    ]);
+
+    // modelEntries snapshot: the PUT fills metadata for ids the registry
+    // knows; unknown ids stay bare. (gw-mini is NOT in the patched registry.)
+    const put = await app.inject({
+      method: 'PUT',
+      url: `/api/machines/${machineId}/runtime-config/pi`,
+      headers: auth(ownerJwt),
+      payload: {
+        providerLabel: 'registry-gw',
+        baseUrl: 'https://gw2.example.com/v1',
+        api: 'openai',
+        model: 'only-one',
+        credentialName: 'global-key',
+        providerId: provider.id,
+        models: ['gw-unknown'],
+      },
+    });
+    expect(put.statusCode).toBe(201);
+    // temperature (advanced) never rides the spec — metadata subset only.
+    expect(put.json().config.modelEntries).toEqual([{ id: 'only-one' }]);
+  });
+});

@@ -484,6 +484,11 @@ function applyPiConfig(spec: RuntimeConfigSpec, secret: string, homeDir: string)
 
   const modelsDoc = readJson(modelsPath); // absent → fresh; malformed → throws, untouched
   const modelIds = [...new Set([spec.model, ...(spec.models ?? [])])];
+  // #51 — metadata from the provider registry (snapshot in the spec): ids
+  // with an entry get real contextWindow/maxTokens/name, so pi's usage
+  // contextSize stops hiding (W16's honest degradation resolves). Ids without
+  // stay bare — never guessed.
+  const entriesById = new Map((spec.modelEntries ?? []).map((e) => [e.id, e]));
   const providers = {
     ...((modelsDoc.providers as Record<string, unknown> | undefined) ?? {}),
     [PI_PROVIDER_ID]: {
@@ -491,7 +496,17 @@ function applyPiConfig(spec: RuntimeConfigSpec, secret: string, homeDir: string)
       baseUrl: spec.baseUrl,
       api: PI_API[spec.api],
       apiKey: `!cat ${JSON.stringify(keyPath)}`,
-      models: modelIds.map((id) => ({ id })),
+      models: modelIds.map((id) => {
+        const e = entriesById.get(id);
+        if (e === undefined) return { id };
+        return {
+          id,
+          ...(e.displayName !== undefined ? { name: e.displayName } : {}),
+          ...(e.contextWindow !== undefined ? { contextWindow: e.contextWindow } : {}),
+          ...(e.maxOutputTokens !== undefined ? { maxTokens: e.maxOutputTokens } : {}),
+          ...(e.vision === true ? { input: ['text', 'image'] } : {}),
+        };
+      }),
     },
   };
   writeSecretFile(modelsPath, `${JSON.stringify({ ...modelsDoc, providers }, null, 2)}\n`);

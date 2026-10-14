@@ -55,6 +55,9 @@ export async function runtimeConfigRoutes(app: FastifyInstance): Promise<void> {
     ...(row.spec.models !== null && row.spec.models !== undefined
       ? { models: row.spec.models }
       : {}),
+    ...(row.spec.modelEntries !== null && row.spec.modelEntries !== undefined
+      ? { modelEntries: row.spec.modelEntries }
+      : {}),
     ...(row.spec.extra !== null ? { extra: row.spec.extra } : {}),
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
@@ -178,11 +181,13 @@ export async function runtimeConfigRoutes(app: FastifyInstance): Promise<void> {
       // W10 — `providerId` is provenance only, but it must still name a
       // provider visible to the caller at PUT time (a dangling ref later is
       // fine: the spec is a snapshot and the form falls back to manual).
+      let providerRow: import('@harness-nexus/core').LlmProvider | null = null;
       if (spec.providerId !== undefined) {
         const provider = await app.uow.llmProviders.findById(spec.providerId);
         if (!provider || (provider.scope === 'personal' && provider.ownerId !== req.user!.id)) {
           throw new AppError('Provider not found', 404, 'PROVIDER_NOT_FOUND');
         }
+        providerRow = provider;
       }
 
       // W10 — extra switchable models: dedupe and drop the default (the
@@ -191,6 +196,29 @@ export async function runtimeConfigRoutes(app: FastifyInstance): Promise<void> {
       const uniqueExtras =
         spec.models !== undefined ? [...new Set(spec.models)].filter((m) => m !== spec.model) : [];
       const models = uniqueExtras.length > 0 ? uniqueExtras : null;
+
+      // #51 — metadata snapshot for [model, ...extras] from the provider's
+      // registry (ids not in the registry get no entry: bare ids stay
+      // honest). Old daemons' zod strips the unknown field — wire-compatible.
+      let modelEntries: RuntimeConfigSpec['modelEntries'];
+      if (providerRow !== null && providerRow.models.length > 0) {
+        const byId = new Map(providerRow.models.map((m) => [m.id, m]));
+        const allIds = [spec.model, ...uniqueExtras];
+        const entries = allIds.flatMap((id) => {
+          const m = byId.get(id);
+          if (m === undefined) return [];
+          return [
+            {
+              id: m.id,
+              ...(m.displayName !== undefined ? { displayName: m.displayName } : {}),
+              ...(m.contextWindow !== undefined ? { contextWindow: m.contextWindow } : {}),
+              ...(m.maxOutputTokens !== undefined ? { maxOutputTokens: m.maxOutputTokens } : {}),
+              ...(m.vision !== undefined ? { vision: m.vision } : {}),
+            },
+          ];
+        });
+        if (entries.length > 0) modelEntries = entries;
+      }
 
       // Soft capability gate (harness jobs' rule): an online daemon without the
       // W3 config executor would settle the job as unsupported — refuse early.
@@ -221,6 +249,7 @@ export async function runtimeConfigRoutes(app: FastifyInstance): Promise<void> {
           credentialName: spec.credentialName,
           providerId: spec.providerId ?? null,
           models,
+          modelEntries: modelEntries ?? null,
           extra: spec.extra ?? null,
         },
         createdAt: existing?.createdAt ?? now,

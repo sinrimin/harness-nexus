@@ -2553,7 +2553,9 @@ describe('session config (9 W9 A)', () => {
           { error?: string } | undefined,
     );
     expect(ready.error).toBeUndefined();
-    const snapshot = await waitFor(() => socket.chatEvents().find((e) => e.kind === 'session_config'));
+    const snapshot = await waitFor(() =>
+      socket.chatEvents().find((e) => e.kind === 'session_config'),
+    );
     if (snapshot.kind !== 'session_config') throw new Error('unreachable');
     expect(snapshot.modes?.currentModeId).toBe('auto');
     const closeAck = vi.fn();

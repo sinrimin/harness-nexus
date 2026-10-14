@@ -573,3 +573,49 @@ describe('runApplyConfigJob', () => {
     expect(result.error).toBe('harness payload invalid');
   });
 });
+
+describe('applyRuntimeConfig — pi modelEntries (#51)', () => {
+  const models = (): string => path.join(home, '.pi/agent/models.json');
+
+  beforeAll(() => {
+    // The malformed-JSON refusal test above leaves a poisoned models.json
+    // behind (it must not touch it); start this describe from a clean .pi.
+    rmSync(path.join(home, '.pi'), { recursive: true, force: true });
+  });
+
+  it('enriches registry ids with name/contextWindow/maxTokens/input; bare ids stay bare', () => {
+    applyRuntimeConfig(
+      'pi',
+      spec({
+        api: 'openai',
+        model: 'gw-large',
+        models: ['gw-mini', 'gw-unknown'],
+        modelEntries: [
+          {
+            id: 'gw-large',
+            displayName: 'Gateway Large',
+            contextWindow: 256_000,
+            maxOutputTokens: 32_000,
+          },
+          { id: 'gw-mini', displayName: 'Mini', contextWindow: 128_000, vision: true },
+        ],
+      }),
+      'sk-pi-9',
+      home,
+    );
+    const modelsDoc = JSON.parse(readFileSync(models(), 'utf8')) as {
+      providers: Record<string, { models: Array<Record<string, unknown>> }>;
+    };
+    const entries = modelsDoc.providers['harness-nexus']!.models;
+    expect(entries).toEqual([
+      {
+        id: 'gw-large',
+        name: 'Gateway Large',
+        contextWindow: 256_000,
+        maxTokens: 32_000,
+      },
+      { id: 'gw-mini', name: 'Mini', contextWindow: 128_000, input: ['text', 'image'] },
+      { id: 'gw-unknown' }, // absent from the registry → honest bare id
+    ]);
+  });
+});
