@@ -982,6 +982,11 @@ export function attachChatHandlers(
               15000,
             );
             session.config.modes = { ...session.config.modes, currentModeId: defaultMode };
+            // Keep the option surface in step too (an adapter that pushes
+            // nothing after the set would otherwise leave a stale value).
+            session.config.options = session.config.options.map((o) =>
+              o.id === 'mode' ? { ...o, currentValue: defaultMode } : o,
+            );
           } catch {
             // keep the adapter-resolved mode
           }
