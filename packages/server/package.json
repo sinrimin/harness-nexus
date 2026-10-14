@@ -3,6 +3,9 @@
   "version": "0.0.0",
   "private": true,
   "description": "Harness Nexus API server — Fastify HTTP API, MCP proxy transport, and storage drivers.",
+  "engines": {
+    "node": ">=22.19.0"
+  },
   "type": "module",
   "main": "./dist/server.js",
   "bin": {

@@ -15,7 +15,9 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20 # the documented engine floor
+          # The SERVER engine floor (packages/server engines >=22.19.0, #50) —
+          # pinned ON the floor so newer-Node extras still fail here first.
+          node-version: 22.19
           cache: pnpm
 
       - run: pnpm install --frozen-lockfile

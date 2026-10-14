@@ -12,7 +12,9 @@
 # rebuilds of both.
 
 # ---- build stage ------------------------------------------------------------
-FROM node:20-bookworm-slim AS build
+# Node 22 (>=22.19.0 = the server engine floor, #50): the server embeds pi
+# packages whose floor is 22.19. The five published npm packages keep >=20.
+FROM node:22-bookworm-slim AS build
 
 # Switch apt to a CN mirror so the toolchain install needs no proxy. The base
 # image's sources.list points at deb.debian.org, which may be slow/unreachable
@@ -70,7 +72,7 @@ RUN pnpm --filter @harness-nexus/core run build \
 RUN pnpm deploy --filter=@harness-nexus/server --prod /deploy/server
 
 # ---- runtime stage ----------------------------------------------------------
-FROM node:20-bookworm-slim AS runtime
+FROM node:22-bookworm-slim AS runtime
 
 # Sensible production defaults; JWT_SECRET is deliberately NOT set here —
 # config.ts refuses to boot without it (≥16 chars), so it MUST come from the
