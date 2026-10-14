@@ -719,6 +719,16 @@ export const chatSessionStartEventSchema = z.object({
    */
   modelOptions: z.array(z.string().min(1).max(128)).max(32).optional(),
   /**
+   * Issue #49 — the machine's default chat permission mode for this target,
+   * stamped by the SERVER from the machine's `chatDefaultMode`. OPAQUE
+   * adapter mode id; the daemon applies it via one `session/set_mode` right
+   * after establishment — only when the established session advertises the
+   * mode (honest absence = no-op). Absent = no platform default
+   * (adapter-resolved mode). Optional + stripped by old daemons' non-strict
+   * parse, so purely additive.
+   */
+  defaultMode: z.string().min(1).max(64).optional(),
+  /**
    * Issue #3 — the target's pre-warm switch is ON at open time. The daemon
    * re-arms one fresh prewarmed adapter AFTER this channel took one (or
    * spawned fresh), so the next open is warm too. Absent = switch off (or a

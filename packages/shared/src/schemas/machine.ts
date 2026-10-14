@@ -32,6 +32,18 @@ export const DEFAULT_CHAT_PREWARM_SETTINGS = {
   opencode: false,
 };
 
+/**
+ * Issue #49 — per-target default chat permission modes, machine-scoped
+ * (mirrors `chatPrewarm` and `core/domain/machine.ts`; keep the shapes in
+ * sync). claude-code only today — the only adapter whose ACP wrapper
+ * advertises permission modes; its wrapper always resolves an explicit mode
+ * at session/new, so the platform supplies the initial one. The value is the
+ * adapter's OPAQUE mode id; explicit null clears it.
+ */
+export const chatDefaultModeSettingsSchema = z.object({
+  'claude-code': z.string().min(1).max(64).nullable(),
+});
+
 export const updateMachineSchema = z
   .object({
     name: z.string().min(1).max(64).optional(),
@@ -44,13 +56,16 @@ export const updateMachineSchema = z
     baseWorkspace: z.string().min(1).max(1024).nullable().optional(),
     /** Issue #3 — replace-semantics per-target pre-warm map (full object). */
     chatPrewarm: chatPrewarmSettingsSchema.optional(),
+    /** Issue #49 — replace-semantics per-target default mode map (full object). */
+    chatDefaultMode: chatDefaultModeSettingsSchema.optional(),
   })
   .refine(
     (v) =>
       v.name !== undefined ||
       v.remoteChatEnabled !== undefined ||
       v.baseWorkspace !== undefined ||
-      v.chatPrewarm !== undefined,
+      v.chatPrewarm !== undefined ||
+      v.chatDefaultMode !== undefined,
     { message: 'at least one of name / remoteChatEnabled / baseWorkspace is required' },
   );
 

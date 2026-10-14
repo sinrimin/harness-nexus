@@ -689,6 +689,7 @@ function fixtureSessionConfig() {
         { id: 'default', name: 'Manual', description: 'Always ask before making changes' },
         { id: 'acceptEdits', name: 'Accept edits' },
         { id: 'plan', name: 'Plan' },
+        { id: 'auto', name: 'Auto' },
       ],
     },
     configOptions: [

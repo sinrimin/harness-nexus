@@ -169,6 +169,9 @@ function AgentRuntimeCard({
             machine={machine}
             onChanged={onChanged}
           />
+          {entry.target === 'claude-code' ? (
+            <DefaultModeSelect machineId={machineId} machine={machine} onChanged={onChanged} />
+          ) : null}
           <ProviderConfigForm machineId={machineId} target={entry.target} runtime={entry.runtime} />
         </PanelBody>
       </Panel>
@@ -241,6 +244,78 @@ function PrewarmToggle({
         disabled={busy || machine === null}
         onCheckedChange={(v) => void toggle(v)}
       />
+    </div>
+  );
+}
+
+/**
+ * Issue #49 — this Agent's DEFAULT chat permission mode (machine-scoped;
+ * claude-code only — the only adapter whose ACP wrapper advertises permission
+ * modes, and it always resolves an explicit one itself, so the platform
+ * supplies the initial mode). Applied once at session establishment; the W9
+ * mode dropdown remains the mid-session switch. Option names stay English —
+ * they are the adapter's own wire names (same as the W9 dropdown).
+ */
+function DefaultModeSelect({
+  machineId,
+  machine,
+  onChanged,
+}: {
+  machineId: string;
+  machine: MachineView | null;
+  onChanged: () => void;
+}) {
+  const { logout } = useAuth();
+  const { t } = useI18n();
+  const [busy, setBusy] = useState(false);
+  const current = machine?.chatDefaultMode?.['claude-code'] ?? null;
+
+  async function apply(next: string): Promise<void> {
+    if (machine === null || busy) return;
+    setBusy(true);
+    try {
+      await withAuthGuard(
+        () =>
+          api.updateMachine(machineId, {
+            chatDefaultMode: { 'claude-code': next === 'none' ? null : next },
+          }),
+        logout,
+      );
+      onChanged();
+    } catch (e) {
+      toast.error(e instanceof HarnessNexusError ? e.message : t('common.updateFailed'));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    // Same row idiom as the pre-warm switch above.
+    <div className="flex items-center justify-between gap-4 px-6 pb-4 pt-1">
+      <div>
+        <p className="text-sm font-medium">{t('machineDetail.defaultMode')}</p>
+        <p className="text-muted-foreground text-xs">{t('machineDetail.defaultModeDesc')}</p>
+      </div>
+      <Select
+        value={current ?? 'none'}
+        onValueChange={(v) => void apply(v)}
+        disabled={busy || machine === null}
+      >
+        <SelectTrigger
+          id="default-mode"
+          aria-label={t('machineDetail.defaultMode')}
+          className="w-[180px]"
+        >
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="none">{t('machineDetail.defaultModeNone')}</SelectItem>
+          <SelectItem value="default">Manual</SelectItem>
+          <SelectItem value="acceptEdits">Accept edits</SelectItem>
+          <SelectItem value="plan">Plan</SelectItem>
+          <SelectItem value="auto">Auto</SelectItem>
+        </SelectContent>
+      </Select>
     </div>
   );
 }

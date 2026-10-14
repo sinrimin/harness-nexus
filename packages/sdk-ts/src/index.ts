@@ -21,6 +21,7 @@ import type {
   SkillBundle,
   Machine,
   ChatPrewarmSettings,
+  ChatDefaultModeSettings,
 } from '@harness-nexus/core';
 import type {
   JobView,
@@ -62,6 +63,7 @@ export {
 } from '@harness-nexus/shared';
 export type {
   ChatPrewarmSettings,
+  ChatDefaultModeSettings,
   JobView,
   InventorySnapshot,
   InventoryDiff,
@@ -406,6 +408,8 @@ export class HarnessNexusClient {
       baseWorkspace?: string | null;
       /** Issue #3 — machine-scoped per-target pre-warm switches (replace semantics). */
       chatPrewarm?: ChatPrewarmSettings;
+      /** Issue #49 — machine-scoped default chat permission modes (replace). */
+      chatDefaultMode?: ChatDefaultModeSettings;
     },
   ): Promise<MachineView> {
     const res = await this.request('PATCH', `/api/machines/${id}`, input);

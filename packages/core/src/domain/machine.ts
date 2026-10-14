@@ -31,6 +31,20 @@ export const DEFAULT_CHAT_PREWARM_SETTINGS: ChatPrewarmSettings = {
   opencode: false,
 };
 
+/**
+ * Issue #49 — per-target DEFAULT chat permission modes, machine-scoped like
+ * `chatPrewarm` (mid-session switches already ride the W9 lane). claude-code
+ * only today: its ACP wrapper always resolves an EXPLICIT mode at
+ * session/new (CC 2.1.285's own auto default therefore never reaches an ACP
+ * session), so the platform supplies the initial mode itself. The value is
+ * the adapter's OPAQUE mode id ('auto', 'acceptEdits', …); null = unset
+ * (adapter default). Mirrors the zod schema in `@harness-nexus/shared`
+ * (`schemas/machine.ts`).
+ */
+export interface ChatDefaultModeSettings {
+  'claude-code': string | null;
+}
+
 export interface Machine {
   id: string;
   ownerId: string;
@@ -57,6 +71,8 @@ export interface Machine {
   baseWorkspace: string | null;
   /** Issue #3 — per-target adapter pre-warm switches for this machine. */
   chatPrewarm?: ChatPrewarmSettings;
+  /** Issue #49 — per-target default chat permission modes for this machine. */
+  chatDefaultMode?: ChatDefaultModeSettings;
   /**
    * The machine PAT issued once at enrollment. Deleting the machine (or this
    * PAT) revokes realtime access immediately.

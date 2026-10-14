@@ -297,6 +297,15 @@ export class ChatService {
       }
     }
 
+    // Issue #49 — stamp the target's default chat permission mode
+    // (MACHINE-scoped; claude-code only — the only adapter whose wrapper
+    // advertises permission modes). The daemon applies it right after
+    // establishment via one session/set_mode; absent/null = adapter default.
+    const defaultMode =
+      agent.target === 'claude-code'
+        ? (machine.chatDefaultMode?.['claude-code'] ?? undefined)
+        : undefined;
+
     // Issue #3 — stamp the target's pre-warm switch (MACHINE-scoped) so the
     // daemon re-arms one fresh prewarmed adapter after this channel took (or
     // missed) one. The machine row was already read above; absent map = defaults.
@@ -313,6 +322,7 @@ export class ChatService {
       cwd,
       ...(resume !== undefined ? { resume } : {}),
       ...(modelOptions !== undefined ? { modelOptions } : {}),
+      ...(defaultMode !== undefined ? { defaultMode } : {}),
       ...(prewarm ? { prewarm: true } : {}),
     });
     this.pushSnapshot(ownerId);
