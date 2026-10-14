@@ -1,84 +1,19 @@
 import { describe, expect, it } from 'vitest';
-import { randomBytes, timingSafeEqual } from 'node:crypto';
-import Fastify, { type FastifyInstance } from 'fastify';
 
 /**
- * #52 S0 spike — the three load-bearing seams of the platform assistant,
- * verified OFFLINE (no network, ever):
+ * #52 S0 spike — the pi seams the assistant rides, verified OFFLINE (no
+ * network, ever). Identity rides an explicit principal parameter through the
+ * #53 service layer (Plan B, 2026-10-14) — the earlier in-process identity
+ * sketches (AsyncLocalStorage — disproven through light-my-request — and the
+ * boot-time internal credential) are the historical record in wiki
+ * research-platform-assistant.md and are deliberately NOT tested here.
  *
- *  1. IDENTITY: AsyncLocalStorage does NOT survive light-my-request (verified
- *     on the rig — `app.inject()` dispatches outside the caller's async
- *     context), so tool identity rides a per-process random INTERNAL
- *     credential: `x-hnx-internal-auth` + `x-hnx-actor` headers, trusted only
- *     on an exact match against a boot-time secret that never leaves memory.
- *     Network clients cannot know the secret; restarts rotate it.
- *  2. pi-ai `createProvider` accepts our gateway shape (registry models + a
+ *  1. pi-ai `createProvider` accepts our gateway shape (registry models + a
  *     credential-resolving auth) and carries the model metadata through.
- *  3. A pi-agent-core `Agent` runs the loop with a CUSTOM tool + audit hooks
+ *  2. A pi-agent-core `Agent` runs the loop with a CUSTOM tool + audit hooks
  *     against pi-ai's scripted FAUX provider — the harness pattern the
  *     AssistantService unit tests will reuse.
  */
-
-const INTERNAL_AUTH_HEADER = 'x-hnx-internal-auth';
-const ACTOR_HEADER = 'x-hnx-actor';
-
-/** The boot-time secret pattern the real auth plugin will hold. */
-const internalAuthSecret = randomBytes(32).toString('base64url');
-const internalAuthOk = (presented: unknown): boolean => {
-  if (typeof presented !== 'string' || presented.length !== internalAuthSecret.length) {
-    return false;
-  }
-  return timingSafeEqual(Buffer.from(presented), Buffer.from(internalAuthSecret));
-};
-
-/** The minimal shape of the root auth hook's internal branch (#52). */
-function internalActorOf(headers: Record<string, unknown>): string | null {
-  return internalAuthOk(headers[INTERNAL_AUTH_HEADER])
-    ? typeof headers[ACTOR_HEADER] === 'string' && headers[ACTOR_HEADER] !== ''
-      ? headers[ACTOR_HEADER]
-      : null
-    : null;
-}
-
-// ---- 1. internal-credential identity through app.inject() ----
-
-describe('#52 spike — internal actor credential through app.inject()', () => {
-  let app: FastifyInstance;
-
-  it('the auth hook adopts the actor on an exact secret match, rejects everything else', async () => {
-    app = Fastify();
-    app.addHook('onRequest', async (req) => {
-      const actorId = internalActorOf(req.headers as Record<string, unknown>);
-      // Real hook: fresh findUserById(actorId) here — disabled/demoted users
-      // fall through to anonymous. This spike proves the transport, not the lookup.
-      (req as unknown as { actor?: string | null }).actor = actorId;
-    });
-    app.get('/whoami', async (req) => ({
-      actor: (req as unknown as { actor?: string | null }).actor ?? null,
-    }));
-    await app.ready();
-
-    const inside = await app.inject({
-      method: 'GET',
-      url: '/whoami',
-      headers: { [INTERNAL_AUTH_HEADER]: internalAuthSecret, [ACTOR_HEADER]: 'u-1' },
-    });
-    expect(inside.json()).toEqual({ actor: 'u-1' });
-
-    // Wrong secret / missing secret / missing actor → anonymous (Bearer path).
-    const badSecret = await app.inject({
-      method: 'GET',
-      url: '/whoami',
-      headers: { [INTERNAL_AUTH_HEADER]: randomBytes(32).toString('base64url'), [ACTOR_HEADER]: 'u-1' },
-    });
-    expect(badSecret.json()).toEqual({ actor: null });
-    const noHeaders = await app.inject({ method: 'GET', url: '/whoami' });
-    expect(noHeaders.json()).toEqual({ actor: null });
-    await app.close();
-  });
-});
-
-// ---- 2 + 3. pi-ai custom provider shape & the agent loop (faux, offline) ----
 
 describe('#52 spike — pi-ai gateway provider + pi-agent-core loop', () => {
   it('createProvider carries registry model metadata; the agent loop runs a custom tool with audit hooks', async () => {
