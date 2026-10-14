@@ -1,20 +1,22 @@
 import type { FastifyInstance } from 'fastify';
-import type { Machine, RuntimeConfig } from '@harness-nexus/core';
+import type { RuntimeConfig } from '@harness-nexus/core';
 import {
   AppError,
   runtimeConfigGetRequestSchema,
-  runtimeConfigSpecSchema,
-  runtimeSpecUnsupportedReason,
-  runtimeTargetSchema,
-  type RuntimeConfigSpec,
   type RuntimeConfigView,
 } from '@harness-nexus/shared';
-import { generateId } from '../infra/crypto.js';
-import { findCredentialForOwner } from '../infra/credential-scope.js';
 import { jobView } from '../jobs/service.js';
+import { principalOf } from './principal.js';
+import {
+  getRuntimeConfig,
+  planRuntimeConfigUpsert,
+  resolveRuntimeTarget,
+  saveRuntimeConfig,
+} from '../services/runtime-config.js';
 
 /**
- * Runtime provider-config routes (Phase 9 W3 + W4).
+ * Runtime provider-config routes (Phase 9 W3 + W4) — the HTTP shell over the
+ * pure decisions in `services/runtime-config.ts` (#53 slice 14).
  * wiki design-phase-9-harness-runtime.md §4.3/§6.
  *
  * One spec per (machine, target). Every route is OWNER-ONLY (404
@@ -24,22 +26,9 @@ import { jobView } from '../jobs/service.js';
  * the server inside the daemon's machine-PAT bundle) — the same gate the
  * dial-site model applies. The secret itself NEVER appears in any response
  * here; the daemon fetches `{spec, secret}` from `/api/client/runtime-config`.
- *
- * W4 adds the redacted effective-config view (§5/§6): a live round-trip to
- * the daemon (`runtime:config.get` → `runtime:config`), gated on presence +
- * the `runtime-config-view` capability, returning display-pathed files whose
- * secret-ish values the daemon has already masked.
  */
 export async function runtimeConfigRoutes(app: FastifyInstance): Promise<void> {
   const guard = { preHandler: [app.requireAuth] };
-
-  const visibleMachine = async (id: string, requester: { id: string }): Promise<Machine> => {
-    const machine = await app.uow.machines.findById(id);
-    if (!machine || machine.ownerId !== requester.id) {
-      throw new AppError('Machine not found', 404, 'MACHINE_NOT_FOUND');
-    }
-    return machine;
-  };
 
   const toView = (row: RuntimeConfig): RuntimeConfigView => ({
     machineId: row.machineId,
@@ -71,15 +60,18 @@ export async function runtimeConfigRoutes(app: FastifyInstance): Promise<void> {
     '/api/machines/:id/runtimes/:target/config',
     guard,
     async (req) => {
-      const machine = await visibleMachine(req.params.id, req.user!);
-      const parsedTarget = runtimeTargetSchema.safeParse(req.params.target);
-      if (!parsedTarget.success) {
-        throw new AppError(
-          `Target '${req.params.target}' is not runtime-managed`,
-          400,
-          'RUNTIME_TARGET_INVALID',
-        );
-      }
+      const { machine, target } = await resolveRuntimeTarget(
+        { uow: app.uow },
+        principalOf(req),
+        req.params.id,
+        req.params.target,
+      );
+      // #53 residue: the whole W4 arm is a live daemon round-trip — presence,
+      // the capability the LIVE daemon advertised, the ctl emit, and the
+      // waiter are realtime-only concerns (services decide, callers act).
+      // Order matters: an offline machine (capabilities not yet mirrored
+      // onto the row) must answer MACHINE_OFFLINE, not
+      // DAEMON_NO_RUNTIME_CONFIG_VIEW (config-view.test.ts pins it).
       if (!app.realtime.presence.isOnline(machine.id)) {
         throw new AppError('Machine daemon is offline', 409, 'MACHINE_OFFLINE');
       }
@@ -93,7 +85,7 @@ export async function runtimeConfigRoutes(app: FastifyInstance): Promise<void> {
       const { requestId, done } = app.realtime.configView.awaitView(machine.id);
       const request = runtimeConfigGetRequestSchema.parse({
         requestId,
-        target: parsedTarget.data,
+        target,
       });
       app.io.of('/ctl').to(`machine:${machine.id}`).emit('runtime:config.get', request);
       const outcome = await done;
@@ -116,22 +108,12 @@ export async function runtimeConfigRoutes(app: FastifyInstance): Promise<void> {
     '/api/machines/:id/runtime-config/:target',
     guard,
     async (req) => {
-      const machine = await visibleMachine(req.params.id, req.user!);
-      const parsedTarget = runtimeTargetSchema.safeParse(req.params.target);
-      if (!parsedTarget.success) {
-        throw new AppError(
-          `Target '${req.params.target}' is not runtime-managed`,
-          400,
-          'RUNTIME_TARGET_INVALID',
-        );
-      }
-      const row = await app.uow.runtimeConfigs.findByMachineAndTarget(
-        machine.id,
-        parsedTarget.data,
+      const row = await getRuntimeConfig(
+        { uow: app.uow },
+        principalOf(req),
+        req.params.id,
+        req.params.target,
       );
-      if (!row) {
-        throw new AppError('No runtime config for this target', 404, 'RUNTIME_CONFIG_NOT_FOUND');
-      }
       return { config: toView(row) };
     },
   );
@@ -141,91 +123,24 @@ export async function runtimeConfigRoutes(app: FastifyInstance): Promise<void> {
     '/api/machines/:id/runtime-config/:target',
     guard,
     async (req, reply) => {
-      const machine = await visibleMachine(req.params.id, req.user!);
-      const parsedTarget = runtimeTargetSchema.safeParse(req.params.target);
-      if (!parsedTarget.success) {
-        throw new AppError(
-          `Target '${req.params.target}' is not runtime-managed`,
-          400,
-          'RUNTIME_TARGET_INVALID',
-        );
-      }
-      const target = parsedTarget.data;
+      const plan = await planRuntimeConfigUpsert(
+        { uow: app.uow },
+        principalOf(req),
+        req.params.id,
+        req.params.target,
+        req.body,
+      );
 
-      const spec: RuntimeConfigSpec = runtimeConfigSpecSchema.parse(req.body);
-      const unsupported = runtimeSpecUnsupportedReason(target, spec);
-      if (unsupported !== null) {
-        throw new AppError(unsupported, 409, 'RUNTIME_CONFIG_UNSUPPORTED');
-      }
-
-      // The credential gate (dial-site rules): the plaintext must be allowed to
-      // leave the server, and it must resolve in the CALLER's namespace (#21) —
-      // another user's same-named personal secret does not exist as far as
-      // this caller is concerned.
-      const cred = await findCredentialForOwner(app.uow, spec.credentialName, req.user!.id);
-      if (!cred) {
-        throw new AppError(
-          `Credential "${spec.credentialName}" not found`,
-          404,
-          'CREDENTIAL_NOT_FOUND',
-        );
-      }
-      if (!cred.distributable) {
-        throw new AppError(
-          `Credential "${spec.credentialName}" is not distributable — a runtime config's key is applied on the machine (opt in via the credential's distributable flag)`,
-          409,
-          'CREDENTIAL_NOT_DISTRIBUTABLE',
-        );
-      }
-
-      // W10 — `providerId` is provenance only, but it must still name a
-      // provider visible to the caller at PUT time (a dangling ref later is
-      // fine: the spec is a snapshot and the form falls back to manual).
-      let providerRow: import('@harness-nexus/core').LlmProvider | null = null;
-      if (spec.providerId !== undefined) {
-        const provider = await app.uow.llmProviders.findById(spec.providerId);
-        if (!provider || (provider.scope === 'personal' && provider.ownerId !== req.user!.id)) {
-          throw new AppError('Provider not found', 404, 'PROVIDER_NOT_FOUND');
-        }
-        providerRow = provider;
-      }
-
-      // W10 — extra switchable models: dedupe and drop the default (the
-      // writers prepend `model` themselves; the stored value is the extras
-      // only, and an empty remainder normalizes back to null).
-      const uniqueExtras =
-        spec.models !== undefined ? [...new Set(spec.models)].filter((m) => m !== spec.model) : [];
-      const models = uniqueExtras.length > 0 ? uniqueExtras : null;
-
-      // #51 — metadata snapshot for [model, ...extras] from the provider's
-      // registry (ids not in the registry get no entry: bare ids stay
-      // honest). Old daemons' zod strips the unknown field — wire-compatible.
-      let modelEntries: RuntimeConfigSpec['modelEntries'];
-      if (providerRow !== null && providerRow.models.length > 0) {
-        const byId = new Map(providerRow.models.map((m) => [m.id, m]));
-        const allIds = [spec.model, ...uniqueExtras];
-        const entries = allIds.flatMap((id) => {
-          const m = byId.get(id);
-          if (m === undefined) return [];
-          return [
-            {
-              id: m.id,
-              ...(m.displayName !== undefined ? { displayName: m.displayName } : {}),
-              ...(m.contextWindow !== undefined ? { contextWindow: m.contextWindow } : {}),
-              ...(m.maxOutputTokens !== undefined ? { maxOutputTokens: m.maxOutputTokens } : {}),
-              ...(m.vision !== undefined ? { vision: m.vision } : {}),
-            },
-          ];
-        });
-        if (entries.length > 0) modelEntries = entries;
-      }
-
-      // Soft capability gate (harness jobs' rule): an online daemon without the
-      // W3 config executor would settle the job as unsupported — refuse early.
-      // An offline machine may queue.
+      // #53 residue: the soft capability gate reads LIVE presence (an online
+      // daemon without the W3 config executor would settle the job as
+      // unsupported — refuse early; an offline machine may queue). It stays
+      // BETWEEN the service's validation (above) and its save (below):
+      // hoisting it would reorder observable failures (409 capability before
+      // the 404/409 credential gates), deferring it would persist a row the
+      // gate then rejects. Hence the plan → gate → save split.
       if (
-        app.realtime.presence.isOnline(machine.id) &&
-        !machine.capabilities.includes('runtime-config')
+        app.realtime.presence.isOnline(plan.machine.id) &&
+        !plan.machine.capabilities.includes('runtime-config')
       ) {
         throw new AppError(
           'Daemon does not advertise the runtime-config capability (upgrade hnx on the machine)',
@@ -234,36 +149,17 @@ export async function runtimeConfigRoutes(app: FastifyInstance): Promise<void> {
         );
       }
 
-      const existing = await app.uow.runtimeConfigs.findByMachineAndTarget(machine.id, target);
-      const now = new Date().toISOString();
-      const row: RuntimeConfig = {
-        id: existing?.id ?? generateId(),
-        machineId: machine.id,
-        ownerId: machine.ownerId,
-        target,
-        spec: {
-          providerLabel: spec.providerLabel,
-          baseUrl: spec.baseUrl ?? null,
-          api: spec.api,
-          model: spec.model,
-          credentialName: spec.credentialName,
-          providerId: spec.providerId ?? null,
-          models,
-          modelEntries: modelEntries ?? null,
-          extra: spec.extra ?? null,
-        },
-        createdAt: existing?.createdAt ?? now,
-        updatedAt: now,
-      };
-      await app.uow.runtimeConfigs.save(row);
+      const row = await saveRuntimeConfig({ uow: app.uow }, plan);
 
+      // #53 residue: dispatch — queue the apply-config harness job AFTER the
+      // save (createJob dispatches to the daemon when online).
       const job = await app.realtime.jobs.createJob({
-        machineId: machine.id,
+        machineId: plan.machine.id,
         ownerId: req.user!.id,
         type: 'harness',
-        payload: { type: 'harness', action: 'apply-config', target },
+        payload: { type: 'harness', action: 'apply-config', target: plan.row.target },
       });
-      return reply.code(existing ? 200 : 201).send({ config: toView(row), job: jobView(job) });
+      return reply.code(plan.created ? 201 : 200).send({ config: toView(row), job: jobView(job) });
     },
   );
 }
