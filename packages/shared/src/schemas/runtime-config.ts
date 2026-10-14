@@ -84,6 +84,27 @@ export const runtimeConfigSpecSchema = z.object({
    * picker rewrite (9 W13). Codex persists only the single root `model`.
    */
   models: z.array(z.string().min(1).max(128)).max(16).optional(),
+  /**
+   * #51 — metadata snapshot for `[model, ...models]`, filled from the
+   * provider's model registry at PUT time (ids absent from the registry get
+   * no entry — bare ids stay honest). ADDITIVE on purpose: old daemons'
+   * zod parse strips the unknown field, so the wire stays compatible. The pi
+   * writer turns entries into real models.json `contextWindow`/`maxTokens`/
+   * `name`; temperature/topP/serverTools/extraBody never leave the server
+   * (they are assistant-consumer params, fetched from the provider row).
+   */
+  modelEntries: z
+    .array(
+      z.object({
+        id: z.string().min(1).max(128),
+        displayName: z.string().max(256).optional(),
+        contextWindow: z.number().int().positive().optional(),
+        maxOutputTokens: z.number().int().positive().optional(),
+        vision: z.boolean().optional(),
+      }),
+    )
+    .max(17)
+    .optional(),
   /** Target-specific extras (kept schema-loose on purpose). */
   extra: z.record(z.string(), z.unknown()).optional(),
 });

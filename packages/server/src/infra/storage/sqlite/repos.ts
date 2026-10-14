@@ -1120,6 +1120,8 @@ interface LlmProviderRow {
   credential_name: string;
   scope: string;
   owner_id: string | null;
+  /** #51 — JSON of ProviderModelConfig[]; NULL on pre-feature rows → []. */
+  models: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -1132,6 +1134,7 @@ const mapLlmProvider = (r: LlmProviderRow): LlmProvider => ({
   credentialName: r.credential_name,
   scope: r.scope as LlmProvider['scope'],
   ownerId: r.owner_id,
+  models: r.models === null ? [] : (JSON.parse(r.models) as LlmProvider['models']),
   createdAt: r.created_at,
   updatedAt: r.updated_at,
 });
@@ -1171,13 +1174,14 @@ export function sqliteLlmProviderRepository(db: Database): LlmProviderRepository
     async save(provider) {
       db.prepare(
         `INSERT INTO llm_providers
-           (id, name, api, base_url, credential_name, scope, owner_id, created_at, updated_at)
-         VALUES (@id, @name, @api, @base_url, @credential_name, @scope, @owner_id, @created_at, @updated_at)
+           (id, name, api, base_url, credential_name, scope, owner_id, models, created_at, updated_at)
+         VALUES (@id, @name, @api, @base_url, @credential_name, @scope, @owner_id, @models, @created_at, @updated_at)
          ON CONFLICT(id) DO UPDATE SET
            name            = excluded.name,
            api             = excluded.api,
            base_url        = excluded.base_url,
            credential_name = excluded.credential_name,
+           models          = excluded.models,
            updated_at      = excluded.updated_at`,
       ).run({
         id: provider.id,
@@ -1187,6 +1191,7 @@ export function sqliteLlmProviderRepository(db: Database): LlmProviderRepository
         credential_name: provider.credentialName,
         scope: provider.scope,
         owner_id: provider.ownerId,
+        models: JSON.stringify(provider.models ?? []),
         created_at: provider.createdAt,
         updated_at: provider.updatedAt,
       });

@@ -9,6 +9,7 @@ import {
   type LlmProviderUpdateInput,
   type LlmProviderView,
   type ProviderApiKind,
+  type ProviderModelConfig,
 } from '@harness-nexus/shared';
 import { generateId, decryptSecret } from '../infra/crypto.js';
 import { findCredentialForOwner } from '../infra/credential-scope.js';
@@ -105,6 +106,7 @@ export async function llmProviderRoutes(app: FastifyInstance): Promise<void> {
       credentialName: input.credentialName,
       scope: input.scope,
       ownerId,
+      models: input.models as ProviderModelConfig[],
       createdAt: now,
       updatedAt: now,
     };
@@ -149,6 +151,8 @@ export async function llmProviderRoutes(app: FastifyInstance): Promise<void> {
       // `baseUrl: null` clears the override back to the official endpoint.
       ...(input.baseUrl !== undefined ? { baseUrl: input.baseUrl } : {}),
       ...(input.credentialName !== undefined ? { credentialName: input.credentialName } : {}),
+      // #51 — full replace (the dialog edits a local copy and sends it whole).
+      ...(input.models !== undefined ? { models: input.models as ProviderModelConfig[] } : {}),
       updatedAt: new Date().toISOString(),
     };
     await app.uow.llmProviders.save(next);
@@ -222,6 +226,7 @@ function toView(p: LlmProvider): LlmProviderView {
     credentialName: p.credentialName,
     scope: p.scope,
     ownerId: p.ownerId,
+    models: p.models ?? [],
     createdAt: p.createdAt,
     updatedAt: p.updatedAt,
   };

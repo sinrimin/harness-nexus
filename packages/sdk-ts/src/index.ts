@@ -41,6 +41,8 @@ import type {
   LlmProviderView,
   LlmModelInfo,
   ProviderApiKind,
+  ProviderModelConfig,
+  ProviderModelConfigInput,
   ProviderModelsQueryInput,
 } from '@harness-nexus/shared';
 export {
@@ -50,6 +52,7 @@ export {
   PREWARM_ADAPTER_TARGETS,
   DEFAULT_CHAT_PREWARM_SETTINGS,
   providerApiToSpecApi,
+  providerModelConfigWarnings,
   jobViewSchema,
   HOOK_EVENTS,
   HOOK_SUPPORT,
@@ -75,6 +78,8 @@ export type {
   LlmProviderView,
   LlmModelInfo,
   ProviderApiKind,
+  ProviderModelConfig,
+  ProviderModelConfigInput,
   MarketplaceCatalog,
   MarketplacePlugin,
   MarketplaceSource,
@@ -628,6 +633,8 @@ export class HarnessNexusClient {
     baseUrl?: string;
     credentialName: string;
     scope?: 'global' | 'personal';
+    /** #51 — the configured model registry (full replace; omit = empty). */
+    models?: ProviderModelConfigInput[];
   }): Promise<{ provider: LlmProviderView }> {
     return this.request('POST', '/api/llm-providers', input);
   }
@@ -640,6 +647,8 @@ export class HarnessNexusClient {
       /** `null` clears the override back to the official endpoint. */
       baseUrl?: string | null;
       credentialName?: string;
+      /** #51 — full replace of the configured model registry. */
+      models?: ProviderModelConfigInput[];
     },
   ): Promise<{ provider: LlmProviderView }> {
     return this.request('PATCH', `/api/llm-providers/${id}`, input);

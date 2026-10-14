@@ -1,13 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { toast } from 'sonner';
-import {
-  ChevronDownIcon,
-  FileCogIcon,
-  LaptopIcon,
-  PlusIcon,
-  RefreshCwIcon,
-  XIcon,
-} from 'lucide-react';
+import { FileCogIcon, LaptopIcon, PlusIcon, XIcon } from 'lucide-react';
 import { api } from '@/api';
 import { useAuth, withAuthGuard } from '@/auth';
 import { useI18n, dateLocale, type TranslationKey } from '@/i18n';
@@ -21,7 +14,6 @@ import {
   providerApiToSpecApi,
   type ChatPrewarmSettings,
   type CredentialView,
-  type LlmModelInfo,
   type LlmProviderView,
   type MachineView,
   type RuntimeConfigSpec,
@@ -32,12 +24,6 @@ import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
 import {
   Select,
   SelectContent,
@@ -581,9 +567,11 @@ function ViewConfigButton({
  * Agent's LLM route, applied into the harness's NATIVE config by an
  * `apply-config` job (confirm-first: the write ships the credential's
  * plaintext to the machine). W10: pick a stored LlmProvider (filtered to the
- * APIs this Agent speaks) and only choose the model — 获取模型 discovers the
- * endpoint's list server-side. Manual entry remains as the fallback arm.
- * Renders nothing for targets the daemon doesn't runtime-manage.
+ * APIs this Agent speaks) and choose the model FROM the provider's curated
+ * registry (#51) — no live discovery here anymore. A provider without chat
+ * models and the manual arm keep free-text model inputs, so the form is
+ * never a dead end. Renders nothing for targets the daemon doesn't
+ * runtime-manage.
  */
 const MANUAL_PROVIDER = '__manual__';
 
@@ -648,8 +636,6 @@ function ProviderConfigForm({
   const [apiFlavor, setApiFlavor] = useState<string>('');
   const [credentialName, setCredentialName] = useState('');
   const [extraModels, setExtraModels] = useState<string[]>([]);
-  const [fetched, setFetched] = useState<LlmModelInfo[] | null>(null);
-  const [fetching, setFetching] = useState(false);
   const [busy, setBusy] = useState(false);
   // P6 — Apply config confirms first (the credential goes to the machine).
   const [asking, setAsking] = useState(false);
@@ -660,6 +646,12 @@ function ProviderConfigForm({
   const usableProviders = (providers ?? []).filter((p) => supportedKinds.includes(p.api));
   const selectedProvider = usableProviders.find((p) => p.id === providerId) ?? null;
   const manual = selectedProvider === null;
+  // #51 — the registry is the picker's world: only chat rows are selectable.
+  // A provider with no chat models (and the manual arm) falls back to
+  // free-text model inputs below.
+  const chatModels =
+    selectedProvider !== null ? selectedProvider.models.filter((m) => m.type === 'chat') : [];
+  const useModelSelect = selectedProvider !== null && chatModels.length > 0;
 
   // Prefill: a stored providerId that still resolves selects that provider;
   // otherwise (no provider, or it was deleted) the manual arm carries the
@@ -722,32 +714,6 @@ function ProviderConfigForm({
   /** The credential that will be written — worth naming in the confirm dialog. */
   const effectiveCredential = selectedProvider?.credentialName ?? credentialName;
 
-  async function fetchModels(): Promise<void> {
-    setFetching(true);
-    try {
-      const list = await withAuthGuard(() => {
-        if (selectedProvider !== null) {
-          return api.queryProviderModels({ providerId: selectedProvider.id });
-        }
-        // Manual arm — the explicit query shape. Spec flavors map onto the
-        // fetch kinds (the models endpoint is shared by both openai kinds).
-        return api.queryProviderModels({
-          api: apiFlavor === 'anthropic-messages' ? 'anthropic' : 'openai-chat',
-          ...(baseUrl.trim() !== '' ? { baseUrl: baseUrl.trim() } : {}),
-          credentialName,
-        });
-      }, logout);
-      setFetched(list);
-      toast.success(t('machineDetail.fetchedCount', { count: list.length }));
-    } catch (e) {
-      toast.error(
-        e instanceof HarnessNexusError ? e.message : t('machineDetail.fetchModelsFailed'),
-      );
-    } finally {
-      setFetching(false);
-    }
-  }
-
   async function apply(): Promise<void> {
     setBusy(true);
     try {
@@ -797,8 +763,18 @@ function ProviderConfigForm({
               value={providerId}
               onValueChange={(v) => {
                 setProviderId(v);
-                setFetched(null);
-                setExtraModels([]);
+                // Registry cutover (#51): model/extras survive the switch only
+                // when the new provider's registry still lists them; the
+                // manual arm and a registry-less provider keep free-text values.
+                const next = usableProviders.find((p) => p.id === v) ?? null;
+                const ids = new Set(
+                  next !== null
+                    ? next.models.filter((m) => m.type === 'chat').map((m) => m.id)
+                    : [],
+                );
+                if (ids.size === 0) return;
+                setModel((prev) => (ids.has(prev.trim()) ? prev : ''));
+                setExtraModels((prev) => prev.filter((x) => ids.has(x.trim())));
               }}
             >
               <SelectTrigger id={`pc-provider-${target}`}>
@@ -924,7 +900,29 @@ function ProviderConfigForm({
 
           <div className="grid min-w-44 gap-2">
             <Label htmlFor={`pc-model-${target}`}>{t('machineDetail.modelDefaultLabel')}</Label>
-            <div className="flex gap-2">
+            {useModelSelect ? (
+              <Select value={model} onValueChange={setModel}>
+                <SelectTrigger id={`pc-model-${target}`} className="font-mono text-xs">
+                  <SelectValue placeholder={t('machineDetail.pickModel')} />
+                </SelectTrigger>
+                <SelectContent>
+                  {/* A stored id that predates the registry stays visible and
+                      submittable — the cutover never silently drops a working
+                      route (registry-less rows are reset on provider CHANGE,
+                      not on open). */}
+                  {model.trim() !== '' && !chatModels.some((m) => m.id === model.trim()) ? (
+                    <SelectItem value={model.trim()} className="font-mono text-xs">
+                      {model.trim()}
+                    </SelectItem>
+                  ) : null}
+                  {chatModels.map((m) => (
+                    <SelectItem key={m.id} value={m.id} className="font-mono text-xs">
+                      {m.displayName ?? m.id}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            ) : (
               <Input
                 id={`pc-model-${target}`}
                 value={model}
@@ -933,22 +931,7 @@ function ProviderConfigForm({
                 autoComplete="off"
                 spellCheck={false}
               />
-              {fetched !== null && fetched.length > 0 ? (
-                <FetchedModelMenu fetched={fetched} onPick={setModel} />
-              ) : null}
-              <Button
-                type="button"
-                variant="outline"
-                size="icon"
-                className="shrink-0"
-                disabled={fetching || (manual && credentialName === '')}
-                onClick={() => void fetchModels()}
-                title={t('machineDetail.fetchModels')}
-                aria-label={t('machineDetail.fetchModels')}
-              >
-                <RefreshCwIcon className={fetching ? 'animate-spin' : ''} />
-              </Button>
-            </div>
+            )}
           </div>
           <Button onClick={() => setAsking(true)} disabled={!ready}>
             {busy ? t('machineDetail.applying') : t('machineDetail.applyButton')}
@@ -957,6 +940,9 @@ function ProviderConfigForm({
 
         {needBaseUrlNote && managedTarget === 'deepseek' ? (
           <p className="text-warn text-xs">{t('machineDetail.baseUrlNeeded')}</p>
+        ) : null}
+        {selectedProvider !== null && chatModels.length === 0 ? (
+          <p className="text-muted-foreground text-xs">{t('machineDetail.noModelsOnProvider')}</p>
         ) : null}
         {providers !== null && usableProviders.length === 0 && manual ? (
           <p className="text-muted-foreground text-xs">{t('machineDetail.noProviders')}</p>
@@ -968,10 +954,11 @@ function ProviderConfigForm({
           <p className="text-muted-foreground text-xs">{t('machineDetail.noCredentials')}</p>
         ) : null}
 
-        {/* 9 W13 — cc-switch-style extra models: rows are freely editable
-          inputs (fetching is optional; some gateways expose no /models), a
-          fetched list turns into per-row pick dropdowns, and any row can be
-          promoted to the default (the old default swaps into the rows). */}
+        {/* 9 W13 — cc-switch-style extra models. With a provider picked the
+          rows pick from its registry, minus ids already used elsewhere (the
+          row's own id stays selectable); a registry-less provider and the
+          manual arm keep free-text rows. Any row can still be promoted to
+          the default (the old default swaps into the rows). */}
         <div className="flex flex-col gap-2">
           <div className="flex items-center gap-2">
             <span className="text-sm leading-none font-medium">
@@ -988,57 +975,87 @@ function ProviderConfigForm({
               {t('machineDetail.extraModelsAdd')}
             </Button>
           </div>
-          {extraModels.map((m, i) => (
-            <div key={i} className="flex max-w-2xl items-center gap-2">
-              <Input
-                value={m}
-                onChange={(e) =>
-                  setExtraModels((prev) => prev.map((x, j) => (j === i ? e.target.value : x)))
-                }
-                placeholder={t('machineDetail.extraModelsPlaceholder')}
-                className="h-9 font-mono text-xs"
-                autoComplete="off"
-                spellCheck={false}
-              />
-              {fetched !== null && fetched.length > 0 ? (
-                <FetchedModelMenu
-                  fetched={fetched}
-                  onPick={(id) => setExtraModels((prev) => prev.map((x, j) => (j === i ? id : x)))}
-                />
-              ) : null}
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                className="text-muted-foreground h-9 shrink-0 px-2 text-xs hover:text-foreground"
-                disabled={m.trim() === '' || m.trim() === model.trim()}
-                onClick={() => {
-                  const id = m.trim();
-                  const old = model.trim();
-                  setModel(id);
-                  setExtraModels((prev) => {
-                    const kept = prev.filter((_, j) => j !== i);
-                    if (old !== '' && old !== id && !kept.some((x) => x.trim() === old)) {
-                      kept.push(old);
+          {extraModels.map((m, i) => {
+            const used = new Set(
+              [model, ...extraModels.filter((_, j) => j !== i)]
+                .map((x) => x.trim())
+                .filter((x) => x !== ''),
+            );
+            const rowOptions = chatModels.filter((mm) => mm.id === m.trim() || !used.has(mm.id));
+            return (
+              <div key={i} className="flex max-w-2xl items-center gap-2">
+                {useModelSelect ? (
+                  <Select
+                    value={m}
+                    onValueChange={(v) =>
+                      setExtraModels((prev) => prev.map((x, j) => (j === i ? v : x)))
                     }
-                    return kept;
-                  });
-                }}
-              >
-                {t('machineDetail.extraModelsMakeDefault')}
-              </Button>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                className="text-muted-foreground size-8 shrink-0 hover:text-danger"
-                onClick={() => setExtraModels((prev) => prev.filter((_, j) => j !== i))}
-                aria-label={t('machineDetail.extraModelsRemove', { model: m === '' ? '…' : m })}
-              >
-                <XIcon className="size-3.5" />
-              </Button>
-            </div>
-          ))}
+                  >
+                    <SelectTrigger
+                      aria-label={t('machineDetail.pickModel')}
+                      className="h-9 min-w-0 flex-1 font-mono text-xs"
+                    >
+                      <SelectValue placeholder={t('machineDetail.pickModel')} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {m.trim() !== '' && !chatModels.some((mm) => mm.id === m.trim()) ? (
+                        <SelectItem value={m.trim()} className="font-mono text-xs">
+                          {m.trim()}
+                        </SelectItem>
+                      ) : null}
+                      {rowOptions.map((mm) => (
+                        <SelectItem key={mm.id} value={mm.id} className="font-mono text-xs">
+                          {mm.displayName ?? mm.id}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                ) : (
+                  <Input
+                    value={m}
+                    onChange={(e) =>
+                      setExtraModels((prev) => prev.map((x, j) => (j === i ? e.target.value : x)))
+                    }
+                    placeholder={t('machineDetail.extraModelsPlaceholder')}
+                    className="h-9 font-mono text-xs"
+                    autoComplete="off"
+                    spellCheck={false}
+                  />
+                )}
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="text-muted-foreground h-9 shrink-0 px-2 text-xs hover:text-foreground"
+                  disabled={m.trim() === '' || m.trim() === model.trim()}
+                  onClick={() => {
+                    const id = m.trim();
+                    const old = model.trim();
+                    setModel(id);
+                    setExtraModels((prev) => {
+                      const kept = prev.filter((_, j) => j !== i);
+                      if (old !== '' && old !== id && !kept.some((x) => x.trim() === old)) {
+                        kept.push(old);
+                      }
+                      return kept;
+                    });
+                  }}
+                >
+                  {t('machineDetail.extraModelsMakeDefault')}
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="text-muted-foreground size-8 shrink-0 hover:text-danger"
+                  onClick={() => setExtraModels((prev) => prev.filter((_, j) => j !== i))}
+                  aria-label={t('machineDetail.extraModelsRemove', { model: m === '' ? '…' : m })}
+                >
+                  <XIcon className="size-3.5" />
+                </Button>
+              </div>
+            );
+          })}
           <p className="text-muted-foreground text-xs">{t('machineDetail.extraModelsHint')}</p>
         </div>
       </div>
@@ -1069,47 +1086,6 @@ function ProviderConfigForm({
           }}
         />
       ) : null}
-    </>
-  );
-}
-
-/**
- * A compact "pick from the fetched list" dropdown (cc-switch style) — sits
- * after a model input; picking fills THAT input. Rendered only while a fetch
- * succeeded; manual typing always stays available.
- */
-function FetchedModelMenu({
-  fetched,
-  onPick,
-}: {
-  fetched: LlmModelInfo[];
-  onPick: (id: string) => void;
-}) {
-  const { t } = useI18n();
-  if (fetched.length === 0) return null;
-  return (
-    <>
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button
-            type="button"
-            variant="outline"
-            size="icon"
-            className="shrink-0"
-            title={t('machineDetail.extraModelsPick')}
-            aria-label={t('machineDetail.extraModelsPick')}
-          >
-            <ChevronDownIcon className="size-4" />
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="start" className="max-h-72 overflow-y-auto">
-          {fetched.map((m) => (
-            <DropdownMenuItem key={m.id} onClick={() => onPick(m.id)} className="font-mono text-xs">
-              {m.name !== undefined && m.name !== m.id ? `${m.id} — ${m.name}` : m.id}
-            </DropdownMenuItem>
-          ))}
-        </DropdownMenuContent>
-      </DropdownMenu>
     </>
   );
 }

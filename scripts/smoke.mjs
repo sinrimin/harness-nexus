@@ -2835,6 +2835,75 @@ r = await req('POST', '/api/llm-providers/query-models', {
 expect('dead endpoint maps to 502 PROVIDER_MODELS_FAILED', r.status, 502);
 expect('error code', r.json.error, 'PROVIDER_MODELS_FAILED');
 
+// ===========================================================================
+// [#51] provider model registry — models live ON the provider row; consumer
+// forms pick from the registry; PUTs snapshot metadata as modelEntries.
+// ===========================================================================
+log('\n--- [#51] provider model registry ---');
+r = await req('PATCH', `/api/llm-providers/${w10ProviderId}`, {
+  token: userToken,
+  body: {
+    models: [
+      { id: 'gpt-5', displayName: 'GPT-5', contextWindow: 400_000, maxOutputTokens: 128_000 },
+      { id: 'gpt-5-mini' },
+      { id: 'text-embed', type: 'embedding' },
+    ],
+  },
+});
+expect('registry PATCH round-trips (type defaults to chat)', r.status, 200);
+expect('model count', r.json.provider.models.length, 3);
+expect(
+  'chat model carries its metadata',
+  r.json.provider.models[0].contextWindow,
+  400_000,
+);
+
+r = await req('PATCH', `/api/llm-providers/${w10ProviderId}`, {
+  token: userToken,
+  body: { models: [{ id: 'dup' }, { id: 'dup' }] },
+});
+expect('duplicate model ids rejected', r.status, 400);
+// Restore the registry for the modelEntries check.
+r = await req('PATCH', `/api/llm-providers/${w10ProviderId}`, {
+  token: userToken,
+  body: {
+    models: [
+      { id: 'gpt-5', displayName: 'GPT-5', contextWindow: 400_000, maxOutputTokens: 128_000 },
+      { id: 'gpt-5-mini' },
+    ],
+  },
+});
+expect('registry restored', r.status, 200);
+
+const w51Machine = await req('POST', '/api/machines', {
+  token: userToken,
+  body: { name: 'w51-box' },
+});
+expect('w51 enroll status', w51Machine.status, 201);
+r = await req('PUT', `/api/machines/${w51Machine.json.machine.id}/runtime-config/codex`, {
+  token: userToken,
+  body: {
+    providerLabel: 'w10-gw',
+    baseUrl: 'https://gw.example.com/v1',
+    api: 'openai',
+    model: 'gpt-5',
+    credentialName: 'w3-gw-key',
+    providerId: w10ProviderId,
+    models: ['gpt-5-mini', 'not-in-registry'],
+  },
+});
+expect('registry-backed spec accepted', r.status, 201);
+expect(
+  'modelEntries snapshot: known ids carry metadata, unknown stay absent',
+  JSON.stringify(r.json.config.modelEntries),
+  JSON.stringify([
+    { id: 'gpt-5', displayName: 'GPT-5', contextWindow: 400_000, maxOutputTokens: 128_000 },
+    { id: 'gpt-5-mini' },
+  ]),
+);
+r = await req('DELETE', `/api/machines/${w51Machine.json.machine.id}`, { token: userToken });
+expect('w51 machine cleanup', r.status, 200);
+
 r = await req('DELETE', `/api/machines/${w10Machine.json.machine.id}`, { token: userToken });
 expect('w10 machine cleanup', r.status, 200);
 r = await req('DELETE', `/api/llm-providers/${w10ProviderId}`, { token: userToken });

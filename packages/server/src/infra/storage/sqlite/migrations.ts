@@ -366,6 +366,16 @@ ALTER TABLE resources ADD COLUMN deleted_at TEXT;
 ALTER TABLE machines ADD COLUMN chat_default_mode TEXT;
     `,
   },
+  {
+    version: 19,
+    description: 'issue #51 — provider model registry (configured models on the provider row)',
+    sql: `
+-- JSON of ProviderModelConfig[] (whole-row read/write — the chat_prewarm
+-- precedent, no cross-row queries worth a table). NULL on rows written before
+-- the feature → readers map it to [].
+ALTER TABLE llm_providers ADD COLUMN models TEXT;
+    `,
+  },
 ] as const;
 
 /**

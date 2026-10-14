@@ -27,7 +27,24 @@ export interface RuntimeConfigSpecData {
    * rewrite (9 W13). Codex persists only the single root `model`.
    */
   models: string[] | null;
+  /**
+   * #51 — metadata snapshot for `[model, ...models]`, filled from the
+   * provider's registry at PUT time (null = none known; ids absent from the
+   * registry stay bare). The pi writer turns entries into real models.json
+   * contextWindow/maxTokens/name. Metadata only — temperature/topP/
+   * serverTools/extraBody never leave the server.
+   */
+  modelEntries: RuntimeModelEntry[] | null;
   extra: Record<string, unknown> | null;
+}
+
+/** #51 — the metadata subset of a ProviderModelConfig that may ride a spec. */
+export interface RuntimeModelEntry {
+  id: string;
+  displayName?: string | undefined;
+  contextWindow?: number | undefined;
+  maxOutputTokens?: number | undefined;
+  vision?: boolean | undefined;
 }
 
 export interface RuntimeConfig {

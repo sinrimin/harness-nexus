@@ -58,6 +58,82 @@ export const PROVIDER_DEFAULT_BASE_URLS: Record<ProviderApiKind, string> = {
 };
 
 /**
+ * Issue #51 — one CONFIGURED model on a provider row. The registry is the
+ * single source of truth: consumers (runtime-config form, the platform
+ * assistant) pick from it, they never re-discover. `/v1/models` returns bare
+ * ids at best — contextWindow/vision are NOT fetchable, they are curated
+ * here. `type: 'embedding'` is RESERVED (pickers filter to 'chat'; no
+ * consumer surface yet).
+ */
+export const providerModelTypeSchema = z.enum(['chat', 'embedding']);
+export type ProviderModelType = z.infer<typeof providerModelTypeSchema>;
+
+export const providerModelConfigSchema = z.object({
+  id: z.string().min(1).max(128),
+  type: providerModelTypeSchema.default('chat'),
+  /** Display name → pi models.json `name`. */
+  displayName: z.string().max(256).optional(),
+  /** Context window in tokens → pi models.json `contextWindow`. */
+  contextWindow: z.number().int().positive().max(10_000_000).optional(),
+  /** Max output tokens → pi models.json `maxTokens`. */
+  maxOutputTokens: z.number().int().positive().max(10_000_000).optional(),
+  vision: z.boolean().optional(),
+  // —— advanced: provider-level policy, applied per CONSUMER capability ——
+
+  temperature: z.number().min(0).max(2).optional(),
+  topP: z.number().min(0).max(1).optional(),
+  /**
+   * ONLY meaningful for api='openai-responses' — the Responses API's
+   * server-side tools (web_search / file_search / code_interpreter /
+   * image_generation / mcp …). Deliberately an OPEN string list: the catalog
+   * evolves server-side, an enum here would rot.
+   */
+  serverTools: z.array(z.string().min(1).max(64)).max(16).optional(),
+  /**
+   * ONLY meaningful for openai-compatible apis — merged verbatim into the
+   * request body (gateway compat knobs: reasoning effort slots, forced
+   * formats, vendor extras…).
+   */
+  extraBody: z.record(z.string(), z.unknown()).optional(),
+});
+export type ProviderModelConfigInput = z.input<typeof providerModelConfigSchema>;
+export type ProviderModelConfig = z.infer<typeof providerModelConfigSchema>;
+
+/**
+ * A provider's model registry — ids unique within the row (refine gives the
+ * route a 400 with a pointed message; the web dialog blocks dupes client-side
+ * too, the refine covers direct API callers).
+ */
+export const providerModelsSchema = z
+  .array(providerModelConfigSchema)
+  .max(64)
+  .refine((models) => new Set(models.map((m) => m.id)).size === models.length, {
+    message: 'model ids must be unique within a provider',
+  });
+
+/**
+ * Api-irrelevant combos WARN, never reject — gateway compat layers routinely
+ * bend the rules (an openai-compatible gateway behind an 'anthropic' kind,
+ * etc.). Pure: the web dialog computes these client-side from the same
+ * shared code.
+ */
+export function providerModelConfigWarnings(
+  api: ProviderApiKind,
+  models: readonly ProviderModelConfig[],
+): string[] {
+  const warnings: string[] = [];
+  for (const m of models) {
+    if (m.serverTools !== undefined && api !== 'openai-responses') {
+      warnings.push(`model "${m.id}": serverTools only applies to openai-responses providers`);
+    }
+    if (m.extraBody !== undefined && api === 'anthropic') {
+      warnings.push(`model "${m.id}": extraBody only applies to openai-compatible providers`);
+    }
+  }
+  return warnings;
+}
+
+/**
  * Candidate models-list URLs for a kind + base, in try order (pure — unit
  * tested without I/O). cc-switch semantics: request the endpoint's
  * `/v1/models`. Gateways exist in both shapes, so an openai base without a
@@ -78,13 +154,15 @@ export const llmProviderCreateSchema = z.object({
   /** Handle of the Credential carrying the API key. */
   credentialName: z.string().min(1).max(64),
   scope: z.enum(['global', 'personal']).default('personal'),
+  /** #51 — the configured model registry (full replace; omit = empty). */
+  models: providerModelsSchema.default([]),
 });
 export type LlmProviderCreateInput = z.input<typeof llmProviderCreateSchema>;
 
 /**
  * PATCH body — `scope` is deliberately absent (immutable, like a resource's
  * kind/scope); `baseUrl: null` clears the override. Mutate-by-recreate to
- * re-scope.
+ * re-scope. `models` is a full replace.
  */
 export const llmProviderUpdateSchema = z
   .object({
@@ -92,6 +170,7 @@ export const llmProviderUpdateSchema = z
     api: providerApiKindSchema.optional(),
     baseUrl: z.string().url().max(512).nullable().optional(),
     credentialName: z.string().min(1).max(64).optional(),
+    models: providerModelsSchema.optional(),
   })
   .refine((v) => Object.keys(v).length > 0, { message: 'empty update' });
 export type LlmProviderUpdateInput = z.input<typeof llmProviderUpdateSchema>;
@@ -105,6 +184,7 @@ export const llmProviderViewSchema = z.object({
   credentialName: z.string().min(1).max(64),
   scope: z.enum(['global', 'personal']),
   ownerId: z.string().nullable(),
+  models: providerModelsSchema,
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),
 });
