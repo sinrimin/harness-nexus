@@ -10,6 +10,8 @@ import {
 } from '@harness-nexus/shared';
 import { jobView } from '../jobs/service.js';
 import { marketplaceNameFor } from '../marketplace/emitter.js';
+import { principalOf } from './principal.js';
+import { getAgentInstance, listMachineAgents } from '../services/agent-instances.js';
 
 /**
  * Deploy jobs + harness jobs + agent instances (Phase 8 C4 · Phase 9 W2).
@@ -176,8 +178,7 @@ export async function jobsRoutes(app: FastifyInstance): Promise<void> {
 
   // ---- GET /api/machines/:id/agents — deployed agent instances ----
   app.get<{ Params: { id: string } }>('/api/machines/:id/agents', guard, async (req) => {
-    const machine = await visibleMachine(req.params.id, req.user!);
-    const agents = await app.uow.agentInstances.listByMachine(machine.id);
+    const agents = await listMachineAgents({ uow: app.uow }, principalOf(req), req.params.id);
     return { agents };
   });
 
@@ -185,12 +186,11 @@ export async function jobsRoutes(app: FastifyInstance): Promise<void> {
   // Chat itself is owner-ONLY by design, so the lookup is too: a non-owner
   // (admin included) gets the 404 rather than a machine reveal.
   app.get<{ Params: { id: string } }>('/api/agent-instances/:id', guard, async (req) => {
-    const agent = await app.uow.agentInstances.findById(req.params.id);
-    if (!agent || agent.ownerId !== req.user!.id) {
-      throw new AppError('Agent instance not found', 404, 'AGENT_INSTANCE_NOT_FOUND');
-    }
-    const machine = await app.uow.machines.findById(agent.machineId);
-    if (!machine) throw new AppError('Agent instance not found', 404, 'AGENT_INSTANCE_NOT_FOUND');
+    const { agent, machine } = await getAgentInstance(
+      { uow: app.uow },
+      principalOf(req),
+      req.params.id,
+    );
     return {
       agent,
       machine: {
