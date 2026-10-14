@@ -29,6 +29,17 @@ export interface AssistantConfig {
   /** Replaces the platform's default assistant prompt when set. */
   systemPromptOverride?: string | undefined;
   enabledToolGroups: AssistantToolGroup[];
+  /**
+   * M2 — server-dialed MCP servers the assistant may call (visibility is
+   * validated at save; the pool decides dialability at turn time, unavailable
+   * rows note honestly in the prompt).
+   */
+  mcpServerIds: string[];
+  /**
+   * M2 — platform skill resources (inline / inline-bundle) injected as a
+   * prompt index + the `read_skill` tool (progressive disclosure).
+   */
+  skillResourceIds: string[];
   createdAt: string;
   updatedAt: string;
   /**

@@ -50,6 +50,9 @@ export const assistantConfigCreateSchema = z.object({
     .array(assistantToolGroupSchema)
     .max(16)
     .default([...DEFAULT_ASSISTANT_TOOL_GROUPS]),
+  /** M2 — full replace; visibility validated in the service. */
+  mcpServerIds: z.array(z.string().min(1).max(64)).max(32).default([]),
+  skillResourceIds: z.array(z.string().min(1).max(64)).max(64).default([]),
 });
 export type AssistantConfigCreateInput = z.input<typeof assistantConfigCreateSchema>;
 
@@ -62,6 +65,8 @@ export const assistantConfigUpdateSchema = z
     defaultModel: z.string().min(1).max(128).optional(),
     systemPromptOverride: z.string().max(32_000).nullable().optional(),
     enabledToolGroups: z.array(assistantToolGroupSchema).max(16).optional(),
+    mcpServerIds: z.array(z.string().min(1).max(64)).max(32).optional(),
+    skillResourceIds: z.array(z.string().min(1).max(64)).max(64).optional(),
   })
   .refine((v) => Object.keys(v).length > 0, { message: 'empty update' });
 export type AssistantConfigUpdateInput = z.input<typeof assistantConfigUpdateSchema>;
@@ -75,6 +80,8 @@ export const assistantConfigViewSchema = z.object({
   defaultModel: z.string().min(1).max(128),
   systemPromptOverride: z.string().max(32_000).optional(),
   enabledToolGroups: z.array(assistantToolGroupSchema),
+  mcpServerIds: z.array(z.string()),
+  skillResourceIds: z.array(z.string()),
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),
 });

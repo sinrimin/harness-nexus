@@ -79,7 +79,7 @@ async function call(fn: () => Promise<unknown>): Promise<ToolOut> {
 }
 
 /** Inference helper — keeps `execute` params typed from each tool's schema. */
-function tool<T extends TSchema>(t: AgentTool<T>): AgentTool<T> {
+export function tool<T extends TSchema>(t: AgentTool<T>): AgentTool<T> {
   return t;
 }
 

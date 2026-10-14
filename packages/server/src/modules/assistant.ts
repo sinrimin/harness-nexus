@@ -123,6 +123,8 @@ function toConfigView(c: AssistantConfig): AssistantConfigView {
       ? { systemPromptOverride: c.systemPromptOverride }
       : {}),
     enabledToolGroups: c.enabledToolGroups,
+    mcpServerIds: c.mcpServerIds ?? [],
+    skillResourceIds: c.skillResourceIds ?? [],
     createdAt: c.createdAt,
     updatedAt: c.updatedAt,
   };

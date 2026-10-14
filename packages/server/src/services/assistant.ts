@@ -83,6 +83,8 @@ export async function createAssistant(
     enabledToolGroups: (input.enabledToolGroups as AssistantToolGroup[] | undefined) ?? [
       ...DEFAULT_ASSISTANT_TOOL_GROUPS,
     ],
+    mcpServerIds: await visibleMcpServerIds(deps, principal, input.mcpServerIds ?? []),
+    skillResourceIds: await readableSkillResourceIds(deps, principal, input.skillResourceIds ?? []),
     createdAt: now,
     updatedAt: now,
   };
@@ -156,10 +158,84 @@ export async function updateAssistant(
     ...(input.enabledToolGroups !== undefined
       ? { enabledToolGroups: input.enabledToolGroups as AssistantToolGroup[] }
       : {}),
+    ...(input.mcpServerIds !== undefined
+      ? { mcpServerIds: await visibleMcpServerIds(deps, principal, input.mcpServerIds) }
+      : {}),
+    ...(input.skillResourceIds !== undefined
+      ? {
+          skillResourceIds: await readableSkillResourceIds(deps, principal, input.skillResourceIds),
+        }
+      : {}),
     updatedAt: new Date().toISOString(),
   };
   await deps.uow.assistants.save(next);
   return next;
+}
+
+/**
+ * M2 — every referenced MCP server must be VISIBLE to the owner (a foreign
+ * personal row 404-hides like everywhere else). Dialability is NOT judged
+ * here: the server-dial pool is the truth at turn time, and an unavailable
+ * row notes honestly in the prompt (the picker greys stored-dialSite 'client'
+ * rows, 'auto' resolves per its credentials).
+ */
+async function visibleMcpServerIds(
+  deps: ServiceDeps,
+  principal: Principal,
+  ids: string[],
+): Promise<string[]> {
+  const out: string[] = [];
+  for (const id of ids) {
+    const server = await deps.uow.mcpServers.findById(id);
+    if (
+      !server ||
+      server.deletedAt !== undefined ||
+      (server.scope === 'personal' && server.ownerId !== principal.userId)
+    ) {
+      throw new AppError(`MCP server ${id} not found`, 404, 'MCP_SERVER_NOT_FOUND');
+    }
+    if (!out.includes(id)) out.push(id);
+  }
+  return out;
+}
+
+/**
+ * M2 — every referenced skill resource must be a VISIBLE, LIVE skill whose
+ * source the platform can read in-process (inline / inline-bundle; external
+ * sources need fetching and are rejected — pick content-borne skills).
+ */
+async function readableSkillResourceIds(
+  deps: ServiceDeps,
+  principal: Principal,
+  ids: string[],
+): Promise<string[]> {
+  const out: string[] = [];
+  for (const id of ids) {
+    const resource = await deps.uow.resources.findById(id);
+    if (
+      !resource ||
+      resource.deletedAt !== undefined ||
+      (resource.scope === 'personal' && resource.ownerId !== principal.userId)
+    ) {
+      throw new AppError(`Skill resource ${id} not found`, 404, 'RESOURCE_NOT_FOUND');
+    }
+    if (resource.kind !== 'skill') {
+      throw new AppError(
+        `Resource "${resource.name}" is a ${resource.kind}, not a skill`,
+        409,
+        'ASSISTANT_SKILL_NOT_SKILL',
+      );
+    }
+    if (resource.source.type !== 'inline' && resource.source.type !== 'inline-bundle') {
+      throw new AppError(
+        `Skill "${resource.name}" uses an external source (${resource.source.type}); the assistant can only read inline or inline-bundle skills`,
+        409,
+        'ASSISTANT_SKILL_SOURCE_UNREADABLE',
+      );
+    }
+    if (!out.includes(id)) out.push(id);
+  }
+  return out;
 }
 
 /** Soft-delete: pickers drop it, sessions stay readable. Idempotent. */

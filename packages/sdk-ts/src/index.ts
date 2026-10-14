@@ -677,6 +677,9 @@ export class HarnessNexusClient {
     defaultModel: string;
     systemPromptOverride?: string;
     enabledToolGroups?: AssistantToolGroup[];
+    /** M2 — full replace; visibility validated server-side. */
+    mcpServerIds?: string[];
+    skillResourceIds?: string[];
   }): Promise<{ assistant: AssistantConfigView }> {
     return this.request('POST', '/api/assistants', input);
   }
@@ -694,6 +697,8 @@ export class HarnessNexusClient {
       defaultModel?: string;
       systemPromptOverride?: string | null;
       enabledToolGroups?: AssistantToolGroup[];
+      mcpServerIds?: string[];
+      skillResourceIds?: string[];
     },
   ): Promise<{ assistant: AssistantConfigView }> {
     return this.request('PATCH', `/api/assistants/${id}`, input);

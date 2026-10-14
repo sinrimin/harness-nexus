@@ -183,6 +183,13 @@ export async function registerRealtime(
         if (socket) void socket.join(`chan:${sessionId}`);
       },
     },
+    // M2 — the MCP registry seam. LAZY on purpose: mountMcpProxy decorates
+    // `app.mcpRegistry` AFTER registerRealtime runs, so the closures resolve
+    // it per call (turn time), never at wiring time.
+    {
+      listTools: (serverIds) => app.mcpRegistry.listTools(serverIds),
+      callTool: (namespacedName, args) => app.mcpRegistry.callTool(namespacedName, args),
+    },
   );
 
   const jobs = new JobService(

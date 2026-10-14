@@ -13,6 +13,7 @@ import {
   type AssistantRunnerDeps,
   type RunningTurn,
 } from '../assistant/runner.js';
+import type { AssistantMcpDeps } from '../assistant/context.js';
 
 /**
  * The assistant's realtime coordinator (#52 §7) — the LiveSender-flavored
@@ -59,6 +60,8 @@ export class AssistantRealtimeService {
   constructor(
     private readonly deps: AssistantRunnerDeps,
     private readonly io: AssistantIO,
+    /** M2 — the registry seam, resolved LAZILY (mountMcpProxy decorates after registerRealtime). */
+    private readonly mcp?: AssistantMcpDeps,
   ) {}
 
   // ---- helpers ----
@@ -337,27 +340,32 @@ export class AssistantRealtimeService {
     // #11 — the echo is the single source of the user row for every viewer.
     this.emit(ch.sessionId, { kind: 'user_message', blocks: prompt });
 
-    const turn = startAssistantTurn(this.deps, {
-      session,
-      config,
-      modelId: ch.modelId,
-      prompt,
-      rows: rowsBefore,
-      emit: (event) => this.emit(ch.sessionId, event),
-      append: async (row: AssistantMessageRow) => {
-        seq += 1;
-        await this.deps.uow.assistants.appendMessage(ch.sessionId, { ...row, seq });
+    const turn = startAssistantTurn(
+      this.mcp === undefined ? this.deps : { ...this.deps, mcp: this.mcp },
+      {
+        session,
+        config,
+        modelId: ch.modelId,
+        prompt,
+        rows: rowsBefore,
+        emit: (event) => this.emit(ch.sessionId, event),
+        append: async (row: AssistantMessageRow) => {
+          seq += 1;
+          await this.deps.uow.assistants.appendMessage(ch.sessionId, { ...row, seq });
+        },
+        settle: async (summary) => {
+          const now = new Date().toISOString();
+          await this.deps.uow.assistants.saveSession({
+            ...session,
+            ...(summary.title !== undefined && session.title === ''
+              ? { title: summary.title }
+              : {}),
+            updatedAt: now,
+            lastMessageAt: summary.lastMessageAt,
+          });
+        },
       },
-      settle: async (summary) => {
-        const now = new Date().toISOString();
-        await this.deps.uow.assistants.saveSession({
-          ...session,
-          ...(summary.title !== undefined && session.title === '' ? { title: summary.title } : {}),
-          updatedAt: now,
-          lastMessageAt: summary.lastMessageAt,
-        });
-      },
-    });
+    );
     ch.run = turn;
 
     try {

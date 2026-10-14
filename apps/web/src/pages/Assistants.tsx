@@ -60,6 +60,8 @@ interface Draft {
   defaultModel: string;
   systemPromptOverride: string;
   enabledToolGroups: string[];
+  mcpServerIds: string[];
+  skillResourceIds: string[];
 }
 
 const EMPTY_DRAFT: Draft = {
@@ -69,6 +71,8 @@ const EMPTY_DRAFT: Draft = {
   defaultModel: '',
   systemPromptOverride: '',
   enabledToolGroups: [...ASSISTANT_TOOL_GROUPS],
+  mcpServerIds: [],
+  skillResourceIds: [],
 };
 
 export function AssistantsPage() {
@@ -76,6 +80,12 @@ export function AssistantsPage() {
   const { t } = useI18n();
   const [items, setItems] = useState<AssistantConfigView[] | null>(null);
   const [providers, setProviders] = useState<LlmProviderView[]>([]);
+  const [mcpServers, setMcpServers] = useState<{ id: string; name: string; dialSite: string }[]>(
+    [],
+  );
+  const [skillResources, setSkillResources] = useState<
+    { id: string; name: string; source: { type: string } }[]
+  >([]);
   const [error, setError] = useState<unknown>(null);
   const [editing, setEditing] = useState<AssistantConfigView | null>(null);
   const [creating, setCreating] = useState(false);
@@ -85,12 +95,18 @@ export function AssistantsPage() {
 
   async function refresh() {
     try {
-      const [list, provs] = await Promise.all([
+      const [list, provs, servers, skills] = await Promise.all([
         withAuthGuard(() => api.listAssistants(), logout),
         withAuthGuard(() => api.listLlmProviders(), logout),
+        // Picker sources — failures degrade to empty lists (the dialog stays
+        // usable; the sections say 暂无可用项).
+        withAuthGuard(() => api.listMcpServers(), logout).catch(() => []),
+        withAuthGuard(() => api.listResources({ kind: 'skill' }), logout).catch(() => []),
       ]);
       setItems(list);
       setProviders(provs);
+      setMcpServers(servers);
+      setSkillResources(skills);
       setError(null);
     } catch (e) {
       setError(e);
@@ -127,6 +143,8 @@ export function AssistantsPage() {
       defaultModel: a.defaultModel,
       systemPromptOverride: a.systemPromptOverride ?? '',
       enabledToolGroups: [...a.enabledToolGroups],
+      mcpServerIds: [...(a.mcpServerIds ?? [])],
+      skillResourceIds: [...(a.skillResourceIds ?? [])],
     });
     setEditing(a);
     setCreating(true);
@@ -145,6 +163,8 @@ export function AssistantsPage() {
           ? { systemPromptOverride: draft.systemPromptOverride }
           : {}),
         enabledToolGroups: draft.enabledToolGroups as (typeof ASSISTANT_TOOL_GROUPS)[number][],
+        mcpServerIds: draft.mcpServerIds,
+        skillResourceIds: draft.skillResourceIds,
       };
       if (editing !== null) {
         await withAuthGuard(
@@ -386,6 +406,86 @@ export function AssistantsPage() {
                 </label>
               ))}
             </div>
+          </Field>
+          <Field label={t('assistants.mcpLabel')} hint={t('assistants.mcpHint')}>
+            {mcpServers.length === 0 ? (
+              <span className="text-muted-foreground text-xs">{t('assistants.noneAvailable')}</span>
+            ) : (
+              <div className="grid grid-cols-2 gap-1.5">
+                {mcpServers.map((s) => {
+                  const clientDialed = s.dialSite === 'client';
+                  return (
+                    <label
+                      key={s.id}
+                      className={
+                        'flex items-center gap-2 text-sm' + (clientDialed ? ' opacity-50' : '')
+                      }
+                      title={clientDialed ? t('assistants.mcpHint') : undefined}
+                    >
+                      <Checkbox
+                        disabled={clientDialed}
+                        checked={draft.mcpServerIds.includes(s.id)}
+                        onCheckedChange={(checked) =>
+                          setDraft((d) => ({
+                            ...d,
+                            mcpServerIds:
+                              checked === true
+                                ? [...d.mcpServerIds, s.id]
+                                : d.mcpServerIds.filter((x) => x !== s.id),
+                          }))
+                        }
+                      />
+                      <span className="truncate">{s.name}</span>
+                      {clientDialed ? (
+                        <span className="text-muted-foreground shrink-0 text-[10px]">
+                          {t('assistants.mcpClientDial')}
+                        </span>
+                      ) : null}
+                    </label>
+                  );
+                })}
+              </div>
+            )}
+          </Field>
+          <Field label={t('assistants.skillsLabel')} hint={t('assistants.skillsHint')}>
+            {skillResources.length === 0 ? (
+              <span className="text-muted-foreground text-xs">{t('assistants.noneAvailable')}</span>
+            ) : (
+              <div className="grid grid-cols-2 gap-1.5">
+                {skillResources.map((r) => {
+                  const external = r.source.type !== 'inline' && r.source.type !== 'inline-bundle';
+                  return (
+                    <label
+                      key={r.id}
+                      className={
+                        'flex items-center gap-2 text-sm' + (external ? ' opacity-50' : '')
+                      }
+                      title={external ? t('assistants.skillsHint') : undefined}
+                    >
+                      <Checkbox
+                        disabled={external}
+                        checked={draft.skillResourceIds.includes(r.id)}
+                        onCheckedChange={(checked) =>
+                          setDraft((d) => ({
+                            ...d,
+                            skillResourceIds:
+                              checked === true
+                                ? [...d.skillResourceIds, r.id]
+                                : d.skillResourceIds.filter((x) => x !== r.id),
+                          }))
+                        }
+                      />
+                      <span className="truncate">{r.name}</span>
+                      {external ? (
+                        <span className="text-muted-foreground shrink-0 text-[10px]">
+                          {t('assistants.skillsExternal')}
+                        </span>
+                      ) : null}
+                    </label>
+                  );
+                })}
+              </div>
+            )}
           </Field>
           <Field label={t('assistants.sectionPrompt')} hint={t('assistants.promptHint')}>
             <Textarea
