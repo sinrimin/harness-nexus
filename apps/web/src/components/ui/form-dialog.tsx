@@ -58,7 +58,17 @@ export function FormDialog({
 }: FormDialogProps) {
   return (
     <Dialog open={open} onOpenChange={(o) => (o ? null : onClose())}>
-      <DialogContent className={cn(SIZES[size], 'max-h-[calc(100svh-4rem)] gap-4 overflow-y-auto')}>
+      <DialogContent
+        className={cn(SIZES[size], 'max-h-[calc(100svh-4rem)] gap-4 overflow-y-auto')}
+        onEscapeKeyDown={(e) => {
+          // A raw combobox listbox (TagCombobox / the provider dialog's model
+          // id input) swallows Escape itself while open: it only exists with
+          // `data-swallow-escape`, so its presence here means the key belongs
+          // to the listbox, not the dialog (Radix listens on document CAPTURE
+          // — the input's own preventDefault can never arrive in time).
+          if (document.querySelector('[data-swallow-escape]') !== null) e.preventDefault();
+        }}
+      >
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
           {description !== undefined ? <DialogDescription>{description}</DialogDescription> : null}

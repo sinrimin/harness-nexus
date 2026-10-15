@@ -84,6 +84,11 @@ interface ComposerProps {
   /** Images picked/pasted/dropped — the page compresses and appends. */
   onPickImages: (files: File[]) => void;
   onOpenFilePicker: () => void;
+  /**
+   * The assistant 端 has no workspace, so its + menu offers images only —
+   * false hides the file-reference item. Defaults to true (machine ends).
+   */
+  filePickerAvailable?: boolean;
   /** From the ready push's promptCapabilities — gates the image attach item. */
   imageSupported: boolean;
   config: ComposerConfig;
@@ -471,6 +476,7 @@ export function Composer({
   onRemoveFileRef,
   onPickImages,
   onOpenFilePicker,
+  filePickerAvailable = true,
   imageSupported,
   config,
   onConfigSet,
@@ -781,10 +787,12 @@ export function Composer({
               <ImageIcon className="size-4" />
               {t('chat.attachImage')}
             </DropdownMenuItem>
-            <DropdownMenuItem disabled={disabled} onClick={onOpenFilePicker}>
-              <PaperclipIcon className="size-4" />
-              {t('chat.attachFile')}
-            </DropdownMenuItem>
+            {filePickerAvailable ? (
+              <DropdownMenuItem disabled={disabled} onClick={onOpenFilePicker}>
+                <PaperclipIcon className="size-4" />
+                {t('chat.attachFile')}
+              </DropdownMenuItem>
+            ) : null}
           </DropdownMenuContent>
         </DropdownMenu>
 

@@ -15,7 +15,11 @@ import {
   type AssistantHistoryEvent,
   type AssistantReadyPush,
 } from '@/realtime';
-import { HarnessNexusError, type AssistantConfigView } from '@harness-nexus/sdk';
+import {
+  HarnessNexusError,
+  type AssistantConfigView,
+  type LlmProviderView,
+} from '@harness-nexus/sdk';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { Dialog as DialogPrimitive } from 'radix-ui';
@@ -31,6 +35,14 @@ import { TodoPanel } from '@/components/chat/todo-panel.js';
 import { EndSwitcher } from '@/components/chat/end-switcher.js';
 import { createFoldState, fold, type UserBlock } from '@/components/chat/fold.js';
 import type { ChatConfigSetPayload, PromptBlock } from '@/realtime';
+import {
+  attachmentsBytes,
+  fileToAttachment,
+  ImageAttachError_,
+  MAX_IMAGES_PER_TURN,
+  MAX_TOTAL_IMAGE_BYTES,
+  type DraftAttachment,
+} from '@/components/chat/image-attach.js';
 
 /**
  * The assistant 端 session page (#52 §8) — the AgentSession skeleton with the
@@ -84,6 +96,9 @@ export function AssistantSessionPage() {
   const [phase, setPhase] = useState<Phase>('idle');
   const [error, setError] = useState<string | null>(null);
   const [draft, setDraft] = useState('');
+  const [attachments, setAttachments] = useState<DraftAttachment[]>([]);
+  /** #58-3 — the model registry (vision flags gate the composer's images). */
+  const [providers, setProviders] = useState<LlmProviderView[] | null>(null);
   const [conversation, dispatch] = useReducer(fold, undefined, createFoldState);
   /** 9 W11 B — the tab strip (machine channels only in M1). */
   const channels = useChatChannels();
@@ -103,6 +118,24 @@ export function AssistantSessionPage() {
   useEffect(() => {
     void refreshAssistants();
   }, [refreshAssistants]);
+
+  // #58-3 — the registry ride-along: vision flags live on the provider model
+  // entries, so the composer's image gate needs them. Best-effort (failure
+  // just keeps images off — the honest default).
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const rows = await withAuthGuard(() => api.listLlmProviders(), logout);
+        if (!cancelled) setProviders(rows);
+      } catch {
+        /* keep null — image attach stays gated off */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [logout]);
 
   // ?s=<id> — a busy-assistant tab hand-off from another page: open that
   // session once the configs loaded (the open itself validates ownership).
@@ -267,17 +300,72 @@ export function AssistantSessionPage() {
     setSessionId(ack.sessionId);
   }
 
+  /**
+   * #58-3 — the image gate: the CURRENT model entry's registry `vision`
+   * flag. The config event's model value is the `providerId/modelId`
+   * compound (#58-4), so the lookup spans providers and re-derives the
+   * instant a switch settles. Unknown/absent = gated off (honest default).
+   */
+  const modelCurrentValue = conversation.config.configOptions?.find(
+    (o) => o.category === 'model',
+  )?.currentValue;
+  const imageSupported = useMemo(() => {
+    if (providers === null || modelCurrentValue === undefined) return false;
+    const slash = modelCurrentValue.indexOf('/');
+    const pid = slash === -1 ? '' : modelCurrentValue.slice(0, slash);
+    const mid = modelCurrentValue.slice(slash + 1);
+    return providers.find((p) => p.id === pid)?.models.find((m) => m.id === mid)?.vision === true;
+  }, [providers, modelCurrentValue]);
+
+  /** Compress + append picked/pasted/dropped images (the 9 W9 B path). */
+  async function addImages(files: File[]): Promise<void> {
+    for (const file of files) {
+      if (attachments.length >= MAX_IMAGES_PER_TURN) {
+        toast.error(t('chat.imageCountLimit', { count: MAX_IMAGES_PER_TURN }));
+        return;
+      }
+      try {
+        const attachment = await fileToAttachment(file);
+        if (attachmentsBytes([...attachments, attachment]) > MAX_TOTAL_IMAGE_BYTES) {
+          toast.error(t('chat.imageBudget'));
+          return;
+        }
+        setAttachments((prev) => [...prev, attachment]);
+      } catch (e) {
+        if (e instanceof ImageAttachError_) {
+          toast.error(
+            e.code === 'too-large'
+              ? t('chat.imageTooLarge', { name: e.name_ })
+              : e.code === 'bad-type'
+                ? t('chat.imageBadType', { name: e.name_ })
+                : t('chat.imageDecodeFailed', { name: e.name_ }),
+          );
+        }
+      }
+    }
+  }
+
   async function send(): Promise<void> {
     const text = draft.trim();
-    if (text === '' || sessionId === '' || phase !== 'ready') return;
+    if ((text === '' && attachments.length === 0) || sessionId === '' || phase !== 'ready') return;
+    const blocks: UserBlock[] = [
+      ...(text !== '' ? [{ type: 'text' as const, text }] : []),
+      ...attachments.map((a) => ({
+        type: 'image' as const,
+        data: a.data,
+        mimeType: a.mimeType,
+      })),
+    ];
     setDraft('');
-    const blocks: UserBlock[] = [{ type: 'text', text }];
+    setAttachments([]);
     const ack = await emitWithAck<{ accepted?: boolean; queued?: boolean; error?: string }>(
       'assistant:message.send',
       { sessionId, content: blocks },
     );
     if (ack.error !== undefined) {
+      // The turn never started — put everything back so nothing is lost.
       setDraft(text);
+      setAttachments(attachments);
       toast.error(ack.error === 'QUEUE_FULL' ? t('chat.queueFull') : ack.error);
     } else if (ack.queued === true) {
       toast.info(t('chat.queuedToast'));
@@ -625,13 +713,16 @@ export function AssistantSessionPage() {
                       usage={conversation.usage}
                       onSend={() => void send()}
                       onCancel={() => void cancelTurn()}
-                      attachments={[]}
+                      attachments={attachments}
                       fileRefs={[]}
-                      onRemoveAttachment={() => undefined}
+                      onRemoveAttachment={(id) =>
+                        setAttachments((prev) => prev.filter((a) => a.id !== id))
+                      }
                       onRemoveFileRef={() => undefined}
-                      onPickImages={() => undefined}
+                      onPickImages={(files) => void addImages(files)}
                       onOpenFilePicker={() => undefined}
-                      imageSupported={false}
+                      filePickerAvailable={false}
+                      imageSupported={imageSupported}
                       config={conversation.config satisfies ComposerConfig}
                       onConfigSet={(set) => void configSet(set)}
                       commands={conversation.commands}

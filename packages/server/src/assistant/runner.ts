@@ -5,7 +5,13 @@ import type { ChatStreamEvent, PromptBlock, ProviderModelConfig } from '@harness
 import { decryptSecret, generateId } from '../infra/crypto.js';
 import { findCredentialForOwner } from '../infra/credential-scope.js';
 import { buildGatewayModel, type GatewayModel } from './provider.js';
-import { rowsToPiMessages, piStopToWire } from './history.js';
+import {
+  rowsToPiMessages,
+  piStopToWire,
+  promptBlocksToPiContent,
+  IMAGE_CONTEXT_TURNS,
+  type ImageContextPolicy,
+} from './history.js';
 import { buildAssistantTools, WRITE_TOOLS, type AssistantToolDeps } from './tools.js';
 import { buildTurnExtras, type AssistantMcpDeps } from './context.js';
 import { DEFAULT_ASSISTANT_SYSTEM_PROMPT } from './prompt.js';
@@ -112,6 +118,12 @@ export function startAssistantTurn(
   input: {
     session: AssistantSession;
     config: AssistantConfig;
+    /**
+     * #58-4 — the channel's provider binding. The config's provider is only
+     * the DEFAULT; a session that switched its model select to another
+     * visible provider resolves here. Falls back to the config's provider.
+     */
+    providerId?: string;
     modelId: string;
     /** This turn's prompt blocks (the user row is already persisted). */
     prompt: readonly PromptBlock[];
@@ -172,14 +184,26 @@ export function startAssistantTurn(
       }
     }
 
-    const provider = await deps.uow.llmProviders.findById(config.providerId);
+    const provider = await deps.uow.llmProviders.findById(input.providerId ?? config.providerId);
     if (provider === null) {
       throw new TurnSetupError('The configured LLM provider no longer exists');
     }
     const gateway =
       deps.buildModel !== undefined
-        ? await deps.buildModel({ provider, modelId: input.modelId, ownerId: session.ownerId })
+        ? await deps.buildModel({
+            provider,
+            modelId: input.modelId,
+            ownerId: session.ownerId,
+          })
         : await resolveTurnModel(deps, session.ownerId, provider, input.modelId);
+
+    // #58-3 — the turn's image policy, keyed to the registry entry the
+    // provider actually resolved (a non-vision model must never be fed image
+    // blocks, and even vision models only re-carry the most recent turns').
+    const imagePolicy: ImageContextPolicy = {
+      vision: provider.models.find((m) => m.id === input.modelId)?.vision === true,
+      keepTurns: IMAGE_CONTEXT_TURNS,
+    };
 
     const tools = buildAssistantTools(deps, principal, config.enabledToolGroups);
 
@@ -217,7 +241,7 @@ export function startAssistantTurn(
         systemPrompt,
         model: gateway.model,
         tools,
-        messages: rowsToPiMessages(input.rows, gateway.model.api, gateway.model.id),
+        messages: rowsToPiMessages(input.rows, gateway.model.api, gateway.model.id, imagePolicy),
       },
       streamFn: gateway.streamFn,
       beforeToolCall: async ({ toolCall, args }) => {
@@ -321,13 +345,10 @@ export function startAssistantTurn(
 
     await agent.prompt({
       role: 'user',
-      content: input.prompt.map((b) =>
-        b.type === 'text'
-          ? { type: 'text' as const, text: b.text }
-          : b.type === 'image'
-            ? { type: 'image' as const, data: b.data, mimeType: b.mimeType }
-            : { type: 'text' as const, text: `[file reference] ${b.name}: ${b.uri}` },
-      ),
+      // #58-3 — the current prompt is the NEWEST turn: images ride only when
+      // the model can see them (the sender gates the button, but a queued
+      // prompt may flush after a switch to a non-vision model).
+      content: promptBlocksToPiContent(input.prompt, imagePolicy),
       timestamp: Date.now(),
     });
     await agent.waitForIdle();

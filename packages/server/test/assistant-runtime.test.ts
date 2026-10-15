@@ -26,6 +26,8 @@ interface Harness {
   uow: UnitOfWork;
   faux: ReturnType<typeof piAi.fauxProvider>;
   events: { sessionId: string; event: ChatStreamEvent }[];
+  /** Provider ids the buildModel seam resolved, in turn order (#58-4). */
+  providersSeen: string[];
 }
 
 async function setup(): Promise<Harness> {
@@ -79,6 +81,7 @@ async function setup(): Promise<Harness> {
   models.setProvider(faux.provider);
 
   const events: { sessionId: string; event: ChatStreamEvent }[] = [];
+  const providersSeen: string[] = [];
   const io: AssistantIO = {
     toChannel: (_sessionId, event, payload) => {
       if (event === 'assistant:event') {
@@ -98,10 +101,13 @@ async function setup(): Promise<Harness> {
         catalog: {} as never,
         allowlist: [],
       },
-      buildModel: async () => ({
-        model: faux.getModel('gw-large'),
-        streamFn: models.streamSimple.bind(models),
-      }),
+      buildModel: async ({ provider }) => {
+        providersSeen.push(provider.id);
+        return {
+          model: faux.getModel('gw-large'),
+          streamFn: models.streamSimple.bind(models),
+        };
+      },
     },
     io,
   );
@@ -118,7 +124,7 @@ async function setup(): Promise<Harness> {
     defaultModel: 'gw-large',
     enabledToolGroups: ['system'],
   });
-  return { svc, uow, faux, events };
+  return { svc, uow, faux, events, providersSeen };
 }
 
 async function opsId(h: Harness): Promise<string> {
@@ -274,6 +280,82 @@ describe('#52 assistant runtime (faux provider)', () => {
     expect(
       await h.svc.onConfigSet(owner.userId, sessionId, { configId: 'model', value: 'nope' }),
     ).toEqual({ ok: false, code: 'ASSISTANT_MODEL_NOT_ON_PROVIDER' });
+  });
+
+  it('#58-4 model select spans visible providers (grouped) and re-points the turn', async () => {
+    const h = await setup();
+    // A second, GLOBAL provider exposing the SAME model name — the exact case
+    // the locked-to-config dropdown could not distinguish or switch.
+    await h.uow.llmProviders.save({
+      id: 'prov-2',
+      name: 'Second Gateway',
+      api: 'openai-chat',
+      baseUrl: 'https://gw2.example.com/v1',
+      credentialName: 'gw-key',
+      scope: 'global',
+      ownerId: null,
+      models: [{ id: 'gw-large', type: 'chat', displayName: 'Gw2 Large' }],
+      createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-01T00:00:00.000Z',
+    });
+    // Another user's PERSONAL provider — #36: never listed, never settable.
+    await h.uow.llmProviders.save({
+      id: 'prov-other',
+      name: 'Stranger',
+      api: 'openai-chat',
+      baseUrl: 'https://stranger.example.com/v1',
+      credentialName: 'gw-key',
+      scope: 'personal',
+      ownerId: other.userId,
+      models: [{ id: 'sneaky', type: 'chat' }],
+      createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-01T00:00:00.000Z',
+    });
+
+    const res = await h.svc.open(owner.userId, await opsId(h), undefined, 'sock-1');
+    const sessionId = res.ok ? res.sessionId : '';
+    type CfgEvent = Extract<ChatStreamEvent, { kind: 'session_config' }>;
+    const lastCfg = (): CfgEvent =>
+      h.events.filter((e) => e.event.kind === 'session_config').at(-1)!.event as CfgEvent;
+
+    const initial = lastCfg().configOptions.find((o) => o.id === 'model')!;
+    expect(initial.currentValue).toBe('prov-1/gw-large');
+    expect(initial.options).toEqual([
+      { value: 'prov-1/gw-large', name: 'Gateway Large', group: 'Gateway' },
+      { value: 'prov-2/gw-large', name: 'Gw2 Large', group: 'Second Gateway' },
+    ]);
+
+    // Switch to the other provider's same-named model; the NEXT turn resolves
+    // prov-2 (the config stays the default-binding only).
+    expect(
+      await h.svc.onConfigSet(owner.userId, sessionId, {
+        configId: 'model',
+        value: 'prov-2/gw-large',
+      }),
+    ).toEqual({ ok: true });
+    expect(lastCfg().configOptions.find((o) => o.id === 'model')!.currentValue).toBe(
+      'prov-2/gw-large',
+    );
+    h.faux.setResponses([piAi.fauxAssistantMessage([piAi.fauxText('ok')])]);
+    await h.svc.onMessageSend(owner.userId, sessionId, 'hi');
+    await busySettled(h, sessionId);
+    expect(h.providersSeen.at(-1)).toBe('prov-2');
+
+    // #36 — a stranger's personal provider is refused even when spelled out.
+    expect(
+      await h.svc.onConfigSet(owner.userId, sessionId, {
+        configId: 'model',
+        value: 'prov-other/sneaky',
+      }),
+    ).toEqual({ ok: false, code: 'ASSISTANT_MODEL_NOT_ON_PROVIDER' });
+
+    // Legacy bare id — resolves against the channel's CURRENT provider.
+    expect(
+      await h.svc.onConfigSet(owner.userId, sessionId, { configId: 'model', value: 'gw-large' }),
+    ).toEqual({ ok: true });
+    expect(lastCfg().configOptions.find((o) => o.id === 'model')!.currentValue).toBe(
+      'prov-2/gw-large',
+    );
   });
 
   it('blocks tools outside the enabled groups (belt-and-braces gate)', async () => {

@@ -3,6 +3,7 @@ import type {
   AssistantMessageRow,
   AssistantPromptBlock,
   AssistantSession,
+  LlmProvider,
 } from '@harness-nexus/core';
 import type { ChatStreamEvent, HistoryItem, PromptBlock } from '@harness-nexus/shared';
 import { generateId } from '../infra/crypto.js';
@@ -38,7 +39,13 @@ interface LiveChannel {
   ownerId: string;
   /** Current config (a rebind via config.set changes it; next-turn effect). */
   assistantId: string;
-  /** Current model id on that config's provider. */
+  /**
+   * Current provider row (#58-4). Defaults to the config's provider — the
+   * config is the DEFAULT binding only — and moves when the session's model
+   * select picks a model on another visible provider.
+   */
+  providerId: string;
+  /** Current model id on that provider. */
   modelId: string;
   /** #10 semantics — depth-1 send slot, parked while the user is busy. */
   queuedPrompt: PromptBlock[] | null;
@@ -99,15 +106,31 @@ export class AssistantRealtimeService {
     return config !== null && config.ownerId === userId ? config : null;
   }
 
-  /** The composer's selectors: agent + model options (W9 opaque-value surface). */
-  private async sessionConfigEvent(ch: LiveChannel): Promise<ChatStreamEvent> {
-    const [configs, provider] = await Promise.all([
-      this.deps.uow.assistants.listByOwner(ch.ownerId),
-      this.deps.uow.llmProviders.findById(
-        (await this.configOf(ch.ownerId, ch.assistantId))?.providerId ?? '',
-      ),
+  /**
+   * The composer's selectors: agent + model options (W9 opaque-value surface).
+   * #58-4 — the model select spans EVERY provider visible to the owner
+   * (personal own + global), grouped by provider name; values are the opaque
+   * compound `providerId/modelId` (ids are base64url — no `/` inside). The
+   * config's provider+model are only the channel's initial binding.
+   */
+  private async visibleProviders(userId: string): Promise<LlmProvider[]> {
+    const [own, global] = await Promise.all([
+      this.deps.uow.llmProviders.list({ scope: 'personal', ownerId: userId }),
+      this.deps.uow.llmProviders.list({ scope: 'global' }),
     ]);
-    const models = (provider?.models ?? []).filter((m) => m.type === 'chat');
+    return [...own, ...global];
+  }
+
+  private async sessionConfigEvent(ch: LiveChannel): Promise<ChatStreamEvent> {
+    const [configs, providers] = await Promise.all([
+      this.deps.uow.assistants.listByOwner(ch.ownerId),
+      this.visibleProviders(ch.ownerId),
+    ]);
+    const models = providers.flatMap((p) =>
+      p.models
+        .filter((m) => m.type === 'chat')
+        .map((m) => ({ value: `${p.id}/${m.id}`, name: m.displayName ?? m.id, group: p.name })),
+    );
     return {
       kind: 'session_config',
       configOptions: [
@@ -121,11 +144,8 @@ export class AssistantRealtimeService {
           id: 'model',
           name: 'Model',
           category: 'model',
-          currentValue: ch.modelId,
-          options: models.map((m) => ({
-            value: m.id,
-            name: m.displayName ?? m.id,
-          })),
+          currentValue: `${ch.providerId}/${ch.modelId}`,
+          options: models,
         },
       ],
     };
@@ -204,6 +224,7 @@ export class AssistantRealtimeService {
         sessionId: session.id,
         ownerId: userId,
         assistantId: config.id,
+        providerId: config.providerId,
         modelId: config.defaultModel,
         queuedPrompt: null,
         run: null,
@@ -341,16 +362,27 @@ export class AssistantRealtimeService {
       }
       if (config.id !== ch.assistantId) {
         ch.assistantId = config.id;
+        // A rebind resets BOTH bindings to the new config's defaults — the
+        // previous provider override belonged to the old config's session.
+        ch.providerId = config.providerId;
         ch.modelId = config.defaultModel;
         await this.appendNote(sessionId, `rebound to assistant "${config.name}"`);
       }
     } else {
-      const config = await this.configOf(userId, ch.assistantId);
-      const provider =
-        config === null ? null : await this.deps.uow.llmProviders.findById(config.providerId);
-      const model = provider?.models.find((m) => m.id === set.value && m.type === 'chat');
-      if (model === undefined) return { ok: false, code: 'ASSISTANT_MODEL_NOT_ON_PROVIDER' };
-      ch.modelId = set.value;
+      // #58-4 — the value is the compound `providerId/modelId` (or a bare
+      // legacy modelId, resolved against the channel's current provider).
+      // #36: only providers visible to the owner are eligible — a personal
+      // row of ANOTHER user answers 404-shaped, same as everywhere else.
+      const slash = set.value.indexOf('/');
+      const wantedProviderId = slash === -1 ? ch.providerId : set.value.slice(0, slash);
+      const wantedModelId = slash === -1 ? set.value : set.value.slice(slash + 1);
+      const provider = (await this.visibleProviders(userId)).find((p) => p.id === wantedProviderId);
+      const model = provider?.models.find((m) => m.id === wantedModelId && m.type === 'chat');
+      if (provider === undefined || model === undefined) {
+        return { ok: false, code: 'ASSISTANT_MODEL_NOT_ON_PROVIDER' };
+      }
+      ch.providerId = provider.id;
+      ch.modelId = model.id;
     }
     this.emit(sessionId, await this.sessionConfigEvent(ch));
     return { ok: true };
@@ -396,6 +428,7 @@ export class AssistantRealtimeService {
       {
         session,
         config,
+        providerId: ch.providerId,
         modelId: ch.modelId,
         prompt,
         rows: rowsBefore,
