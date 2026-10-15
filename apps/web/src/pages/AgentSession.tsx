@@ -219,6 +219,7 @@ function SessionRail({
   onNewSession,
   onRefresh,
   end,
+  onEndPick,
 }: {
   rail: RailState;
   groups: SessionGroup[];
@@ -235,14 +236,21 @@ function SessionRail({
   ) => Promise<void>;
   onNewSession: () => void;
   onRefresh: () => void;
-  /** The desktop rail carries the 端 switcher; the drawer keeps none. */
+  /** The 端 switcher (both the desktop rail AND the phone drawer — the drawer
+   *  is the only rail on mobile, hiding the switcher there dead-ended the
+   *  machine ends). */
   end?: { agentInstanceId: string; agentName?: string } | null;
+  /** Close-the-drawer hook — picking an end from the drawer dismisses it (a
+   *  tap does one thing, like opening a session does). */
+  onEndPick?: () => void;
 }) {
   const { t, lang } = useI18n();
   return (
     <>
       <div className="flex items-center gap-1 border-b px-2 py-2.5">
-        {end !== undefined && end !== null ? <EndSwitcher current={end} /> : null}
+        {end !== undefined && end !== null ? (
+          <EndSwitcher current={end} onPick={onEndPick} />
+        ) : null}
         <span className="min-w-0 flex-1" />
         <Button
           variant="ghost"
@@ -1115,6 +1123,8 @@ export function AgentSessionPage() {
                     setPickerOpen(true);
                   }}
                   onRefresh={() => void refreshSessions(true)}
+                  end={{ agentInstanceId: agentId, agentName: agent?.name }}
+                  onEndPick={() => setRailOpen(false)}
                 />
               </DialogPrimitive.Content>
             </DialogPrimitive.Portal>
