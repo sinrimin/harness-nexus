@@ -373,6 +373,15 @@ const OPENCODE_SDK: Record<RuntimeConfigSpec['api'], string> = {
 };
 
 /**
+ * opencode (verified 1.18.31 on the rig) REQUIRES `limit.output` on every
+ * `provider.<id>.models.<m>` entry — its config schema rejects the bare `{}`
+ * this writer used to emit ("Missing key …models.<m>.limit.output"). Registry
+ * entries without a curated maxOutputTokens get this conservative fallback
+ * (the same stance as assistant/provider.ts) — never a guessed-high value.
+ */
+const OPENCODE_FALLBACK_MAX_OUTPUT = 8192;
+
+/**
  * The AI SDK baseURL convention (rig-found 2026-09-16): `@ai-sdk/anthropic`
  * and `@ai-sdk/openai-compatible` both expect the base to END WITH `/v1`
  * (their defaults do) and append only the method path (`/messages`,
@@ -409,6 +418,7 @@ function applyOpencodeConfig(spec: RuntimeConfigSpec, secret: string, homeDir: s
   const cfgPath = join(dir, 'opencode.json');
   const keyPath = join(dir, OPENCODE_KEY_NAME);
   const cfg = readJson(cfgPath); // absent → fresh; JSONC → throws, file untouched
+  const entriesById = new Map((spec.modelEntries ?? []).map((e) => [e.id, e]));
 
   const providers = {
     ...((cfg.provider as Record<string, unknown> | undefined) ?? {}),
@@ -421,8 +431,23 @@ function applyOpencodeConfig(spec: RuntimeConfigSpec, secret: string, homeDir: s
       },
       // W10 — the default model leads the switchable set; the server already
       // drops the default from extras, this dedupe is belt-and-braces.
+      // #51 — registry metadata (snapshot in the spec) fills `name` and the
+      // REQUIRED `limit` block (see OPENCODE_FALLBACK_MAX_OUTPUT); bare ids
+      // get the fallback limit, never an empty entry.
       models: Object.fromEntries(
-        [...new Set([spec.model, ...(spec.models ?? [])])].map((id) => [id, {}]),
+        [...new Set([spec.model, ...(spec.models ?? [])])].map((id) => {
+          const e = entriesById.get(id);
+          return [
+            id,
+            {
+              ...(e?.displayName !== undefined ? { name: e.displayName } : {}),
+              limit: {
+                output: e?.maxOutputTokens ?? OPENCODE_FALLBACK_MAX_OUTPUT,
+                ...(e?.contextWindow !== undefined ? { context: e.contextWindow } : {}),
+              },
+            },
+          ];
+        }),
       ),
     },
   };

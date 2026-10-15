@@ -236,7 +236,7 @@ function SessionRail({
   onNewSession: () => void;
   onRefresh: () => void;
   /** The desktop rail carries the 端 switcher; the drawer keeps none. */
-  end?: { agentInstanceId: string } | null;
+  end?: { agentInstanceId: string; agentName?: string } | null;
 }) {
   const { t, lang } = useI18n();
   return (
@@ -1086,7 +1086,7 @@ export function AgentSessionPage() {
               onOpenChannel={openChannel}
               onNewSession={() => setPickerOpen(true)}
               onRefresh={() => void refreshSessions(true)}
-              end={{ agentInstanceId: agentId }}
+              end={{ agentInstanceId: agentId, agentName: agent?.name }}
             />
           </aside>
 
