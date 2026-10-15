@@ -219,8 +219,7 @@ function SessionRail({
   onNewSession,
   onRefresh,
   end,
-  endStayOpen,
-  endInitiallyOpen,
+  endInDrawer,
 }: {
   rail: RailState;
   groups: SessionGroup[];
@@ -241,18 +240,16 @@ function SessionRail({
    *  is the only rail on mobile, hiding the switcher there dead-ended the
    *  machine ends). */
   end?: { agentInstanceId: string; agentName?: string } | null;
-  /** Phone drawer: the switcher menu STAYS OPEN across end picks (rapid
-   *  browsing); dismissed by tapping outside. */
-  endStayOpen?: boolean;
-  /** Mount the switcher with its popover OPEN (?ends browse-mode hand-off). */
-  endInitiallyOpen?: boolean;
+  /** The phone-drawer copy: its picks carry the ?rail hand-off so the
+   *  destination lands with the session drawer open. */
+  endInDrawer?: boolean;
 }) {
   const { t, lang } = useI18n();
   return (
     <>
       <div className="flex items-center gap-1 border-b px-2 py-2.5">
         {end !== undefined && end !== null ? (
-          <EndSwitcher current={end} stayOpen={endStayOpen} initiallyOpen={endInitiallyOpen} />
+          <EndSwitcher current={end} fromDrawer={endInDrawer} />
         ) : null}
         <span className="min-w-0 flex-1" />
         <Button
@@ -609,13 +606,11 @@ export function AgentSessionPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [chParam, agentId, agent]);
 
-  // ?ends — a browse-mode hand-off (a pick from a stay-open end menu on the
-  // OTHER page): land with the drawer + the end menu already open, then drop
-  // the one-shot param. Mount-captured so the drawer's EndSwitcher (which
-  // mounts only once the drawer opens) still sees it.
-  const [endsHandoff] = useState(() => searchParams.get('ends') !== null);
+  // ?rail — an end-switch hand-off (a pick from the phone drawer on the
+  // OTHER page): land with the SESSION drawer open so a session can be
+  // picked or created right away, then drop the one-shot param.
   useEffect(() => {
-    if (searchParams.get('ends') === null) return;
+    if (searchParams.get('rail') === null) return;
     setSearchParams({}, { replace: true });
     setRailOpen(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1139,8 +1134,7 @@ export function AgentSessionPage() {
                   }}
                   onRefresh={() => void refreshSessions(true)}
                   end={{ agentInstanceId: agentId, agentName: agent?.name }}
-                  endStayOpen
-                  endInitiallyOpen={endsHandoff}
+                  endInDrawer
                 />
               </DialogPrimitive.Content>
             </DialogPrimitive.Portal>
