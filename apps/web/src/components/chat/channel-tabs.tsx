@@ -94,7 +94,9 @@ export function ChannelTabs({
   }, [channels.length]);
   if (channels.length === 0 && assistantBusy.length === 0) return null;
 
-  const busyCount = channels.filter((ch) => ch.busy).length + assistantBusy.length;
+  // The broom closes MACHINE channels only — assistant turns are stopped
+  // per-tab (×), so they never count toward the "busy" deferral figure.
+  const busyCount = channels.filter((ch) => ch.busy).length;
   async function runCleanup(): Promise<void> {
     const pending = cleanup;
     if (pending === null) return;
@@ -217,29 +219,31 @@ export function ChannelTabs({
           );
         })}
       </div>
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            className="text-muted-foreground hover:text-foreground h-7 shrink-0 gap-1 px-2 text-xs"
-            title={t('chat.tabsCleanupTitle')}
-          >
-            <EraserIcon className="size-3.5" />
-            {t('chat.tabsCleanup')}
-            <ChevronDownIcon className="size-3 opacity-60" />
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end">
-          <DropdownMenuItem onClick={() => setCleanup({ idleOnly: false })}>
-            {t('chat.tabsCleanupAll')}
-          </DropdownMenuItem>
-          <DropdownMenuItem onClick={() => setCleanup({ idleOnly: true })}>
-            {t('chat.tabsCleanupIdle')}
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
+      {channels.length > 0 ? (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="text-muted-foreground hover:text-foreground h-7 shrink-0 gap-1 px-2 text-xs"
+              title={t('chat.tabsCleanupTitle')}
+            >
+              <EraserIcon className="size-3.5" />
+              {t('chat.tabsCleanup')}
+              <ChevronDownIcon className="size-3 opacity-60" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem onClick={() => setCleanup({ idleOnly: false })}>
+              {t('chat.tabsCleanupAll')}
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => setCleanup({ idleOnly: true })}>
+              {t('chat.tabsCleanupIdle')}
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      ) : null}
 
       {cleanup !== null ? (
         <ConfirmDialog

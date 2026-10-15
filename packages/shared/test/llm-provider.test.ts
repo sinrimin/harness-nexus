@@ -171,15 +171,15 @@ describe('providerModelsSchema — #51 model registry', () => {
 });
 
 describe('providerModelConfigWarnings — warn, never reject (#51)', () => {
-  it('flags serverTools/extraBody on the wrong api kind', () => {
+  it('flags serverTools/extraBody on the wrong api kind (structured codes)', () => {
     expect(
       providerModelConfigWarnings('anthropic', [
         { id: 'm1', type: 'chat', serverTools: ['web_search'] },
         { id: 'm2', type: 'chat', extraBody: { x: 1 } },
       ]),
     ).toEqual([
-      'model "m1": serverTools only applies to openai-responses providers',
-      'model "m2": extraBody only applies to openai-compatible providers',
+      { code: 'serverToolsIrrelevant', modelId: 'm1' },
+      { code: 'extraBodyIrrelevant', modelId: 'm2' },
     ]);
   });
 

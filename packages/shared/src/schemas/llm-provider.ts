@@ -115,19 +115,27 @@ export const providerModelsSchema = z
  * Api-irrelevant combos WARN, never reject — gateway compat layers routinely
  * bend the rules (an openai-compatible gateway behind an 'anthropic' kind,
  * etc.). Pure: the web dialog computes these client-side from the same
- * shared code.
+ * shared code. Structured `{ code, modelId }` (not prose) so the renderer
+ * can translate — the machine reads the code, the human gets their locale.
  */
+export type ProviderModelConfigWarningCode = 'serverToolsIrrelevant' | 'extraBodyIrrelevant';
+
+export interface ProviderModelConfigWarning {
+  code: ProviderModelConfigWarningCode;
+  modelId: string;
+}
+
 export function providerModelConfigWarnings(
   api: ProviderApiKind,
   models: readonly ProviderModelConfig[],
-): string[] {
-  const warnings: string[] = [];
+): ProviderModelConfigWarning[] {
+  const warnings: ProviderModelConfigWarning[] = [];
   for (const m of models) {
     if (m.serverTools !== undefined && api !== 'openai-responses') {
-      warnings.push(`model "${m.id}": serverTools only applies to openai-responses providers`);
+      warnings.push({ code: 'serverToolsIrrelevant', modelId: m.id });
     }
     if (m.extraBody !== undefined && api === 'anthropic') {
-      warnings.push(`model "${m.id}": extraBody only applies to openai-compatible providers`);
+      warnings.push({ code: 'extraBodyIrrelevant', modelId: m.id });
     }
   }
   return warnings;

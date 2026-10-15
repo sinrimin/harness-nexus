@@ -463,12 +463,18 @@ export function LlmProvidersPage() {
 }
 
 /**
- * One registry row — the compact main grid (id / display name / type / context
- * window / max output / vision) plus an "advanced" disclosure for the
- * per-capability policy fields. Module scope, never defined inline.
+ * One registry row, reflowed as TWO input lines (one line never fits the seven
+ * controls at dialog width — the id field measured 65px before the rework):
+ * identity (model id + display name) then figures (type / context / max
+ * output / vision), plus an "advanced" disclosure whose api-gated fields only
+ * render where the server actually applies them — serverTools is honored by
+ * the Responses stream only, extraBody by both OpenAI-compatible adapters
+ * (never Anthropic's; see assistant/provider.ts samplingParams). Module
+ * scope, never defined inline.
  */
 function ModelRowCard({
   index,
+  api,
   row,
   duplicate,
   invalidExtraBody,
@@ -477,6 +483,8 @@ function ModelRowCard({
 }: {
   /** Row position — used only to build unique control ids. */
   index: number;
+  /** The provider's api kind — gates the advanced fields (see above). */
+  api: ProviderApiKind;
   row: ModelRow;
   duplicate: boolean;
   invalidExtraBody: boolean;
@@ -484,9 +492,11 @@ function ModelRowCard({
   onRemove: () => void;
 }) {
   const { t } = useI18n();
+  const showServerTools = api === 'openai-responses';
+  const showExtraBody = api !== 'anthropic';
   return (
-    <div className="flex flex-col gap-2 rounded-md border p-3">
-      <div className="grid grid-cols-2 gap-x-3 gap-y-2 sm:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)_7rem_6rem_6rem_4rem_2.25rem]">
+    <div className="relative flex flex-col gap-3 rounded-md border p-3">
+      <div className="grid gap-x-3 gap-y-2 pr-9 sm:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
         <div className="grid gap-2">
           <Label htmlFor={`llmp-mid-${index}`}>{t('llmProviders.modelIdLabel')}</Label>
           <Input
@@ -509,6 +519,8 @@ function ModelRowCard({
             autoComplete="off"
           />
         </div>
+      </div>
+      <div className="grid grid-cols-2 gap-x-3 gap-y-2 sm:grid-cols-4">
         <div className="grid gap-2">
           <Label htmlFor={`llmp-mtype-${index}`}>{t('llmProviders.modelTypeLabel')}</Label>
           <Select value={row.type} onValueChange={(v) => onChange({ type: v as ModelRow['type'] })}>
@@ -564,16 +576,6 @@ function ModelRowCard({
             />
           </div>
         </div>
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          className="text-muted-foreground self-end size-8 shrink-0 hover:text-danger"
-          onClick={onRemove}
-          aria-label={t('llmProviders.removeModel', { id: row.id === '' ? '…' : row.id })}
-        >
-          <XIcon className="size-3.5" />
-        </Button>
       </div>
       <Collapsible>
         <CollapsibleTrigger asChild>
@@ -623,37 +625,51 @@ function ModelRowCard({
                 spellCheck={false}
               />
             </div>
-            <div className="grid gap-2">
-              <Label htmlFor={`llmp-mtools-${index}`}>{t('llmProviders.serverToolsLabel')}</Label>
-              <Input
-                id={`llmp-mtools-${index}`}
-                value={row.serverTools}
-                onChange={(e) => onChange({ serverTools: e.target.value })}
-                placeholder={t('llmProviders.serverToolsPlaceholder')}
-                className="font-mono text-xs"
-                autoComplete="off"
-                spellCheck={false}
-              />
-            </div>
-            <div className="grid gap-2 sm:col-span-2">
-              <Label htmlFor={`llmp-mextra-${index}`}>{t('llmProviders.extraBodyLabel')}</Label>
-              <Textarea
-                id={`llmp-mextra-${index}`}
-                value={row.extraBody}
-                onChange={(e) => onChange({ extraBody: e.target.value })}
-                placeholder={t('llmProviders.extraBodyPlaceholder')}
-                className="min-h-16 font-mono text-xs"
-                autoComplete="off"
-                spellCheck={false}
-                aria-invalid={invalidExtraBody || undefined}
-              />
-              {invalidExtraBody ? (
-                <p className="text-danger text-xs">{t('llmProviders.extraBodyInvalid')}</p>
-              ) : null}
-            </div>
+            {showServerTools ? (
+              <div className="grid gap-2">
+                <Label htmlFor={`llmp-mtools-${index}`}>{t('llmProviders.serverToolsLabel')}</Label>
+                <Input
+                  id={`llmp-mtools-${index}`}
+                  value={row.serverTools}
+                  onChange={(e) => onChange({ serverTools: e.target.value })}
+                  placeholder={t('llmProviders.serverToolsPlaceholder')}
+                  className="font-mono text-xs"
+                  autoComplete="off"
+                  spellCheck={false}
+                />
+              </div>
+            ) : null}
+            {showExtraBody ? (
+              <div className="grid gap-2 sm:col-span-2">
+                <Label htmlFor={`llmp-mextra-${index}`}>{t('llmProviders.extraBodyLabel')}</Label>
+                <Textarea
+                  id={`llmp-mextra-${index}`}
+                  value={row.extraBody}
+                  onChange={(e) => onChange({ extraBody: e.target.value })}
+                  placeholder={t('llmProviders.extraBodyPlaceholder')}
+                  className="min-h-16 font-mono text-xs"
+                  autoComplete="off"
+                  spellCheck={false}
+                  aria-invalid={invalidExtraBody || undefined}
+                />
+                {invalidExtraBody ? (
+                  <p className="text-danger text-xs">{t('llmProviders.extraBodyInvalid')}</p>
+                ) : null}
+              </div>
+            ) : null}
           </div>
         </CollapsibleContent>
       </Collapsible>
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon"
+        className="text-muted-foreground absolute right-2 top-2 size-8 shrink-0 hover:text-danger"
+        onClick={onRemove}
+        aria-label={t('llmProviders.removeModel', { id: row.id === '' ? '…' : row.id })}
+      >
+        <XIcon className="size-3.5" />
+      </Button>
     </div>
   );
 }
@@ -823,7 +839,7 @@ function ProviderForm({
                 id="llmp-name"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                placeholder="e.g. team-gateway"
+                placeholder={t('llmProviders.namePlaceholder')}
                 autoComplete="off"
                 spellCheck={false}
                 required
@@ -937,6 +953,7 @@ function ProviderForm({
                   <ModelRowCard
                     key={i}
                     index={i}
+                    api={apiKind}
                     row={row}
                     duplicate={duplicateIds.has(row.id.trim())}
                     invalidExtraBody={extraInvalid[i] ?? false}
@@ -952,7 +969,11 @@ function ProviderForm({
               <Note tone="warn" title={t('llmProviders.modelsWarningsTitle')}>
                 <ul className="flex flex-col gap-0.5">
                   {warnings.map((w) => (
-                    <li key={w}>{w}</li>
+                    <li key={`${w.code}:${w.modelId}`}>
+                      {w.code === 'serverToolsIrrelevant'
+                        ? t('llmProviders.warnServerTools', { id: w.modelId })
+                        : t('llmProviders.warnExtraBody', { id: w.modelId })}
+                    </li>
                   ))}
                 </ul>
               </Note>

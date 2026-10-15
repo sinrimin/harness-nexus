@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
-import { PencilIcon, PlusIcon, Wand2Icon } from 'lucide-react';
+import { MoreHorizontalIcon, PencilIcon, PlusIcon, TrashIcon, Wand2Icon } from 'lucide-react';
 import { api } from '@/api';
 import { useAuth, withAuthGuard } from '@/auth';
 import { useI18n } from '@/i18n';
@@ -28,6 +28,13 @@ import {
 } from '@/components/ui/table';
 import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { PageSlot } from '@/components/shell/page-slots.js';
 import { PageAction } from '@/components/shell/page-action.js';
 import {
@@ -173,15 +180,9 @@ export function AssistantsPage() {
           ? { dailyTokenBudget: Number(draft.dailyTokenBudget) }
           : {}),
       };
-      const budgetNum = Number(draft.dailyTokenBudget);
-      if (
-        draft.dailyTokenBudget.trim() !== '' &&
-        (!Number.isInteger(budgetNum) || budgetNum <= 0)
-      ) {
-        toast.error(t('assistants.budgetHint'));
-        setBusy(false);
-        return;
-      }
+      // No JS budget guard here: the native min/step validation on
+      // #asst-budget rejects invalid input at submit (localized browser
+      // bubble) BEFORE onSubmit can run — a duplicate check would be dead.
       if (editing !== null) {
         await withAuthGuard(
           () =>
@@ -305,26 +306,23 @@ export function AssistantsPage() {
                   </div>
                 </TableCell>
                 <TableCell className="text-right">
-                  <div className="flex justify-end gap-1">
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="size-7"
-                      aria-label={t('common.edit')}
-                      onClick={() => openEdit(a)}
-                    >
-                      <PencilIcon className="size-3.5" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="text-destructive size-7"
-                      aria-label={t('assistants.deleteButton')}
-                      onClick={() => setPendingDelete(a)}
-                    >
-                      <PlusIcon className="size-3.5 rotate-45" />
-                    </Button>
-                  </div>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="ghost" size="icon" className="size-(--row-ctl-h)">
+                        <MoreHorizontalIcon className="size-4" />
+                        <span className="sr-only">{t('common.openMenu')}</span>
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem onClick={() => openEdit(a)}>
+                        <PencilIcon /> {t('common.edit')}
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem variant="destructive" onClick={() => setPendingDelete(a)}>
+                        <TrashIcon /> {t('assistants.deleteButton')}
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
                 </TableCell>
               </TableRow>
             );
@@ -336,33 +334,42 @@ export function AssistantsPage() {
         open={creating}
         onClose={() => setCreating(false)}
         title={editing !== null ? t('assistants.editTitle') : t('assistants.createTitle')}
-        footer={
-          <>
-            <Button variant="outline" onClick={() => setCreating(false)}>
-              {t('assistants.cancel')}
-            </Button>
-            <Button disabled={!canSave || busy} onClick={() => void save()}>
-              {t('assistants.save')}
-            </Button>
-          </>
-        }
       >
-        <div className="flex flex-col gap-4">
-          <Field label={t('assistants.sectionBasic')}>
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            void save();
+          }}
+          className="flex flex-col gap-4"
+        >
+          <Field label={t('assistants.sectionBasic')} htmlFor="asst-name" required>
             <Input
+              id="asst-name"
               value={draft.name}
               autoComplete="off"
               spellCheck={false}
               placeholder={t('assistants.namePlaceholder')}
+              required
               onChange={(e) => setDraft((d) => ({ ...d, name: e.target.value }))}
             />
             <Input
+              id="asst-desc"
               value={draft.description}
               placeholder={t('assistants.descriptionPlaceholder')}
+              aria-label={t('assistants.descriptionLabel')}
+              autoComplete="off"
               onChange={(e) => setDraft((d) => ({ ...d, description: e.target.value }))}
             />
           </Field>
-          <Field label={t('assistants.sectionModel')}>
+          <Field
+            label={t('assistants.sectionModel')}
+            htmlFor="asst-provider"
+            hint={
+              draft.providerId !== '' && draftModels.length === 0
+                ? t('machineDetail.noModelsOnProvider')
+                : undefined
+            }
+          >
             <div className="grid grid-cols-2 gap-2">
               <Select
                 value={draft.providerId === '' ? undefined : draft.providerId}
@@ -375,7 +382,11 @@ export function AssistantsPage() {
                   }));
                 }}
               >
-                <SelectTrigger aria-label={t('assistants.providerLabel')}>
+                <SelectTrigger
+                  id="asst-provider"
+                  aria-label={t('assistants.providerLabel')}
+                  className="w-full"
+                >
                   <SelectValue placeholder={t('assistants.providerLabel')} />
                 </SelectTrigger>
                 <SelectContent>
@@ -387,11 +398,20 @@ export function AssistantsPage() {
                 </SelectContent>
               </Select>
               <Select
+                // Remount per provider: inside a <form> Radix's hidden native
+                // mirror echoes `''` back through onValueChange when the item
+                // list empties and refills (provider switch), clobbering the
+                // auto-picked model — a fresh mount starts with no echo.
+                key={draft.providerId}
                 value={draft.defaultModel === '' ? undefined : draft.defaultModel}
                 onValueChange={(v) => setDraft((d) => ({ ...d, defaultModel: v }))}
                 disabled={draftModels.length === 0}
               >
-                <SelectTrigger aria-label={t('assistants.modelLabel')}>
+                <SelectTrigger
+                  id="asst-model"
+                  aria-label={t('assistants.modelLabel')}
+                  className="w-full"
+                >
                   <SelectValue placeholder={t('assistants.modelLabel')} />
                 </SelectTrigger>
                 <SelectContent>
@@ -505,20 +525,31 @@ export function AssistantsPage() {
               </div>
             )}
           </Field>
-          <Field label={t('assistants.budgetLabel')} hint={t('assistants.budgetHint')}>
+          <Field
+            label={t('assistants.budgetLabel')}
+            hint={t('assistants.budgetHint')}
+            htmlFor="asst-budget"
+          >
             <Input
+              id="asst-budget"
               type="number"
               min={1}
               step={1}
               value={draft.dailyTokenBudget}
               autoComplete="off"
+              inputMode="numeric"
               placeholder={t('assistants.budgetPlaceholder')}
               onChange={(e) => setDraft((d) => ({ ...d, dailyTokenBudget: e.target.value }))}
               className="max-w-48"
             />
           </Field>
-          <Field label={t('assistants.sectionPrompt')} hint={t('assistants.promptHint')}>
+          <Field
+            label={t('assistants.sectionPrompt')}
+            hint={t('assistants.promptHint')}
+            htmlFor="asst-prompt"
+          >
             <Textarea
+              id="asst-prompt"
               value={draft.systemPromptOverride}
               rows={6}
               spellCheck={false}
@@ -527,22 +558,33 @@ export function AssistantsPage() {
               className="font-mono text-xs"
             />
           </Field>
-        </div>
+          <div className="flex justify-end gap-2">
+            <Button type="button" variant="outline" onClick={() => setCreating(false)}>
+              {t('assistants.cancel')}
+            </Button>
+            <Button type="submit" disabled={!canSave || busy}>
+              {t('assistants.save')}
+            </Button>
+          </div>
+        </form>
       </FormDialog>
 
-      <ConfirmDialog
-        open={pendingDelete !== null}
-        title={t('assistants.deleteTitle')}
-        consequence={t('assistants.deleteBody')}
-        actionLabel={t('assistants.deleteButton')}
-        tone="danger"
-        irreversible={false}
-        busy={busy}
-        onOpenChange={(o) => {
-          if (!o) setPendingDelete(null);
-        }}
-        onConfirm={() => void confirmDelete()}
-      />
+      {pendingDelete !== null ? (
+        <ConfirmDialog
+          open
+          title={t('assistants.deleteTitle')}
+          consequence={t('assistants.deleteBody')}
+          impact={[{ label: 'assistant', value: pendingDelete.name }]}
+          actionLabel={t('assistants.deleteButton')}
+          tone="danger"
+          irreversible={false}
+          busy={busy}
+          onOpenChange={(o) => {
+            if (!o) setPendingDelete(null);
+          }}
+          onConfirm={() => void confirmDelete()}
+        />
+      ) : null}
     </>
   );
 }
