@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import {
   ChevronDownIcon,
@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { api } from '@/api';
 import { useAuth, withAuthGuard } from '@/auth';
+import { cn } from '@/lib/utils';
 import { useI18n } from '@/i18n';
 import {
   ConfirmDialog,
@@ -75,6 +76,7 @@ import {
   EXTRA_BODY_PRESETS,
   SERVER_TOOL_PRESETS,
   type CredentialView,
+  type LlmModelInfo,
   type LlmProviderView,
   type ProviderApiKind,
   type ProviderModelConfig,
@@ -122,6 +124,130 @@ interface ModelRow {
 
 /** The wire shape after parsing — `type` always explicit, unset keys omitted. */
 type CleanModel = ProviderModelConfigInput & { type: 'chat' | 'embedding' };
+
+/**
+ * #58-1 — the model-id field with the fetched candidates as a dropdown. Free
+ * typing stays primary (the registry is hand-curatable — an endpoint's list is
+ * a SUGGESTION, never mass-imported); focusing or typing offers the filtered
+ * candidate list, ↑/↓ + Enter or a click fills the id verbatim. No
+ * candidates fetched (null) = the plain input.
+ */
+function ModelIdInput({
+  id,
+  value,
+  candidates,
+  invalid,
+  placeholder,
+  onChange,
+}: {
+  id: string;
+  value: string;
+  candidates: LlmModelInfo[] | null;
+  invalid?: boolean;
+  placeholder: string;
+  onChange: (value: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [activeIdx, setActiveIdx] = useState(0);
+  const rootRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    function onDocPointerDown(e: PointerEvent): void {
+      if (rootRef.current !== null && !rootRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    }
+    document.addEventListener('pointerdown', onDocPointerDown);
+    return () => document.removeEventListener('pointerdown', onDocPointerDown);
+  }, [open]);
+
+  const q = value.trim().toLowerCase();
+  const matches =
+    candidates === null
+      ? []
+      : q === ''
+        ? candidates
+        : candidates.filter(
+            (c) => c.id.toLowerCase().includes(q) || (c.name ?? '').toLowerCase().includes(q),
+          );
+  useEffect(() => {
+    if (activeIdx >= matches.length) setActiveIdx(0);
+  }, [matches.length, activeIdx]);
+
+  return (
+    <div ref={rootRef} className="relative">
+      <Input
+        id={id}
+        value={value}
+        onChange={(e) => {
+          onChange(e.target.value);
+          setOpen(true);
+        }}
+        onFocus={() => setOpen(true)}
+        onKeyDown={(e) => {
+          if (!open || matches.length === 0) return;
+          if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            setActiveIdx((i) => (i + 1) % matches.length);
+          } else if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            setActiveIdx((i) => (i - 1 + matches.length) % matches.length);
+          } else if (e.key === 'Enter') {
+            e.preventDefault();
+            onChange(matches[activeIdx]!.id);
+            setOpen(false);
+          } else if (e.key === 'Escape') {
+            // Only dismiss the listbox — a bare Escape must not bubble into
+            // the enclosing Radix dialog (preventDefault shields DismissableLayer).
+            e.preventDefault();
+            e.stopPropagation();
+            setOpen(false);
+          }
+        }}
+        placeholder={placeholder}
+        className="font-mono text-xs"
+        autoComplete="off"
+        spellCheck={false}
+        aria-invalid={invalid || undefined}
+        role="combobox"
+        aria-expanded={open && matches.length > 0}
+        aria-autocomplete="list"
+        aria-controls={open && matches.length > 0 ? `${id}-list` : undefined}
+      />
+      {open && matches.length > 0 ? (
+        <ul
+          id={`${id}-list`}
+          role="listbox"
+          data-swallow-escape="true"
+          className="bg-card text-card-foreground absolute z-50 mt-1 max-h-48 w-full overflow-auto rounded-md border shadow-(--shadow-panel)"
+        >
+          {matches.map((c, i) => (
+            <li key={c.id} role="option" aria-selected={i === activeIdx}>
+              <button
+                type="button"
+                data-option={c.id}
+                className={cn(
+                  'hover:bg-tray flex w-full items-center justify-between gap-2 px-2 py-1.5 text-left',
+                  i === activeIdx && 'bg-tray',
+                )}
+                onClick={() => {
+                  onChange(c.id);
+                  setOpen(false);
+                }}
+              >
+                <span className="role-data-sm truncate font-mono">{c.id}</span>
+                {c.name !== undefined && c.name !== '' ? (
+                  <span className="text-muted-foreground truncate text-xs">{c.name}</span>
+                ) : null}
+              </button>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </div>
+  );
+}
 
 const EMPTY_MODEL_ROW: ModelRow = {
   id: '',
@@ -505,16 +631,18 @@ export function LlmProvidersPage() {
  * output / vision), plus an "advanced" disclosure. #56: serverTools and the
  * extraBody KEYS are TagComboboxes with per-api presets (SERVER_TOOL_PRESETS
  * / EXTRA_BODY_PRESETS, Bailian-baselined) — typed custom values are the
- * gateway-compat escape hatch. serverTools renders on every kind (openai-chat
- * gets a hint: that wire has no tools[] surface); extraBody renders on the
- * OpenAI-compatible kinds only (Anthropic's adapter ignores samplingParams
- * entirely — the shared warning still covers stored values after an api
- * switch).
+ * gateway-compat escape hatch. #58-2 hide-and-clear: serverTools renders on
+ * the kinds that HAVE a tools[] surface (openai-responses, anthropic) and
+ * extraBody on the OpenAI-compatible kinds — a kind that hides a field also
+ * clears it (the api switch wipes it from every row), so stored payloads
+ * never carry values the wire cannot use. The shared warnings stay as the
+ * backstop for REST-written rows.
  */
 function ModelRowCard({
   index,
   api,
   row,
+  candidates,
   duplicate,
   invalidExtraBody,
   onChange,
@@ -525,27 +653,28 @@ function ModelRowCard({
   /** The provider's api kind — drives the preset lists (see above). */
   api: ProviderApiKind;
   row: ModelRow;
+  /** #58-1 — the fetched model list, offered by the id field's dropdown. */
+  candidates: LlmModelInfo[] | null;
   duplicate: boolean;
   invalidExtraBody: boolean;
   onChange: (patch: Partial<ModelRow>) => void;
   onRemove: () => void;
 }) {
   const { t } = useI18n();
+  const showServerTools = api !== 'openai-chat';
   const showExtraBody = api !== 'anthropic';
   return (
     <div className="relative flex flex-col gap-3 rounded-md border p-3">
       <div className="grid gap-x-3 gap-y-2 pr-9 sm:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
         <div className="grid gap-2">
           <Label htmlFor={`llmp-mid-${index}`}>{t('llmProviders.modelIdLabel')}</Label>
-          <Input
+          <ModelIdInput
             id={`llmp-mid-${index}`}
             value={row.id}
-            onChange={(e) => onChange({ id: e.target.value })}
+            candidates={candidates}
+            invalid={duplicate}
             placeholder={t('llmProviders.modelIdPlaceholder')}
-            className="font-mono text-xs"
-            autoComplete="off"
-            spellCheck={false}
-            aria-invalid={duplicate || undefined}
+            onChange={(id) => onChange({ id })}
           />
         </div>
         <div className="grid gap-2">
@@ -663,23 +792,20 @@ function ModelRowCard({
                 spellCheck={false}
               />
             </div>
-            <div className="grid gap-2">
-              <Label htmlFor={`llmp-mtools-${index}`}>{t('llmProviders.serverToolsLabel')}</Label>
-              <TagCombobox
-                id={`llmp-mtools-${index}`}
-                value={row.serverTools}
-                options={SERVER_TOOL_PRESETS[api]}
-                onChange={(serverTools) => onChange({ serverTools })}
-                placeholder={t('llmProviders.tagComboboxPlaceholder')}
-                addLabel={(v) => t('llmProviders.tagComboboxAdd', { value: v })}
-                removeLabel={(v) => t('llmProviders.tagComboboxRemove', { value: v })}
-              />
-              {api === 'openai-chat' ? (
-                <p className="text-muted-foreground text-xs">
-                  {t('llmProviders.serverToolsChatHint')}
-                </p>
-              ) : null}
-            </div>
+            {showServerTools ? (
+              <div className="grid gap-2">
+                <Label htmlFor={`llmp-mtools-${index}`}>{t('llmProviders.serverToolsLabel')}</Label>
+                <TagCombobox
+                  id={`llmp-mtools-${index}`}
+                  value={row.serverTools}
+                  options={SERVER_TOOL_PRESETS[api]}
+                  onChange={(serverTools) => onChange({ serverTools })}
+                  placeholder={t('llmProviders.tagComboboxPlaceholder')}
+                  addLabel={(v) => t('llmProviders.tagComboboxAdd', { value: v })}
+                  removeLabel={(v) => t('llmProviders.tagComboboxRemove', { value: v })}
+                />
+              </div>
+            ) : null}
             {showExtraBody ? (
               <div className="grid gap-2 sm:col-span-2">
                 <Label htmlFor={`llmp-mextra-${index}`}>{t('llmProviders.extraBodyLabel')}</Label>
@@ -783,6 +909,8 @@ function ProviderForm({
   const [credentialName, setCredentialName] = useState(existing?.credentialName ?? '');
   const [scope, setScope] = useState<Scope>(existing?.scope ?? 'personal');
   const [rows, setRows] = useState<ModelRow[]>(() => (existing?.models ?? []).map(rowFromModel));
+  /** #58-1 — the fetched candidate list; rows are only created by picking/typing. */
+  const [candidates, setCandidates] = useState<LlmModelInfo[] | null>(null);
   const [fetching, setFetching] = useState(false);
   const [busy, setBusy] = useState(false);
 
@@ -831,8 +959,11 @@ function ProviderForm({
     };
   }, [rows, apiKind]);
 
-  /** 获取候选 — seed the registry from the endpoint's live list. MERGE, never
-   *  overwrite: curated rows stay untouched; unknown ids land as bare rows. */
+  /**
+   * 获取候选 — fetch the endpoint's live model list as SUGGESTIONS for the
+   * model-id dropdown (#58-1). Nothing is added to the registry by the fetch
+   * itself; rows are created by explicit picking (or typing, as before).
+   */
   async function fetchCandidates(): Promise<void> {
     setFetching(true);
     try {
@@ -848,16 +979,12 @@ function ProviderForm({
           credentialName,
         });
       }, logout);
-      const known = new Set(rows.map((r) => r.id.trim()).filter((id) => id !== ''));
-      const fresh = list
-        .filter((m) => !known.has(m.id))
-        .map((m): ModelRow => ({ ...EMPTY_MODEL_ROW, id: m.id }));
-      if (fresh.length > 0) {
-        setRows((prev) => [...prev, ...fresh]);
-        toast.success(t('llmProviders.candidatesAddedToast', { count: fresh.length }));
-      } else {
-        toast.info(t('llmProviders.candidatesNoneToast'));
-      }
+      setCandidates(list);
+      toast.info(
+        list.length > 0
+          ? t('llmProviders.candidatesLoadedToast', { count: list.length })
+          : t('llmProviders.candidatesNoneToast'),
+      );
     } catch (e) {
       toast.error(
         e instanceof HarnessNexusError ? e.message : t('llmProviders.fetchCandidatesFailed'),
@@ -937,7 +1064,26 @@ function ProviderForm({
             </div>
             <div className="grid gap-2">
               <Label htmlFor="llmp-api">{t('llmProviders.apiLabel')}</Label>
-              <Select value={apiKind} onValueChange={(v) => setApiKind(v as ProviderApiKind)}>
+              <Select
+                value={apiKind}
+                onValueChange={(v) => {
+                  const kind = v as ProviderApiKind;
+                  setApiKind(kind);
+                  // A different kind means a different endpoint — the fetched
+                  // candidates are stale the moment the url space changes.
+                  setCandidates(null);
+                  // #58-2 hide-and-clear: a field the kind makes meaningless
+                  // is wiped from every row, so the payload never carries
+                  // values the wire cannot use.
+                  setRows((prev) =>
+                    prev.map((r) => ({
+                      ...r,
+                      ...(kind === 'openai-chat' ? { serverTools: [] } : {}),
+                      ...(kind === 'anthropic' ? { extraBody: [] } : {}),
+                    })),
+                  );
+                }}
+              >
                 <SelectTrigger id="llmp-api" className="font-mono text-xs">
                   <SelectValue />
                 </SelectTrigger>
@@ -1045,6 +1191,7 @@ function ProviderForm({
                     index={i}
                     api={apiKind}
                     row={row}
+                    candidates={candidates}
                     duplicate={duplicateIds.has(row.id.trim())}
                     invalidExtraBody={extraInvalid[i] ?? false}
                     onChange={(patch) =>

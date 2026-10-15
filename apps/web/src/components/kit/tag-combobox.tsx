@@ -121,6 +121,10 @@ export function TagCombobox({
             } else if (e.key === 'Backspace' && query === '' && value.length > 0) {
               remove(value[value.length - 1]!);
             } else if (e.key === 'Escape') {
+              // Only dismiss the listbox — a bare Escape must not bubble into
+              // the enclosing Radix dialog (preventDefault shields DismissableLayer).
+              e.preventDefault();
+              e.stopPropagation();
               setOpen(false);
             }
           }}
@@ -138,6 +142,7 @@ export function TagCombobox({
         <ul
           id={`${inputId}-list`}
           role="listbox"
+          data-swallow-escape="true"
           className="bg-card text-card-foreground absolute z-50 mt-1 max-h-48 w-full overflow-auto rounded-md border shadow-(--shadow-panel)"
         >
           {matches.map((o) => (

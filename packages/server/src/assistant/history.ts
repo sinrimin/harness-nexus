@@ -39,21 +39,82 @@ function blockToUserContent(
 }
 
 /**
+ * #58-3 — what a stripped image becomes in the MODEL context. The transcript
+ * keeps the real blocks (the UI replays them); only the LLM-facing rebuild
+ * degrades, so a switch back to a vision model restores the images for free.
+ */
+export const IMAGE_CONTEXT_PLACEHOLDER = '[image omitted]';
+
+/**
+ * #58-3 — how many most-recent USER rows keep their images in the model
+ * context. Older ones degrade to the placeholder: re-uploading every past
+ * image on every turn bloats both the input bill and the provider's
+ * per-request image limits (the Claude Code precedent — recent turns only).
+ */
+export const IMAGE_CONTEXT_TURNS = 3;
+
+/** #58-3 — the turn's image policy, derived from the resolved model entry. */
+export interface ImageContextPolicy {
+  /** The registry entry's `vision` flag — false strips EVERY image. */
+  vision: boolean;
+  /** How many trailing user rows keep images (`IMAGE_CONTEXT_TURNS`). */
+  keepTurns: number;
+}
+
+function toUserContent(
+  b: AssistantPromptBlock,
+  keepImage: boolean,
+): { type: 'text'; text: string } | { type: 'image'; data: string; mimeType: string } {
+  if (b.type === 'image' && !keepImage) {
+    return { type: 'text', text: IMAGE_CONTEXT_PLACEHOLDER };
+  }
+  return blockToUserContent(b);
+}
+
+/** The CURRENT turn's prompt blocks under the same policy (it is the newest). */
+export function promptBlocksToPiContent(
+  blocks: readonly AssistantPromptBlock[],
+  policy: ImageContextPolicy,
+): ({ type: 'text'; text: string } | { type: 'image'; data: string; mimeType: string })[] {
+  return blocks.map((b) => toUserContent(b, policy.vision));
+}
+
+/**
  * Rebuild the LLM context. `api`/`model` label the reconstructed assistant
  * messages for the provider (informational fields on the wire).
+ *
+ * `images` (#58-3): when given, image blocks degrade to the placeholder in
+ * every user row OUTSIDE the policy — a non-vision model strips ALL of them
+ * (a mid-session switch must not feed images the wire would reject); a vision
+ * model keeps only the `keepTurns` most recent user rows'. Omitted = legacy
+ * keep-everything behavior (the transcript rows themselves are untouched).
  */
 export function rowsToPiMessages(
   rows: readonly AssistantMessageRow[],
   api: Api,
   model: string,
+  images?: ImageContextPolicy,
 ): AgentMessage[] {
   const out: AgentMessage[] = [];
   const now = Date.now();
+  const keepRows = new Set<number>();
+  if (images !== undefined && images.vision) {
+    const userIdxs: number[] = [];
+    rows.forEach((row, idx) => {
+      if (row.type === 'user') userIdxs.push(idx);
+    });
+    for (const idx of userIdxs.slice(-images.keepTurns)) keepRows.add(idx);
+  }
   let i = 0;
   while (i < rows.length) {
     const row = rows[i]!;
     if (row.type === 'user') {
-      out.push({ role: 'user', content: row.blocks.map(blockToUserContent), timestamp: now });
+      const keep = images === undefined ? true : keepRows.has(i);
+      out.push({
+        role: 'user',
+        content: row.blocks.map((b) => toUserContent(b, keep)),
+        timestamp: now,
+      });
     } else if (row.type === 'assistant') {
       out.push({
         role: 'assistant',
