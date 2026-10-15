@@ -1165,6 +1165,7 @@ const {
   accessSync,
   readFileSync,
   statSync,
+  existsSync,
   chmodSync,
   readdirSync,
 } = await import('node:fs');
@@ -3252,6 +3253,38 @@ expect(
   JSON.stringify(r.json.sessions.map((s) => s.sessionId)),
   JSON.stringify(['fx-native-1']),
 );
+
+// [9 W7 / #55] Native session deletion — the REST route rides sessions:delete
+// over /ctl: the ACP arm (fixture adapter handles session/delete) and the
+// dsh file arm (the crafted store's directory), plus idempotency.
+log('\n--- [#55] native session delete: ACP arm + dsh file arm + idempotency ---');
+r = await req('DELETE', `/api/agent-instances/${w7CcAgent.id}/sessions/fx-native-1`, {
+  token: userToken,
+});
+expect('ACP-arm delete status', r.status, 200);
+expect('ACP-arm delete ok', r.json.ok, true);
+// The fixture adapter's session/list is a CANNED row — it cannot reflect the
+// delete (the real adapter's semantics are covered by the cli unit tests over
+// the fixture's session/delete handler and the agent-browser pass). What the
+// smoke CAN hold here: the round-trip + idempotency.
+r = await req('DELETE', `/api/agent-instances/${w7CcAgent.id}/sessions/fx-native-1`, {
+  token: userToken,
+});
+expect('repeat delete stays ok (idempotent)', r.json.ok, true);
+
+if (w7HasZstd) {
+  r = await req('DELETE', `/api/agent-instances/${w7DshAgent.id}/sessions/${w7DshId}`, {
+    token: userToken,
+  });
+  expect('dsh-arm delete ok', r.json.ok, true);
+  expect(
+    'dsh session directory removed from disk',
+    existsSync(pathMod.join(w7Home, '.dsh', 'sessions', '--w7-proj--', w7DshId)),
+    false,
+  );
+  r = await req('GET', `/api/agent-instances/${w7DshAgent.id}/sessions`, { token: userToken });
+  expect('dsh listing empty after the delete', JSON.stringify(r.json.sessions), '[]');
+}
 
 w7App.close();
 w7Daemon.kill('SIGTERM');

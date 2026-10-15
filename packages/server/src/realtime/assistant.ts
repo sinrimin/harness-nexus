@@ -150,6 +150,15 @@ export class AssistantRealtimeService {
     this.io.toUser(userId, 'assistant:sessions', await this.snapshotFor(userId));
   }
 
+  /**
+   * #55 — does this session hold a live channel (open in the web, running a
+   * turn, or parked in the queue)? The REST delete refuses live rows: the
+   * channel would keep writing into deleted storage.
+   */
+  isLive(sessionId: string): boolean {
+    return this.live.has(sessionId);
+  }
+
   // ---- open / close ----
 
   /**

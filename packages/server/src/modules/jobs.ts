@@ -5,6 +5,7 @@ import {
   adaptersReportRequestSchema,
   createMachineJobSchema,
   deployJobPayloadSchema,
+  sessionsDeleteRequestSchema,
   sessionsListRequestSchema,
 } from '@harness-nexus/shared';
 import { jobView } from '../jobs/service.js';
@@ -259,6 +260,63 @@ export async function jobsRoutes(app: FastifyInstance): Promise<void> {
         supported: outcome.supported ?? true,
         sessions: rows,
       };
+    },
+  );
+
+  // ---- DELETE /api/agent-instances/:id/sessions/:sessionId (#55) ----
+  // Delete one NATIVE session from the target's own store, via the daemon
+  // (`sessions:delete` over /ctl — the same round-trip as the listing).
+  // Owner-or-admin gate like the listing; a session holding a LIVE channel
+  // is refused (close the chat first — deleting under a live adapter would
+  // leave a zombie channel). #53 residue: the /ctl round-trip below the
+  // gates is realtime-only concern.
+  app.delete<{ Params: { id: string; sessionId: string } }>(
+    '/api/agent-instances/:id/sessions/:sessionId',
+    guard,
+    async (req) => {
+      const agent = await app.uow.agentInstances.findById(req.params.id);
+      if (!agent) throw new AppError('Agent instance not found', 404, 'AGENT_INSTANCE_NOT_FOUND');
+      const machine = await getMachine({ uow: app.uow }, principalOf(req), agent.machineId);
+      if (!app.realtime.presence.isOnline(machine.id)) {
+        throw new AppError('Machine daemon is offline', 409, 'MACHINE_OFFLINE');
+      }
+      if (!machine.capabilities.includes('sessions-delete')) {
+        throw new AppError(
+          'Daemon does not support session deletion (upgrade hnx on the machine)',
+          409,
+          'DAEMON_NO_SESSIONS_DELETE',
+        );
+      }
+      if (app.realtime.chat.channelsByNativeId(req.params.id).has(req.params.sessionId)) {
+        throw new AppError(
+          'Session is open in a live channel — close the chat first',
+          409,
+          'NATIVE_SESSION_LIVE',
+        );
+      }
+      const request = sessionsDeleteRequestSchema.parse({
+        requestId: randomUUID(),
+        target: agent.target,
+        sessionId: req.params.sessionId,
+      });
+      const { done } = app.realtime.sessions.awaitDelete(machine.id, request.requestId);
+      app.io.of('/ctl').to(`machine:${machine.id}`).emit('sessions:delete', request);
+      const outcome = await done;
+      // Error arm BEFORE the generic failure branches (the W6 lesson).
+      if (!outcome.ok) {
+        if (outcome.error !== undefined) {
+          throw new AppError(outcome.error, 502, 'DAEMON_SESSION_DELETE_FAILED');
+        }
+        if (outcome.reason === 'disconnected') {
+          throw new AppError('Machine daemon is offline', 409, 'MACHINE_OFFLINE');
+        }
+        throw new AppError(
+          'Daemon did not answer the delete in time',
+          504,
+          'SESSIONS_DELETE_TIMEOUT',
+        );
+      }
+      return { ok: true };
     },
   );
 

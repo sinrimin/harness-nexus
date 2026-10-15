@@ -28,6 +28,12 @@ const en = {
   sessionsOffline: 'Machine offline — the session list needs the daemon.',
   sessionsDaemonOld: 'Upgrade hnx on the machine to list its native sessions.',
   newSessionHere: 'New session in {dir}',
+  // #55 — session deletion (both rails: platform rows and native rows).
+  deleteSessionTitle: 'Delete session',
+  deleteSessionAction: 'Delete session',
+  deleteSessionConsequence:
+    'The conversation and all its messages are permanently removed from its store.',
+  deleteFailed: 'Delete failed: {error}',
   // The rail's group header: the comp's `.sgroup-h` label over the directory.
   workingDirectory: 'Working directory',
   staleModel: 'pinned {model} no longer configured — not resumable',
@@ -185,6 +191,10 @@ const zh: typeof en = {
   sessionsOffline: '机器离线——会话列表需要守护进程在线。',
   sessionsDaemonOld: '请升级机器上的 hnx 以列出原生会话。',
   newSessionHere: '在此目录新建会话（{dir}）',
+  deleteSessionTitle: '删除会话',
+  deleteSessionAction: '删除会话',
+  deleteSessionConsequence: '会话及其全部消息将从所属存储中永久删除。',
+  deleteFailed: '删除失败：{error}',
   workingDirectory: '工作目录',
   staleModel: '固定模型 {model} 已不在当前配置——无法恢复',
   untitled: '未命名会话',

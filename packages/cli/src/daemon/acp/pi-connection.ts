@@ -336,8 +336,10 @@ export class PiRpcConnection implements AgentConnection {
       agentInfo: { name: 'pi' },
       // The façade itself implements load-with-replay (file parse + synthetic
       // updates), so it advertises exactly that — chat.ts's deriveSessionCaps
-      // equivalent, decided here instead of parsed from a handshake.
-      sessionCaps: { load: true, resume: false, list: false },
+      // equivalent, decided here instead of parsed from a handshake. No
+      // `delete`: pi session deletion is the daemon's file unlink (#55), never
+      // a façade request.
+      sessionCaps: { load: true, resume: false, list: false, delete: false },
       promptCaps: { image: true },
     };
   }

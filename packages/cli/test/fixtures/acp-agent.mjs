@@ -765,7 +765,11 @@ function handleRequest(msg) {
           sessionCapabilities:
             process.env.FIXTURE_ACP_NO_LOAD === '1'
               ? { list: {}, resume: {}, close: {} } // the dsh shape — no replay
-              : { list: {}, load: {}, resume: {}, close: {} },
+              : // #55 — FIXTURE_ACP_NO_DELETE=1 emulates the codex-acp /
+                // opencode-1.x shape: no session/delete capability.
+                process.env.FIXTURE_ACP_NO_DELETE === '1'
+                ? { list: {}, load: {}, resume: {}, close: {} }
+                : { list: {}, load: {}, resume: {}, close: {}, delete: {} },
         },
       });
       return;
@@ -822,6 +826,14 @@ function handleRequest(msg) {
           },
         ],
       });
+      return;
+    case 'session/delete':
+      // #55 — append the id to FIXTURE_DELETE_LOG so tests can assert the
+      // request reached the agent, then answer the spec's empty result.
+      if (process.env.FIXTURE_DELETE_LOG) {
+        appendFileSync(process.env.FIXTURE_DELETE_LOG, `${params?.sessionId ?? ''}\n`);
+      }
+      respond(id, {});
       return;
     case 'session/load': {
       // The claude/codex shape: replay the prior turn BEFORE responding.

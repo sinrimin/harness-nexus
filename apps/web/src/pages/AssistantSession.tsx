@@ -6,7 +6,7 @@ import { api } from '@/api';
 import { useAuth, withAuthGuard } from '@/auth';
 import { useI18n, dateLocale } from '@/i18n';
 import { StateSignal } from '@/components/state-signal';
-import { DataText, EmptyState } from '@/components/kit';
+import { ConfirmDialog, DataText, EmptyState } from '@/components/kit';
 import {
   appSocket,
   emitWithAck,
@@ -15,13 +15,14 @@ import {
   type AssistantHistoryEvent,
   type AssistantReadyPush,
 } from '@/realtime';
-import type { AssistantConfigView } from '@harness-nexus/sdk';
+import { HarnessNexusError, type AssistantConfigView } from '@harness-nexus/sdk';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { Dialog as DialogPrimitive } from 'radix-ui';
 import { ChatStream } from '@/components/chat/chat-stream.js';
 import { WelcomePane, type WelcomeCard } from '@/components/chat/welcome-pane.js';
 import { ChannelTabs } from '@/components/chat/channel-tabs.js';
+import { SessionRow } from '@/components/chat/session-row.js';
 import { useChatChannels } from '@/components/chat/use-chat-channels.js';
 import { useAssistantSessions } from '@/components/chat/use-assistant-sessions.js';
 import { Composer, type ComposerConfig } from '@/components/chat/composer.js';
@@ -330,6 +331,26 @@ export function AssistantSessionPage() {
     refreshSessions();
   }
 
+  // #55 — platform session deletion: the rail asks (hover trash / swipe),
+  // the page confirms. Rows that are live (viewed) or busy never offer it.
+  const [pendingDelete, setPendingDelete] = useState<{ id: string; title: string } | null>(null);
+  const deleteSession = async (): Promise<void> => {
+    if (pendingDelete === null) return;
+    try {
+      await withAuthGuard(() => api.deleteAssistantSession(pendingDelete.id), logout);
+    } catch (e) {
+      toast.error(
+        t('chat.deleteFailed', {
+          error: e instanceof HarnessNexusError ? e.message : String(e),
+        }),
+      );
+    }
+    setPendingDelete(null);
+    // The server pushes the fresh snapshot on success; refetch covers the
+    // error path leaving a stale row behind.
+    refreshSessions();
+  };
+
   usePageTitle(assistant !== null ? assistant.name : t('assistants.endAssistant'));
 
   const sortedSessions = useMemo(() => [...sessions].reverse(), [sessions]);
@@ -385,40 +406,52 @@ export function AssistantSessionPage() {
         ) : (
           sortedSessions.map((s) => {
             const active = s.id === sessionId;
+            // #55 — the delete affordance skips rows the server would refuse:
+            // the viewed one holds a live channel, a busy one is mid-turn.
+            const deletable = !active && !s.busy;
             return (
-              <button
+              <SessionRow
                 key={s.id}
-                type="button"
-                onClick={() => {
-                  if (!active) void openSession(s.id);
-                }}
-                className={cn(
-                  'flex w-full items-start gap-2 border-b px-3 py-2 text-left last:border-b-0',
-                  active ? 'bg-tray' : 'hover:bg-tray/60',
-                )}
-                title={s.title || t('chat.untitled')}
+                deleteLabel={t('chat.deleteSessionAction')}
+                onDelete={
+                  deletable
+                    ? () => setPendingDelete({ id: s.id, title: s.title || t('chat.untitled') })
+                    : undefined
+                }
               >
-                <span className="mt-1 flex w-2 shrink-0 justify-center">
-                  <StateSignal
-                    state={s.busy ? 'busy' : active ? 'live' : 'idle'}
-                    className="size-1.5"
-                  />
-                </span>
-                <span className="min-w-0 flex-1">
-                  <span
-                    className={cn(
-                      'block truncate text-xs',
-                      active && 'text-foreground font-semibold',
-                    )}
-                  >
-                    {s.title || t('chat.untitled')}
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!active) void openSession(s.id);
+                  }}
+                  className={cn(
+                    'flex w-full items-start gap-2 border-b px-3 py-2 text-left last:border-b-0',
+                    active ? 'bg-tray' : 'hover:bg-tray/60',
+                  )}
+                  title={s.title || t('chat.untitled')}
+                >
+                  <span className="mt-1 flex w-2 shrink-0 justify-center">
+                    <StateSignal
+                      state={s.busy ? 'busy' : active ? 'live' : 'idle'}
+                      className="size-1.5"
+                    />
                   </span>
-                  <DataText size="sm" tone="dim" className="mt-0.5 block truncate">
-                    {relativeTime(s.lastMessageAt ?? s.updatedAt, dateLocale(lang))} ·{' '}
-                    {s.id.slice(0, 8)}
-                  </DataText>
-                </span>
-              </button>
+                  <span className="min-w-0 flex-1">
+                    <span
+                      className={cn(
+                        'block truncate text-xs',
+                        active && 'text-foreground font-semibold',
+                      )}
+                    >
+                      {s.title || t('chat.untitled')}
+                    </span>
+                    <DataText size="sm" tone="dim" className="mt-0.5 block truncate">
+                      {relativeTime(s.lastMessageAt ?? s.updatedAt, dateLocale(lang))} ·{' '}
+                      {s.id.slice(0, 8)}
+                    </DataText>
+                  </span>
+                </button>
+              </SessionRow>
             );
           })
         )}
@@ -610,6 +643,22 @@ export function AssistantSessionPage() {
           </section>
         </div>
       </div>
+
+      {pendingDelete !== null ? (
+        <ConfirmDialog
+          open
+          onOpenChange={(o) => {
+            if (!o) setPendingDelete(null);
+          }}
+          title={t('chat.deleteSessionTitle')}
+          consequence={t('chat.deleteSessionConsequence')}
+          impact={[{ value: pendingDelete.title }]}
+          actionLabel={t('chat.deleteSessionAction')}
+          tone="danger"
+          irreversible
+          onConfirm={() => void deleteSession()}
+        />
+      ) : null}
     </>
   );
 }

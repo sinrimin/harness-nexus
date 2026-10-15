@@ -40,6 +40,7 @@ import {
   chatTurnCancelEventSchema,
   adaptersReportResultEventSchema,
   sessionsListResultEventSchema,
+  sessionsDeleteResultEventSchema,
   workspaceListEventSchema,
 } from '@harness-nexus/shared';
 import { hashToken, PAT_PREFIX, generateId } from '../infra/crypto.js';
@@ -460,6 +461,18 @@ export async function registerRealtime(
       }
       const { requestId, ...evt } = parsed.data;
       const known = sessions.onList(requestId, evt);
+      ack?.(known ? { accepted: true } : { error: 'unknown-request' });
+    });
+
+    // #55 — daemon reply for `sessions:delete` (native session deletion).
+    socket.on('sessions:delete:result', (payload: unknown, ack?: (res: unknown) => void) => {
+      const parsed = sessionsDeleteResultEventSchema.safeParse(payload);
+      if (!parsed.success) {
+        ack?.({ error: 'proto:invalid' });
+        return;
+      }
+      const { requestId, ...evt } = parsed.data;
+      const known = sessions.onDelete(requestId, evt);
       ack?.(known ? { accepted: true } : { error: 'unknown-request' });
     });
 

@@ -1,12 +1,21 @@
 import { homedir } from 'node:os';
-import { readdirSync, readFileSync, statSync } from 'node:fs';
+import { readdirSync, readFileSync, rmSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import type { Socket } from 'socket.io-client';
-import { sessionsListRequestSchema, type NativeSessionView } from '@harness-nexus/shared';
+import {
+  sessionsDeleteRequestSchema,
+  sessionsListRequestSchema,
+  type NativeSessionView,
+} from '@harness-nexus/shared';
 import { AcpAgentConnection, type AgentConnection } from './acp/agent-connection.js';
 import { resolveAcpCommand } from './acp/adapters.js';
-import { currentCatalogModels, dshListSessions, nativeZstd } from './dsh-sessions.js';
-import { piSessionViews } from './pi-sessions.js';
+import {
+  currentCatalogModels,
+  dshListSessions,
+  findSessionDir,
+  nativeZstd,
+} from './dsh-sessions.js';
+import { piFindSessionFile, piSessionViews } from './pi-sessions.js';
 
 /**
  * Native session listing (Phase 9 W7) — the chat rail's data source. The
@@ -45,6 +54,11 @@ export interface SessionsHandlersOptions {
    * absent or failing falls back to the short-lived spawn.
    */
   liveConnectionFor?: (target: string) => AgentConnection | null;
+  /**
+   * #55 — the target's live channels' NATIVE session ids (the delete guard:
+   * a session an open channel is attached to must be closed first).
+   */
+  liveNativeIdsFor?: (target: string) => Set<string>;
 }
 
 export function attachSessionsHandlers(socket: Socket, opts: SessionsHandlersOptions = {}): void {
@@ -135,6 +149,124 @@ export function attachSessionsHandlers(socket: Socket, opts: SessionsHandlersOpt
       }
     })();
   });
+
+  /**
+   * #55 — delete one of the target's native sessions. Same
+   * request/result round-trip as the listing; idempotent (a session that is
+   * already gone succeeds — ACP `session/delete` semantics, kept for the
+   * file-backed targets too). A successful delete also drops the target's
+   * listing cache so the next rail paint reflects the removal.
+   */
+  socket.on('sessions:delete', (payload: unknown, ack?: (res: unknown) => void) => {
+    const parsed = sessionsDeleteRequestSchema.safeParse(payload);
+    if (!parsed.success) {
+      ack?.({ error: 'proto:invalid' });
+      return;
+    }
+    ack?.({ accepted: true });
+    const { requestId, target, sessionId } = parsed.data;
+    void (async () => {
+      try {
+        await deleteNativeSession(target, sessionId, {
+          env,
+          home,
+          ...(opts.liveConnectionFor !== undefined
+            ? { liveConnectionFor: opts.liveConnectionFor }
+            : {}),
+          ...(opts.liveNativeIdsFor !== undefined
+            ? { liveNativeIdsFor: opts.liveNativeIdsFor }
+            : {}),
+        });
+        cache.delete(target);
+        socket.emit('sessions:delete:result', { requestId });
+      } catch (e) {
+        socket.emit('sessions:delete:result', {
+          requestId,
+          error: e instanceof Error ? e.message : String(e),
+        });
+      }
+    })();
+  });
+}
+
+/** Per-target deletion (#55) — mirrors the listing's dispatch table. */
+async function deleteNativeSession(
+  target: string,
+  sessionId: string,
+  opts: {
+    env: NodeJS.ProcessEnv;
+    home: string;
+    liveConnectionFor?: (target: string) => AgentConnection | null;
+    liveNativeIdsFor?: (target: string) => Set<string>;
+  },
+): Promise<void> {
+  // Live-channel guard (all targets): the server refuses live rows first,
+  // this re-checks against the daemon's own channel table so a racing open
+  // cannot slip under the delete.
+  if (opts.liveNativeIdsFor?.(target).has(sessionId) === true) {
+    throw new Error('session is open in a live channel — close it first');
+  }
+  if (target === 'claude-code' || target === 'codex' || target === 'opencode') {
+    return deleteAdapterSession(target, sessionId, opts.env, opts.liveConnectionFor);
+  }
+  if (target === 'deepseek') {
+    // The session id IS the directory name under a cwd slug; the whole
+    // directory (log + whatever else dsh keeps beside it) goes.
+    const dir = findSessionDir(join(opts.home, '.dsh', 'sessions'), sessionId, readdirSync);
+    if (dir !== null) rmSync(dir, { recursive: true, force: true });
+    return; // absent = already gone = success (idempotent)
+  }
+  if (target === 'pi') {
+    const file = piFindSessionFile(
+      join(opts.home, '.pi', 'agent', 'sessions'),
+      {
+        readdir: (p) => readdirSync(p),
+        readFile: (p) => readFileSync(p),
+      },
+      sessionId,
+    );
+    if (file !== null) rmSync(file, { force: true });
+    return; // idempotent, same as dsh
+  }
+  throw new Error(`target '${target}' has no native session surface`);
+}
+
+/**
+ * The ACP trio: `session/delete` (stabilized 2026-06) on a live channel's
+ * connection when one is up, else a short-lived adapter spawn — the same
+ * two-path shape as the listing. The spawn path is CAPABILITY-GATED: an
+ * adapter that did not advertise `sessionCapabilities.delete` (codex-acp
+ * today, opencode 1.x) gets a clear unsupported error instead of a
+ * method-not-found rejection.
+ */
+async function deleteAdapterSession(
+  target: 'claude-code' | 'codex' | 'opencode',
+  sessionId: string,
+  env: NodeJS.ProcessEnv,
+  liveConnectionFor?: (target: string) => AgentConnection | null,
+): Promise<void> {
+  const live = liveConnectionFor?.(target) ?? null;
+  if (live !== null) {
+    try {
+      await live.request('session/delete', { sessionId }, 10_000);
+      return;
+    } catch {
+      // fall through — the spawn path is the fallback, never a dead end
+    }
+  }
+  const cmd = resolveAcpCommand(target, env);
+  if (cmd === null) throw new Error(`no ACP adapter for target '${target}'`);
+  const { conn, sessionCaps } = await AcpAgentConnection.start(cmd.command, cmd.args, {
+    cwd: homedir(),
+  });
+  try {
+    if (!sessionCaps.delete) {
+      throw new Error(`adapter for '${target}' does not support session/delete`);
+    }
+    await conn.request('session/delete', { sessionId }, 10_000);
+  } finally {
+    conn.kill();
+  }
 }
 
 /** dsh's file-scan listing, mapped to rail rows (pure — no spawn, no auth). */

@@ -578,6 +578,18 @@ export class HarnessNexusClient {
     return this.request('GET', `/api/agent-instances/${agentInstanceId}/sessions${qs}`);
   }
 
+  /**
+   * #55 — delete one of the agent's NATIVE sessions (the target's own
+   * store, via the daemon). 409 `NATIVE_SESSION_LIVE` when a live channel
+   * holds it, 409 `DAEMON_NO_SESSIONS_DELETE` on a pre-#55 daemon.
+   */
+  async deleteAgentSession(agentInstanceId: string, nativeSessionId: string): Promise<void> {
+    await this.request(
+      'DELETE',
+      `/api/agent-instances/${agentInstanceId}/sessions/${encodeURIComponent(nativeSessionId)}`,
+    );
+  }
+
   /** The resolved profile bundle a deploy fetches (machine PAT exception #2). */
   async getDeployBundle(profileId: string): Promise<{ profile: Profile; artifacts: unknown[] }> {
     return this.request(
