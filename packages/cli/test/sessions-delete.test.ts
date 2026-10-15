@@ -1,4 +1,13 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -166,7 +175,9 @@ describe('sessions:delete (#55)', () => {
         homeDir: mkdtempSync(join(tmpdir(), 'hnx-del-home-')),
       });
 
-      socket.receive('sessions:delete', { requestId: 'd3', target: 'codex', sessionId: 'x' });
+      // opencode 1.x shape: the adapter advertises no `delete` cap. (codex
+      // no longer routes here — Phase B rides the CLI, see the codex block.)
+      socket.receive('sessions:delete', { requestId: 'd3', target: 'opencode', sessionId: 'x' });
       const result = await waitFor(() => socket.deleteResultOf('d3'));
       expect(result.error).toContain('does not support session/delete');
     } finally {
@@ -258,5 +269,106 @@ describe('sessions:delete (#55)', () => {
     const result = await waitFor(() => socket.deleteResultOf('x1'));
     expect(result.error).toContain('no native session surface');
     expect(ackResults).toEqual([{ error: 'proto:invalid' }, { accepted: true }]);
+  });
+});
+
+/**
+ * #55 Phase B — the codex arm rides the codex CLI's own `codex delete
+ * --force <uuid>` (adapter ≤0.16.0 has no session/delete; only the CLI
+ * cleans the rollout + index + state together). The CLI is NOT idempotent —
+ * the ROLLOUT FILE is the arm's truth, so: absent = success without a
+ * spawn; a nonzero exit with the file verifiably gone = success (race).
+ */
+describe('sessions:delete — codex rides codex delete (Phase B)', () => {
+  /** A fake `codex` bin: logs argv, removes the matching rollout (cwd = home). */
+  function makeFakeCodex(): { binDir: string; marker: string } {
+    const dir = mkdtempSync(join(tmpdir(), 'hnx-del-codex-'));
+    const marker = join(dir, 'argv');
+    const script = join(dir, 'codex');
+    writeFileSync(
+      script,
+      [
+        '#!/bin/sh',
+        `echo "$@" >> ${JSON.stringify(marker)}`,
+        'id="$3"',
+        // boom-*: fail like the real CLI without touching the file.
+        'case "$id" in boom-*) echo "failed to delete session" >&2; exit 1;; esac',
+        'f=$(find .codex/sessions -name "*$id*" | head -1)',
+        'if [ -z "$f" ]; then echo "failed to delete session" >&2; exit 1; fi',
+        'rm "$f"',
+        // race-*: the file went away but the CLI still reports failure.
+        'case "$id" in race-*) echo "failed to delete session" >&2; exit 1;; esac',
+        'exit 0',
+        '',
+      ].join('\n'),
+    );
+    chmodSync(script, 0o755);
+    return { binDir: dir, marker };
+  }
+
+  /** A codex-shaped home: one rollout file under the YYYY/MM/DD tree. */
+  function makeCodexHome(sessionId: string): string {
+    const home = mkdtempSync(join(tmpdir(), 'hnx-del-cxhome-'));
+    const dir = join(home, '.codex', 'sessions', '2026', '10', '15');
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, `rollout-2026-10-15T00-00-00-${sessionId}.jsonl`), '{}\n');
+    return home;
+  }
+
+  const ENV_CODEX = (binDir: string): NodeJS.ProcessEnv => ({
+    PATH: `${binDir}:${process.env.PATH ?? ''}`,
+  });
+
+  it('happy path — codex delete --force <uuid> runs and the rollout goes', async () => {
+    const { binDir, marker } = makeFakeCodex();
+    const home = makeCodexHome('cx-1');
+    const socket = new FakeSocket();
+    attachSessionsHandlers(socket as never, { env: ENV_CODEX(binDir), homeDir: home });
+
+    socket.receive('sessions:delete', { requestId: 'c1', target: 'codex', sessionId: 'cx-1' });
+    const result = await waitFor(() => socket.deleteResultOf('c1'));
+    expect(result.error).toBeUndefined();
+    expect(readFileSync(marker, 'utf8').trim()).toBe('delete --force cx-1');
+    // The CLI removed the rollout file (its day dir may stay — not our truth).
+    expect(existsSync(join(home, '.codex', 'sessions', '2026', '10', '15'))).toBe(true);
+    expect(readdirSync(join(home, '.codex', 'sessions', '2026', '10', '15'))).toEqual([]);
+  });
+
+  it('absent rollout = success WITHOUT spawning the CLI (idempotent)', async () => {
+    const { binDir, marker } = makeFakeCodex();
+    const socket = new FakeSocket();
+    attachSessionsHandlers(socket as never, {
+      env: ENV_CODEX(binDir),
+      homeDir: makeCodexHome('other-id'),
+    });
+
+    socket.receive('sessions:delete', { requestId: 'c2', target: 'codex', sessionId: 'cx-x' });
+    const result = await waitFor(() => socket.deleteResultOf('c2'));
+    expect(result.error).toBeUndefined();
+    expect(existsSync(marker)).toBe(false); // the CLI never ran
+  });
+
+  it('a CLI failure with the file still present surfaces the error', async () => {
+    const { binDir } = makeFakeCodex();
+    const socket = new FakeSocket();
+    attachSessionsHandlers(socket as never, {
+      env: ENV_CODEX(binDir),
+      homeDir: makeCodexHome('boom-1'),
+    });
+
+    socket.receive('sessions:delete', { requestId: 'c3', target: 'codex', sessionId: 'boom-1' });
+    const result = await waitFor(() => socket.deleteResultOf('c3'));
+    expect(result.error).toContain('codex delete failed');
+  });
+
+  it('a CLI failure with the file verifiably gone still counts (race)', async () => {
+    const { binDir } = makeFakeCodex();
+    const home = makeCodexHome('race-1');
+    const socket = new FakeSocket();
+    attachSessionsHandlers(socket as never, { env: ENV_CODEX(binDir), homeDir: home });
+
+    socket.receive('sessions:delete', { requestId: 'c4', target: 'codex', sessionId: 'race-1' });
+    const result = await waitFor(() => socket.deleteResultOf('c4'));
+    expect(result.error).toBeUndefined();
   });
 });

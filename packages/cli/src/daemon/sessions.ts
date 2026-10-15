@@ -1,4 +1,5 @@
 import { homedir } from 'node:os';
+import { spawn } from 'node:child_process';
 import { readdirSync, readFileSync, rmSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import type { Socket } from 'socket.io-client';
@@ -206,8 +207,14 @@ async function deleteNativeSession(
   if (opts.liveNativeIdsFor?.(target).has(sessionId) === true) {
     throw new Error('session is open in a live channel — close it first');
   }
-  if (target === 'claude-code' || target === 'codex' || target === 'opencode') {
+  if (target === 'claude-code' || target === 'opencode') {
     return deleteAdapterSession(target, sessionId, opts.env, opts.liveConnectionFor);
+  }
+  if (target === 'codex') {
+    // Phase B: the adapter (≤0.16.0) has no session/delete, and codex
+    // sessions are NOT safely unlinkable — the CLI's own `codex delete`
+    // cleans the rollout file, the session index, and SQLite state together.
+    return deleteCodexSession(sessionId, { env: opts.env, home: opts.home });
   }
   if (target === 'deepseek') {
     // The session id IS the directory name under a cwd slug; the whole
@@ -232,15 +239,15 @@ async function deleteNativeSession(
 }
 
 /**
- * The ACP trio: `session/delete` (stabilized 2026-06) on a live channel's
+ * The ACP pair: `session/delete` (stabilized 2026-06) on a live channel's
  * connection when one is up, else a short-lived adapter spawn — the same
  * two-path shape as the listing. The spawn path is CAPABILITY-GATED: an
- * adapter that did not advertise `sessionCapabilities.delete` (codex-acp
- * today, opencode 1.x) gets a clear unsupported error instead of a
- * method-not-found rejection.
+ * adapter that did not advertise `sessionCapabilities.delete` (opencode 1.x
+ * today) gets a clear unsupported error instead of a method-not-found
+ * rejection.
  */
 async function deleteAdapterSession(
-  target: 'claude-code' | 'codex' | 'opencode',
+  target: 'claude-code' | 'opencode',
   sessionId: string,
   env: NodeJS.ProcessEnv,
   liveConnectionFor?: (target: string) => AgentConnection | null,
@@ -267,6 +274,72 @@ async function deleteAdapterSession(
   } finally {
     conn.kill();
   }
+}
+
+/**
+ * #55 Phase B — codex deletion rides the codex CLI's own `codex delete
+ * --force <uuid>` (the app-server thread/delete path: rollout file + session
+ * index + SQLite state cleaned together; rig-verified on codex-cli 0.154.0 —
+ * the ACP sessionId IS the rollout uuid, and `--force` is required
+ * headless). The CLI is NOT idempotent (a repeat exits 1 "failed to delete
+ * session"), so the ROLLOUT FILE is this arm's truth: absent = already gone
+ * = success, and a nonzero exit still counts when the file verifiably went
+ * away (a race settled in our favor).
+ */
+async function deleteCodexSession(
+  sessionId: string,
+  opts: { env: NodeJS.ProcessEnv; home: string },
+): Promise<void> {
+  const sessionsDir = join(opts.home, '.codex', 'sessions');
+  if (findCodexRollout(sessionsDir, sessionId) === null) return; // idempotent
+  const res = await runCodex(['delete', '--force', sessionId], opts);
+  if (!res.ok && findCodexRollout(sessionsDir, sessionId) === null) return;
+  if (!res.ok) throw new Error(`codex delete failed: ${res.stderr}`);
+}
+
+/** The session's rollout file by id under the YYYY/MM/DD tree (null = absent). */
+export function findCodexRollout(sessionsDir: string, sessionId: string): string | null {
+  const readDir = (p: string): string[] => {
+    try {
+      return readdirSync(p);
+    } catch {
+      return [];
+    }
+  };
+  for (const year of readDir(sessionsDir)) {
+    for (const month of readDir(join(sessionsDir, year))) {
+      for (const day of readDir(join(sessionsDir, year, month))) {
+        const dir = join(sessionsDir, year, month, day);
+        for (const file of readDir(dir)) {
+          if (file.includes(sessionId)) return join(dir, file);
+        }
+      }
+    }
+  }
+  return null;
+}
+
+/** Run the codex CLI (bounded, stderr kept short for the error arm). */
+function runCodex(
+  args: string[],
+  opts: { env: NodeJS.ProcessEnv; home: string },
+): Promise<{ ok: boolean; stderr: string }> {
+  return new Promise((resolve) => {
+    const child = spawn('codex', args, { cwd: opts.home, env: opts.env });
+    let stderr = '';
+    const timer = setTimeout(() => child.kill('SIGKILL'), 15_000);
+    child.stderr?.on('data', (c: Buffer) => {
+      stderr = (stderr + c.toString('utf8')).slice(-512);
+    });
+    child.on('error', (e) => {
+      clearTimeout(timer);
+      resolve({ ok: false, stderr: e.message });
+    });
+    child.on('close', (code) => {
+      clearTimeout(timer);
+      resolve({ ok: code === 0, stderr: stderr.trim() });
+    });
+  });
 }
 
 /** dsh's file-scan listing, mapped to rail rows (pure — no spawn, no auth). */
