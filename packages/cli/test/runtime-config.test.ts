@@ -379,6 +379,10 @@ describe('applyRuntimeConfig — opencode (9 W12)', () => {
     expect(block.options.baseURL).toBe('https://gw.example.com/v1');
     expect(block.options.apiKey).toBe('{file:~/.config/opencode/harness-nexus.key}');
     expect(Object.keys(block.models)).toEqual(['gw-large', 'gw-mini']); // default leads the switchable set
+    // opencode ≥1.18 rejects bare `{}` model entries — every entry carries a
+    // limit.output (fallback when the registry has no curated value).
+    expect(block.models['gw-large']).toEqual({ limit: { output: 8192 } });
+    expect(block.models['gw-mini']).toEqual({ limit: { output: 8192 } });
     // RAW secret, no trailing newline — opencode reads the {file:} target
     // verbatim; a `\n` would ride the key and the gateway rejects it.
     expect(readFileSync(key(), 'utf8')).toBe('sk-test-1');
@@ -393,6 +397,36 @@ describe('applyRuntimeConfig — opencode (9 W12)', () => {
     );
     expect(readFileSync(key(), 'utf8')).toBe('sk-test-2');
     expect(JSON.parse(readFileSync(cfg(), 'utf8'))).toEqual(parsed); // byte-stable re-apply
+  });
+
+  it('fills model name/limit from #51 registry entries; bare ids keep the fallback', () => {
+    applyRuntimeConfig(
+      'opencode',
+      spec({
+        api: 'openai',
+        model: 'gw-large',
+        models: ['gw-mini'],
+        modelEntries: [
+          {
+            id: 'gw-large',
+            displayName: 'Gateway Large',
+            contextWindow: 200_000,
+            maxOutputTokens: 16_384,
+          },
+        ],
+      }),
+      'sk-entry',
+      home,
+    );
+    const parsed = JSON.parse(readFileSync(cfg(), 'utf8')) as {
+      provider: Record<string, { models: Record<string, unknown> }>;
+    };
+    const models = parsed.provider['harness-nexus']!.models;
+    expect(models['gw-large']).toEqual({
+      name: 'Gateway Large',
+      limit: { output: 16_384, context: 200_000 },
+    });
+    expect(models['gw-mini']).toEqual({ limit: { output: 8192 } });
   });
 
   it('preserves user config keys and other providers', () => {
