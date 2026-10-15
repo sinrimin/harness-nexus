@@ -379,10 +379,11 @@ describe('applyRuntimeConfig — opencode (9 W12)', () => {
     expect(block.options.baseURL).toBe('https://gw.example.com/v1');
     expect(block.options.apiKey).toBe('{file:~/.config/opencode/harness-nexus.key}');
     expect(Object.keys(block.models)).toEqual(['gw-large', 'gw-mini']); // default leads the switchable set
-    // opencode ≥1.18 rejects bare `{}` model entries — every entry carries a
-    // limit.output (fallback when the registry has no curated value).
-    expect(block.models['gw-large']).toEqual({ limit: { output: 8192 } });
-    expect(block.models['gw-mini']).toEqual({ limit: { output: 8192 } });
+    // opencode ≥1.18 rejects bare `{}` model entries — every entry carries
+    // BOTH limit keys (fallbacks when the registry has no curated value:
+    // 1.18.31 rejects output-only entries with "Missing key …limit.context").
+    expect(block.models['gw-large']).toEqual({ limit: { output: 8192, context: 128_000 } });
+    expect(block.models['gw-mini']).toEqual({ limit: { output: 8192, context: 128_000 } });
     // RAW secret, no trailing newline — opencode reads the {file:} target
     // verbatim; a `\n` would ride the key and the gateway rejects it.
     expect(readFileSync(key(), 'utf8')).toBe('sk-test-1');
@@ -426,7 +427,7 @@ describe('applyRuntimeConfig — opencode (9 W12)', () => {
       name: 'Gateway Large',
       limit: { output: 16_384, context: 200_000 },
     });
-    expect(models['gw-mini']).toEqual({ limit: { output: 8192 } });
+    expect(models['gw-mini']).toEqual({ limit: { output: 8192, context: 128_000 } });
   });
 
   it('preserves user config keys and other providers', () => {
