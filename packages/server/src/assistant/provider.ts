@@ -124,6 +124,7 @@ export function buildGatewayModel(input: {
         ? {
             fetch: serverToolsFetch(
               serverTools,
+              input.kind,
               (options as { fetch?: typeof globalThis.fetch } | undefined)?.fetch ??
                 globalThis.fetch,
             ),
@@ -135,16 +136,50 @@ export function buildGatewayModel(input: {
 }
 
 /**
- * #56 — append `{type}` entries into a chat-shaped request body's tools
+ * #56 — append server-tool entries into a chat-shaped request body's tools
  * array. Pure: anything that is not a chat body (no `input`/`messages` —
  * model listings, auth probes) or not an object returns untouched.
+ *
+ * Per kind (2026-10-16 rig follow-up, Bailian's anthropic-compatible doc):
+ *  - `openai-responses`: bare `{type}` entries verbatim.
+ *  - `anthropic`: a `web_search*` type also carries `name: "web_search"`
+ *    (Bailian's setup shape; official Anthropic treats `type` as the
+ *    discriminator either way) AND the body gains a leading system text
+ *    block `x-anthropic-billing-header: cc_entrypoint=cli;` — the marker
+ *    Claude Code itself sends; Bailian's gateway silently SKIPS web search
+ *    without it ("需在 system 中传入客户端标识…否则联网搜索不生效"). On
+ *    official Anthropic the extra system block is inert.
  */
-export function appendServerTools(body: unknown, serverTools: readonly string[]): unknown {
+const ANTHROPIC_BILLING_MARKER = 'x-anthropic-billing-header: cc_entrypoint=cli;';
+
+export function appendServerTools(
+  body: unknown,
+  serverTools: readonly string[],
+  kind: ProviderApiKind,
+): unknown {
   if (typeof body !== 'object' || body === null || Array.isArray(body)) return body;
   const record = body as Record<string, unknown>;
   if (!('input' in record) && !('messages' in record)) return body;
+  const entries = serverTools.map((t) =>
+    kind === 'anthropic' && t.startsWith('web_search')
+      ? { type: t, name: 'web_search' }
+      : { type: t },
+  );
   const tools = Array.isArray(record.tools) ? record.tools : [];
-  return { ...record, tools: [...tools, ...serverTools.map((t) => ({ type: t }))] };
+  let next: Record<string, unknown> = { ...record, tools: [...tools, ...entries] };
+  if (kind === 'anthropic') {
+    const marker = { type: 'text', text: ANTHROPIC_BILLING_MARKER };
+    const system = record.system;
+    next = {
+      ...next,
+      system: Array.isArray(system)
+        ? [marker, ...system]
+        : typeof system === 'string' && system !== ''
+          ? [marker, { type: 'text', text: system }]
+          : [marker],
+    };
+  }
+  return next;
 }
 
 /**
@@ -155,13 +190,14 @@ export function appendServerTools(body: unknown, serverTools: readonly string[])
  */
 export function serverToolsFetch(
   serverTools: readonly string[],
+  kind: ProviderApiKind,
   inner: typeof globalThis.fetch,
 ): typeof globalThis.fetch {
   return (input, init) => {
     if (typeof init?.body === 'string') {
       try {
         const parsed: unknown = JSON.parse(init.body);
-        const next = appendServerTools(parsed, serverTools);
+        const next = appendServerTools(parsed, serverTools, kind);
         if (next !== parsed) return inner(input, { ...init, body: JSON.stringify(next) });
       } catch {
         // not a JSON body — pass through untouched
