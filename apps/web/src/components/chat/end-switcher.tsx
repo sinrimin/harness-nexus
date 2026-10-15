@@ -22,7 +22,12 @@ import { useMachineStatus } from '@/components/shell/use-presence.js';
 
 const DEFAULT_END_KEY = 'hnx.chat.defaultEnd';
 
-export type ChatEnd = 'assistant' | { agentInstanceId: string };
+export type ChatEnd =
+  | 'assistant'
+  | {
+      agentInstanceId: string;
+      /** Display name of the current agent (falls back while loading). */ agentName?: string;
+    };
 
 export function readDefaultEnd(): string {
   return localStorage.getItem(DEFAULT_END_KEY) ?? 'assistant';
@@ -102,7 +107,9 @@ export function EndSwitcher({ current }: { current: ChatEnd }) {
           <Button variant="ghost" size="sm" className="gap-1.5 px-2">
             <BotIcon className="size-3.5 shrink-0" />
             <span className="max-w-32 truncate text-xs">
-              {current === 'assistant' ? t('assistants.endAssistant') : t('chat.backToAgents')}
+              {current === 'assistant'
+                ? t('assistants.endAssistant')
+                : (current.agentName ?? t('chat.backToAgents'))}
             </span>
             <ChevronsUpDownIcon className="text-muted-foreground size-3 shrink-0" />
           </Button>
