@@ -190,6 +190,8 @@ export async function registerRealtime(
       listTools: (serverIds) => app.mcpRegistry.listTools(serverIds),
       callTool: (namespacedName, args) => app.mcpRegistry.callTool(namespacedName, args),
     },
+    // M3 — write-gate watchdog; same latency budget as machine-chat permissions.
+    { permissionTimeoutMs: opts.chatPermissionTimeoutMs },
   );
 
   const jobs = new JobService(
@@ -867,6 +869,21 @@ export async function registerRealtime(
             : { error: result.code },
         );
       })();
+    });
+
+    socket.on('assistant:permission.respond', (payload: unknown, ack?: (res: unknown) => void) => {
+      const parsed = chatPermissionRespondRequestSchema.safeParse(payload);
+      if (!parsed.success) {
+        ack?.({ error: 'proto:invalid' });
+        return;
+      }
+      const result = realtime.assistant.onPermissionRespond(
+        socket.data.userId as string,
+        parsed.data.sessionId,
+        parsed.data.requestId,
+        parsed.data.optionId,
+      );
+      ack?.(result.ok ? { accepted: true } : { error: result.code });
     });
 
     socket.on('assistant:turn.cancel', (payload: unknown, ack?: (res: unknown) => void) => {

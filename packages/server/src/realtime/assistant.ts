@@ -46,22 +46,35 @@ interface LiveChannel {
   openedAt: number;
 }
 
+function isRecord(v: unknown): v is Record<string, unknown> {
+  return v !== null && typeof v === 'object' && !Array.isArray(v);
+}
+
 export type AssistantOpenResult =
   | { ok: true; sessionId: string; assistantName: string }
   | { ok: false; code: 'ASSISTANT_NOT_FOUND' | 'ASSISTANT_DELETED' | 'SESSION_NOT_FOUND' };
 
 export type AssistantSendResult = { ok: true; queued?: boolean } | { ok: false; code: string };
 
+interface PendingApproval {
+  sessionId: string;
+  resolve: (allowed: boolean) => void;
+  timer: NodeJS.Timeout;
+}
+
 export class AssistantRealtimeService {
   private live = new Map<string, LiveChannel>();
   /** userId → the session whose turn is running (the per-user busy gate). */
   private running = new Map<string, string>();
+  /** M3 — write-tool approvals awaiting the browser's answer (or the timeout). */
+  private pendingApprovals = new Map<string, PendingApproval>();
 
   constructor(
     private readonly deps: AssistantRunnerDeps,
     private readonly io: AssistantIO,
     /** M2 — the registry seam, resolved LAZILY (mountMcpProxy decorates after registerRealtime). */
     private readonly mcp?: AssistantMcpDeps,
+    private readonly opts: { permissionTimeoutMs: number } = { permissionTimeoutMs: 120_000 },
   ) {}
 
   // ---- helpers ----
@@ -205,6 +218,8 @@ export class AssistantRealtimeService {
     const ch = this.channelOf(userId, sessionId);
     if (ch === null) return { ok: false, code: 'SESSION_NOT_FOUND' };
     this.live.delete(sessionId);
+    // Unanswered write gates die with the channel (denied, card settled).
+    this.cancelApprovals(sessionId);
     // A running turn is NOT aborted: it finishes and persists; the user
     // re-opens to see it (cost already committed).
     this.io.toChannel(sessionId, 'assistant:session.closed', {
@@ -217,6 +232,11 @@ export class AssistantRealtimeService {
 
   /** Server shutdown — abort what is running (persisted as aborted) and notify. */
   stop(): void {
+    for (const [, pending] of [...this.pendingApprovals.entries()]) {
+      clearTimeout(pending.timer);
+      pending.resolve(false);
+    }
+    this.pendingApprovals.clear();
     for (const ch of [...this.live.values()]) {
       ch.run?.abort();
       this.io.toChannel(ch.sessionId, 'assistant:session.closed', {
@@ -276,6 +296,7 @@ export class AssistantRealtimeService {
       ch.queuedPrompt = null;
       this.emit(sessionId, { kind: 'queue_state', prompt: null, flushed: false });
     }
+    this.cancelApprovals(sessionId);
     if (this.running.get(userId) === sessionId) ch.run?.abort();
     return { ok: true };
   }
@@ -349,6 +370,7 @@ export class AssistantRealtimeService {
         prompt,
         rows: rowsBefore,
         emit: (event) => this.emit(ch.sessionId, event),
+        requestApproval: this.makeApprovalSeam(ch),
         append: async (row: AssistantMessageRow) => {
           seq += 1;
           await this.deps.uow.assistants.appendMessage(ch.sessionId, { ...row, seq });
@@ -446,6 +468,87 @@ export class AssistantRealtimeService {
       this.emit(sessionId, { kind: 'session_status', state: 'active' });
     }
     return true;
+  }
+
+  /**
+   * M3 — settle one pending approval: clears the watchdog, resolves the
+   * runner's wait, and settles every viewer's card. `optionId` undefined =
+   * cancelled (turn stopped / channel gone).
+   */
+  private settleApproval(
+    requestId: string,
+    outcome: 'selected' | 'cancelled' | 'timeout',
+    optionId?: string,
+  ): void {
+    const pending = this.pendingApprovals.get(requestId);
+    if (pending === undefined) return;
+    this.pendingApprovals.delete(requestId);
+    clearTimeout(pending.timer);
+    pending.resolve(outcome === 'selected' && optionId === 'allow_once');
+    this.emit(pending.sessionId, {
+      kind: 'permission_resolved',
+      requestId,
+      outcome,
+      ...(optionId !== undefined ? { optionId } : {}),
+    });
+  }
+
+  /** Resolve everything a session waits on as cancelled (stop/close/shutdown). */
+  private cancelApprovals(sessionId: string): void {
+    for (const [requestId, pending] of [...this.pendingApprovals.entries()]) {
+      if (pending.sessionId === sessionId) this.settleApproval(requestId, 'cancelled');
+    }
+  }
+
+  /** `assistant:permission.respond` — the browser answered a write gate. */
+  onPermissionRespond(
+    userId: string,
+    sessionId: string,
+    requestId: string,
+    optionId: string | undefined,
+  ): AssistantSendResult {
+    const ch = this.channelOf(userId, sessionId);
+    if (ch === null) return { ok: false, code: 'SESSION_NOT_FOUND' };
+    const pending = this.pendingApprovals.get(requestId);
+    if (pending === undefined || pending.sessionId !== sessionId) {
+      return { ok: false, code: 'PERMISSION_NOT_FOUND' };
+    }
+    this.settleApproval(requestId, optionId !== undefined ? 'selected' : 'cancelled', optionId);
+    return { ok: true };
+  }
+
+  /**
+   * The runner's approval seam: surface the ACP-shaped card, arm the
+   * watchdog, and wait. Timeout and turn-cancel both deny (the write never
+   * runs silently).
+   */
+  private makeApprovalSeam(ch: LiveChannel) {
+    return (toolCall: { toolCallId: string; toolName: string; args: unknown }): Promise<boolean> =>
+      new Promise<boolean>((resolve) => {
+        const requestId = generateId();
+        this.emit(ch.sessionId, {
+          kind: 'permission_request',
+          requestId,
+          toolCall: {
+            toolCallId: toolCall.toolCallId,
+            toolName: toolCall.toolName,
+            status: 'pending',
+            ...(isRecord(toolCall.args) ? { rawInput: toolCall.args } : {}),
+          },
+          options: [
+            { optionId: 'allow_once', name: 'Allow once', kind: 'allow_once' as const },
+            { optionId: 'reject_once', name: 'Reject once', kind: 'reject_once' as const },
+          ],
+        });
+        const timer = setTimeout(() => {
+          this.settleApproval(requestId, 'timeout');
+        }, this.opts.permissionTimeoutMs);
+        this.pendingApprovals.set(requestId, {
+          sessionId: ch.sessionId,
+          resolve,
+          timer,
+        });
+      });
   }
 
   /** History for a session (used by tests / future re-sync paths). */

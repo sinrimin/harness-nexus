@@ -125,6 +125,7 @@ function toConfigView(c: AssistantConfig): AssistantConfigView {
     enabledToolGroups: c.enabledToolGroups,
     mcpServerIds: c.mcpServerIds ?? [],
     skillResourceIds: c.skillResourceIds ?? [],
+    dailyTokenBudget: c.dailyTokenBudget ?? null,
     createdAt: c.createdAt,
     updatedAt: c.updatedAt,
   };

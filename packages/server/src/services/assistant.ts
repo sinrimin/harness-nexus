@@ -85,6 +85,9 @@ export async function createAssistant(
     ],
     mcpServerIds: await visibleMcpServerIds(deps, principal, input.mcpServerIds ?? []),
     skillResourceIds: await readableSkillResourceIds(deps, principal, input.skillResourceIds ?? []),
+    ...(input.dailyTokenBudget !== undefined && input.dailyTokenBudget !== null
+      ? { dailyTokenBudget: input.dailyTokenBudget }
+      : {}),
     createdAt: now,
     updatedAt: now,
   };
@@ -164,6 +167,11 @@ export async function updateAssistant(
     ...(input.skillResourceIds !== undefined
       ? {
           skillResourceIds: await readableSkillResourceIds(deps, principal, input.skillResourceIds),
+        }
+      : {}),
+    ...(input.dailyTokenBudget !== undefined
+      ? {
+          dailyTokenBudget: input.dailyTokenBudget === null ? undefined : input.dailyTokenBudget,
         }
       : {}),
     updatedAt: new Date().toISOString(),

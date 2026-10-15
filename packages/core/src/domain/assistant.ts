@@ -40,6 +40,12 @@ export interface AssistantConfig {
    * prompt index + the `read_skill` tool (progressive disclosure).
    */
   skillResourceIds: string[];
+  /**
+   * M3 — the config's sessions may spend this many tokens (input+output,
+   * summed over assistant turns) per UTC day before further turns refuse
+   * honestly. Absent = unlimited. A cost guard, not a security boundary.
+   */
+  dailyTokenBudget?: number | undefined;
   createdAt: string;
   updatedAt: string;
   /**
