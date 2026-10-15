@@ -42,7 +42,7 @@ function endKey(end: ChatEnd): string {
   return end === 'assistant' ? 'assistant' : `agent:${end.agentInstanceId}`;
 }
 
-export function EndSwitcher({ current, onPick }: { current: ChatEnd; onPick?: () => void }) {
+export function EndSwitcher({ current, stayOpen }: { current: ChatEnd; stayOpen?: boolean }) {
   const { logout } = useAuth();
   const { t } = useI18n();
   const navigate = useNavigate();
@@ -95,8 +95,11 @@ export function EndSwitcher({ current, onPick }: { current: ChatEnd; onPick?: ()
   );
 
   function pick(end: ChatEnd): void {
-    setOpen(false);
-    onPick?.();
+    // stayOpen (the phone drawer): the menu STAYS OPEN across picks — rapid
+    // end browsing, the check mark walks to the new end and the trigger
+    // label follows; dismissed by tapping outside. Desktop closes after one
+    // pick (dropdown norm).
+    if (stayOpen !== true) setOpen(false);
     if (endKey(end) === endKey(current)) return;
     navigate(end === 'assistant' ? '/chat/assistants' : `/chat/agents/${end.agentInstanceId}`);
   }

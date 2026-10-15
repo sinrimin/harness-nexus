@@ -219,7 +219,7 @@ function SessionRail({
   onNewSession,
   onRefresh,
   end,
-  onEndPick,
+  endStayOpen,
 }: {
   rail: RailState;
   groups: SessionGroup[];
@@ -240,16 +240,16 @@ function SessionRail({
    *  is the only rail on mobile, hiding the switcher there dead-ended the
    *  machine ends). */
   end?: { agentInstanceId: string; agentName?: string } | null;
-  /** Close-the-drawer hook — picking an end from the drawer dismisses it (a
-   *  tap does one thing, like opening a session does). */
-  onEndPick?: () => void;
+  /** Phone drawer: the switcher menu STAYS OPEN across end picks (rapid
+   *  browsing); dismissed by tapping outside. */
+  endStayOpen?: boolean;
 }) {
   const { t, lang } = useI18n();
   return (
     <>
       <div className="flex items-center gap-1 border-b px-2 py-2.5">
         {end !== undefined && end !== null ? (
-          <EndSwitcher current={end} onPick={onEndPick} />
+          <EndSwitcher current={end} stayOpen={endStayOpen} />
         ) : null}
         <span className="min-w-0 flex-1" />
         <Button
@@ -1124,7 +1124,7 @@ export function AgentSessionPage() {
                   }}
                   onRefresh={() => void refreshSessions(true)}
                   end={{ agentInstanceId: agentId, agentName: agent?.name }}
-                  onEndPick={() => setRailOpen(false)}
+                  endStayOpen
                 />
               </DialogPrimitive.Content>
             </DialogPrimitive.Portal>
