@@ -20,6 +20,7 @@ import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { Dialog as DialogPrimitive } from 'radix-ui';
 import { ChatStream } from '@/components/chat/chat-stream.js';
+import { WelcomePane, type WelcomeCard } from '@/components/chat/welcome-pane.js';
 import { ChannelTabs } from '@/components/chat/channel-tabs.js';
 import { useChatChannels } from '@/components/chat/use-chat-channels.js';
 import { useAssistantSessions } from '@/components/chat/use-assistant-sessions.js';
@@ -333,6 +334,23 @@ export function AssistantSessionPage() {
 
   const sortedSessions = useMemo(() => [...sessions].reverse(), [sessions]);
 
+  /** #54 — the welcome's recent cards: this config's conversations, newest
+   *  first (the sessions push arrives newest-first from the server). */
+  const welcomeCards = useMemo<WelcomeCard[]>(
+    () =>
+      sessions
+        .filter((s) => s.assistantId === assistantId)
+        .slice(0, 5)
+        .map((s) => ({
+          id: s.id,
+          title: s.title !== '' ? s.title : t('chat.untitled'),
+          timeLabel: relativeTime(s.lastMessageAt ?? s.updatedAt, dateLocale(lang)),
+          onClick: () => void openSession(s.id),
+        })),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [sessions, assistantId, t, lang],
+  );
+
   // The rail renders TWICE (desktop aside + phone drawer) with one flag:
   // only the drawer's picks carry the ?rail hand-off.
   const rail = (inDrawer: boolean) => (
@@ -504,6 +522,16 @@ export function AssistantSessionPage() {
                   }
                 />
               </div>
+            ) : sessionId === '' ? (
+              // #54 — the rich welcome replaces the empty stream + sender:
+              // the button and the recent-conversation cards are the entries.
+              <WelcomePane
+                greeting={t('chat.welcomeGreeting')}
+                sub={t('chat.welcomeSub')}
+                actionLabel={t('assistants.newAssistantSession')}
+                onAction={() => void openSession()}
+                cards={welcomeCards}
+              />
             ) : (
               <>
                 {error !== null && phase !== 'closed' ? (

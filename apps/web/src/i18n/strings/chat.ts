@@ -20,6 +20,8 @@ const en = {
   // ---- session page ----
   backToAgents: 'All agents',
   newSession: 'New session',
+  welcomeGreeting: 'Where shall we start?',
+  welcomeSub: 'Start a new conversation, or pick one back up below.',
   noSessions: 'No sessions yet — create one to start.',
   sessionsUnsupported: 'This agent keeps no resumable session list.',
   sessionsUnsupportedPartial: 'This agent keeps no resumable session list — open channels only.',
@@ -175,6 +177,8 @@ const zh: typeof en = {
   machineGroupLabel: '对话',
   backToAgents: '全部代理',
   newSession: '新建会话',
+  welcomeGreeting: '今天从哪里开始？',
+  welcomeSub: '开一个新会话，或从下面继续一段。',
   noSessions: '暂无会话——新建一个开始。',
   sessionsUnsupported: '该代理没有可恢复的会话列表。',
   sessionsUnsupportedPartial: '该代理不支持原生会话列表——仅显示打开的通道。',

@@ -37,6 +37,7 @@ import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { Dialog as DialogPrimitive } from 'radix-ui';
 import { ChatStream } from '@/components/chat/chat-stream.js';
+import { WelcomePane, type WelcomeCard } from '@/components/chat/welcome-pane.js';
 import { ChannelTabs } from '@/components/chat/channel-tabs.js';
 import { EndSwitcher } from '@/components/chat/end-switcher.js';
 import { useChatChannels } from '@/components/chat/use-chat-channels.js';
@@ -1022,6 +1023,25 @@ export function AgentSessionPage() {
     rail.state === 'ready'
       ? (rail.sessions.find((s) => s.sessionId === nativeSessionId)?.cwd ?? undefined)
       : undefined;
+  /** #54 — the welcome's recent cards: this agent's sessions, newest first,
+   *  workspace (cwd) shown as the card's second line. */
+  const welcomeCards = useMemo<WelcomeCard[]>(() => {
+    if (rail.state !== 'ready') return [];
+    return [...rail.sessions]
+      .sort((a, b) => (Date.parse(b.updatedAt ?? '') || 0) - (Date.parse(a.updatedAt ?? '') || 0))
+      .slice(0, 5)
+      .map((s) => ({
+        id: s.sessionId,
+        title: s.title ?? t('chat.untitled'),
+        workspace: s.cwd,
+        timeLabel: relativeTime(s.updatedAt ?? null, dateLocale(lang)),
+        // The no-channel RESUME path (a fresh page has no attached channel);
+        // an attached one rejoins inside openChannel the same way.
+        onClick: () =>
+          void openChannel(undefined, undefined, { sessionId: s.sessionId, cwd: s.cwd }),
+      }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rail, t, lang]);
   // #14 — the ACTIVE channel's optimistic title: the fold's first user
   // prompt, the same source every target titles its sessions from. Shown
   // while the vendor title hasn't been pulled yet; CSS truncates, the row
@@ -1194,54 +1214,69 @@ export function AgentSessionPage() {
               </p>
             ) : null}
 
-            <ChatStream
-              state={conversation}
-              cwd={currentCwd}
-              onPermissionRespond={(requestId, optionId) =>
-                void respondPermission(requestId, optionId)
-              }
-              onElicitationRespond={(requestId, action, values) =>
-                void respondElicitation(requestId, action, values)
-              }
-            />
-
-            <div className="shrink-0 p-3">
-              <div className="mx-auto w-full max-w-3xl">
-                {/* 9 W14 — the agent's todo/plan snapshot (full-replace ACP
-                    state; hidden when the agent never announced one). */}
-                <TodoPanel entries={conversation.plan ?? []} />
-                {conversation.queued !== null ? (
-                  <QueuedMessage
-                    blocks={conversation.queued}
-                    onEdit={queueEdit}
-                    onCancel={() => void queueCancel()}
-                  />
-                ) : null}
-                <Composer
-                  value={draft}
-                  onChange={changeDraft}
-                  phase={phase}
-                  turnActive={conversation.turnActive}
-                  usage={conversation.usage}
-                  onSend={() => void send()}
-                  onCancel={() => void cancelTurn()}
-                  attachments={attachments}
-                  fileRefs={fileRefs}
-                  onRemoveAttachment={(id) =>
-                    setAttachments((prev) => prev.filter((a) => a.id !== id))
+            {sessionId === '' ? (
+              // #54 — the rich welcome replaces the empty stream + sender:
+              // the new-session button and the recent-session cards are the
+              // entries (the sender appears once a session is open).
+              <WelcomePane
+                greeting={t('chat.welcomeGreeting')}
+                sub={t('chat.welcomeSub')}
+                actionLabel={t('chat.newSession')}
+                onAction={() => setPickerOpen(true)}
+                cards={welcomeCards}
+              />
+            ) : (
+              <>
+                <ChatStream
+                  state={conversation}
+                  cwd={currentCwd}
+                  onPermissionRespond={(requestId, optionId) =>
+                    void respondPermission(requestId, optionId)
                   }
-                  onRemoveFileRef={(uri) =>
-                    setFileRefs((prev) => prev.filter((f) => f.uri !== uri))
+                  onElicitationRespond={(requestId, action, values) =>
+                    void respondElicitation(requestId, action, values)
                   }
-                  onPickImages={(files) => void addImages(files)}
-                  onOpenFilePicker={() => setFilePickerOpen(true)}
-                  imageSupported={imageSupported}
-                  config={conversation.config satisfies ComposerConfig}
-                  onConfigSet={(set) => void configSet(set)}
-                  commands={conversation.commands}
                 />
-              </div>
-            </div>
+
+                <div className="shrink-0 p-3">
+                  <div className="mx-auto w-full max-w-3xl">
+                    {/* 9 W14 — the agent's todo/plan snapshot (full-replace ACP
+                    state; hidden when the agent never announced one). */}
+                    <TodoPanel entries={conversation.plan ?? []} />
+                    {conversation.queued !== null ? (
+                      <QueuedMessage
+                        blocks={conversation.queued}
+                        onEdit={queueEdit}
+                        onCancel={() => void queueCancel()}
+                      />
+                    ) : null}
+                    <Composer
+                      value={draft}
+                      onChange={changeDraft}
+                      phase={phase}
+                      turnActive={conversation.turnActive}
+                      usage={conversation.usage}
+                      onSend={() => void send()}
+                      onCancel={() => void cancelTurn()}
+                      attachments={attachments}
+                      fileRefs={fileRefs}
+                      onRemoveAttachment={(id) =>
+                        setAttachments((prev) => prev.filter((a) => a.id !== id))
+                      }
+                      onRemoveFileRef={(uri) =>
+                        setFileRefs((prev) => prev.filter((f) => f.uri !== uri))
+                      }
+                      onPickImages={(files) => void addImages(files)}
+                      onOpenFilePicker={() => setFilePickerOpen(true)}
+                      imageSupported={imageSupported}
+                      config={conversation.config satisfies ComposerConfig}
+                      onConfigSet={(set) => void configSet(set)}
+                      commands={conversation.commands}
+                    />
+                  </div>
+                </div>
+              </>
+            )}
           </section>
         </div>
       </div>
