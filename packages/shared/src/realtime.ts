@@ -1005,6 +1005,24 @@ export const sessionsListResultEventSchema = z.object({
   error: z.string().max(512).optional(),
 });
 
+/**
+ * #55 — server → daemon: delete one of the target's native sessions. Same
+ * requestId/result round-trip over /ctl as `sessions:list`; deletion is
+ * IDEMPOTENT (ACP semantics — a session that is already gone succeeds).
+ */
+export const sessionsDeleteRequestSchema = z.object({
+  requestId: z.string().min(1).max(64),
+  target: agentTargetSchema,
+  /** The target-native session id (the rail row's `sessionId`). */
+  sessionId: z.string().min(1).max(256),
+});
+
+/** daemon → server: the delete settled (`error` carries the reason). */
+export const sessionsDeleteResultEventSchema = z.object({
+  requestId: z.string().min(1).max(64),
+  error: z.string().max(512).optional(),
+});
+
 /** server → browser lifecycle pushes (typed for the web client; server-constructed). */
 export const chatSessionReadyPushSchema = z.object({
   sessionId: z.string().min(1),
@@ -1140,5 +1158,7 @@ export type ChatHistoryEvent = z.infer<typeof chatHistoryEventSchema>;
 export type NativeSessionView = z.infer<typeof nativeSessionViewSchema>;
 export type SessionsListRequest = z.infer<typeof sessionsListRequestSchema>;
 export type SessionsListResultEvent = z.infer<typeof sessionsListResultEventSchema>;
+export type SessionsDeleteRequest = z.infer<typeof sessionsDeleteRequestSchema>;
+export type SessionsDeleteResultEvent = z.infer<typeof sessionsDeleteResultEventSchema>;
 export type AdapterProcessView = z.infer<typeof adapterProcessViewSchema>;
 export type AdaptersReportResultEvent = z.infer<typeof adaptersReportResultEventSchema>;

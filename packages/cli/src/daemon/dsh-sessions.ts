@@ -617,8 +617,8 @@ function toPromptBlocks(content: unknown): { type: 'text'; text: string }[] {
 
 // ---- live transcript tail (the tap-down streaming fallback) ----
 
-/** Locate a session's current log by id across the slug dirs (null = absent/unsupported). */
-export function findTranscript(
+/** Locate a session's own directory by id across the slug dirs (null = absent). */
+export function findSessionDir(
   sessionsDir: string,
   sessionId: string,
   readdir: (path: string) => string[],
@@ -636,9 +636,19 @@ export function findTranscript(
     } catch {
       continue; // not under this slug
     }
-    return currentSessionLog(dir, readdir)?.file ?? null;
+    return dir;
   }
   return null;
+}
+
+/** Locate a session's current log by id across the slug dirs (null = absent/unsupported). */
+export function findTranscript(
+  sessionsDir: string,
+  sessionId: string,
+  readdir: (path: string) => string[],
+): string | null {
+  const dir = findSessionDir(sessionsDir, sessionId, readdir);
+  return dir === null ? null : (currentSessionLog(dir, readdir)?.file ?? null);
 }
 
 /** The fs surface `TranscriptTail` needs (injectable for tests). */

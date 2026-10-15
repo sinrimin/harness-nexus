@@ -43,6 +43,13 @@ export interface AcpSessionCaps {
   resume: boolean;
   /** `session/list` exists (the claude/codex listing path). */
   list: boolean;
+  /**
+   * #55 — `session/delete` exists (ACP-stabilized 2026-06). Adapter-dependent:
+   * claude-agent-acp ≥0.79 yes, opencode only from V2 (1.x has none), codex-acp
+   * not yet. Absent means the daemon reports the delete unsupported instead of
+   * firing a method the adapter would reject.
+   */
+  delete: boolean;
 }
 
 /**
@@ -69,6 +76,7 @@ export function deriveSessionCaps(result: unknown): AcpSessionCaps {
       r.agentCapabilities?.loadSession === true,
     resume: caps['resume'] !== undefined,
     list: caps['list'] !== undefined,
+    delete: caps['delete'] !== undefined,
   };
 }
 

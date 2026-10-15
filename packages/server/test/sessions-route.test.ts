@@ -78,6 +78,7 @@ afterAll(async () => {
 async function connectDaemon(
   capabilities: string[],
   respond: (target: string) => Record<string, unknown>,
+  onDelete?: (payload: { requestId: string; target: string; sessionId: string }) => void,
 ): Promise<void> {
   daemon = io(`${baseUrl}/ctl`, {
     auth: { token: machineToken, machineId },
@@ -94,6 +95,15 @@ async function connectDaemon(
       ...respond(payload.target),
     });
   });
+  if (onDelete !== undefined) {
+    daemon.on(
+      'sessions:delete',
+      (payload: { requestId: string; target: string; sessionId: string }) => {
+        onDelete(payload);
+        daemon.emit('sessions:delete:result', { requestId: payload.requestId });
+      },
+    );
+  }
 }
 
 describe('GET /api/agent-instances/:id/sessions (9 W7)', () => {
@@ -348,5 +358,133 @@ describe('GET /api/agent-instances/:id/sessions (9 W7)', () => {
     });
     expect(timeout.statusCode).toBe(504);
     expect(timeout.json().error).toBe('SESSIONS_TIMEOUT');
+  });
+});
+
+describe('DELETE /api/agent-instances/:id/sessions/:sessionId (#55)', () => {
+  it('404s for strangers and 409s while offline', async () => {
+    // The GET suite's final test leaves its daemon connected (afterAll owns
+    // it) — drop it first or the machine reads online here.
+    daemon?.disconnect();
+    await new Promise((r) => setTimeout(r, 150));
+    const stranger = await app.inject({
+      method: 'DELETE',
+      url: `/api/agent-instances/${agentId}/sessions/native-1`,
+      headers: auth(strangerJwt),
+    });
+    expect(stranger.statusCode).toBe(404);
+    const offline = await app.inject({
+      method: 'DELETE',
+      url: `/api/agent-instances/${agentId}/sessions/native-1`,
+      headers: auth(ownerJwt),
+    });
+    expect(offline.statusCode).toBe(409);
+    expect(offline.json().error).toBe('MACHINE_OFFLINE');
+  });
+
+  it('409s when the daemon lacks the sessions-delete capability', async () => {
+    await connectDaemon(['sessions'], () => ({ sessions: [] }));
+    const res = await app.inject({
+      method: 'DELETE',
+      url: `/api/agent-instances/${agentId}/sessions/native-1`,
+      headers: auth(ownerJwt),
+    });
+    expect(res.statusCode).toBe(409);
+    expect(res.json().error).toBe('DAEMON_NO_SESSIONS_DELETE');
+    daemon.disconnect();
+    await new Promise((r) => setTimeout(r, 150));
+  });
+
+  it('round-trips the delete (target + sessionId ride the /ctl event)', async () => {
+    const seen: { target: string; sessionId: string }[] = [];
+    await connectDaemon(
+      ['sessions', 'sessions-delete'],
+      () => ({ sessions: [] }),
+      (p) => {
+        seen.push({ target: p.target, sessionId: p.sessionId });
+      },
+    );
+    const res = await app.inject({
+      method: 'DELETE',
+      url: `/api/agent-instances/${agentId}/sessions/native-del-1`,
+      headers: auth(ownerJwt),
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ ok: true });
+    expect(seen).toEqual([{ target: 'claude-code', sessionId: 'native-del-1' }]);
+    daemon.disconnect();
+    await new Promise((r) => setTimeout(r, 150));
+  });
+
+  it('refuses a native session holding a live channel (409 NATIVE_SESSION_LIVE)', async () => {
+    await connectDaemon(['sessions', 'sessions-delete', 'chat'], () => ({ sessions: [] }));
+    const patch = await app.inject({
+      method: 'PATCH',
+      url: `/api/machines/${machineId}`,
+      headers: auth(ownerJwt),
+      payload: { remoteChatEnabled: true },
+    });
+    expect(patch.json().machine.remoteChatEnabled).toBe(true);
+
+    const browser = io(`${baseUrl}/app`, { auth: { token: ownerJwt }, transports: ['websocket'] });
+    await new Promise<void>((resolve) => browser.on('connect', () => resolve()));
+    const startP = new Promise<{ sessionId: string }>((resolve) => {
+      daemon.on('chat:session.start', (p: { sessionId: string }) => resolve(p));
+    });
+    await new Promise((resolve) => {
+      browser.emit('chat:session.open', { agentInstanceId: agentId }, resolve);
+    });
+    const start = await startP;
+    const readyP = new Promise<void>((resolve) => {
+      browser.on('chat:session.ready', () => resolve());
+    });
+    daemon.emit('chat:session.ready', {
+      sessionId: start.sessionId,
+      nativeSessionId: 'native-occupied',
+    });
+    await readyP;
+
+    const res = await app.inject({
+      method: 'DELETE',
+      url: `/api/agent-instances/${agentId}/sessions/native-occupied`,
+      headers: auth(ownerJwt),
+    });
+    expect(res.statusCode).toBe(409);
+    expect(res.json().error).toBe('NATIVE_SESSION_LIVE');
+
+    await new Promise((resolve) => {
+      browser.emit('chat:session.close', { sessionId: start.sessionId, reason: 'user' }, resolve);
+    });
+    browser.close();
+    daemon.disconnect();
+    await new Promise((r) => setTimeout(r, 150));
+  }, 20000);
+
+  it('maps the error arm and the silent-daemon timeout', async () => {
+    await connectDaemon(['sessions', 'sessions-delete'], () => ({ sessions: [] }));
+    daemon.removeAllListeners('sessions:delete');
+    daemon.on('sessions:delete', (payload: { requestId: string }) => {
+      daemon.emit('sessions:delete:result', { requestId: payload.requestId, error: 'boom' });
+    });
+    const failed = await app.inject({
+      method: 'DELETE',
+      url: `/api/agent-instances/${agentId}/sessions/native-1`,
+      headers: auth(ownerJwt),
+    });
+    expect(failed.statusCode).toBe(502);
+    expect(failed.json().error).toBe('DAEMON_SESSION_DELETE_FAILED');
+    daemon.disconnect();
+    await new Promise((r) => setTimeout(r, 150));
+
+    // Silent daemon → 504 (timeout 500ms via testConfig).
+    await connectDaemon(['sessions', 'sessions-delete'], () => ({ sessions: [] }));
+    daemon.removeAllListeners('sessions:delete');
+    const timeout = await app.inject({
+      method: 'DELETE',
+      url: `/api/agent-instances/${agentId}/sessions/native-1`,
+      headers: auth(ownerJwt),
+    });
+    expect(timeout.statusCode).toBe(504);
+    expect(timeout.json().error).toBe('SESSIONS_DELETE_TIMEOUT');
   });
 });

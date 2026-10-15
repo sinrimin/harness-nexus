@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import type { AssistantConfig, AssistantSession } from '@harness-nexus/core';
 import {
+  AppError,
   assistantConfigCreateSchema,
   assistantConfigUpdateSchema,
   type AssistantConfigView,
@@ -97,7 +98,18 @@ export async function assistantRoutes(app: FastifyInstance): Promise<void> {
   });
 
   app.delete<{ Params: { id: string } }>('/api/assistant-sessions/:id', guard, async (req) => {
-    await deleteAssistantSession(deps(), principalOf(req), req.params.id);
+    // Ownership FIRST (the service 404-hides foreign ids for every role),
+    // then the #55 live guard — a live channel would keep writing into
+    // deleted rows. Realtime state, so the check lives here, not in the
+    // service (#53).
+    const session = await getAssistantSession(deps(), principalOf(req), req.params.id);
+    if (app.realtime.assistant.isLive(session.id)) {
+      throw new AppError('Session is open — close it first', 409, 'ASSISTANT_SESSION_LIVE');
+    }
+    await deleteAssistantSession(deps(), principalOf(req), session.id);
+    // The rail's snapshot would otherwise keep the deleted row until the
+    // next sync — push the fresh list to the owner.
+    await app.realtime.assistant.pushSessions(principalOf(req).userId);
     return { ok: true };
   });
 

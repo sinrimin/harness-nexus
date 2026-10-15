@@ -339,7 +339,7 @@ describe('deriveSessionCaps (resume dialect per adapter family)', () => {
         loadSession: true,
         agentCapabilities: { sessionCapabilities: { load: {}, resume: {}, list: {} } },
       }),
-    ).toEqual({ load: true, resume: true, list: true });
+    ).toEqual({ load: true, resume: true, list: true, delete: false });
   });
 
   it('official @agentclientprotocol shape: loadSession NESTED in agentCapabilities, caps say resume but NOT load', () => {
@@ -349,21 +349,31 @@ describe('deriveSessionCaps (resume dialect per adapter family)', () => {
       deriveSessionCaps({
         agentCapabilities: {
           loadSession: true,
-          sessionCapabilities: { resume: {}, list: {}, close: {} },
+          sessionCapabilities: { resume: {}, list: {}, close: {}, delete: {} },
         },
       }),
-    ).toEqual({ load: true, resume: true, list: true });
+    ).toEqual({ load: true, resume: true, list: true, delete: true });
   });
 
   it('dsh shape: resume only — a native resume without replay', () => {
     expect(
       deriveSessionCaps({ agentCapabilities: { sessionCapabilities: { resume: {} } } }),
-    ).toEqual({ load: false, resume: true, list: false });
+    ).toEqual({ load: false, resume: true, list: false, delete: false });
   });
 
   it('no caps at all: nothing offered', () => {
-    expect(deriveSessionCaps({})).toEqual({ load: false, resume: false, list: false });
-    expect(deriveSessionCaps(undefined)).toEqual({ load: false, resume: false, list: false });
+    expect(deriveSessionCaps({})).toEqual({
+      load: false,
+      resume: false,
+      list: false,
+      delete: false,
+    });
+    expect(deriveSessionCaps(undefined)).toEqual({
+      load: false,
+      resume: false,
+      list: false,
+      delete: false,
+    });
   });
 });
 

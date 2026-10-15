@@ -305,6 +305,13 @@ export interface ChatHandlersHandle {
    * connection rejects fast and the caller falls back to spawning.
    */
   liveConnectionFor: (target: string) => AgentConnection | null;
+  /**
+   * #55 — the target's live channels' NATIVE session ids (`acpSessionId`).
+   * The sessions-delete handler refuses these: a session an open channel is
+   * attached to must be closed first (deleting under a live adapter would
+   * leave a zombie channel writing into deleted storage).
+   */
+  liveNativeIdsFor: (target: string) => Set<string>;
   /** Issue #3 — is a prewarmed adapter READY (initialized, alive) for the target? */
   prewarmReady: (target: string) => boolean;
   /** #39 — live channels for the TUI's agents pane (oldest first). */
@@ -378,6 +385,15 @@ export function attachChatHandlers(
       if (s.target === target) found = s.conn;
     }
     return found;
+  };
+
+  /** #55 — see `ChatHandlersHandle.liveNativeIdsFor`. */
+  const liveNativeIdsFor = (target: string): Set<string> => {
+    const ids = new Set<string>();
+    for (const s of sessions.values()) {
+      if (s.target === target) ids.add(s.acpSessionId);
+    }
+    return ids;
   };
 
   const pushHistory = (session: DaemonSession, item: HistoryItem): void => {
@@ -1330,6 +1346,7 @@ export function attachChatHandlers(
 
   return {
     liveConnectionFor,
+    liveNativeIdsFor,
     /** Issue #3 — is a prewarmed adapter READY (initialized, alive) for the target? */
     prewarmReady: (target: string): boolean => prewarmPool.readyKeys().includes(target),
     /** #39 — live channels, oldest first (the TUI's agents pane). */
