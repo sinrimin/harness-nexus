@@ -11,6 +11,9 @@ import {
   providerModelsSchema,
   providerModelConfigWarnings,
   PROVIDER_DEFAULT_BASE_URLS,
+  EXTRA_BODY_BOOLEAN_KEYS,
+  EXTRA_BODY_PRESETS,
+  SERVER_TOOL_PRESETS,
   runtimeConfigSpecSchema,
 } from '../src/index.js';
 
@@ -171,24 +174,48 @@ describe('providerModelsSchema — #51 model registry', () => {
 });
 
 describe('providerModelConfigWarnings — warn, never reject (#51)', () => {
-  it('flags serverTools/extraBody on the wrong api kind (structured codes)', () => {
+  it('flags serverTools only on openai-chat; extraBody on anthropic (#56)', () => {
     expect(
-      providerModelConfigWarnings('anthropic', [
-        { id: 'm1', type: 'chat', serverTools: ['web_search'] },
-        { id: 'm2', type: 'chat', extraBody: { x: 1 } },
+      providerModelConfigWarnings('openai-chat', [
+        { id: 'm1', type: 'chat', serverTools: ['enable_search'] },
       ]),
-    ).toEqual([
-      { code: 'serverToolsIrrelevant', modelId: 'm1' },
-      { code: 'extraBodyIrrelevant', modelId: 'm2' },
-    ]);
+    ).toEqual([{ code: 'serverToolsIrrelevant', modelId: 'm1' }]);
+    expect(
+      providerModelConfigWarnings('anthropic', [{ id: 'm2', type: 'chat', extraBody: { x: 1 } }]),
+    ).toEqual([{ code: 'extraBodyIrrelevant', modelId: 'm2' }]);
   });
 
-  it('stays silent for matching kinds and unset fields', () => {
+  it('stays silent when serverTools ride a wire that supports them (#56)', () => {
     expect(
       providerModelConfigWarnings('openai-responses', [
         { id: 'm1', type: 'chat', serverTools: ['web_search'] },
       ]),
     ).toEqual([]);
-    expect(providerModelConfigWarnings('anthropic', [{ id: 'm2', type: 'chat' }])).toEqual([]);
+    // #56 — the anthropic wire now carries serverTools too (dated types).
+    expect(
+      providerModelConfigWarnings('anthropic', [
+        { id: 'm2', type: 'chat', serverTools: ['web_search_20250305'] },
+      ]),
+    ).toEqual([]);
+    expect(providerModelConfigWarnings('anthropic', [{ id: 'm3', type: 'chat' }])).toEqual([]);
+  });
+});
+
+describe('#56 preset tables — Bailian-baselined, open lists', () => {
+  it('SERVER_TOOL_PRESETS: dated value on anthropic, none on openai-chat', () => {
+    expect(SERVER_TOOL_PRESETS.anthropic).toContain('web_search_20250305');
+    expect(SERVER_TOOL_PRESETS['openai-responses']).toContain('web_search');
+    expect(SERVER_TOOL_PRESETS['openai-chat']).toEqual([]);
+  });
+
+  it('EXTRA_BODY_PRESETS: openai-chat carries the Bailian search keys', () => {
+    expect(EXTRA_BODY_PRESETS['openai-chat']).toContain('enable_search');
+    expect(EXTRA_BODY_PRESETS['openai-chat']).toContain('search_options');
+    expect(EXTRA_BODY_PRESETS.anthropic).toEqual([]);
+    // Boolean keys are a subset of the union of presets (value-editor shape).
+    for (const k of EXTRA_BODY_BOOLEAN_KEYS) {
+      const known = Object.values(EXTRA_BODY_PRESETS).some((keys) => keys.includes(k));
+      expect(known, k).toBe(true);
+    }
   });
 });
