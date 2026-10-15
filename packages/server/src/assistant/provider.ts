@@ -14,9 +14,13 @@ import { PROVIDER_DEFAULT_BASE_URLS } from '@harness-nexus/shared';
  * Api mapping is 1:1 as W16 verified: anthropic→anthropic-messages,
  * openai-chat→openai-completions, openai-responses→openai-responses; baseUrl
  * rides verbatim (null = the kind's official endpoint, the same defaults
- * pi's own catalog uses). `topP`/`extraBody`/`serverTools` ride
- * `samplingParams` — merged into the request body by the OpenAI-compatible
- * adapters and ignored by Anthropic's (the #51 warn-not-reject stance).
+ * pi's own catalog uses). `topP`/`extraBody` ride `samplingParams` — merged
+ * into the request body by the OpenAI-compatible adapters and ignored by
+ * Anthropic's (the #51 warn-not-reject stance). `serverTools` ride a fetch
+ * wrapper (#56) that APPENDS `{type}` entries into the request body's tools
+ * array on the openai-responses and anthropic wires — append, never
+ * replace: pi-ai's samplingParams merge is last-wins Object.assign and
+ * would clobber the agent's own tools (research §4.2).
  */
 
 /** pi-ai api id per provider kind (the subpath modules' wire). */
@@ -104,16 +108,65 @@ export function buildGatewayModel(input: {
   const samplingParams: Record<string, unknown> = {};
   if (entry.topP !== undefined) samplingParams.top_p = entry.topP;
   if (entry.extraBody !== undefined) Object.assign(samplingParams, entry.extraBody);
-  if (entry.serverTools !== undefined && input.kind === 'openai-responses') {
-    samplingParams.tools = entry.serverTools.map((t) => ({ type: t }));
-  }
+
+  // #56 — server tools append into the wire body via the fetch seam (both
+  // pi-ai adapters hand options.fetch to their SDK client). openai-chat has
+  // no tools[]-shaped server tools — nothing to inject there (UI warns).
+  const serverTools =
+    entry.serverTools !== undefined && input.kind !== 'openai-chat' ? entry.serverTools : [];
 
   const streamFn: StreamFn = (m, context, options) =>
     models.streamSimple(m, context, {
       ...(options ?? {}),
       ...(entry.temperature !== undefined ? { temperature: entry.temperature } : {}),
       ...(Object.keys(samplingParams).length > 0 ? { samplingParams } : {}),
+      ...(serverTools.length > 0
+        ? {
+            fetch: serverToolsFetch(
+              serverTools,
+              (options as { fetch?: typeof globalThis.fetch } | undefined)?.fetch ??
+                globalThis.fetch,
+            ),
+          }
+        : {}),
     });
 
   return { model, streamFn };
+}
+
+/**
+ * #56 — append `{type}` entries into a chat-shaped request body's tools
+ * array. Pure: anything that is not a chat body (no `input`/`messages` —
+ * model listings, auth probes) or not an object returns untouched.
+ */
+export function appendServerTools(body: unknown, serverTools: readonly string[]): unknown {
+  if (typeof body !== 'object' || body === null || Array.isArray(body)) return body;
+  const record = body as Record<string, unknown>;
+  if (!('input' in record) && !('messages' in record)) return body;
+  const tools = Array.isArray(record.tools) ? record.tools : [];
+  return { ...record, tools: [...tools, ...serverTools.map((t) => ({ type: t }))] };
+}
+
+/**
+ * #56 — wrap a fetch so chat-request JSON bodies gain the server tools
+ * before hitting the wire. Both pi-ai adapters pass `options.fetch` into
+ * their OpenAI/Anthropic SDK client, which calls it with the serialized
+ * JSON body in `init.body` — the one seam every wire crosses.
+ */
+export function serverToolsFetch(
+  serverTools: readonly string[],
+  inner: typeof globalThis.fetch,
+): typeof globalThis.fetch {
+  return (input, init) => {
+    if (typeof init?.body === 'string') {
+      try {
+        const parsed: unknown = JSON.parse(init.body);
+        const next = appendServerTools(parsed, serverTools);
+        if (next !== parsed) return inner(input, { ...init, body: JSON.stringify(next) });
+      } catch {
+        // not a JSON body — pass through untouched
+      }
+    }
+    return inner(input, init);
+  };
 }

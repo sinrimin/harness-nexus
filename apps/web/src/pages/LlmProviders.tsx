@@ -25,6 +25,7 @@ import {
   PageIntro,
   SortSelect,
   TableSearch,
+  TagCombobox,
   Well,
   tableState,
 } from '@/components/kit';
@@ -58,7 +59,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { Textarea } from '@/components/ui/textarea';
+import { Switch } from '@/components/ui/switch';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -70,6 +71,9 @@ import { FormDialog } from '@/components/ui/form-dialog';
 import {
   HarnessNexusError,
   providerModelConfigWarnings,
+  EXTRA_BODY_BOOLEAN_KEYS,
+  EXTRA_BODY_PRESETS,
+  SERVER_TOOL_PRESETS,
   type CredentialView,
   type LlmProviderView,
   type ProviderApiKind,
@@ -88,6 +92,17 @@ const PROVIDER_SPEC: ListQuerySpec = {
 };
 
 /**
+ * #56 — one extraBody entry's editor state: the key (a TagCombobox value)
+ * plus its value editor. Boolean keys (EXTRA_BODY_BOOLEAN_KEYS) keep `bool`;
+ * every other key keeps a raw JSON `text` parsed at the save boundary.
+ */
+interface ExtraBodyEntry {
+  key: string;
+  text: string;
+  bool: boolean;
+}
+
+/**
  * #51 — one editable registry row. Numeric and JSON fields stay STRINGS while
  * typing (clearing "0.7" mid-edit must not collapse to a number); they are
  * parsed into the wire shape only at the save boundary (`cleanRow`).
@@ -101,8 +116,8 @@ interface ModelRow {
   vision: boolean;
   temperature: string;
   topP: string;
-  serverTools: string;
-  extraBody: string;
+  serverTools: string[];
+  extraBody: ExtraBodyEntry[];
 }
 
 /** The wire shape after parsing — `type` always explicit, unset keys omitted. */
@@ -117,8 +132,8 @@ const EMPTY_MODEL_ROW: ModelRow = {
   vision: false,
   temperature: '',
   topP: '',
-  serverTools: '',
-  extraBody: '',
+  serverTools: [],
+  extraBody: [],
 };
 
 function rowFromModel(m: ProviderModelConfig): ModelRow {
@@ -131,8 +146,12 @@ function rowFromModel(m: ProviderModelConfig): ModelRow {
     vision: m.vision === true,
     temperature: m.temperature !== undefined ? String(m.temperature) : '',
     topP: m.topP !== undefined ? String(m.topP) : '',
-    serverTools: (m.serverTools ?? []).join(', '),
-    extraBody: m.extraBody !== undefined ? JSON.stringify(m.extraBody, null, 2) : '',
+    serverTools: m.serverTools ?? [],
+    extraBody: Object.entries(m.extraBody ?? {}).map(([key, v]) => ({
+      key,
+      bool: EXTRA_BODY_BOOLEAN_KEYS.has(key) && v === true,
+      text: EXTRA_BODY_BOOLEAN_KEYS.has(key) || v === undefined ? '' : (JSON.stringify(v) ?? ''),
+    })),
   };
 }
 
@@ -144,22 +163,46 @@ function optionalNumber(v: string): number | undefined {
   return Number.isFinite(n) ? n : undefined;
 }
 
-/** Object-shaped JSON only — a bare string/number/array is not a request body. */
-function parseExtraBody(text: string): {
+/**
+ * #56 — parse the extraBody entries into the wire record at the save
+ * boundary. Boolean keys contribute their toggle; every other key parses its
+ * JSON text. An invalid/empty JSON value drops THAT key — flagged inline via
+ * `invalid`, never saved — while the rest still goes through. Empty keys
+ * (a tag mid-edit) and duplicate keys are skipped silently.
+ */
+function cleanExtraBody(entries: ExtraBodyEntry[]): {
   value: Record<string, unknown> | undefined;
   invalid: boolean;
 } {
-  const t = text.trim();
-  if (t === '') return { value: undefined, invalid: false };
-  try {
-    const parsed: unknown = JSON.parse(t);
-    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
-      return { value: undefined, invalid: true };
+  const out: Record<string, unknown> = {};
+  const seen = new Set<string>();
+  let invalid = false;
+  for (const e of entries) {
+    const key = e.key.trim();
+    if (key === '' || seen.has(key)) continue;
+    seen.add(key);
+    if (EXTRA_BODY_BOOLEAN_KEYS.has(key)) {
+      out[key] = e.bool;
+    } else {
+      const t = e.text.trim();
+      if (t === '') {
+        invalid = true;
+        continue;
+      }
+      try {
+        out[key] = JSON.parse(t) as unknown;
+      } catch {
+        invalid = true;
+      }
     }
-    return { value: parsed as Record<string, unknown>, invalid: false };
-  } catch {
-    return { value: undefined, invalid: true };
   }
+  return { value: Object.keys(out).length > 0 ? out : undefined, invalid };
+}
+
+/** #56 — reconcile entry editor state with the keys the combobox now holds. */
+function syncExtraBodyEntries(existing: ExtraBodyEntry[], keys: string[]): ExtraBodyEntry[] {
+  const byKey = new Map(existing.map((e) => [e.key, e]));
+  return keys.map((k) => byKey.get(k) ?? { key: k, text: '', bool: false });
 }
 
 /**
@@ -175,14 +218,7 @@ function cleanRow(r: ModelRow, extraBody: Record<string, unknown> | undefined): 
     temperature: optionalNumber(r.temperature),
     topP: optionalNumber(r.topP),
   };
-  const tools = [
-    ...new Set(
-      r.serverTools
-        .split(',')
-        .map((s) => s.trim())
-        .filter((s) => s !== ''),
-    ),
-  ];
+  const tools = [...new Set(r.serverTools.map((s) => s.trim()).filter((s) => s !== ''))];
   return {
     id,
     type: r.type,
@@ -466,11 +502,14 @@ export function LlmProvidersPage() {
  * One registry row, reflowed as TWO input lines (one line never fits the seven
  * controls at dialog width — the id field measured 65px before the rework):
  * identity (model id + display name) then figures (type / context / max
- * output / vision), plus an "advanced" disclosure whose api-gated fields only
- * render where the server actually applies them — serverTools is honored by
- * the Responses stream only, extraBody by both OpenAI-compatible adapters
- * (never Anthropic's; see assistant/provider.ts samplingParams). Module
- * scope, never defined inline.
+ * output / vision), plus an "advanced" disclosure. #56: serverTools and the
+ * extraBody KEYS are TagComboboxes with per-api presets (SERVER_TOOL_PRESETS
+ * / EXTRA_BODY_PRESETS, Bailian-baselined) — typed custom values are the
+ * gateway-compat escape hatch. serverTools renders on every kind (openai-chat
+ * gets a hint: that wire has no tools[] surface); extraBody renders on the
+ * OpenAI-compatible kinds only (Anthropic's adapter ignores samplingParams
+ * entirely — the shared warning still covers stored values after an api
+ * switch).
  */
 function ModelRowCard({
   index,
@@ -483,7 +522,7 @@ function ModelRowCard({
 }: {
   /** Row position — used only to build unique control ids. */
   index: number;
-  /** The provider's api kind — gates the advanced fields (see above). */
+  /** The provider's api kind — drives the preset lists (see above). */
   api: ProviderApiKind;
   row: ModelRow;
   duplicate: boolean;
@@ -492,7 +531,6 @@ function ModelRowCard({
   onRemove: () => void;
 }) {
   const { t } = useI18n();
-  const showServerTools = api === 'openai-responses';
   const showExtraBody = api !== 'anthropic';
   return (
     <div className="relative flex flex-col gap-3 rounded-md border p-3">
@@ -625,33 +663,85 @@ function ModelRowCard({
                 spellCheck={false}
               />
             </div>
-            {showServerTools ? (
-              <div className="grid gap-2">
-                <Label htmlFor={`llmp-mtools-${index}`}>{t('llmProviders.serverToolsLabel')}</Label>
-                <Input
-                  id={`llmp-mtools-${index}`}
-                  value={row.serverTools}
-                  onChange={(e) => onChange({ serverTools: e.target.value })}
-                  placeholder={t('llmProviders.serverToolsPlaceholder')}
-                  className="font-mono text-xs"
-                  autoComplete="off"
-                  spellCheck={false}
-                />
-              </div>
-            ) : null}
+            <div className="grid gap-2">
+              <Label htmlFor={`llmp-mtools-${index}`}>{t('llmProviders.serverToolsLabel')}</Label>
+              <TagCombobox
+                id={`llmp-mtools-${index}`}
+                value={row.serverTools}
+                options={SERVER_TOOL_PRESETS[api]}
+                onChange={(serverTools) => onChange({ serverTools })}
+                placeholder={t('llmProviders.tagComboboxPlaceholder')}
+                addLabel={(v) => t('llmProviders.tagComboboxAdd', { value: v })}
+                removeLabel={(v) => t('llmProviders.tagComboboxRemove', { value: v })}
+              />
+              {api === 'openai-chat' ? (
+                <p className="text-muted-foreground text-xs">
+                  {t('llmProviders.serverToolsChatHint')}
+                </p>
+              ) : null}
+            </div>
             {showExtraBody ? (
               <div className="grid gap-2 sm:col-span-2">
                 <Label htmlFor={`llmp-mextra-${index}`}>{t('llmProviders.extraBodyLabel')}</Label>
-                <Textarea
+                <TagCombobox
                   id={`llmp-mextra-${index}`}
-                  value={row.extraBody}
-                  onChange={(e) => onChange({ extraBody: e.target.value })}
-                  placeholder={t('llmProviders.extraBodyPlaceholder')}
-                  className="min-h-16 font-mono text-xs"
-                  autoComplete="off"
-                  spellCheck={false}
-                  aria-invalid={invalidExtraBody || undefined}
+                  value={row.extraBody.map((e) => e.key)}
+                  options={EXTRA_BODY_PRESETS[api]}
+                  onChange={(keys) =>
+                    onChange({ extraBody: syncExtraBodyEntries(row.extraBody, keys) })
+                  }
+                  placeholder={t('llmProviders.tagComboboxPlaceholder')}
+                  addLabel={(v) => t('llmProviders.tagComboboxAdd', { value: v })}
+                  removeLabel={(v) => t('llmProviders.tagComboboxRemove', { value: v })}
                 />
+                {row.extraBody.length > 0 ? (
+                  <div className="grid gap-1.5">
+                    {row.extraBody.map((e, j) => (
+                      <div
+                        key={e.key}
+                        className="grid gap-1.5 sm:grid-cols-[minmax(0,220px)_minmax(0,1fr)] sm:items-center"
+                      >
+                        <span
+                          className="role-data-sm truncate font-mono text-xs"
+                          title={e.key}
+                          data-extra-key={e.key}
+                        >
+                          {e.key}
+                        </span>
+                        {EXTRA_BODY_BOOLEAN_KEYS.has(e.key) ? (
+                          <div className="flex h-(--control-h) items-center">
+                            <Switch
+                              checked={e.bool}
+                              onCheckedChange={(v) =>
+                                onChange({
+                                  extraBody: row.extraBody.map((x, k) =>
+                                    k === j ? { ...x, bool: v } : x,
+                                  ),
+                                })
+                              }
+                              aria-label={e.key}
+                            />
+                          </div>
+                        ) : (
+                          <Input
+                            value={e.text}
+                            onChange={(ev) =>
+                              onChange({
+                                extraBody: row.extraBody.map((x, k) =>
+                                  k === j ? { ...x, text: ev.target.value } : x,
+                                ),
+                              })
+                            }
+                            placeholder={t('llmProviders.extraBodyValuePlaceholder')}
+                            className="font-mono text-xs"
+                            autoComplete="off"
+                            spellCheck={false}
+                          />
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
                 {invalidExtraBody ? (
                   <p className="text-danger text-xs">{t('llmProviders.extraBodyInvalid')}</p>
                 ) : null}
@@ -730,7 +820,7 @@ function ProviderForm({
 
   /** The exact save payload (and warnings input): parsed, empty-id rows dropped. */
   const { cleaned, warnings, extraInvalid } = useMemo(() => {
-    const parsed = rows.map((r) => parseExtraBody(r.extraBody));
+    const parsed = rows.map((r) => cleanExtraBody(r.extraBody));
     const cleaned = rows
       .map((r, i) => cleanRow(r, parsed[i]?.value))
       .filter((c): c is CleanModel => c !== null);

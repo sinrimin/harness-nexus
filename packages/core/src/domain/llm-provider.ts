@@ -28,7 +28,11 @@ export interface ProviderModelConfig {
   // —— advanced ——
   temperature?: number | undefined;
   topP?: number | undefined;
-  /** openai-responses only: server-side tools (web_search, file_search, …). */
+  /**
+   * Server-side tool types appended verbatim into the wire request's tools
+   * array (#56). Meaningful on openai-responses and anthropic (the dated
+   * `web_search_20250305`); openai-chat has no tools[] surface.
+   */
   serverTools?: string[] | undefined;
   /** openai-compatible only: merged verbatim into the request body. */
   extraBody?: Record<string, unknown> | undefined;

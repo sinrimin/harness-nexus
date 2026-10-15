@@ -83,10 +83,13 @@ export const providerModelConfigSchema = z.object({
   temperature: z.number().min(0).max(2).optional(),
   topP: z.number().min(0).max(1).optional(),
   /**
-   * ONLY meaningful for api='openai-responses' — the Responses API's
-   * server-side tools (web_search / file_search / code_interpreter /
-   * image_generation / mcp …). Deliberately an OPEN string list: the catalog
-   * evolves server-side, an enum here would rot.
+   * Server-side tool entries, appended VERBATIM as `{type}` into the wire
+   * request's tools array (#56 — append, never replace). Meaningful for
+   * api='openai-responses' (web_search / web_extractor / code_interpreter …)
+   * AND api='anthropic' (the dated `web_search_20250305`); openai-chat has no
+   * tools[]-shaped server tools (Bailian's chat-wire search rides extraBody).
+   * Deliberately an OPEN string list: the catalog evolves server-side, an
+   * enum here would rot — the curated presets live in SERVER_TOOL_PRESETS.
    */
   serverTools: z.array(z.string().min(1).max(64)).max(16).optional(),
   /**
@@ -98,6 +101,41 @@ export const providerModelConfigSchema = z.object({
 });
 export type ProviderModelConfigInput = z.input<typeof providerModelConfigSchema>;
 export type ProviderModelConfig = z.infer<typeof providerModelConfigSchema>;
+
+/**
+ * #56 — curated server-tool presets per api kind, baselined on Alibaba
+ * Bailian/Model Studio (2026-10). Open lists: the web combobox offers these
+ * AND accepts arbitrary typed values (the gateway-compat escape hatch — a
+ * future dated alias, a vendor-specific tool name). The anthropic preset IS
+ * the dated wire value; no alias mapping exists anywhere.
+ */
+export const SERVER_TOOL_PRESETS: Record<ProviderApiKind, readonly string[]> = {
+  'openai-chat': [],
+  'openai-responses': ['web_search', 'web_extractor', 'code_interpreter'],
+  anthropic: ['web_search_20250305'],
+};
+
+/**
+ * #56 — curated extraBody KEY presets per api kind (same Bailian baseline).
+ * On the openai-chat wire this field is the primary carrier for
+ * Bailian-style search (`enable_search` + `search_options`), not merely an
+ * escape hatch.
+ */
+export const EXTRA_BODY_PRESETS: Record<ProviderApiKind, readonly string[]> = {
+  'openai-chat': ['enable_search', 'search_options', 'enable_text_image_mixed', 'enable_thinking'],
+  'openai-responses': ['enable_thinking'],
+  anthropic: [],
+};
+
+/**
+ * #56 — extraBody keys whose Bailian value is a plain boolean; the web
+ * value editor renders these as toggles (everything else gets a JSON input).
+ */
+export const EXTRA_BODY_BOOLEAN_KEYS: ReadonlySet<string> = new Set([
+  'enable_search',
+  'enable_text_image_mixed',
+  'enable_thinking',
+]);
 
 /**
  * A provider's model registry — ids unique within the row (refine gives the
@@ -131,7 +169,9 @@ export function providerModelConfigWarnings(
 ): ProviderModelConfigWarning[] {
   const warnings: ProviderModelConfigWarning[] = [];
   for (const m of models) {
-    if (m.serverTools !== undefined && api !== 'openai-responses') {
+    // #56 — serverTools now ride BOTH openai-responses and anthropic wires
+    // (append-injection); openai-chat alone has no tools[] surface.
+    if (m.serverTools !== undefined && api === 'openai-chat') {
       warnings.push({ code: 'serverToolsIrrelevant', modelId: m.id });
     }
     if (m.extraBody !== undefined && api === 'anthropic') {

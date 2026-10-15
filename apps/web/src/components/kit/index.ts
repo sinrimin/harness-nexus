@@ -25,4 +25,5 @@ export { CommandLine } from './command-line';
 export { ConfirmDialog } from './confirm-dialog';
 export { PageIntro } from './page-intro';
 export { Chip } from './chip';
+export { TagCombobox } from './tag-combobox';
 export { Region } from './region';
