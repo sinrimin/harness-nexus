@@ -382,6 +382,16 @@ const OPENCODE_SDK: Record<RuntimeConfigSpec['api'], string> = {
 const OPENCODE_FALLBACK_MAX_OUTPUT = 8192;
 
 /**
+ * opencode 1.18.31's config schema requires BOTH `limit.output` AND
+ * `limit.context` on every `provider.<id>.models.<m>` entry (rig-found
+ * 2026-10-15: a push with only `output` answered "Missing key
+ * …models.<m>.limit.context"). Registry entries without a curated
+ * contextWindow get this conservative fallback — same stance as the output
+ * fallback, never a guessed-high value.
+ */
+const OPENCODE_FALLBACK_CONTEXT = 128_000;
+
+/**
  * The AI SDK baseURL convention (rig-found 2026-09-16): `@ai-sdk/anthropic`
  * and `@ai-sdk/openai-compatible` both expect the base to END WITH `/v1`
  * (their defaults do) and append only the method path (`/messages`,
@@ -443,7 +453,7 @@ function applyOpencodeConfig(spec: RuntimeConfigSpec, secret: string, homeDir: s
               ...(e?.displayName !== undefined ? { name: e.displayName } : {}),
               limit: {
                 output: e?.maxOutputTokens ?? OPENCODE_FALLBACK_MAX_OUTPUT,
-                ...(e?.contextWindow !== undefined ? { context: e.contextWindow } : {}),
+                context: e?.contextWindow ?? OPENCODE_FALLBACK_CONTEXT,
               },
             },
           ];
