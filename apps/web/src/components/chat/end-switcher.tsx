@@ -42,7 +42,7 @@ function endKey(end: ChatEnd): string {
   return end === 'assistant' ? 'assistant' : `agent:${end.agentInstanceId}`;
 }
 
-export function EndSwitcher({ current }: { current: ChatEnd }) {
+export function EndSwitcher({ current, onPick }: { current: ChatEnd; onPick?: () => void }) {
   const { logout } = useAuth();
   const { t } = useI18n();
   const navigate = useNavigate();
@@ -96,6 +96,7 @@ export function EndSwitcher({ current }: { current: ChatEnd }) {
 
   function pick(end: ChatEnd): void {
     setOpen(false);
+    onPick?.();
     if (endKey(end) === endKey(current)) return;
     navigate(end === 'assistant' ? '/chat/assistants' : `/chat/agents/${end.agentInstanceId}`);
   }
