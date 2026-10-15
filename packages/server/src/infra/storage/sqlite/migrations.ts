@@ -447,6 +447,15 @@ ALTER TABLE assistant_configs ADD COLUMN mcp_server_ids TEXT;
 ALTER TABLE assistant_configs ADD COLUMN skill_resource_ids TEXT;
     `,
   },
+  {
+    version: 22,
+    description: 'issue #52 M3 — per-config daily token budget',
+    sql: `
+-- NULL = unlimited. Summed over the config's assistant turns per UTC day;
+-- a cost guard enforced at turn start.
+ALTER TABLE assistant_configs ADD COLUMN daily_token_budget INTEGER;
+    `,
+  },
 ] as const;
 
 /**

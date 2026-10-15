@@ -40,6 +40,7 @@ import { ChatStream } from '@/components/chat/chat-stream.js';
 import { ChannelTabs } from '@/components/chat/channel-tabs.js';
 import { EndSwitcher } from '@/components/chat/end-switcher.js';
 import { useChatChannels } from '@/components/chat/use-chat-channels.js';
+import { useAssistantSessions } from '@/components/chat/use-assistant-sessions.js';
 import {
   Composer,
   queuedPreview,
@@ -480,6 +481,8 @@ export function AgentSessionPage() {
   const [conversation, dispatch] = useReducer(fold, undefined, createFoldState);
   /** 9 W11 B — the tab strip's live-channel truth (snapshot pushes). */
   const channels = useChatChannels();
+  /** #52 M3 — the user's busy assistant turns, as tabs ahead of the channels. */
+  const assistantSessions = useAssistantSessions();
   /** Phase carried by an open ack (consumed by the sessionId effect). */
   const pendingPhaseRef = useRef<'ready' | null>(null);
   /**
@@ -1057,6 +1060,11 @@ export function AgentSessionPage() {
           channels={channels}
           activeSessionId={sessionId}
           onActivate={activateChannel}
+          assistantBusy={assistantSessions.filter((s) => s.busy)}
+          onActivateAssistant={(s) => navigate(`/chat/assistants?s=${s.id}`)}
+          onStopAssistant={(s) => {
+            void emitWithAck('assistant:turn.cancel', { sessionId: s.id });
+          }}
           onClose={closeChannelTab}
           onCleanup={(idleOnly) => cleanupChannels(idleOnly)}
         />

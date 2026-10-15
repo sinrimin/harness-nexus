@@ -283,6 +283,19 @@ export function buildAssistantTools(
 }
 
 /**
+ * The MUTATING tools — every call requires explicit user approval mid-turn
+ * (M3): the runner routes these through the approval seam, which surfaces an
+ * ACP-shaped `permission_request` card and waits for the browser's answer or
+ * the timeout (both deny). Reads never gate.
+ */
+export const WRITE_TOOLS: ReadonlySet<string> = new Set([
+  'resources_create',
+  'resources_update',
+  'profiles_create',
+  'profiles_update',
+]);
+
+/**
  * Tool names per group — STATIC (the runner's `beforeToolCall` allowlist and
  * the audit trail key off it; `buildAssistantTools` is the single builder,
  * this index is its name shadow).

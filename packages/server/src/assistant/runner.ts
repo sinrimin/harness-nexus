@@ -6,7 +6,7 @@ import { decryptSecret, generateId } from '../infra/crypto.js';
 import { findCredentialForOwner } from '../infra/credential-scope.js';
 import { buildGatewayModel, type GatewayModel } from './provider.js';
 import { rowsToPiMessages, piStopToWire } from './history.js';
-import { buildAssistantTools, type AssistantToolDeps } from './tools.js';
+import { buildAssistantTools, WRITE_TOOLS, type AssistantToolDeps } from './tools.js';
 import { buildTurnExtras, type AssistantMcpDeps } from './context.js';
 import { DEFAULT_ASSISTANT_SYSTEM_PROMPT } from './prompt.js';
 
@@ -122,6 +122,16 @@ export function startAssistantTurn(
     append: (row: AssistantMessageRow) => Promise<void>;
     /** Called with the final session stamp fields when the turn settles. */
     settle: (summary: { lastMessageAt: string; title?: string }) => Promise<void>;
+    /**
+     * M3 — the write-tool approval seam. Absent (tests, default) = writes run
+     * ungated; the realtime layer supplies one that surfaces a
+     * `permission_request` card and resolves with the user's answer.
+     */
+    requestApproval?: (toolCall: {
+      toolCallId: string;
+      toolName: string;
+      args: unknown;
+    }) => Promise<boolean>;
   },
 ): RunningTurn {
   const { session, config, emit } = input;
@@ -136,6 +146,31 @@ export function startAssistantTurn(
       throw new TurnSetupError('The session owner is no longer active');
     }
     const principal = { userId: owner.id, role: owner.role };
+
+    // M3 — the config's daily token budget (UTC day, summed over its
+    // sessions' assistant turns). A cost guard, not a security boundary.
+    if (config.dailyTokenBudget !== undefined) {
+      const dayStart = new Date();
+      dayStart.setUTCHours(0, 0, 0, 0);
+      const since = dayStart.toISOString();
+      const sessions = await deps.uow.assistants.listSessions(session.ownerId, config.id);
+      let spent = 0;
+      for (const s of sessions) {
+        const activeAt = s.lastMessageAt ?? s.updatedAt;
+        if (activeAt < since) continue;
+        const rows = await deps.uow.assistants.listMessages(s.id);
+        for (const r of rows) {
+          if (r.type === 'assistant' && r.usage !== undefined) {
+            spent += (r.usage.inputTokens ?? 0) + (r.usage.outputTokens ?? 0);
+          }
+        }
+      }
+      if (spent >= config.dailyTokenBudget) {
+        throw new TurnSetupError(
+          `This assistant's daily token budget is exhausted (${String(spent)} / ${String(config.dailyTokenBudget)} tokens today, UTC). Raise or clear the budget in its config to continue.`,
+        );
+      }
+    }
 
     const provider = await deps.uow.llmProviders.findById(config.providerId);
     if (provider === null) {
@@ -185,12 +220,27 @@ export function startAssistantTurn(
         messages: rowsToPiMessages(input.rows, gateway.model.api, gateway.model.id),
       },
       streamFn: gateway.streamFn,
-      beforeToolCall: async ({ toolCall }) => {
+      beforeToolCall: async ({ toolCall, args }) => {
         if (!allowed.has(toolCall.name)) {
           return {
             block: true,
             reason: `tool "${toolCall.name}" is not enabled on this assistant`,
           };
+        }
+        // M3 — mutating tools need the user's explicit approval mid-turn; a
+        // denied or timed-out call blocks with a reason the model can read.
+        if (WRITE_TOOLS.has(toolCall.name) && input.requestApproval !== undefined) {
+          const okToRun = await input.requestApproval({
+            toolCallId: toolCall.id,
+            toolName: toolCall.name,
+            args,
+          });
+          if (!okToRun) {
+            return {
+              block: true,
+              reason: 'the user declined this write operation',
+            };
+          }
         }
         return undefined;
       },

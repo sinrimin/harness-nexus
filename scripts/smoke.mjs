@@ -3457,6 +3457,23 @@ const asstM2Id = r.json.assistant.id;
 expect('view echoes mcpServerIds', JSON.stringify(r.json.assistant.mcpServerIds), JSON.stringify([asstMcpId]));
 expect('view echoes skillResourceIds', JSON.stringify(r.json.assistant.skillResourceIds), JSON.stringify([asstSkillId]));
 
+// [#52 M3] — the daily token budget: set, echo, clear back to null.
+r = await req('PATCH', `/api/assistants/${asstM2Id}`, {
+  token: userToken,
+  body: { dailyTokenBudget: 12345 },
+});
+expect('budget set', r.json.assistant.dailyTokenBudget, 12345);
+r = await req('PATCH', `/api/assistants/${asstM2Id}`, {
+  token: userToken,
+  body: { dailyTokenBudget: null },
+});
+expect('budget cleared', r.json.assistant.dailyTokenBudget, null);
+r = await req('PATCH', `/api/assistants/${asstM2Id}`, {
+  token: userToken,
+  body: { dailyTokenBudget: 0 },
+});
+expect('non-positive budget rejected', r.status, 400);
+
 // A non-skill resource is refused.
 r = await req('POST', '/api/resources', {
   token: userToken,

@@ -102,6 +102,16 @@ export function AssistantSessionPage() {
     void refreshAssistants();
   }, [refreshAssistants]);
 
+  // ?s=<id> — a busy-assistant tab hand-off from another page: open that
+  // session once the configs loaded (the open itself validates ownership).
+  const sParam = searchParams.get('s');
+  useEffect(() => {
+    if (sParam === null || !loaded) return;
+    setSearchParams({}, { replace: true });
+    void openSession(sParam);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sParam, loaded]);
+
   // The 端's default agent: ?a= (a picker hand-off) → the pinned one → the
   // first config. Persisted so the next visit opens where the user left off;
   // a STALE pin (deleted config, another server's data) falls back to the
@@ -397,7 +407,14 @@ export function AssistantSessionPage() {
       <div className="flex h-full min-h-0 flex-col">
         <ChannelTabs
           channels={channels}
-          activeSessionId=""
+          activeSessionId={sessionId}
+          assistantBusy={sessions.filter((s) => s.busy)}
+          onActivateAssistant={(s) => {
+            if (s.id !== sessionId) void openSession(s.id);
+          }}
+          onStopAssistant={(s) => {
+            void emitWithAck('assistant:turn.cancel', { sessionId: s.id });
+          }}
           onActivate={(ch) => navigate(`/chat/agents/${ch.agentInstanceId}?ch=${ch.sessionId}`)}
           onClose={(ch) =>
             void emitWithAck('chat:session.close', { sessionId: ch.sessionId, reason: 'user' })
@@ -478,7 +495,13 @@ export function AssistantSessionPage() {
             <ChatStream
               state={conversation}
               cwd={undefined}
-              onPermissionRespond={() => undefined}
+              onPermissionRespond={(requestId, optionId) => {
+                void emitWithAck('assistant:permission.respond', {
+                  sessionId,
+                  requestId,
+                  ...(optionId !== undefined ? { optionId } : {}),
+                });
+              }}
               onElicitationRespond={() => undefined}
             />
 

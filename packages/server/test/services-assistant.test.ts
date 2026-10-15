@@ -151,11 +151,13 @@ describe('#52 assistant service', () => {
       code: 'ASSISTANT_NOT_FOUND',
     });
 
-    // s2 has the newer activity → listed first.
+    // s2 has the newer activity → listed first. (Relative to the wall clock:
+    // a fixed date crossed by midnight made this flip.)
+    const ahead = new Date(Date.now() + 60_000).toISOString();
     await uow.assistants.saveSession({
       ...s2,
-      lastMessageAt: '2026-10-15T00:00:00.000Z',
-      updatedAt: '2026-10-15T00:00:00.000Z',
+      lastMessageAt: ahead,
+      updatedAt: ahead,
     });
     const sessions = await listAssistantSessions({ uow }, owner);
     expect(sessions.map((s) => s.id)).toEqual([s2.id, s1.id]);

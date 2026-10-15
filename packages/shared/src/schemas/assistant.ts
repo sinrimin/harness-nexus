@@ -53,6 +53,8 @@ export const assistantConfigCreateSchema = z.object({
   /** M2 — full replace; visibility validated in the service. */
   mcpServerIds: z.array(z.string().min(1).max(64)).max(32).default([]),
   skillResourceIds: z.array(z.string().min(1).max(64)).max(64).default([]),
+  /** M3 — null/unset = unlimited. */
+  dailyTokenBudget: z.number().int().positive().max(2_000_000_000).nullable().optional(),
 });
 export type AssistantConfigCreateInput = z.input<typeof assistantConfigCreateSchema>;
 
@@ -67,6 +69,8 @@ export const assistantConfigUpdateSchema = z
     enabledToolGroups: z.array(assistantToolGroupSchema).max(16).optional(),
     mcpServerIds: z.array(z.string().min(1).max(64)).max(32).optional(),
     skillResourceIds: z.array(z.string().min(1).max(64)).max(64).optional(),
+    /** M3 — `null` clears back to unlimited. */
+    dailyTokenBudget: z.number().int().positive().max(2_000_000_000).nullable().optional(),
   })
   .refine((v) => Object.keys(v).length > 0, { message: 'empty update' });
 export type AssistantConfigUpdateInput = z.input<typeof assistantConfigUpdateSchema>;
@@ -82,6 +86,7 @@ export const assistantConfigViewSchema = z.object({
   enabledToolGroups: z.array(assistantToolGroupSchema),
   mcpServerIds: z.array(z.string()),
   skillResourceIds: z.array(z.string()),
+  dailyTokenBudget: z.number().int().positive().nullable(),
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),
 });

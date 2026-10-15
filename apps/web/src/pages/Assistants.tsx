@@ -62,6 +62,8 @@ interface Draft {
   enabledToolGroups: string[];
   mcpServerIds: string[];
   skillResourceIds: string[];
+  /** '' = unlimited (null on the wire). */
+  dailyTokenBudget: string;
 }
 
 const EMPTY_DRAFT: Draft = {
@@ -73,6 +75,7 @@ const EMPTY_DRAFT: Draft = {
   enabledToolGroups: [...ASSISTANT_TOOL_GROUPS],
   mcpServerIds: [],
   skillResourceIds: [],
+  dailyTokenBudget: '',
 };
 
 export function AssistantsPage() {
@@ -145,6 +148,7 @@ export function AssistantsPage() {
       enabledToolGroups: [...a.enabledToolGroups],
       mcpServerIds: [...(a.mcpServerIds ?? [])],
       skillResourceIds: [...(a.skillResourceIds ?? [])],
+      dailyTokenBudget: a.dailyTokenBudget !== null ? String(a.dailyTokenBudget) : '',
     });
     setEditing(a);
     setCreating(true);
@@ -165,7 +169,19 @@ export function AssistantsPage() {
         enabledToolGroups: draft.enabledToolGroups as (typeof ASSISTANT_TOOL_GROUPS)[number][],
         mcpServerIds: draft.mcpServerIds,
         skillResourceIds: draft.skillResourceIds,
+        ...(draft.dailyTokenBudget.trim() !== ''
+          ? { dailyTokenBudget: Number(draft.dailyTokenBudget) }
+          : {}),
       };
+      const budgetNum = Number(draft.dailyTokenBudget);
+      if (
+        draft.dailyTokenBudget.trim() !== '' &&
+        (!Number.isInteger(budgetNum) || budgetNum <= 0)
+      ) {
+        toast.error(t('assistants.budgetHint'));
+        setBusy(false);
+        return;
+      }
       if (editing !== null) {
         await withAuthGuard(
           () =>
@@ -173,6 +189,8 @@ export function AssistantsPage() {
               ...base,
               ...(draft.description.trim() === '' ? { description: null } : {}),
               ...(draft.systemPromptOverride.trim() === '' ? { systemPromptOverride: null } : {}),
+              // clearing the field clears the budget (null = unlimited)
+              ...(draft.dailyTokenBudget.trim() === '' ? { dailyTokenBudget: null } : {}),
             }),
           logout,
         );
@@ -486,6 +504,18 @@ export function AssistantsPage() {
                 })}
               </div>
             )}
+          </Field>
+          <Field label={t('assistants.budgetLabel')} hint={t('assistants.budgetHint')}>
+            <Input
+              type="number"
+              min={1}
+              step={1}
+              value={draft.dailyTokenBudget}
+              autoComplete="off"
+              placeholder={t('assistants.budgetPlaceholder')}
+              onChange={(e) => setDraft((d) => ({ ...d, dailyTokenBudget: e.target.value }))}
+              className="max-w-48"
+            />
           </Field>
           <Field label={t('assistants.sectionPrompt')} hint={t('assistants.promptHint')}>
             <Textarea

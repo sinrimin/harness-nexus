@@ -680,6 +680,8 @@ export class HarnessNexusClient {
     /** M2 — full replace; visibility validated server-side. */
     mcpServerIds?: string[];
     skillResourceIds?: string[];
+    /** M3 — null/unset = unlimited. */
+    dailyTokenBudget?: number | null;
   }): Promise<{ assistant: AssistantConfigView }> {
     return this.request('POST', '/api/assistants', input);
   }
@@ -699,6 +701,8 @@ export class HarnessNexusClient {
       enabledToolGroups?: AssistantToolGroup[];
       mcpServerIds?: string[];
       skillResourceIds?: string[];
+      /** M3 — `null` clears back to unlimited. */
+      dailyTokenBudget?: number | null;
     },
   ): Promise<{ assistant: AssistantConfigView }> {
     return this.request('PATCH', `/api/assistants/${id}`, input);

@@ -107,6 +107,7 @@ const en = {
   evicted: 'This channel was closed to make room for a newer one — reopen the session to continue.',
   // ---- 9 W11 B: live-channel tabs ----
   tabCloseAria: 'Close channel {id}',
+  tabStopAssistant: 'Stop this assistant turn ({id})',
   tabDeferred: 'finishing',
   tabIdleTitle: 'Idle since the last turn ended',
   tabsCleanupAll: 'Close all (busy ones finish first)',
@@ -255,6 +256,7 @@ const zh: typeof en = {
   evicted: '此通道已为更新的会话让位而被关闭——重新打开该会话即可继续。',
   // ---- 9 W11 B: live-channel tabs ----
   tabCloseAria: '关闭通道 {id}',
+  tabStopAssistant: '停止该助理回合（{id}）',
   tabDeferred: '收尾中',
   tabIdleTitle: '自上回合结束起闲置',
   tabsCleanupAll: '关闭全部（忙的收尾后关闭）',
