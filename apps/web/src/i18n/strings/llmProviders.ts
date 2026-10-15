@@ -13,6 +13,7 @@ const en = {
   addTitle: 'Add provider',
   addDesc: 'The route is stored here; the key stays in the referenced credential.',
   editTitle: 'Edit provider',
+  namePlaceholder: 'e.g. team-gateway',
   apiLabel: 'API kind',
   apiHint:
     'The kind must match the Agent — Claude Code: anthropic · Codex: openai-responses · DeepSeek: anthropic / openai-chat.',
@@ -61,6 +62,8 @@ const en = {
   extraBodyPlaceholder: '{"key": "value"}',
   extraBodyInvalid: 'Invalid JSON — this field is not saved',
   modelsWarningsTitle: 'Warnings',
+  warnServerTools: 'Model "{id}": server tools only apply to openai-responses providers.',
+  warnExtraBody: 'Model "{id}": extra request body only applies to OpenAI-compatible providers.',
   duplicateModelsError: 'Duplicate model ids: {ids}',
 };
 
@@ -78,6 +81,7 @@ const zh: typeof en = {
   addTitle: '添加供应商',
   addDesc: '路由存储于此；密钥仍存放在所引用的凭据中。',
   editTitle: '编辑供应商',
+  namePlaceholder: '例如：team-gateway',
   apiLabel: 'API 类型',
   apiHint:
     '类型需与 Agent 匹配 —— Claude Code：anthropic · Codex：openai-responses · DeepSeek：anthropic / openai-chat。',
@@ -124,6 +128,8 @@ const zh: typeof en = {
   extraBodyPlaceholder: '{"key": "value"}',
   extraBodyInvalid: 'JSON 无效——该字段不会保存',
   modelsWarningsTitle: '警告',
+  warnServerTools: '模型“{id}”：服务端工具仅对 openai-responses 协议生效。',
+  warnExtraBody: '模型“{id}”：额外请求体仅对 OpenAI 兼容协议生效。',
   duplicateModelsError: '模型 id 重复：{ids}',
 };
 

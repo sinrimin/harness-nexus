@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
-import { BotIcon, ListIcon, PlusIcon, RefreshCwIcon, XIcon } from 'lucide-react';
+import { BotIcon, ListIcon, PencilIcon, PlusIcon, RefreshCwIcon, XIcon } from 'lucide-react';
 import { api } from '@/api';
 import { useAuth, withAuthGuard } from '@/auth';
 import { useI18n, dateLocale } from '@/i18n';
@@ -126,6 +126,13 @@ export function AssistantSessionPage() {
     if (assistantId !== '') localStorage.setItem(AGENT_KEY, assistantId);
   }, [assistantId]);
 
+  /**
+   * Zero configs is NOT a dead end: the page (rail + 端 switcher + tabs) still
+   * renders and the content area becomes a welcome that links to /assistants —
+   * the machine ends stay reachable through the switcher (review #52 fix).
+   */
+  const noAssistants = loaded && (assistants ?? []).length === 0;
+
   const refreshSessions = useCallback(() => {
     // The push hook owns the rail's truth; this exists to re-ask after a
     // config page round-trip (a deleted config changes what can open).
@@ -241,7 +248,7 @@ export function AssistantSessionPage() {
       setError(
         ack.error === 'ASSISTANT_NOT_FOUND' || ack.error === 'ASSISTANT_DELETED'
           ? t('assistants.errNoAssistant')
-          : (ack.error ?? 'unknown error'),
+          : (ack.error ?? t('assistants.errUnknown')),
       );
       return;
     }
@@ -377,7 +384,8 @@ export function AssistantSessionPage() {
                     {s.title || t('chat.untitled')}
                   </span>
                   <DataText size="sm" tone="dim" className="mt-0.5 block truncate">
-                    {relativeTime(s.lastMessageAt ?? s.updatedAt, dateLocale(lang))}
+                    {relativeTime(s.lastMessageAt ?? s.updatedAt, dateLocale(lang))} ·{' '}
+                    {s.id.slice(0, 8)}
                   </DataText>
                 </span>
               </button>
@@ -387,20 +395,6 @@ export function AssistantSessionPage() {
       </div>
     </>
   );
-
-  if (loaded && (assistants ?? []).length === 0) {
-    return (
-      <EmptyState
-        title={t('assistants.noAssistants')}
-        hint={t('assistants.noAssistantsHint')}
-        action={
-          <Button asChild size="sm" className="gap-1.5">
-            <Link to="/assistants">{t('assistants.createAssistantCta')}</Link>
-          </Button>
-        }
-      />
-    );
-  }
 
   return (
     <>
@@ -486,75 +480,93 @@ export function AssistantSessionPage() {
               ) : null}
             </div>
 
-            {error !== null && phase !== 'closed' ? (
-              <p className="text-destructive border-destructive/30 bg-destructive/5 border-b px-4 py-2 text-xs">
-                {error}
-              </p>
-            ) : null}
-
-            <ChatStream
-              state={conversation}
-              cwd={undefined}
-              onPermissionRespond={(requestId, optionId) => {
-                void emitWithAck('assistant:permission.respond', {
-                  sessionId,
-                  requestId,
-                  ...(optionId !== undefined ? { optionId } : {}),
-                });
-              }}
-              onElicitationRespond={() => undefined}
-            />
-
-            <div className="shrink-0 p-3">
-              <div className="mx-auto w-full max-w-3xl">
-                <TodoPanel entries={conversation.plan ?? []} />
-                {conversation.queued !== null ? (
-                  <div className="mb-2 flex justify-end">
-                    <span
-                      className="bg-background inline-flex min-w-0 max-w-full items-center gap-1.5 rounded-lg border border-dashed px-2.5 py-1.5 text-xs shadow-sm"
-                      title={t('chat.queuedLabel')}
-                    >
-                      <span className="text-muted-foreground shrink-0">
-                        {t('chat.queuedLabel')}
-                      </span>
-                      <span className="truncate font-mono">
-                        {conversation.queued
-                          .filter((b) => b.type === 'text')
-                          .map((b) => (b as { text: string }).text)
-                          .join(' ')
-                          .slice(0, 120)}
-                      </span>
-                      <button
-                        type="button"
-                        onClick={queueEdit}
-                        className="text-muted-foreground hover:text-foreground shrink-0"
-                      >
-                        <XIcon className="size-3" />
-                      </button>
-                    </span>
-                  </div>
-                ) : null}
-                <Composer
-                  value={draft}
-                  onChange={setDraft}
-                  phase={phase}
-                  turnActive={conversation.turnActive}
-                  usage={conversation.usage}
-                  onSend={() => void send()}
-                  onCancel={() => void cancelTurn()}
-                  attachments={[]}
-                  fileRefs={[]}
-                  onRemoveAttachment={() => undefined}
-                  onRemoveFileRef={() => undefined}
-                  onPickImages={() => undefined}
-                  onOpenFilePicker={() => undefined}
-                  imageSupported={false}
-                  config={conversation.config satisfies ComposerConfig}
-                  onConfigSet={(set) => void configSet(set)}
-                  commands={conversation.commands}
+            {noAssistants ? (
+              <div className="flex min-h-0 flex-1 items-center justify-center p-6">
+                <EmptyState
+                  title={t('assistants.noAssistants')}
+                  hint={t('assistants.noAssistantsHint')}
+                  action={
+                    <Button asChild size="sm" className="gap-1.5">
+                      <Link to="/assistants">{t('assistants.createAssistantCta')}</Link>
+                    </Button>
+                  }
                 />
               </div>
-            </div>
+            ) : (
+              <>
+                {error !== null && phase !== 'closed' ? (
+                  <p className="text-destructive border-destructive/30 bg-destructive/5 border-b px-4 py-2 text-xs">
+                    {error}
+                  </p>
+                ) : null}
+
+                <ChatStream
+                  state={conversation}
+                  cwd={undefined}
+                  onPermissionRespond={(requestId, optionId) => {
+                    void emitWithAck('assistant:permission.respond', {
+                      sessionId,
+                      requestId,
+                      ...(optionId !== undefined ? { optionId } : {}),
+                    });
+                  }}
+                  onElicitationRespond={() => undefined}
+                />
+
+                <div className="shrink-0 p-3">
+                  <div className="mx-auto w-full max-w-3xl">
+                    <TodoPanel entries={conversation.plan ?? []} />
+                    {conversation.queued !== null ? (
+                      <div className="mb-2 flex justify-end">
+                        <span
+                          className="bg-background inline-flex min-w-0 max-w-full items-center gap-1.5 rounded-lg border border-dashed px-2.5 py-1.5 text-xs shadow-sm"
+                          title={t('chat.queuedLabel')}
+                        >
+                          <span className="text-muted-foreground shrink-0">
+                            {t('chat.queuedLabel')}
+                          </span>
+                          <span className="truncate font-mono">
+                            {conversation.queued
+                              .filter((b) => b.type === 'text')
+                              .map((b) => (b as { text: string }).text)
+                              .join(' ')
+                              .slice(0, 120)}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={queueEdit}
+                            className="text-muted-foreground hover:text-foreground shrink-0"
+                            aria-label={t('chat.queuedEditAria')}
+                            title={t('chat.queuedEditAria')}
+                          >
+                            <PencilIcon className="size-3" />
+                          </button>
+                        </span>
+                      </div>
+                    ) : null}
+                    <Composer
+                      value={draft}
+                      onChange={setDraft}
+                      phase={phase}
+                      turnActive={conversation.turnActive}
+                      usage={conversation.usage}
+                      onSend={() => void send()}
+                      onCancel={() => void cancelTurn()}
+                      attachments={[]}
+                      fileRefs={[]}
+                      onRemoveAttachment={() => undefined}
+                      onRemoveFileRef={() => undefined}
+                      onPickImages={() => undefined}
+                      onOpenFilePicker={() => undefined}
+                      imageSupported={false}
+                      config={conversation.config satisfies ComposerConfig}
+                      onConfigSet={(set) => void configSet(set)}
+                      commands={conversation.commands}
+                    />
+                  </div>
+                </div>
+              </>
+            )}
           </section>
         </div>
       </div>

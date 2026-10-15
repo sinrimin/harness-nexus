@@ -16,7 +16,8 @@ import { useMachineStatus } from '@/components/shell/use-presence.js';
  * back-link sat in the session rail's header: the assistant 端 pinned on
  * top, the machine agents grouped by machine with their live state lamps.
  * The star next to it pins the DEFAULT 端 (`localStorage hnx.chat.defaultEnd`
- * — no server per-user pref store exists and none is created).
+ * — no server per-user pref store exists and none is created); clicking a
+ * pinned star UNPINS (back to the platform default, the assistant 端).
  */
 
 const DEFAULT_END_KEY = 'hnx.chat.defaultEnd';
@@ -46,15 +47,21 @@ export function EndSwitcher({ current }: { current: ChatEnd }) {
   const [agentsByMachine, setAgentsByMachine] = useState<Map<string, AgentInstanceView[]>>(
     new Map(),
   );
+  // The pin star's truth — localStorage read once per mount (each session page
+  // mounts its own switcher), then kept in state so unpin re-renders.
+  const [pinned, setPinned] = useState(() => readDefaultEnd() === endKey(current));
 
   // The lists load when the popover first opens (the rail header stays cheap).
   useEffect(() => {
     if (!open || assistants !== null) return;
     void (async () => {
       try {
-        const list = await withAuthGuard(() => api.listMachines(), logout);
+        const [list, assistantList] = await Promise.all([
+          withAuthGuard(() => api.listMachines(), logout),
+          withAuthGuard(() => api.listAssistants(), logout),
+        ]);
         setMachines(list);
-        setAssistants(await withAuthGuard(() => api.listAssistants(), logout));
+        setAssistants(assistantList);
         const entries = await Promise.all(
           list.map(async (m) => [m.id, await api.listMachineAgents(m.id).catch(() => [])] as const),
         );
@@ -74,7 +81,6 @@ export function EndSwitcher({ current }: { current: ChatEnd }) {
   }, [machines]);
   useMachineStatus((e) => setPresence((prev) => ({ ...prev, [e.machineId]: e.online })));
 
-  const pinned = readDefaultEnd() === endKey(current);
   const groups = useMemo(
     () =>
       (machines ?? [])
@@ -120,7 +126,9 @@ export function EndSwitcher({ current }: { current: ChatEnd }) {
             <div key={machine.id} className="mt-1">
               <div className="text-muted-foreground flex items-center gap-1.5 px-2 py-1">
                 <StateSignal state={presence[machine.id] ? 'live' : 'idle'} className="size-1.5" />
-                <span className="truncate text-[11px] font-medium uppercase tracking-wide">
+                {/* A machine name is an identity, not a label — no uppercase
+                    (the design system reserves that for label roles). */}
+                <span className="truncate text-[11px] font-medium tracking-wide">
                   {machine.name}
                 </span>
               </div>
@@ -150,8 +158,15 @@ export function EndSwitcher({ current }: { current: ChatEnd }) {
         className="size-(--control-h-sm) shrink-0"
         title={pinned ? t('assistants.unpinDefault') : t('assistants.pinDefault')}
         onClick={() => {
-          writeDefaultEnd(endKey(current));
-          toast.success(t('assistants.pinnedToast'));
+          if (pinned) {
+            localStorage.removeItem(DEFAULT_END_KEY);
+            setPinned(false);
+            toast.success(t('assistants.unpinnedToast'));
+          } else {
+            writeDefaultEnd(endKey(current));
+            setPinned(true);
+            toast.success(t('assistants.pinnedToast'));
+          }
         }}
       >
         <StarIcon className={'size-3.5' + (pinned ? ' fill-current' : '')} aria-hidden={pinned} />
