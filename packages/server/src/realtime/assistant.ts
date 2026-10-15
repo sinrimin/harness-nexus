@@ -44,6 +44,12 @@ interface LiveChannel {
   queuedPrompt: PromptBlock[] | null;
   run: RunningTurn | null;
   openedAt: number;
+  /**
+   * #54 — LAZY persistence: the not-yet-saved row of a fresh open. Nothing
+   * hits the DB until the first message (startTurn saves it), so an
+   * open-then-abandon conversation leaves no trace behind a refresh.
+   */
+  pending?: AssistantSession | undefined;
 }
 
 function isRecord(v: unknown): v is Record<string, unknown> {
@@ -127,11 +133,15 @@ export class AssistantRealtimeService {
 
   /** The rail's truth: the owner's sessions + live busy flags. */
   snapshotFor(userId: string): Promise<{ sessions: (AssistantSession & { busy: boolean })[] }> {
+    // #54 — legacy empty opens (pre-lazy rows: no messages, no live channel)
+    // stay hidden; fresh empties can no longer exist — opens are lazy.
     return this.deps.uow.assistants.listSessions(userId).then((sessions) => ({
-      sessions: sessions.map((s) => ({
-        ...s,
-        busy: this.running.get(userId) === s.id,
-      })),
+      sessions: sessions
+        .filter((s) => s.lastMessageAt !== null || this.live.has(s.id))
+        .map((s) => ({
+          ...s,
+          busy: this.running.get(userId) === s.id,
+        })),
     }));
   }
 
@@ -144,9 +154,10 @@ export class AssistantRealtimeService {
 
   /**
    * `assistant:session.open`. With `sessionId`: join (or rejoin) that row's
-   * live channel. Without: create a row under the assistant first. Joining
-   * always re-pushes ready + history + config — a fresh page settles from
-   * the pushes alone.
+   * live channel. Without: prepare a FRESH session — #54 lazy persistence:
+   * the row is only written when the first message lands, so an open that
+   * never sends leaves nothing behind a refresh. Joining always re-pushes
+   * ready + history + config — a fresh page settles from the pushes alone.
    */
   async open(
     userId: string,
@@ -175,7 +186,6 @@ export class AssistantRealtimeService {
         updatedAt: now,
         lastMessageAt: null,
       };
-      await this.deps.uow.assistants.saveSession(session);
     }
 
     this.io.joinChannel(socketId, session.id);
@@ -189,6 +199,7 @@ export class AssistantRealtimeService {
         queuedPrompt: null,
         run: null,
         openedAt: Date.now(),
+        ...(sessionId === undefined ? { pending: session } : {}),
       };
       this.live.set(session.id, ch);
     }
@@ -339,7 +350,17 @@ export class AssistantRealtimeService {
   // ---- the turn ----
 
   private async startTurn(ch: LiveChannel, prompt: PromptBlock[]): Promise<void> {
-    const session = await this.deps.uow.assistants.findSessionById(ch.sessionId);
+    // #54 — an ephemeral open persists HERE (first real content): save the
+    // pending row, then everything downstream sees a normal session.
+    let session: AssistantSession | null = ch.pending ?? null;
+    if (session === null) {
+      session = await this.deps.uow.assistants.findSessionById(ch.sessionId);
+    }
+    if (ch.pending !== undefined) {
+      await this.deps.uow.assistants.saveSession(ch.pending);
+      ch.pending = undefined;
+      void this.pushSessions(ch.ownerId);
+    }
     const config = await this.configOf(ch.ownerId, ch.assistantId);
     if (session === null || config === null || config.deletedAt !== undefined) {
       this.emit(ch.sessionId, {
