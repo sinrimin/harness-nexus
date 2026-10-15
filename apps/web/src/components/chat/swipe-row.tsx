@@ -63,8 +63,14 @@ export function SwipeRow({
 
   return (
     <div className="relative overflow-hidden">
-      {/* The revealed layer under the row's right edge. */}
-      <div className="absolute inset-y-0 right-0 flex w-[72px] items-stretch">
+      {/* The revealed layer under the row's right edge. Inset 2px VERTICALLY
+          on purpose: rows carry fractional heights (font metrics), and WebKit
+          rounds an absolutely-positioned `inset-y-0` layer and the in-flow
+          cover differently — on iOS the red underlay peeked a 1px sliver
+          below some rows (only the fractionally-unlucky ones). An inset
+          larger than any rounding error keeps the underlay strictly inside
+          the cover's painted box. */}
+      <div className="absolute inset-y-[2px] right-0 flex w-[72px] items-stretch">
         <button
           type="button"
           className="bg-destructive text-destructive-foreground hover:bg-destructive/90 flex w-full items-center justify-center"
