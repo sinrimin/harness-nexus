@@ -42,11 +42,21 @@ function endKey(end: ChatEnd): string {
   return end === 'assistant' ? 'assistant' : `agent:${end.agentInstanceId}`;
 }
 
-export function EndSwitcher({ current, stayOpen }: { current: ChatEnd; stayOpen?: boolean }) {
+export function EndSwitcher({
+  current,
+  stayOpen,
+  initiallyOpen,
+}: {
+  current: ChatEnd;
+  stayOpen?: boolean;
+  /** Mount with the popover OPEN (?ends browse-mode hand-off — the menu
+   *  "never closed" across the route change). */
+  initiallyOpen?: boolean;
+}) {
   const { logout } = useAuth();
   const { t } = useI18n();
   const navigate = useNavigate();
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(initiallyOpen === true);
   const [assistants, setAssistants] = useState<AssistantConfigView[] | null>(null);
   const [machines, setMachines] = useState<MachineView[] | null>(null);
   const [agentsByMachine, setAgentsByMachine] = useState<Map<string, AgentInstanceView[]>>(
@@ -101,7 +111,12 @@ export function EndSwitcher({ current, stayOpen }: { current: ChatEnd; stayOpen?
     // pick (dropdown norm).
     if (stayOpen !== true) setOpen(false);
     if (endKey(end) === endKey(current)) return;
-    navigate(end === 'assistant' ? '/chat/assistants' : `/chat/agents/${end.agentInstanceId}`);
+    const target = end === 'assistant' ? '/chat/assistants' : `/chat/agents/${end.agentInstanceId}`;
+    // A pick from a stay-open menu is BROWSE MODE: carry the ?ends marker so
+    // the destination page lands with its drawer + menu already open — the
+    // menu reads as never having closed even though the route change
+    // unmounts the source page.
+    navigate(stayOpen === true ? `${target}?ends=1` : target);
   }
 
   return (

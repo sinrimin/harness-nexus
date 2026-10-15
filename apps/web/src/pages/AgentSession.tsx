@@ -220,6 +220,7 @@ function SessionRail({
   onRefresh,
   end,
   endStayOpen,
+  endInitiallyOpen,
 }: {
   rail: RailState;
   groups: SessionGroup[];
@@ -243,13 +244,15 @@ function SessionRail({
   /** Phone drawer: the switcher menu STAYS OPEN across end picks (rapid
    *  browsing); dismissed by tapping outside. */
   endStayOpen?: boolean;
+  /** Mount the switcher with its popover OPEN (?ends browse-mode hand-off). */
+  endInitiallyOpen?: boolean;
 }) {
   const { t, lang } = useI18n();
   return (
     <>
       <div className="flex items-center gap-1 border-b px-2 py-2.5">
         {end !== undefined && end !== null ? (
-          <EndSwitcher current={end} stayOpen={endStayOpen} />
+          <EndSwitcher current={end} stayOpen={endStayOpen} initiallyOpen={endInitiallyOpen} />
         ) : null}
         <span className="min-w-0 flex-1" />
         <Button
@@ -605,6 +608,18 @@ export function AgentSessionPage() {
     void openChannel(chParam);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [chParam, agentId, agent]);
+
+  // ?ends — a browse-mode hand-off (a pick from a stay-open end menu on the
+  // OTHER page): land with the drawer + the end menu already open, then drop
+  // the one-shot param. Mount-captured so the drawer's EndSwitcher (which
+  // mounts only once the drawer opens) still sees it.
+  const [endsHandoff] = useState(() => searchParams.get('ends') !== null);
+  useEffect(() => {
+    if (searchParams.get('ends') === null) return;
+    setSearchParams({}, { replace: true });
+    setRailOpen(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Reset the pane whenever the channel changes.
   useEffect(() => {
@@ -1125,6 +1140,7 @@ export function AgentSessionPage() {
                   onRefresh={() => void refreshSessions(true)}
                   end={{ agentInstanceId: agentId, agentName: agent?.name }}
                   endStayOpen
+                  endInitiallyOpen={endsHandoff}
                 />
               </DialogPrimitive.Content>
             </DialogPrimitive.Portal>

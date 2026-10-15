@@ -112,6 +112,18 @@ export function AssistantSessionPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sParam, loaded]);
 
+  // ?ends — a browse-mode hand-off (a pick from a stay-open end menu on the
+  // machine page): land with the drawer + the end menu already open, then
+  // drop the one-shot param. Mount-captured so the drawer's EndSwitcher
+  // (which mounts only once the drawer opens) still sees it.
+  const [endsHandoff] = useState(() => searchParams.get('ends') !== null);
+  useEffect(() => {
+    if (searchParams.get('ends') === null) return;
+    setSearchParams({}, { replace: true });
+    setRailOpen(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // The 端's default agent: ?a= (a picker hand-off) → the pinned one → the
   // first config. Persisted so the next visit opens where the user left off;
   // a STALE pin (deleted config, another server's data) falls back to the
@@ -323,10 +335,13 @@ export function AssistantSessionPage() {
 
   const sortedSessions = useMemo(() => [...sessions].reverse(), [sessions]);
 
-  const rail = (
+  // The rail renders TWICE (desktop aside + phone drawer) with different end
+  // menu flags: only the drawer keeps the menu open across picks / mounts it
+  // open after a ?ends browse-mode hand-off.
+  const rail = (stayOpen: boolean, initiallyOpen: boolean) => (
     <>
       <div className="flex items-center gap-1 border-b px-2 py-2.5">
-        <EndSwitcher current="assistant" />
+        <EndSwitcher current="assistant" stayOpen={stayOpen} initiallyOpen={initiallyOpen} />
         <span className="min-w-0 flex-1" />
         <Button
           variant="ghost"
@@ -426,7 +441,7 @@ export function AssistantSessionPage() {
         />
         <div className="flex h-full min-h-0">
           <aside className="bg-sidebar/40 hidden w-72 shrink-0 flex-col border-r md:flex">
-            {rail}
+            {rail(false, false)}
           </aside>
           <DialogPrimitive.Root open={railOpen} onOpenChange={setRailOpen}>
             <DialogPrimitive.Portal>
@@ -435,7 +450,7 @@ export function AssistantSessionPage() {
                 className="bg-background text-foreground absolute inset-y-0 left-0 z-50 flex w-72 max-w-[85vw] flex-col border-r shadow-lg md:hidden"
                 aria-description={t('chat.railOpen')}
               >
-                {rail}
+                {rail(true, endsHandoff)}
               </DialogPrimitive.Content>
             </DialogPrimitive.Portal>
           </DialogPrimitive.Root>
