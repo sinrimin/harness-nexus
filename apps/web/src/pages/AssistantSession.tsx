@@ -112,13 +112,11 @@ export function AssistantSessionPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sParam, loaded]);
 
-  // ?ends — a browse-mode hand-off (a pick from a stay-open end menu on the
-  // machine page): land with the drawer + the end menu already open, then
-  // drop the one-shot param. Mount-captured so the drawer's EndSwitcher
-  // (which mounts only once the drawer opens) still sees it.
-  const [endsHandoff] = useState(() => searchParams.get('ends') !== null);
+  // ?rail — an end-switch hand-off (a pick from the phone drawer on the
+  // machine page): land with the SESSION drawer open so a conversation can
+  // be picked or created right away, then drop the one-shot param.
   useEffect(() => {
-    if (searchParams.get('ends') === null) return;
+    if (searchParams.get('rail') === null) return;
     setSearchParams({}, { replace: true });
     setRailOpen(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -335,13 +333,12 @@ export function AssistantSessionPage() {
 
   const sortedSessions = useMemo(() => [...sessions].reverse(), [sessions]);
 
-  // The rail renders TWICE (desktop aside + phone drawer) with different end
-  // menu flags: only the drawer keeps the menu open across picks / mounts it
-  // open after a ?ends browse-mode hand-off.
-  const rail = (stayOpen: boolean, initiallyOpen: boolean) => (
+  // The rail renders TWICE (desktop aside + phone drawer) with one flag:
+  // only the drawer's picks carry the ?rail hand-off.
+  const rail = (inDrawer: boolean) => (
     <>
       <div className="flex items-center gap-1 border-b px-2 py-2.5">
-        <EndSwitcher current="assistant" stayOpen={stayOpen} initiallyOpen={initiallyOpen} />
+        <EndSwitcher current="assistant" fromDrawer={inDrawer} />
         <span className="min-w-0 flex-1" />
         <Button
           variant="ghost"
@@ -441,7 +438,7 @@ export function AssistantSessionPage() {
         />
         <div className="flex h-full min-h-0">
           <aside className="bg-sidebar/40 hidden w-72 shrink-0 flex-col border-r md:flex">
-            {rail(false, false)}
+            {rail(false)}
           </aside>
           <DialogPrimitive.Root open={railOpen} onOpenChange={setRailOpen}>
             <DialogPrimitive.Portal>
@@ -450,7 +447,7 @@ export function AssistantSessionPage() {
                 className="bg-background text-foreground absolute inset-y-0 left-0 z-50 flex w-72 max-w-[85vw] flex-col border-r shadow-lg md:hidden"
                 aria-description={t('chat.railOpen')}
               >
-                {rail(true, endsHandoff)}
+                {rail(true)}
               </DialogPrimitive.Content>
             </DialogPrimitive.Portal>
           </DialogPrimitive.Root>

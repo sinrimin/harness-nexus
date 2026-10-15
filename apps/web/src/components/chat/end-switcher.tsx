@@ -44,19 +44,20 @@ function endKey(end: ChatEnd): string {
 
 export function EndSwitcher({
   current,
-  stayOpen,
-  initiallyOpen,
+  fromDrawer,
 }: {
   current: ChatEnd;
-  stayOpen?: boolean;
-  /** Mount with the popover OPEN (?ends browse-mode hand-off — the menu
-   *  "never closed" across the route change). */
-  initiallyOpen?: boolean;
+  /** The pick happens inside the phone's session drawer — navigate with the
+   *  one-shot ?rail marker so the DESTINATION page lands with its session
+   *  drawer open (after switching ends, the next thing you want is picking
+   *  or creating a SESSION — not reopening menus). Desktop navigates
+   *  plainly (its rail is always visible). */
+  fromDrawer?: boolean;
 }) {
   const { logout } = useAuth();
   const { t } = useI18n();
   const navigate = useNavigate();
-  const [open, setOpen] = useState(initiallyOpen === true);
+  const [open, setOpen] = useState(false);
   const [assistants, setAssistants] = useState<AssistantConfigView[] | null>(null);
   const [machines, setMachines] = useState<MachineView[] | null>(null);
   const [agentsByMachine, setAgentsByMachine] = useState<Map<string, AgentInstanceView[]>>(
@@ -105,18 +106,13 @@ export function EndSwitcher({
   );
 
   function pick(end: ChatEnd): void {
-    // stayOpen (the phone drawer): the menu STAYS OPEN across picks — rapid
-    // end browsing, the check mark walks to the new end and the trigger
-    // label follows; dismissed by tapping outside. Desktop closes after one
-    // pick (dropdown norm).
-    if (stayOpen !== true) setOpen(false);
+    // The menu always collapses after a pick (dropdown norm) — what carries
+    // over is the SESSION drawer: same-route picks keep it open anyway, and
+    // a drawer pick carries ?rail so the destination page opens its own.
+    setOpen(false);
     if (endKey(end) === endKey(current)) return;
     const target = end === 'assistant' ? '/chat/assistants' : `/chat/agents/${end.agentInstanceId}`;
-    // A pick from a stay-open menu is BROWSE MODE: carry the ?ends marker so
-    // the destination page lands with its drawer + menu already open — the
-    // menu reads as never having closed even though the route change
-    // unmounts the source page.
-    navigate(stayOpen === true ? `${target}?ends=1` : target);
+    navigate(fromDrawer === true ? `${target}?rail=1` : target);
   }
 
   return (
