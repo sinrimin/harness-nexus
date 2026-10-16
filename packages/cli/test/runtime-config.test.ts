@@ -185,6 +185,134 @@ describe('applyRuntimeConfig — claude-code', () => {
     expect(() => applyRuntimeConfig('claude-code', spec(), 'k', bad)).toThrow(/not valid JSON/);
     rmSync(bad, { recursive: true, force: true });
   });
+
+  it('#60 — panel knobs: tier pins, subagent, token caps, extra body, auth slot', () => {
+    // User state to preserve + a legacy pre-tier env we retire on sight.
+    writeRel(
+      '.claude/settings.json',
+      JSON.stringify({
+        env: {
+          CUSTOM: 'keep',
+          ANTHROPIC_SMALL_FAST_MODEL: 'legacy-haiku',
+          ANTHROPIC_DEFAULT_SONNET_MODEL_NAME: 'stale-name',
+        },
+      }),
+    );
+    applyRuntimeConfig(
+      'claude-code',
+      spec({
+        api: 'anthropic-messages',
+        model: 'gw-large[1m]',
+        models: ['gw-mini'],
+        claudeCode: {
+          authField: 'ANTHROPIC_API_KEY',
+          tiers: [
+            {
+              tier: 'sonnet',
+              model: 'gw-large[1m]',
+              displayName: 'Gateway Large',
+              capabilities: ['effort', 'thinking'],
+            },
+            { tier: 'haiku', model: 'gw-mini' },
+          ],
+          subagentModel: 'gw-mini[1m]',
+          maxOutputTokens: 64000,
+          maxContextTokens: 983616,
+          extraBody: { enable_thinking: true },
+        },
+      }),
+      'sk-gw',
+      home,
+    );
+    const settings = JSON.parse(readFileSync(path.join(home, '.claude/settings.json'), 'utf8')) as {
+      env: Record<string, string>;
+      model: string;
+      availableModels: string[];
+    };
+    // auth slot swap: the key rides API_KEY, the other var is ours to remove
+    expect(settings.env.ANTHROPIC_API_KEY).toBe('sk-gw');
+    expect(settings.env.ANTHROPIC_AUTH_TOKEN).toBeUndefined();
+    // the [1m] marker rides the model slot itself (settings `model` + tier env)
+    expect(settings.model).toBe('gw-large[1m]');
+    expect(settings.env.ANTHROPIC_DEFAULT_SONNET_MODEL).toBe('gw-large[1m]');
+    expect(settings.env.ANTHROPIC_DEFAULT_SONNET_MODEL_NAME).toBe('Gateway Large');
+    expect(settings.env.ANTHROPIC_DEFAULT_SONNET_MODEL_SUPPORTED_CAPABILITIES).toBe(
+      'effort,thinking',
+    );
+    expect(settings.env.ANTHROPIC_DEFAULT_HAIKU_MODEL).toBe('gw-mini');
+    // unpinned tiers + legacy + user env
+    expect(settings.env.ANTHROPIC_DEFAULT_OPUS_MODEL).toBeUndefined();
+    expect(settings.env.ANTHROPIC_DEFAULT_FABLE_MODEL).toBeUndefined();
+    expect(settings.env.ANTHROPIC_SMALL_FAST_MODEL).toBeUndefined();
+    expect(settings.env.CUSTOM).toBe('keep');
+    // knobs
+    expect(settings.env.CLAUDE_CODE_SUBAGENT_MODEL).toBe('gw-mini[1m]');
+    expect(settings.env.CLAUDE_CODE_MAX_OUTPUT_TOKENS).toBe('64000');
+    expect(settings.env.CLAUDE_CODE_MAX_CONTEXT_TOKENS).toBe('983616');
+    expect(settings.env.CLAUDE_CODE_EXTRA_BODY).toBe('{"enable_thinking":true}');
+    // allowlist: plain ids only (markers stripped), pins + subagent unioned in
+    expect(settings.availableModels).toEqual(['gw-large', 'gw-mini']);
+
+    // idempotent re-apply
+    const first = readFileSync(path.join(home, '.claude/settings.json'), 'utf8');
+    applyRuntimeConfig(
+      'claude-code',
+      spec({
+        api: 'anthropic-messages',
+        model: 'gw-large[1m]',
+        models: ['gw-mini'],
+        claudeCode: {
+          authField: 'ANTHROPIC_API_KEY',
+          tiers: [
+            {
+              tier: 'sonnet',
+              model: 'gw-large[1m]',
+              displayName: 'Gateway Large',
+              capabilities: ['effort', 'thinking'],
+            },
+            { tier: 'haiku', model: 'gw-mini' },
+          ],
+          subagentModel: 'gw-mini[1m]',
+          maxOutputTokens: 64000,
+          maxContextTokens: 983616,
+          extraBody: { enable_thinking: true },
+        },
+      }),
+      'sk-gw',
+      home,
+    );
+    expect(readFileSync(path.join(home, '.claude/settings.json'), 'utf8')).toBe(first);
+  });
+
+  it('#60 — a knob-less re-apply REMOVES every panel env key (revert semantics)', () => {
+    applyRuntimeConfig(
+      'claude-code',
+      spec({ api: 'anthropic-messages', model: 'gw-large', models: undefined }),
+      'sk-gw',
+      home,
+    );
+    const settings = JSON.parse(readFileSync(path.join(home, '.claude/settings.json'), 'utf8')) as {
+      env: Record<string, string>;
+      availableModels: string[];
+    };
+    for (const key of [
+      'ANTHROPIC_API_KEY',
+      'ANTHROPIC_DEFAULT_SONNET_MODEL',
+      'ANTHROPIC_DEFAULT_SONNET_MODEL_NAME',
+      'ANTHROPIC_DEFAULT_SONNET_MODEL_SUPPORTED_CAPABILITIES',
+      'ANTHROPIC_DEFAULT_HAIKU_MODEL',
+      'CLAUDE_CODE_SUBAGENT_MODEL',
+      'CLAUDE_CODE_MAX_OUTPUT_TOKENS',
+      'CLAUDE_CODE_MAX_CONTEXT_TOKENS',
+      'CLAUDE_CODE_EXTRA_BODY',
+    ]) {
+      expect(settings.env[key], key).toBeUndefined();
+    }
+    // back on the default auth slot, plain allowlist, user env intact
+    expect(settings.env.ANTHROPIC_AUTH_TOKEN).toBe('sk-gw');
+    expect(settings.availableModels).toEqual(['gw-large']);
+    expect(settings.env.CUSTOM).toBe('keep');
+  });
 });
 
 describe('applyRuntimeConfig — codex', () => {

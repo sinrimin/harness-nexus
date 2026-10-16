@@ -3,10 +3,12 @@ import { chmodSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { Socket } from 'socket.io-client';
 import {
+  CLAUDE_CODE_TIERS,
   harnessJobPayloadSchema,
   harnessResultDataSchema,
   OPENCODE_PROVIDER_ID,
   PI_PROVIDER_ID,
+  stripClaudeOneMarker,
   type JobView,
   type RuntimeConfigSpec,
 } from '@harness-nexus/shared';
@@ -27,13 +29,20 @@ import { logOp } from './logbook.js';
  * every touched file ends 0600. Ground truth per target:
  *
  *  - claude-code: `~/.claude/settings.json` — `env.ANTHROPIC_BASE_URL` (only
- *    while the spec sets one; a later unset REMOVES ours), `env.ANTHROPIC_AUTH_TOKEN`
- *    (the key), top-level `model` (base URL alone doesn't switch the model),
+ *    while the spec sets one; a later unset REMOVES ours), the key on
+ *    `env.ANTHROPIC_AUTH_TOKEN` or `env.ANTHROPIC_API_KEY` (#60 panel choice),
+ *    top-level `model` (base URL alone doesn't switch the model),
  *    and top-level `availableModels` = unique([model, ...models]) (9 W13 —
  *    the ACP wrapper restricts its model configOption to this allowlist, so
  *    the session dropdown lists only gateway-servable ids; it also narrows
  *    the machine's terminal /model picker, which is the documented Claude
- *    Code semantics for a managed route).
+ *    Code semantics for a managed route). #60 adds the dedicated claude-code
+ *    panel knobs (`spec.claudeCode`): alias-tier pins
+ *    (`ANTHROPIC_DEFAULT_{TIER}_MODEL` + `_NAME`/`_SUPPORTED_CAPABILITIES`),
+ *    `CLAUDE_CODE_SUBAGENT_MODEL`, `CLAUDE_CODE_MAX_{OUTPUT,CONTEXT}_TOKENS`,
+ *    `CLAUDE_CODE_EXTRA_BODY` — all in the env block, all with the same
+ *    unset-REMOVES-ours revert semantics; `[1m]` markers stay on the model
+ *    slots and are stripped from the allowlist.
  *  - codex: `~/.codex/config.toml` — root keys `model` + `model_provider`, and
  *    the `[model_providers.harness_nexus]` block with `requires_openai_auth =
  *    true` (the built-in provider's own shape — auth comes from auth.json, no
@@ -99,17 +108,60 @@ function applyClaudeConfig(spec: RuntimeConfigSpec, secret: string, homeDir: str
   const dir = join(homeDir, '.claude');
   const file = join(dir, 'settings.json');
   const settings = readJson(file);
+  const cc = spec.claudeCode;
   const env: Record<string, string> = {
     ...((settings.env as Record<string, string> | undefined) ?? {}),
-    ANTHROPIC_AUTH_TOKEN: secret,
   };
+  // #60 — the key rides the panel's chosen auth slot; the other one is ours
+  // to remove (claude-code warns when both are set).
+  const authField = cc?.authField ?? 'ANTHROPIC_AUTH_TOKEN';
+  env[authField] = secret;
+  delete env[authField === 'ANTHROPIC_AUTH_TOKEN' ? 'ANTHROPIC_API_KEY' : 'ANTHROPIC_AUTH_TOKEN'];
   if (spec.baseUrl !== undefined) env.ANTHROPIC_BASE_URL = spec.baseUrl;
   else delete env.ANTHROPIC_BASE_URL; // the platform owns the route — unset means revert to default
+  // #60 — alias-tier pins. Every tier slot is platform-owned: an unpinned
+  // tier removes whatever we wrote there before (revert semantics), and the
+  // legacy pre-tier background-model env is retired on sight.
+  for (const tier of CLAUDE_CODE_TIERS) {
+    const row = cc?.tiers?.find((t) => t.tier === tier);
+    const prefix = `ANTHROPIC_DEFAULT_${tier.toUpperCase()}_MODEL`;
+    if (row !== undefined) {
+      env[prefix] = row.model;
+      if (row.displayName !== undefined && row.displayName !== '') {
+        env[`${prefix}_NAME`] = row.displayName;
+      } else delete env[`${prefix}_NAME`];
+      if (row.capabilities !== undefined && row.capabilities.length > 0) {
+        env[`${prefix}_SUPPORTED_CAPABILITIES`] = row.capabilities.join(',');
+      } else delete env[`${prefix}_SUPPORTED_CAPABILITIES`];
+    } else {
+      delete env[prefix];
+      delete env[`${prefix}_NAME`];
+      delete env[`${prefix}_SUPPORTED_CAPABILITIES`];
+    }
+  }
+  delete env.ANTHROPIC_SMALL_FAST_MODEL;
+  const knob = (key: string, value: string | undefined): void => {
+    if (value !== undefined) env[key] = value;
+    else delete env[key];
+  };
+  knob('CLAUDE_CODE_SUBAGENT_MODEL', cc?.subagentModel);
+  knob('CLAUDE_CODE_MAX_OUTPUT_TOKENS', cc?.maxOutputTokens?.toString());
+  knob('CLAUDE_CODE_MAX_CONTEXT_TOKENS', cc?.maxContextTokens?.toString());
+  knob(
+    'CLAUDE_CODE_EXTRA_BODY',
+    cc?.extraBody !== undefined ? JSON.stringify(cc.extraBody) : undefined,
+  );
   // 9 W13 — the picker allowlist. Written whenever a spec exists (even a
   // single model: under a gateway the built-in catalog is dead entries, same
   // policy as dsh/opencode). Platform-owned key: re-apply overwrites whatever
-  // the user had there.
-  const availableModels = [...new Set([spec.model, ...(spec.models ?? [])])];
+  // the user had there. #60: the allowlist matches PLAIN ids — `[1m]` markers
+  // ride the model slots (settings `model` + the tier envs), not the list —
+  // and tier-pinned / subagent ids join so the locks never reject a pin.
+  const pinned = (cc?.tiers ?? []).map((t) => t.model);
+  if (cc?.subagentModel !== undefined) pinned.push(cc.subagentModel);
+  const availableModels = [
+    ...new Set([spec.model, ...(spec.models ?? []), ...pinned].map(stripClaudeOneMarker)),
+  ];
   writeSecretFile(
     file,
     `${JSON.stringify({ ...settings, env, model: spec.model, availableModels }, null, 2)}\n`,

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   createMachineJobSchema,
+  hasClaudeOneMarker,
   harnessJobPayloadSchema,
   harnessResultDataSchema,
   runtimeConfigGetRequestSchema,
@@ -8,6 +9,8 @@ import {
   runtimeConfigViewEventSchema,
   runtimeSpecUnsupportedReason,
   RUNTIME_API_SUPPORT,
+  setClaudeOneMarker,
+  stripClaudeOneMarker,
 } from '../src/index.js';
 
 /** Phase 9 W3 — the provider-config spec, its per-target policy, and the apply-config job arm. */
@@ -36,6 +39,71 @@ describe('runtimeConfigSpecSchema', () => {
     expect(runtimeConfigSpecSchema.safeParse({ ...validSpec, credentialName: '' }).success).toBe(
       false,
     );
+  });
+
+  it('#60 — accepts a full claudeCode knob set and stays optional', () => {
+    expect(runtimeConfigSpecSchema.safeParse(validSpec).success).toBe(true);
+    const parsed = runtimeConfigSpecSchema.safeParse({
+      ...validSpec,
+      api: 'anthropic-messages',
+      model: 'gw-large[1m]',
+      claudeCode: {
+        authField: 'ANTHROPIC_API_KEY',
+        tiers: [
+          {
+            tier: 'sonnet',
+            model: 'gw-large[1m]',
+            displayName: 'Gateway Large',
+            capabilities: ['effort', 'thinking'],
+          },
+          { tier: 'haiku', model: 'gw-mini' },
+        ],
+        subagentModel: 'gw-mini[1m]',
+        maxOutputTokens: 64000,
+        maxContextTokens: 983616,
+        extraBody: { enable_thinking: true },
+      },
+    });
+    expect(parsed.success).toBe(true);
+  });
+
+  it('#60 — rejects out-of-bounds knobs and unknown tiers', () => {
+    const base = { ...validSpec, api: 'anthropic-messages' as const };
+    expect(
+      runtimeConfigSpecSchema.safeParse({
+        ...base,
+        claudeCode: { maxOutputTokens: 200000 },
+      }).success,
+    ).toBe(false);
+    expect(
+      runtimeConfigSpecSchema.safeParse({ ...base, claudeCode: { maxContextTokens: 0 } }).success,
+    ).toBe(false);
+    expect(
+      runtimeConfigSpecSchema.safeParse({
+        ...base,
+        claudeCode: { tiers: [{ tier: 'mythos' as never, model: 'x' }] },
+      }).success,
+    ).toBe(false);
+    expect(
+      runtimeConfigSpecSchema.safeParse({ ...base, claudeCode: { tiers: [{ tier: 'opus' }] } })
+        .success,
+    ).toBe(false);
+  });
+});
+
+describe('claude-code [1m] marker helpers (#60)', () => {
+  it('detects case-insensitively and round-trips strip/set', () => {
+    expect(hasClaudeOneMarker('qwen-plus[1m]')).toBe(true);
+    expect(hasClaudeOneMarker('qwen-plus[1M] ')).toBe(true);
+    expect(hasClaudeOneMarker('qwen-plus')).toBe(false);
+    expect(stripClaudeOneMarker('qwen-plus[1m]')).toBe('qwen-plus');
+    expect(stripClaudeOneMarker('qwen-plus [1M]\t')).toBe('qwen-plus');
+    expect(stripClaudeOneMarker('qwen-plus')).toBe('qwen-plus');
+    expect(setClaudeOneMarker('qwen-plus', true)).toBe('qwen-plus[1m]');
+    // setting is idempotent and stripping a bare id is a no-op
+    expect(setClaudeOneMarker(setClaudeOneMarker(' qwen-plus ', true), true)).toBe('qwen-plus[1m]');
+    expect(setClaudeOneMarker('qwen-plus[1m]', false)).toBe('qwen-plus');
+    expect(setClaudeOneMarker('', true)).toBe('');
   });
 });
 

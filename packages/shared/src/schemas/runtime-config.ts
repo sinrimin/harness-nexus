@@ -61,6 +61,78 @@ export const DSH_PROVIDER_ID = 'harness-nexus';
  */
 export const PI_PROVIDER_ID = 'harness-nexus';
 
+/**
+ * #60 — the `[1m]` suffix claude-code reads on a model id (alias or full
+ * name): sending is marker-stripped, the `context-1m` beta rides along, and
+ * for ids it does not know it makes claude-code ASSUME a 1M window (in which
+ * case `CLAUDE_CODE_MAX_CONTEXT_TOKENS` does not apply). The marker lives
+ * INSIDE the model string end to end (cc-switch's representation); only
+ * `availableModels` entries are written marker-stripped — the allowlist
+ * matches plain ids, the marker is a /model-and-env-slot concept.
+ */
+export const CLAUDE_ONE_M_MARKER = '[1m]';
+
+export function hasClaudeOneMarker(model: string): boolean {
+  return model.trimEnd().toLowerCase().endsWith(CLAUDE_ONE_M_MARKER);
+}
+
+export function stripClaudeOneMarker(model: string): string {
+  const trimmed = model.trimEnd();
+  if (!trimmed.toLowerCase().endsWith(CLAUDE_ONE_M_MARKER)) return model;
+  return trimmed.slice(0, -CLAUDE_ONE_M_MARKER.length).trimEnd();
+}
+
+export function setClaudeOneMarker(model: string, enabled: boolean): string {
+  const base = stripClaudeOneMarker(model).trim();
+  return enabled && base !== '' ? `${base}${CLAUDE_ONE_M_MARKER}` : base;
+}
+
+/** #60 — claude-code's alias tiers, in the panel's display order. */
+export const CLAUDE_CODE_TIERS = ['sonnet', 'opus', 'fable', 'haiku'] as const;
+export type ClaudeCodeTier = (typeof CLAUDE_CODE_TIERS)[number];
+
+/**
+ * #60 — claude-code's own configuration knobs (the per-target panel; ground
+ * truth: claude-code 2.1.205 + the official env-vars/model-config docs).
+ * ADDITIVE like `modelEntries` above: old daemons' zod parse strips the
+ * unknown field, so the wire stays compatible. All knobs land in the
+ * settings.json `env` block with revert semantics in the writer — a knob not
+ * configured here REMOVES the key we manage; user keys are never touched.
+ * NOTE: the capabilities vocabulary is open on purpose (the docs only give
+ * `effort,thinking` as an example) — the UI suggests those two but accepts
+ * custom tokens.
+ */
+export const claudeCodeConfigSchema = z.object({
+  /** Which env slot carries the key: Bearer (default) vs x-api-key gateways. */
+  authField: z.enum(['ANTHROPIC_AUTH_TOKEN', 'ANTHROPIC_API_KEY']).optional(),
+  /** Alias-tier pins (`ANTHROPIC_DEFAULT_{TIER}_MODEL` + `_NAME`/`_SUPPORTED_CAPABILITIES`). */
+  tiers: z
+    .array(
+      z.object({
+        tier: z.enum(CLAUDE_CODE_TIERS),
+        /** May carry the `[1m]` marker. */
+        model: z.string().min(1).max(160),
+        displayName: z.string().max(160).optional(),
+        capabilities: z.array(z.string().min(1).max(32)).max(8).optional(),
+      }),
+    )
+    .max(4)
+    .optional(),
+  /** `CLAUDE_CODE_SUBAGENT_MODEL` — may carry the `[1m]` marker. */
+  subagentModel: z.string().min(1).max(160).optional(),
+  /** `CLAUDE_CODE_MAX_OUTPUT_TOKENS` (claude-code default 32k, cap 128k). */
+  maxOutputTokens: z.number().int().min(1).max(128000).optional(),
+  /**
+   * `CLAUDE_CODE_MAX_CONTEXT_TOKENS` — applies directly to non-`claude-`
+   * gateway ids; mutually exclusive with the `[1m]` marker (which makes
+   * claude-code assume 1M and defers to nothing).
+   */
+  maxContextTokens: z.number().int().positive().optional(),
+  /** `CLAUDE_CODE_EXTRA_BODY` — JSON object merged into every request body. */
+  extraBody: z.record(z.string(), z.unknown()).optional(),
+});
+export type ClaudeCodeConfig = z.infer<typeof claudeCodeConfigSchema>;
+
 export const runtimeConfigSpecSchema = z.object({
   /** Display label only — surfaces in the harness's own config UI. */
   providerLabel: z.string().min(1).max(64),
@@ -105,6 +177,12 @@ export const runtimeConfigSpecSchema = z.object({
     )
     .max(17)
     .optional(),
+  /**
+   * #60 — claude-code's dedicated panel knobs (see `claudeCodeConfigSchema`).
+   * Typed, not under the loose `extra` record: both ends validate the same
+   * shape and the field strips cleanly off old daemons.
+   */
+  claudeCode: claudeCodeConfigSchema.optional(),
   /** Target-specific extras (kept schema-loose on purpose). */
   extra: z.record(z.string(), z.unknown()).optional(),
 });

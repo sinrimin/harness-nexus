@@ -12,6 +12,8 @@ import {
   RUNTIME_API_SUPPORT,
   DEFAULT_CHAT_PREWARM_SETTINGS,
   providerApiToSpecApi,
+  setClaudeOneMarker,
+  stripClaudeOneMarker,
   type ChatPrewarmSettings,
   type CredentialView,
   type LlmProviderView,
@@ -41,6 +43,14 @@ import {
   DrawerTitle,
 } from '@/components/ui/drawer';
 import { ConfirmDialog, EmptyState, Panel, PanelBody, PanelHeader, Well } from '@/components/kit';
+import {
+  ClaudeCodePanel,
+  ccDraftFromSpec,
+  ccIssue,
+  emptyCcDraft,
+  serializeCcDraft,
+  type CcDraft,
+} from './claude-code-panel.js';
 import type { InventoryEntry, RuntimeInfoView } from './types.js';
 
 /**
@@ -636,6 +646,8 @@ function ProviderConfigForm({
   const [apiFlavor, setApiFlavor] = useState<string>('');
   const [credentialName, setCredentialName] = useState('');
   const [extraModels, setExtraModels] = useState<string[]>([]);
+  // #60 — claude-code's dedicated panel knobs (draft shape; serialized at apply).
+  const [cc, setCc] = useState<CcDraft>(emptyCcDraft);
   const [busy, setBusy] = useState(false);
   // P6 — Apply config confirms first (the credential goes to the machine).
   const [asking, setAsking] = useState(false);
@@ -699,6 +711,7 @@ function ProviderConfigForm({
       setApiFlavor(existing?.api ?? apiOptions[0] ?? '');
       setCredentialName(existing?.credentialName ?? '');
       setExtraModels((existing?.models ?? []).filter((m) => m !== existing?.model));
+      setCc(ccDraftFromSpec(existing));
     })();
     return () => {
       cancelled = true;
@@ -718,20 +731,32 @@ function ProviderConfigForm({
     setBusy(true);
     try {
       // Row inputs are free-typed: normalize before sending (trim, drop
-      // empties and the default, dedupe — the PUT would reject them).
+      // empties and the default, dedupe — the PUT would reject them). The
+      // claude-code 1M checkbox may have put a `[1m]` marker on the default
+      // model — rows dedupe against BOTH spellings (#60).
+      const wireModel = setClaudeOneMarker(model.trim(), cc.oneM);
+      const baseModel = stripClaudeOneMarker(model.trim());
       const normalizedExtras = [
-        ...new Set(extraModels.map((m) => m.trim()).filter((m) => m !== '' && m !== model.trim())),
+        ...new Set(
+          extraModels
+            .map((m) => m.trim())
+            .filter((m) => m !== '' && m !== baseModel && m !== wireModel),
+        ),
       ];
+      // #60 — the panel serializes to undefined when everything is default,
+      // keeping untouched specs byte-identical to their pre-#60 shape.
+      const claudeCode = serializeCcDraft(cc);
       const spec: RuntimeConfigSpec = {
         providerLabel: (selectedProvider?.name ?? providerLabel).trim(),
         api: (selectedProvider !== null
           ? providerApiToSpecApi(selectedProvider.api)
           : apiFlavor || apiOptions[0]) as RuntimeConfigSpec['api'],
-        model: model.trim(),
+        model: wireModel,
         credentialName: selectedProvider?.credentialName ?? credentialName,
         ...(selectedProvider !== null ? { providerId: selectedProvider.id } : {}),
         ...(normalizedExtras.length > 0 ? { models: normalizedExtras } : {}),
         ...(effectiveBaseUrl !== '' ? { baseUrl: effectiveBaseUrl } : {}),
+        ...(claudeCode !== undefined ? { claudeCode } : {}),
       };
       await withAuthGuard(() => api.putRuntimeConfig(machineId, managedTarget!, spec), logout);
       toast.success(t('machineDetail.applyToast'));
@@ -745,6 +770,7 @@ function ProviderConfigForm({
   const ready =
     model.trim() !== '' &&
     !busy &&
+    ccIssue(cc) === null &&
     (selectedProvider !== null || (providerLabel.trim() !== '' && credentialName !== ''));
 
   const needBaseUrlNote = selectedProvider !== null && selectedProvider.baseUrl === null;
@@ -1058,6 +1084,18 @@ function ProviderConfigForm({
           })}
           <p className="text-muted-foreground text-xs">{t('machineDetail.extraModelsHint')}</p>
         </div>
+
+        {/* #60 — claude-code's own knob panel. Only the connection and the
+          model list carry over from the provider-config flow; the rest of
+          this agent's configurable surface is its native vocabulary. */}
+        {managedTarget === 'claude-code' ? (
+          <ClaudeCodePanel
+            draft={cc}
+            onChange={setCc}
+            defaultModel={model}
+            suggestions={chatModels.map((m) => m.id)}
+          />
+        ) : null}
       </div>
 
       {asking ? (
