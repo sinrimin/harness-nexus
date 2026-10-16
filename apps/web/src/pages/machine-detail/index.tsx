@@ -156,12 +156,17 @@ export function MachineDetailPage() {
   };
 
   // The strip scrolls ITSELF on the narrowest phones (#61) — selection must
-  // follow: keyboard/programmatic activation brings the active trigger into
-  // view, or the focused tab can sit 30px past the hidden edge.
+  // follow. scrollIntoView's `inline:'nearest'` stops short when the tab's
+  // leading edge is already on screen, so this scrolls the strip explicitly
+  // until the active trigger's box is fully inside it.
   useEffect(() => {
-    document
-      .querySelector('[role=tab][data-state=active]')
-      ?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    const strip = document.querySelector('[role=tablist]');
+    const active = strip?.querySelector('[role=tab][data-state=active]');
+    if (strip === null || active === null) return;
+    const sr = strip.getBoundingClientRect();
+    const ar = active.getBoundingClientRect();
+    if (ar.right > sr.right) strip.scrollLeft += ar.right - sr.right;
+    else if (ar.left < sr.left) strip.scrollLeft -= sr.left - ar.left;
   }, [tab]);
 
   // The machine's name is this page's identity, so it rides the topbar (with the
