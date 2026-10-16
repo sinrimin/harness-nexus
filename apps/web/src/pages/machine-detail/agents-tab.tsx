@@ -295,13 +295,10 @@ function DefaultModeSelect({
   }
 
   return (
-    // Rendered INSIDE the claude-code panel's behavior section (#60) — lean
-    // row, no card padding of its own.
-    <div className="flex flex-col gap-2 pt-1 sm:flex-row sm:items-center sm:justify-between">
-      <div>
-        <p className="text-sm font-medium">{t('machineDetail.defaultMode')}</p>
-        <p className="text-muted-foreground text-xs">{t('machineDetail.defaultModeDesc')}</p>
-      </div>
+    // Rendered INSIDE the claude-code panel's behavior section (#60) — the
+    // same three-line field idiom as 默认模型 above: label / select / hint.
+    <div className="grid gap-2 pt-1">
+      <Label htmlFor="default-mode">{t('machineDetail.defaultMode')}</Label>
       <Select
         value={current ?? 'none'}
         onValueChange={(v) => void apply(v)}
@@ -310,7 +307,7 @@ function DefaultModeSelect({
         <SelectTrigger
           id="default-mode"
           aria-label={t('machineDetail.defaultMode')}
-          className="w-full sm:w-[180px]"
+          className="w-full"
         >
           <SelectValue />
         </SelectTrigger>
@@ -322,6 +319,7 @@ function DefaultModeSelect({
           <SelectItem value="auto">Auto</SelectItem>
         </SelectContent>
       </Select>
+      <p className="text-muted-foreground text-xs">{t('machineDetail.defaultModeDesc')}</p>
     </div>
   );
 }
