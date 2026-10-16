@@ -89,6 +89,52 @@ describe('runtimeConfigSpecSchema', () => {
         .success,
     ).toBe(false);
   });
+
+  it('#62 — accepts a full opencode knob set and stays optional', () => {
+    expect(runtimeConfigSpecSchema.safeParse(validSpec).success).toBe(true);
+    const parsed = runtimeConfigSpecSchema.safeParse({
+      ...validSpec,
+      opencode: {
+        models: [
+          {
+            id: 'gw-large',
+            name: 'Gateway Large',
+            contextWindow: 200_000,
+            maxOutputTokens: 32_000,
+            reasoning: true,
+            temperatureEnabled: true,
+            vision: true,
+            options: { enable_thinking: true },
+          },
+        ],
+        smallModel: 'gw-mini',
+        autoupdateDisabled: true,
+      },
+    });
+    expect(parsed.success).toBe(true);
+  });
+
+  it('#62 — rejects non-positive limits and an id-less model detail', () => {
+    const base = { ...validSpec, api: 'openai' as const };
+    expect(
+      runtimeConfigSpecSchema.safeParse({
+        ...base,
+        opencode: { models: [{ id: 'x', contextWindow: 0 }] },
+      }).success,
+    ).toBe(false);
+    expect(
+      runtimeConfigSpecSchema.safeParse({
+        ...base,
+        opencode: { models: [{ id: 'x', maxOutputTokens: -1 }] },
+      }).success,
+    ).toBe(false);
+    expect(
+      runtimeConfigSpecSchema.safeParse({ ...base, opencode: { models: [{ name: 'x' }] } }).success,
+    ).toBe(false);
+    expect(
+      runtimeConfigSpecSchema.safeParse({ ...base, opencode: { smallModel: '' } }).success,
+    ).toBe(false);
+  });
 });
 
 describe('claude-code [1m] marker helpers (#60)', () => {

@@ -494,6 +494,9 @@ function applyOpencodeConfig(spec: RuntimeConfigSpec, secret: string, homeDir: s
   const keyPath = join(dir, OPENCODE_KEY_NAME);
   const cfg = readJson(cfgPath); // absent → fresh; JSONC → throws, file untouched
   const entriesById = new Map((spec.modelEntries ?? []).map((e) => [e.id, e]));
+  // #62 — the panel's per-model detail WINS over the #51 seed, per field;
+  // `limit.*` stay REQUIRED (schema), so unset means seed → fallback.
+  const detailById = new Map((spec.opencode?.models ?? []).map((m) => [m.id, m]));
 
   const providers = {
     ...((cfg.provider as Record<string, unknown> | undefined) ?? {}),
@@ -508,17 +511,29 @@ function applyOpencodeConfig(spec: RuntimeConfigSpec, secret: string, homeDir: s
       // drops the default from extras, this dedupe is belt-and-braces.
       // #51 — registry metadata (snapshot in the spec) fills `name` and the
       // REQUIRED `limit` block (see OPENCODE_FALLBACK_MAX_OUTPUT); bare ids
-      // get the fallback limit, never an empty entry.
+      // get the fallback limit, never an empty entry. #62 — panel detail
+      // overlays the seed and adds the capability/body-key knobs.
       models: Object.fromEntries(
         [...new Set([spec.model, ...(spec.models ?? [])])].map((id) => {
           const e = entriesById.get(id);
+          const d = detailById.get(id);
           return [
             id,
             {
-              ...(e?.displayName !== undefined ? { name: e.displayName } : {}),
+              ...(d?.name !== undefined
+                ? { name: d.name }
+                : e?.displayName !== undefined
+                  ? { name: e.displayName }
+                  : {}),
+              ...(d?.reasoning === true ? { reasoning: true } : {}),
+              ...(d?.temperatureEnabled === true ? { temperature: true } : {}),
+              ...(d?.vision === true ? { attachment: true } : {}),
+              ...(d?.options !== undefined && Object.keys(d.options).length > 0
+                ? { options: d.options }
+                : {}),
               limit: {
-                output: e?.maxOutputTokens ?? OPENCODE_FALLBACK_MAX_OUTPUT,
-                context: e?.contextWindow ?? OPENCODE_FALLBACK_CONTEXT,
+                output: d?.maxOutputTokens ?? e?.maxOutputTokens ?? OPENCODE_FALLBACK_MAX_OUTPUT,
+                context: d?.contextWindow ?? e?.contextWindow ?? OPENCODE_FALLBACK_CONTEXT,
               },
             },
           ];
@@ -526,18 +541,26 @@ function applyOpencodeConfig(spec: RuntimeConfigSpec, secret: string, homeDir: s
       ),
     },
   };
-  writeSecretFile(
-    cfgPath,
-    `${JSON.stringify(
-      {
-        ...cfg,
-        provider: providers,
-        model: `${OPENCODE_PROVIDER_ID}/${spec.model}`,
-      },
-      null,
-      2,
-    )}\n`,
-  );
+  // #62 — top-level `small_model`/`autoupdate` are BASE_URL-style owned:
+  // configured → write, cleared → remove ours (a user's own value is
+  // clobbered while configured and removed when cleared — same trade as the
+  // managed base URL, documented in the design).
+  const managed: Record<string, unknown> = {
+    ...cfg,
+    provider: providers,
+    model: `${OPENCODE_PROVIDER_ID}/${spec.model}`,
+  };
+  if (spec.opencode?.smallModel !== undefined) {
+    managed.small_model = `${OPENCODE_PROVIDER_ID}/${spec.opencode.smallModel}`;
+  } else {
+    delete managed.small_model;
+  }
+  if (spec.opencode?.autoupdateDisabled === true) {
+    managed.autoupdate = false;
+  } else {
+    delete managed.autoupdate;
+  }
+  writeSecretFile(cfgPath, `${JSON.stringify(managed, null, 2)}\n`);
   writeSecretFile(keyPath, secret);
   return [display(homeDir, cfgPath), display(homeDir, keyPath)];
 }

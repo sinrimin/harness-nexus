@@ -156,6 +156,63 @@ export const claudeCodeConfigSchema = z.object({
 });
 export type ClaudeCodeConfig = z.infer<typeof claudeCodeConfigSchema>;
 
+/**
+ * #62 — opencode's dedicated panel knobs. Ground truth: research §3.3
+ * (opencode 1.18.31 schema, rig-verified) + the official config docs.
+ * Per-model detail rides the SAME entry map the writer already owns
+ * (`provider['harness-nexus'].models.<id>`); precedence per field is
+ * panel value > #51 modelEntries seed > conservative fallback — `limit.*`
+ * are REQUIRED by opencode's schema, so an unset field means the seed or
+ * fallback, never a deleted key. `small_model`/`autoupdate` are top-level
+ * keys with BASE_URL-style ownership (configured → write, cleared → remove
+ * ours).
+ */
+export const opencodeModelDetailSchema = z.object({
+  /** `name` — display name in opencode's model picker. */
+  name: z.string().max(256).optional(),
+  /** `limit.context` — informational: context-remaining UI + auto-compaction. */
+  contextWindow: z.number().int().positive().optional(),
+  /** `limit.output` — a real request cap; opencode clamps globally to 32k. */
+  maxOutputTokens: z.number().int().positive().optional(),
+  /** `reasoning: true` — capability declaration. */
+  reasoning: z.boolean().optional(),
+  /**
+   * `temperature: true` — BOOLEAN GATE on the model entry (the sampling VALUE
+   * lives per-agent in opencode and is out of scope): only when true does
+   * opencode send an agent's temperature at all.
+   */
+  temperatureEnabled: z.boolean().optional(),
+  /** `attachment: true` — vision capability. */
+  vision: z.boolean().optional(),
+  /**
+   * `options` — model-level body keys, merged into the providerOptions
+   * namespace and spread verbatim on the openai-compatible wire ONLY (no
+   * passthrough on the anthropic flavor).
+   */
+  options: z.record(z.string(), z.unknown()).optional(),
+});
+export type OpencodeModelDetail = z.infer<typeof opencodeModelDetailSchema>;
+
+export const opencodeConfigSchema = z.object({
+  /** Per-model detail, keyed against the switchable set (default + extras). */
+  models: z
+    .array(opencodeModelDetailSchema.extend({ id: z.string().min(1).max(128) }))
+    .max(17)
+    .optional(),
+  /**
+   * Top-level `small_model` — opencode's background model for lightweight
+   * tasks (title generation etc.). Stored as the BARE id; the writer prefixes
+   * `harness-nexus/`.
+   */
+  smallModel: z.string().min(1).max(128).optional(),
+  /**
+   * Top-level `autoupdate: false`. Docs caveat: may not apply to
+   * package-manager installs (incl. npm — our channel); the panel hints it.
+   */
+  autoupdateDisabled: z.boolean().optional(),
+});
+export type OpencodeConfig = z.infer<typeof opencodeConfigSchema>;
+
 export const runtimeConfigSpecSchema = z.object({
   /** Display label only — surfaces in the harness's own config UI. */
   providerLabel: z.string().min(1).max(64),
@@ -206,6 +263,11 @@ export const runtimeConfigSpecSchema = z.object({
    * shape and the field strips cleanly off old daemons.
    */
   claudeCode: claudeCodeConfigSchema.optional(),
+  /**
+   * #62 — opencode's dedicated panel knobs (see `opencodeConfigSchema`),
+   * same additive contract as `claudeCode`.
+   */
+  opencode: opencodeConfigSchema.optional(),
   /** Target-specific extras (kept schema-loose on purpose). */
   extra: z.record(z.string(), z.unknown()).optional(),
 });

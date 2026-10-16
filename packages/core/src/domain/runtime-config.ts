@@ -41,6 +41,12 @@ export interface RuntimeConfigSpecData {
    * writes each present knob into settings.json with revert semantics.
    */
   claudeCode: ClaudeCodeConfigData | null;
+  /**
+   * #62 — opencode's dedicated panel knobs (see `OpencodeConfigData`).
+   * null = panel untouched; per-field precedence is panel value >
+   * modelEntries seed > conservative fallback in the writer.
+   */
+  opencode: OpencodeConfigData | null;
   extra: Record<string, unknown> | null;
 }
 
@@ -70,6 +76,25 @@ export interface ClaudeCodeTierPin {
   model: string;
   displayName?: string | undefined;
   capabilities?: string[] | undefined;
+}
+
+/** #62 — plain mirror of `opencodeConfigSchema` in shared (kept in sync). */
+export interface OpencodeConfigData {
+  models?: OpencodeModelDetailData[] | undefined;
+  /** Bare model id; the writer prefixes `harness-nexus/`. */
+  smallModel?: string | undefined;
+  autoupdateDisabled?: boolean | undefined;
+}
+
+export interface OpencodeModelDetailData {
+  id: string;
+  name?: string | undefined;
+  contextWindow?: number | undefined;
+  maxOutputTokens?: number | undefined;
+  reasoning?: boolean | undefined;
+  temperatureEnabled?: boolean | undefined;
+  vision?: boolean | undefined;
+  options?: Record<string, unknown> | undefined;
 }
 
 /** #51 — the metadata subset of a ProviderModelConfig that may ride a spec. */
