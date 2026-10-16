@@ -8,6 +8,7 @@ import type {
 import type { ChatStreamEvent, HistoryItem, PromptBlock } from '@harness-nexus/shared';
 import { generateId } from '../infra/crypto.js';
 import { rowsToHistoryItems } from '../assistant/history.js';
+import { imageExpiryFrom } from '../services/settings.js';
 import {
   startAssistantTurn,
   TurnSetupError,
@@ -48,7 +49,7 @@ interface LiveChannel {
   /** Current model id on that provider. */
   modelId: string;
   /** #10 semantics — depth-1 send slot, parked while the user is busy. */
-  queuedPrompt: PromptBlock[] | null;
+  queuedPrompt: AssistantPromptBlock[] | null;
   run: RunningTurn | null;
   openedAt: number;
   /**
@@ -241,14 +242,18 @@ export class AssistantRealtimeService {
     const rows = await this.deps.uow.assistants.listMessages(session.id);
     this.io.toChannel(session.id, 'assistant:history', {
       sessionId: session.id,
-      items: rowsToHistoryItems(rows),
+      items: await rowsToHistoryItems(rows, this.historyResolver()),
     });
     this.emit(session.id, await this.sessionConfigEvent(ch));
     if (this.running.get(userId) === session.id) {
       this.emit(session.id, { kind: 'session_status', state: 'active' });
     }
     if (ch.queuedPrompt !== null) {
-      this.emit(session.id, { kind: 'queue_state', prompt: ch.queuedPrompt, flushed: false });
+      this.emit(session.id, {
+        kind: 'queue_state',
+        prompt: await this.wireView(ch.queuedPrompt),
+        flushed: false,
+      });
     }
     void this.pushSessions(userId);
     return { ok: true, sessionId: session.id, assistantName: config.name };
@@ -291,6 +296,76 @@ export class AssistantRealtimeService {
 
   // ---- send / queue / cancel ----
 
+  /**
+   * #59 — the send-side image split: wire image blocks (base64) become blob
+   * stores + persisted `imageRef` blocks. Text and resource_link pass
+   * through; a legacy inline block (only possible from internal callers)
+   * splits like a wire block. Returns the DOMAIN blocks the channel, the
+   * queue, and the turn all carry from here on.
+   */
+  private async splitImageBlocks(
+    prompt: readonly (PromptBlock | AssistantPromptBlock)[],
+  ): Promise<AssistantPromptBlock[]> {
+    const settings = await this.deps.uow.settings.get();
+    const expiresAt = imageExpiryFrom(settings, new Date());
+    const out: AssistantPromptBlock[] = [];
+    for (const b of prompt) {
+      if (b.type === 'image') {
+        const row = await this.deps.uow.fileBlobs.put({
+          data: Buffer.from(b.data, 'base64'),
+          mimeType: b.mimeType,
+          expiresAt,
+        });
+        out.push({ type: 'imageRef', ref: row.id, mimeType: b.mimeType });
+      } else if (b.type === 'imageRef') {
+        out.push(b);
+      } else {
+        out.push(b);
+      }
+    }
+    return out;
+  }
+
+  /**
+   * #59 — the wire view of persisted blocks for the events the WEB sees
+   * (`user_message` echo, `queue_state`): imageRefs resolve back to inline
+   * data URLs, transiently — never persisted. An expired/missing blob
+   * degrades to the replay placeholder.
+   */
+  private async wireView(blocks: readonly AssistantPromptBlock[]): Promise<PromptBlock[]> {
+    const now = new Date().toISOString();
+    const out: PromptBlock[] = [];
+    for (const b of blocks) {
+      if (b.type !== 'imageRef') {
+        out.push(b);
+        continue;
+      }
+      const hit = await this.deps.uow.fileBlobs.get(b.ref);
+      out.push(
+        hit !== null && hit.row.expiresAt > now
+          ? {
+              type: 'image',
+              data: Buffer.from(hit.data).toString('base64'),
+              // Ingest came from a wire-validated block — the union holds.
+              mimeType: hit.row.mimeType as 'image/png' | 'image/jpeg' | 'image/webp' | 'image/gif',
+            }
+          : { type: 'text', text: '[image expired]' },
+      );
+    }
+    return out;
+  }
+
+  /** #59 — the history replay's ref resolver (owner-authed socket push). */
+  private historyResolver(): (ref: string) => Promise<{ data: string; mimeType: string } | null> {
+    const now = new Date().toISOString();
+    return async (ref) => {
+      const hit = await this.deps.uow.fileBlobs.get(ref);
+      return hit !== null && hit.row.expiresAt > now
+        ? { data: Buffer.from(hit.data).toString('base64'), mimeType: hit.row.mimeType }
+        : null;
+    };
+  }
+
   /** `assistant:message.send` — per-user busy gate + depth-1 queue. */
   async onMessageSend(
     userId: string,
@@ -299,14 +374,21 @@ export class AssistantRealtimeService {
   ): Promise<AssistantSendResult> {
     const ch = this.channelOf(userId, sessionId);
     if (ch === null) return { ok: false, code: 'SESSION_NOT_FOUND' };
-    const prompt: PromptBlock[] =
+    const wire: PromptBlock[] =
       typeof content === 'string' ? [{ type: 'text', text: content }] : content;
-    if (prompt.length === 0) return { ok: false, code: 'VALIDATION' };
+    if (wire.length === 0) return { ok: false, code: 'VALIDATION' };
+    // #59 — bytes leave the prompt here: blobs are stored, the channel and
+    // the queue carry refs only (the blobs' expiry is stamped at THIS moment).
+    const prompt = await this.splitImageBlocks(wire);
 
     if (this.running.has(userId)) {
       if (ch.queuedPrompt !== null) return { ok: false, code: 'QUEUE_FULL' };
       ch.queuedPrompt = prompt;
-      this.emit(sessionId, { kind: 'queue_state', prompt, flushed: false });
+      this.emit(sessionId, {
+        kind: 'queue_state',
+        prompt: await this.wireView(prompt),
+        flushed: false,
+      });
       return { ok: true, queued: true };
     }
     // The gate flips SYNCHRONOUSLY (a send racing the turn's first await
@@ -390,7 +472,7 @@ export class AssistantRealtimeService {
 
   // ---- the turn ----
 
-  private async startTurn(ch: LiveChannel, prompt: PromptBlock[]): Promise<void> {
+  private async startTurn(ch: LiveChannel, prompt: AssistantPromptBlock[]): Promise<void> {
     // #54 — an ephemeral open persists HERE (first real content): save the
     // pending row, then everything downstream sees a normal session.
     let session: AssistantSession | null = ch.pending ?? null;
@@ -418,10 +500,11 @@ export class AssistantRealtimeService {
     await this.deps.uow.assistants.appendMessage(ch.sessionId, {
       seq,
       type: 'user',
-      blocks: prompt as AssistantPromptBlock[],
+      blocks: prompt,
     });
     // #11 — the echo is the single source of the user row for every viewer.
-    this.emit(ch.sessionId, { kind: 'user_message', blocks: prompt });
+    // #59 — the echo carries the WIRE view (refs resolved inline, transient).
+    this.emit(ch.sessionId, { kind: 'user_message', blocks: await this.wireView(prompt) });
 
     const turn = startAssistantTurn(
       this.mcp === undefined ? this.deps : { ...this.deps, mcp: this.mcp },
@@ -524,7 +607,7 @@ export class AssistantRealtimeService {
     const rows = await this.deps.uow.assistants.listMessages(sessionId);
     this.io.toChannel(sessionId, 'assistant:history', {
       sessionId,
-      items: rowsToHistoryItems(rows),
+      items: await rowsToHistoryItems(rows, this.historyResolver()),
     });
     this.emit(sessionId, await this.sessionConfigEvent(ch));
     if (this.running.get(ch.ownerId) === sessionId) {
@@ -617,6 +700,6 @@ export class AssistantRealtimeService {
   /** History for a session (used by tests / future re-sync paths). */
   async historyFor(sessionId: string): Promise<HistoryItem[]> {
     const rows = await this.deps.uow.assistants.listMessages(sessionId);
-    return rowsToHistoryItems(rows);
+    return rowsToHistoryItems(rows, this.historyResolver());
   }
 }

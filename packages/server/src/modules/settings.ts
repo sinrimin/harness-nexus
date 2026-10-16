@@ -1,7 +1,16 @@
 import type { FastifyInstance } from 'fastify';
-import { updateRegistrationSchema, type UpdateRegistrationInput } from '@harness-nexus/shared';
+import {
+  updateImageRetentionSchema,
+  updateRegistrationSchema,
+  type UpdateImageRetentionInput,
+  type UpdateRegistrationInput,
+} from '@harness-nexus/shared';
 import { principalOf } from './principal.js';
-import { getSystemSettings, updateRegistrationSettings } from '../services/settings.js';
+import {
+  getSystemSettings,
+  updateImageRetentionSettings,
+  updateRegistrationSettings,
+} from '../services/settings.js';
 
 /** System settings routes — thin adapters over `services/settings.ts` (#53). */
 export async function settingsRoutes(app: FastifyInstance): Promise<void> {
@@ -15,5 +24,17 @@ export async function settingsRoutes(app: FastifyInstance): Promise<void> {
     const input = updateRegistrationSchema.parse(req.body) as UpdateRegistrationInput;
     const settings = await updateRegistrationSettings({ uow: app.uow }, principalOf(req), input);
     return { allowRegistration: settings.allowRegistration };
+  });
+
+  // #59 — the image retention window (days), admin-only both ways.
+  app.get('/api/settings/image-retention', { preHandler: [app.requireAdmin] }, async () => {
+    const settings = await getSystemSettings({ uow: app.uow });
+    return { imageRetentionDays: settings.imageRetentionDays };
+  });
+
+  app.put('/api/settings/image-retention', { preHandler: [app.requireAdmin] }, async (req) => {
+    const input = updateImageRetentionSchema.parse(req.body) as UpdateImageRetentionInput;
+    const settings = await updateImageRetentionSettings({ uow: app.uow }, principalOf(req), input);
+    return { imageRetentionDays: settings.imageRetentionDays };
   });
 }

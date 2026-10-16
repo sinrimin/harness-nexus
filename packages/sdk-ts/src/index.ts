@@ -784,6 +784,15 @@ export class HarnessNexusClient {
     return this.request('PUT', '/api/settings/registration', { allowRegistration });
   }
 
+  /** #59 — the assistant image retention window (days). Admin-only endpoint. */
+  async getImageRetention(): Promise<{ imageRetentionDays: number }> {
+    return this.request('GET', '/api/settings/image-retention');
+  }
+
+  async setImageRetention(imageRetentionDays: number): Promise<{ imageRetentionDays: number }> {
+    return this.request('PUT', '/api/settings/image-retention', { imageRetentionDays });
+  }
+
   // ---- credentials ----
   async createCredential(input: {
     name: string;

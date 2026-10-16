@@ -116,6 +116,23 @@ export async function buildApp(config: ServerConfig): Promise<FastifyInstance> {
   // W10 — budget for provider model-list discovery (outbound surface #2).
   app.decorate('providerModelsTimeoutMs', config.providerModelsTimeoutMs);
 
+  // #59 — expired image blobs are reclaimed at boot and every 12h after.
+  // Reads already degrade expired refs to placeholders, so the sweep is
+  // pure reclamation, never a correctness gate. Unref'd timer: a shutdown
+  // must not wait on it.
+  const sweepImageBlobs = async (): Promise<void> => {
+    try {
+      const purged = await uow.fileBlobs.purgeExpired(new Date().toISOString());
+      if (purged > 0) app.log.info({ purged }, 'expired image blobs purged');
+    } catch (err) {
+      app.log.warn({ err }, 'image blob sweep failed (will retry on schedule)');
+    }
+  };
+  void sweepImageBlobs();
+  const sweepTimer = setInterval(() => void sweepImageBlobs(), 12 * 60 * 60 * 1000);
+  sweepTimer.unref();
+  app.addHook('onClose', async () => clearInterval(sweepTimer));
+
   // Phase 7.2 — marketplace catalog service + its allowlist. The only
   // outbound-fetch surface in the server. `createMarketplaceFetcher` returns a
   // fixture reader when `MARKETPLACE_FIXTURE_PATH` is set (test mode).

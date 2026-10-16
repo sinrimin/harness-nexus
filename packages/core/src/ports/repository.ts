@@ -14,6 +14,7 @@ import type {
   AssistantMessageRow,
   AssistantSession,
   AssistantToolCallAudit,
+  FileObject,
   Job,
   LlmProvider,
   Machine,
@@ -82,6 +83,24 @@ export interface SystemSettingsRepository {
   /** Always returns a value; drivers seed defaults on first access. */
   get(): Promise<SystemSettings>;
   save(settings: SystemSettings): Promise<SystemSettings>;
+}
+
+/**
+ * #59 — the assistant transcript's image blobs. Bytes are deliberately NOT a
+ * repository-shaped concern beyond these four operations: no dedup (every
+ * ingest is its own object), no cross-row queries — the sqlite driver keeps a
+ * small registry table and the bytes on local disk; the memory driver keeps
+ * them in a map.
+ */
+export interface FileBlobRepository {
+  /** Store one blob; the id is generated. `expiresAt` is stamped by the caller. */
+  put(input: { data: Uint8Array; mimeType: string; expiresAt: string }): Promise<FileObject>;
+  /** The registry row + bytes; null when the id is unknown OR the payload is missing. */
+  get(id: string): Promise<{ row: FileObject; data: Uint8Array } | null>;
+  /** Idempotent — a missing row or payload is not an error. */
+  delete(id: string): Promise<void>;
+  /** Reclaim everything whose (stamped) `expiresAt` has passed; returns the count. */
+  purgeExpired(now: string): Promise<number>;
 }
 
 export interface McpServerRepository {
@@ -236,4 +255,5 @@ export interface UnitOfWork {
   runtimeConfigs: RuntimeConfigRepository;
   llmProviders: LlmProviderRepository;
   assistants: AssistantRepository;
+  fileBlobs: FileBlobRepository;
 }
