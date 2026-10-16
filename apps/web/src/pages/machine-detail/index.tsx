@@ -161,8 +161,9 @@ export function MachineDetailPage() {
   // until the active trigger's box is fully inside it.
   useEffect(() => {
     const strip = document.querySelector('[role=tablist]');
-    const active = strip?.querySelector('[role=tab][data-state=active]');
-    if (strip === null || active === null) return;
+    if (strip === null) return;
+    const active = strip.querySelector('[role=tab][data-state=active]');
+    if (active === null) return;
     const sr = strip.getBoundingClientRect();
     const ar = active.getBoundingClientRect();
     if (ar.right > sr.right) strip.scrollLeft += ar.right - sr.right;
