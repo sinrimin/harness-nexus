@@ -65,14 +65,33 @@ export interface AssistantSession {
   lastMessageAt: string | null;
 }
 
-/** Prompt content blocks (mirrors shared `promptBlockSchema`; images included). */
+/**
+ * The MIME set an image block may carry (mirrors the shared wire schema's
+ * `promptImageMimeSchema`).
+ */
+export type AssistantImageMime = 'image/png' | 'image/jpeg' | 'image/webp' | 'image/gif';
+
+/**
+ * Prompt content blocks. Text and resource_link mirror the shared
+ * `promptBlockSchema`; images come in TWO persisted arms — `image` is the
+ * LEGACY inline-base64 shape (pre-#59 rows stay readable; the ingest path no
+ * longer produces it), `imageRef` is what the send path persists: a
+ * `FileObject` id, with the bytes in the file-blob store (#59).
+ */
 export type AssistantPromptBlock =
   | { type: 'text'; text: string }
   | { type: 'resource_link'; name: string; uri: string }
   | {
+      /** Legacy inline arm (pre-#59 rows). */
       type: 'image';
       data: string;
-      mimeType: 'image/png' | 'image/jpeg' | 'image/webp' | 'image/gif';
+      mimeType: AssistantImageMime;
+    }
+  | {
+      /** #59 — reference arm: a `FileObject` id; the bytes never enter the DB. */
+      type: 'imageRef';
+      ref: string;
+      mimeType: AssistantImageMime;
     };
 
 /** One tool call an assistant turn requested (normalized from the pi stream). */

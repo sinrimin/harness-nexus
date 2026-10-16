@@ -11,6 +11,13 @@ const en = {
   closed: 'Closed',
   registrationOpened: 'Registration opened',
   registrationClosed: 'Registration closed',
+  retention: 'Image retention',
+  retentionDesc:
+    'How many days an assistant chat image is kept. Applies to newly sent images only — already stored ones keep the retention that was in effect when they arrived.',
+  retentionDays: 'Retention (days)',
+  retentionCurrent: 'Current: {count} day(s)',
+  retentionInvalid: 'Retention must be a whole number of days between 1 and 3650',
+  retentionSaved: 'Retention set to {count} day(s)',
 };
 
 const zh: typeof en = {
@@ -24,6 +31,12 @@ const zh: typeof en = {
   closed: '关闭',
   registrationOpened: '已开放注册',
   registrationClosed: '已关闭注册',
+  retention: '图片保留',
+  retentionDesc: '助理会话图片的保留天数。只对新发送的图片生效——已存储的图片沿用其入库时的保留期。',
+  retentionDays: '保留天数',
+  retentionCurrent: '当前：{count} 天',
+  retentionInvalid: '保留天数必须是 1–3650 之间的整数',
+  retentionSaved: '保留天数已设为 {count} 天',
 };
 
 export const settingsStrings = { en, zh };

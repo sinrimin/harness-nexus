@@ -331,7 +331,20 @@ export async function deleteAssistantSession(
   sessionId: string,
 ): Promise<void> {
   await getAssistantSession(deps, principal, sessionId);
+  // #59 — the rows' image blobs die with them (no dedup: one ingest, one
+  // object, one owner row). Collect BEFORE the rows cascade away.
+  const rows = await deps.uow.assistants.listMessages(sessionId);
+  const refs = new Set<string>();
+  for (const row of rows) {
+    if (row.type !== 'user') continue;
+    for (const b of row.blocks) {
+      if (b.type === 'imageRef') refs.add(b.ref);
+    }
+  }
   await deps.uow.assistants.deleteSession(sessionId);
+  for (const ref of refs) {
+    await deps.uow.fileBlobs.delete(ref);
+  }
 }
 
 // ---- transcript ----

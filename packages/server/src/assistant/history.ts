@@ -1,7 +1,11 @@
 import type { AgentMessage } from '@earendil-works/pi-agent-core';
 import type { Api, JsonObject } from '@earendil-works/pi-ai';
-import type { AssistantMessageRow, AssistantPromptBlock } from '@harness-nexus/core';
-import type { ChatStreamEvent, HistoryItem } from '@harness-nexus/shared';
+import type {
+  AssistantMessageRow,
+  AssistantPromptBlock,
+  FileBlobRepository,
+} from '@harness-nexus/core';
+import type { ChatStreamEvent, HistoryItem, PromptBlock } from '@harness-nexus/shared';
 
 /**
  * Transcript conversion (#52): the persisted role-bearing rows are the single
@@ -13,6 +17,12 @@ import type { ChatStreamEvent, HistoryItem } from '@harness-nexus/shared';
  *   rows → HistoryItem[]      (the `assistant:history` replay — the SAME event
  *                              family the live turn streamed, so the web folds
  *                              one path)
+ *
+ * #59 — persisted image blocks are REFERENCES (`imageRef`); both consumers
+ * resolve them against a preloaded `ImageMap` (or, for the replay, a resolver
+ * callback). A ref that cannot be resolved — the blob expired or was swept —
+ * degrades to a text placeholder IN THAT CONSUMER; the row itself never
+ * changes, so the two consumers degrade independently and reversibly.
  */
 
 /** pi stop ids for rebuilt history — historical aborts read as clean stops. */
@@ -29,27 +39,27 @@ function toWireStop(stopReason: string): 'end_turn' | 'cancelled' | 'max_tokens'
   return 'end_turn';
 }
 
-function blockToUserContent(
-  b: AssistantPromptBlock,
-): { type: 'text'; text: string } | { type: 'image'; data: string; mimeType: string } {
-  if (b.type === 'text') return { type: 'text', text: b.text };
-  if (b.type === 'image') return { type: 'image', data: b.data, mimeType: b.mimeType };
-  // resource_link has no pi arm — render as text (the model cannot fetch it).
-  return { type: 'text', text: `[file reference] ${b.name}: ${b.uri}` };
-}
-
 /**
- * #58-3 — what a stripped image becomes in the MODEL context. The transcript
+ * #59 — what a stripped image becomes in the MODEL context. The transcript
  * keeps the real blocks (the UI replays them); only the LLM-facing rebuild
  * degrades, so a switch back to a vision model restores the images for free.
  */
 export const IMAGE_CONTEXT_PLACEHOLDER = '[image omitted]';
 
+/** #59 — what the replay renders where the blob behind a ref is gone. */
+export const IMAGE_EXPIRED_PLACEHOLDER = '[image expired]';
+
+/**
+ * OpenAI-compatible wires reject user content that is images ONLY — the
+ * placeholder part added when a turn would otherwise carry no text.
+ */
+const IMAGE_ONLY_PLACEHOLDER = '[image]';
+
 /**
  * #58-3 — how many most-recent USER rows keep their images in the model
  * context. Older ones degrade to the placeholder: re-uploading every past
  * image on every turn bloats both the input bill and the provider's
- * per-request image limits (the Claude Code precedent — recent turns only).
+ * per-request image limits.
  */
 export const IMAGE_CONTEXT_TURNS = 3;
 
@@ -61,39 +71,106 @@ export interface ImageContextPolicy {
   keepTurns: number;
 }
 
-function toUserContent(
+/**
+ * #59 — ref → resolved payload for one build (null = gone/expired). Built
+ * once per turn/replay by `loadImageMap`; the pure builders never touch the
+ * repository themselves.
+ */
+export type ImageMap = Map<string, { data: string; mimeType: string } | null>;
+
+/** #59 — preload every ref the builders will need (absent/expired → null). */
+export async function loadImageMap(
+  blobs: FileBlobRepository,
+  refs: Iterable<string>,
+  now: string,
+): Promise<ImageMap> {
+  const map: ImageMap = new Map();
+  for (const ref of new Set(refs)) {
+    const hit = await blobs.get(ref);
+    map.set(
+      ref,
+      hit !== null && hit.row.expiresAt > now
+        ? { data: Buffer.from(hit.data).toString('base64'), mimeType: hit.row.mimeType }
+        : null,
+    );
+  }
+  return map;
+}
+
+type PiUserContent =
+  { type: 'text'; text: string } | { type: 'image'; data: string; mimeType: string };
+
+/**
+ * A resolved payload back into WIRE shape. The blob store's mimeType is a
+ * plain string, but every ingest came from a wire-validated image block —
+ * the four-value union holds by construction.
+ */
+function wireImage(hit: { data: string; mimeType: string }): PromptBlock {
+  return {
+    type: 'image',
+    data: hit.data,
+    mimeType: hit.mimeType as 'image/png' | 'image/jpeg' | 'image/webp' | 'image/gif',
+  };
+}
+
+/** The MODEL-context mapping for one block, under the policy + resolved map. */
+function toPiUserContent(
   b: AssistantPromptBlock,
   keepImage: boolean,
-): { type: 'text'; text: string } | { type: 'image'; data: string; mimeType: string } {
-  if (b.type === 'image' && !keepImage) {
-    return { type: 'text', text: IMAGE_CONTEXT_PLACEHOLDER };
+  images: ImageMap | undefined,
+): PiUserContent {
+  if (b.type === 'text') return { type: 'text', text: b.text };
+  if (b.type === 'resource_link') {
+    // resource_link has no pi arm — render as text (the model cannot fetch it).
+    return { type: 'text', text: `[file reference] ${b.name}: ${b.uri}` };
   }
-  return blockToUserContent(b);
+  if (b.type === 'imageRef') {
+    if (!keepImage) return { type: 'text', text: IMAGE_CONTEXT_PLACEHOLDER };
+    const hit = images?.get(b.ref);
+    return hit !== undefined && hit !== null
+      ? { type: 'image', data: hit.data, mimeType: hit.mimeType }
+      : { type: 'text', text: IMAGE_CONTEXT_PLACEHOLDER };
+  }
+  // Legacy inline arm (pre-#59 rows).
+  if (!keepImage) return { type: 'text', text: IMAGE_CONTEXT_PLACEHOLDER };
+  return { type: 'image', data: b.data, mimeType: b.mimeType };
+}
+
+/** A user turn must not be images-only on OpenAI-compatible wires. */
+function withImageOnlyGuard(content: PiUserContent[]): PiUserContent[] {
+  const hasText = content.some((c) => c.type === 'text');
+  const hasImage = content.some((c) => c.type === 'image');
+  return hasImage && !hasText
+    ? [{ type: 'text', text: IMAGE_ONLY_PLACEHOLDER }, ...content]
+    : content;
 }
 
 /** The CURRENT turn's prompt blocks under the same policy (it is the newest). */
 export function promptBlocksToPiContent(
   blocks: readonly AssistantPromptBlock[],
   policy: ImageContextPolicy,
-): ({ type: 'text'; text: string } | { type: 'image'; data: string; mimeType: string })[] {
-  return blocks.map((b) => toUserContent(b, policy.vision));
+  images?: ImageMap,
+): PiUserContent[] {
+  return withImageOnlyGuard(blocks.map((b) => toPiUserContent(b, policy.vision, images)));
 }
 
 /**
  * Rebuild the LLM context. `api`/`model` label the reconstructed assistant
  * messages for the provider (informational fields on the wire).
  *
- * `images` (#58-3): when given, image blocks degrade to the placeholder in
- * every user row OUTSIDE the policy — a non-vision model strips ALL of them
+ * `images` (#58-3 + #59): when given, image blocks degrade to the placeholder
+ * in every user row OUTSIDE the policy — a non-vision model strips ALL of them
  * (a mid-session switch must not feed images the wire would reject); a vision
  * model keeps only the `keepTurns` most recent user rows'. Omitted = legacy
- * keep-everything behavior (the transcript rows themselves are untouched).
+ * keep-everything behavior (inline arms pass through; refs degrade). The
+ * transcript rows themselves are untouched.
  */
 export function rowsToPiMessages(
   rows: readonly AssistantMessageRow[],
   api: Api,
   model: string,
   images?: ImageContextPolicy,
+  imageMap?: ImageMap,
 ): AgentMessage[] {
   const out: AgentMessage[] = [];
   const now = Date.now();
@@ -112,7 +189,7 @@ export function rowsToPiMessages(
       const keep = images === undefined ? true : keepRows.has(i);
       out.push({
         role: 'user',
-        content: row.blocks.map((b) => toUserContent(b, keep)),
+        content: withImageOnlyGuard(row.blocks.map((b) => toPiUserContent(b, keep, imageMap))),
         timestamp: now,
       });
     } else if (row.type === 'assistant') {
@@ -170,13 +247,31 @@ function rowToolArgs(args: unknown): JsonObject | null {
  * The history replay: rows → history items. Tool outputs (the FOLLOWING
  * toolResult row) merge into their tool_call views so the fold renders one
  * row per call, like the live stream does.
+ *
+ * #59 — `resolve` turns an `imageRef` into a wire image block (or null when
+ * the blob is gone/expired); unresolved refs replay as `[image expired]`
+ * text. The legacy inline arm replays verbatim.
  */
-export function rowsToHistoryItems(rows: readonly AssistantMessageRow[]): HistoryItem[] {
+export async function rowsToHistoryItems(
+  rows: readonly AssistantMessageRow[],
+  resolve?: (ref: string) => Promise<{ data: string; mimeType: string } | null>,
+): Promise<HistoryItem[]> {
   const items: HistoryItem[] = [];
   for (let i = 0; i < rows.length; i += 1) {
     const row = rows[i]!;
     if (row.type === 'user') {
-      items.push({ type: 'user', blocks: row.blocks });
+      const blocks: PromptBlock[] = [];
+      for (const b of row.blocks) {
+        if (b.type === 'imageRef') {
+          const hit = resolve !== undefined ? await resolve(b.ref) : null;
+          blocks.push(
+            hit !== null ? wireImage(hit) : { type: 'text', text: IMAGE_EXPIRED_PLACEHOLDER },
+          );
+        } else {
+          blocks.push(b);
+        }
+      }
+      items.push({ type: 'user', blocks });
       continue;
     }
     if (row.type === 'note') {

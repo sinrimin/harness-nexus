@@ -1,7 +1,12 @@
 import { Agent, type AgentMessage, type AgentToolResult } from '@earendil-works/pi-agent-core';
 import type { LlmProvider } from '@harness-nexus/core';
-import type { AssistantConfig, AssistantMessageRow, AssistantSession } from '@harness-nexus/core';
-import type { ChatStreamEvent, PromptBlock, ProviderModelConfig } from '@harness-nexus/shared';
+import type {
+  AssistantConfig,
+  AssistantMessageRow,
+  AssistantPromptBlock,
+  AssistantSession,
+} from '@harness-nexus/core';
+import type { ChatStreamEvent, ProviderModelConfig } from '@harness-nexus/shared';
 import { decryptSecret, generateId } from '../infra/crypto.js';
 import { findCredentialForOwner } from '../infra/credential-scope.js';
 import { buildGatewayModel, type GatewayModel } from './provider.js';
@@ -9,6 +14,7 @@ import {
   rowsToPiMessages,
   piStopToWire,
   promptBlocksToPiContent,
+  loadImageMap,
   IMAGE_CONTEXT_TURNS,
   type ImageContextPolicy,
 } from './history.js';
@@ -125,8 +131,8 @@ export function startAssistantTurn(
      */
     providerId?: string;
     modelId: string;
-    /** This turn's prompt blocks (the user row is already persisted). */
-    prompt: readonly PromptBlock[];
+    /** #59 — this turn's prompt blocks (image blocks are refs, already split at send). */
+    prompt: readonly AssistantPromptBlock[];
     /** The transcript BEFORE this turn (rebuild context — prompt rides separately). */
     rows: readonly AssistantMessageRow[];
     emit: AssistantEmit;
@@ -205,6 +211,24 @@ export function startAssistantTurn(
       keepTurns: IMAGE_CONTEXT_TURNS,
     };
 
+    // #59 — resolve every image ref this turn could need (prompt + rows) in
+    // one preload; expired/missing refs land as null and degrade to the
+    // placeholder below. The builders stay pure.
+    const refsOf = (blocks: readonly AssistantPromptBlock[]): string[] =>
+      blocks
+        .filter(
+          (b): b is Extract<AssistantPromptBlock, { type: 'imageRef' }> => b.type === 'imageRef',
+        )
+        .map((b) => b.ref);
+    const imageMap = await loadImageMap(
+      deps.uow.fileBlobs,
+      [
+        ...refsOf(input.prompt),
+        ...input.rows.flatMap((r) => (r.type === 'user' ? refsOf(r.blocks) : [])),
+      ],
+      new Date().toISOString(),
+    );
+
     const tools = buildAssistantTools(deps, principal, config.enabledToolGroups);
 
     // M2 — configured skills (prompt index + read_skill) and MCP servers
@@ -241,7 +265,13 @@ export function startAssistantTurn(
         systemPrompt,
         model: gateway.model,
         tools,
-        messages: rowsToPiMessages(input.rows, gateway.model.api, gateway.model.id, imagePolicy),
+        messages: rowsToPiMessages(
+          input.rows,
+          gateway.model.api,
+          gateway.model.id,
+          imagePolicy,
+          imageMap,
+        ),
       },
       streamFn: gateway.streamFn,
       beforeToolCall: async ({ toolCall, args }) => {
@@ -348,7 +378,7 @@ export function startAssistantTurn(
       // #58-3 — the current prompt is the NEWEST turn: images ride only when
       // the model can see them (the sender gates the button, but a queued
       // prompt may flush after a switch to a non-vision model).
-      content: promptBlocksToPiContent(input.prompt, imagePolicy),
+      content: promptBlocksToPiContent(input.prompt, imagePolicy, imageMap),
       timestamp: Date.now(),
     });
     await agent.waitForIdle();
@@ -452,7 +482,7 @@ export function startAssistantTurn(
     const title =
       session.title === '' && !hadEarlierTurn
         ? input.prompt
-            .filter((b): b is Extract<PromptBlock, { type: 'text' }> => b.type === 'text')
+            .filter((b): b is Extract<AssistantPromptBlock, { type: 'text' }> => b.type === 'text')
             .map((b) => b.text)
             .join(' ')
             .slice(0, 80)

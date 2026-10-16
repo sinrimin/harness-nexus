@@ -32,6 +32,8 @@ import type {
   MachineRepository,
   RuntimeConfigRepository,
   LlmProviderRepository,
+  FileBlobRepository,
+  FileObject,
 } from '@harness-nexus/core';
 import { DEFAULT_SYSTEM_SETTINGS } from '@harness-nexus/core';
 
@@ -64,6 +66,7 @@ export function createMemoryUnitOfWork(): UnitOfWork {
   const assistantAudits = new Map<string, AssistantToolCallAudit>();
   let settings: SystemSettings = {
     allowRegistration: DEFAULT_SYSTEM_SETTINGS.allowRegistration,
+    imageRetentionDays: DEFAULT_SYSTEM_SETTINGS.imageRetentionDays,
     updatedAt: new Date(0).toISOString(),
   };
 
@@ -467,6 +470,41 @@ export function createMemoryUnitOfWork(): UnitOfWork {
     },
   };
 
+  // #59 — image blobs: a map (the memory driver is ephemeral by design).
+  const fileBlobs = new Map<string, { row: FileObject; data: Uint8Array }>();
+  let blobSeq = 0;
+  const fileBlobRepo: FileBlobRepository = {
+    async put({ data, mimeType, expiresAt }) {
+      blobSeq += 1;
+      const now = new Date().toISOString();
+      const row: FileObject = {
+        id: `blob-${blobSeq}`,
+        mimeType,
+        size: data.byteLength,
+        expiresAt,
+        createdAt: now,
+      };
+      fileBlobs.set(row.id, { row, data });
+      return row;
+    },
+    async get(id) {
+      return fileBlobs.get(id) ?? null;
+    },
+    async delete(id) {
+      fileBlobs.delete(id);
+    },
+    async purgeExpired(now) {
+      let purged = 0;
+      for (const [id, entry] of fileBlobs) {
+        if (entry.row.expiresAt < now) {
+          fileBlobs.delete(id);
+          purged += 1;
+        }
+      }
+      return purged;
+    },
+  };
+
   return {
     users: userRepo,
     tokens: tokenRepo,
@@ -482,5 +520,6 @@ export function createMemoryUnitOfWork(): UnitOfWork {
     runtimeConfigs: runtimeConfigRepo,
     llmProviders: llmProviderRepo,
     assistants: assistantRepo,
+    fileBlobs: fileBlobRepo,
   };
 }

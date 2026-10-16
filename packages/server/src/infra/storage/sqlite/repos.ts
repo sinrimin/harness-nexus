@@ -64,6 +64,7 @@ interface PatRow {
 interface SettingsRow {
   id: number;
   allow_registration: number;
+  image_retention_days: number;
   updated_at: string;
 }
 interface CredentialRow {
@@ -328,8 +329,9 @@ export function sqliteSettingsRepository(db: Database): SystemSettingsRepository
     if (existing) return existing;
     const now = new Date().toISOString();
     db.prepare(
-      `INSERT INTO system_settings (id, allow_registration, updated_at) VALUES (1, ?, ?)`,
-    ).run(DEFAULTS.allowRegistration ? 1 : 0, now);
+      `INSERT INTO system_settings (id, allow_registration, image_retention_days, updated_at)
+       VALUES (1, ?, ?, ?)`,
+    ).run(DEFAULTS.allowRegistration ? 1 : 0, DEFAULTS.imageRetentionDays, now);
     return db.prepare('SELECT * FROM system_settings WHERE id = 1').get() as SettingsRow;
   };
 
@@ -338,15 +340,23 @@ export function sqliteSettingsRepository(db: Database): SystemSettingsRepository
       const row = ensureRow();
       return {
         allowRegistration: row.allow_registration === 1,
+        imageRetentionDays: row.image_retention_days,
         updatedAt: row.updated_at,
       };
     },
     async save(settings) {
+      ensureRow();
       const now = settings.updatedAt;
       db.prepare(
-        `UPDATE system_settings SET allow_registration = ?, updated_at = ? WHERE id = 1`,
-      ).run(settings.allowRegistration ? 1 : 0, now);
-      return { allowRegistration: settings.allowRegistration, updatedAt: now };
+        `UPDATE system_settings
+         SET allow_registration = ?, image_retention_days = ?, updated_at = ?
+         WHERE id = 1`,
+      ).run(settings.allowRegistration ? 1 : 0, settings.imageRetentionDays, now);
+      return {
+        allowRegistration: settings.allowRegistration,
+        imageRetentionDays: settings.imageRetentionDays,
+        updatedAt: now,
+      };
     },
   };
 }

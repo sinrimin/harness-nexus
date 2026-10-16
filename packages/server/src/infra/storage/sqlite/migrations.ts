@@ -456,6 +456,25 @@ ALTER TABLE assistant_configs ADD COLUMN skill_resource_ids TEXT;
 ALTER TABLE assistant_configs ADD COLUMN daily_token_budget INTEGER;
     `,
   },
+  {
+    version: 23,
+    description: 'issue #59 — assistant image blobs: registry table + retention setting',
+    sql: `
+-- Bytes live on local disk (the data dir's files/ folder); this table is the
+-- registry the transcript blocks reference by id.
+CREATE TABLE IF NOT EXISTS file_objects (
+  id         TEXT PRIMARY KEY,
+  mime_type  TEXT NOT NULL,
+  size       INTEGER NOT NULL,
+  expires_at TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_file_objects_expires ON file_objects (expires_at);
+
+-- Retention stamped on each blob AT INGEST; the default covers pre-#59 rows.
+ALTER TABLE system_settings ADD COLUMN image_retention_days INTEGER NOT NULL DEFAULT 30;
+    `,
+  },
 ] as const;
 
 /**
