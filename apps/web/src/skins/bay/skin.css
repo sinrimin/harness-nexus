@@ -310,6 +310,34 @@
   )::placeholder {
   color: var(--surface-inverted-dim);
 }
+/* The creatable tag box is a field like any other (#61; kit since #56) — the
+   inner FIELD div carries the slot (the root is the listbox anchor), focus is
+   `within` (the input inside is the focusable), and the placeholder rule has
+   to reach through to that input. */
+[data-skin='bay'] [data-slot='tag-combobox-field'] {
+  background: var(--surface-inverted);
+  color: var(--surface-inverted-ink);
+  border-color: #2a3340;
+  border-radius: 2px;
+  font-family: var(--app-font-mono);
+  font-size: var(--data-size);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.07),
+    inset 0 2px 6px rgba(0, 0, 0, 0.5);
+}
+[data-skin='bay'] [data-slot='tag-combobox-field'] input {
+  color: inherit;
+}
+[data-skin='bay'] [data-slot='tag-combobox-field'] input::placeholder {
+  color: var(--surface-inverted-dim);
+}
+[data-skin='bay'] [data-slot='tag-combobox-field']:focus-within {
+  border-color: var(--signal);
+  box-shadow:
+    0 0 0 1px var(--signal),
+    inset 0 1px 0 rgba(255, 255, 255, 0.07),
+    inset 0 2px 6px rgba(0, 0, 0, 0.5);
+}
 [data-skin='bay']
   :is(
     [data-slot='input'],

@@ -231,8 +231,10 @@ export function MachineDetailPage() {
           </PanelHeader>
 
           {/* The panel's own bottom edge: no border of its own, so the panel's
-              frame closes the strip instead of a doubled hairline. */}
-          <TabsList className="h-9 rounded-none border-b-0 px-(--panel-pad)">
+              frame closes the strip instead of a doubled hairline. The strip
+              scrolls itself on the narrowest phones rather than pushing a
+              scrollbar onto main (#61 — a long EN label once overflowed). */}
+          <TabsList className="h-9 rounded-none border-b-0 px-(--panel-pad) overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             <TabsTrigger value="overview">{t('machineDetail.tabOverview')}</TabsTrigger>
             <TabsTrigger value="agents">{t('machineDetail.tabAgents')}</TabsTrigger>
             <TabsTrigger value="inventory">{t('machineDetail.tabInventory')}</TabsTrigger>

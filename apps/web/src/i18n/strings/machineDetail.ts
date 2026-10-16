@@ -16,7 +16,7 @@ const en = {
   tabOverview: 'Overview',
   tabAgents: 'Agents',
   tabInventory: 'Inventory',
-  tabDeploy: 'Deployments & jobs',
+  tabDeploy: 'Deployments',
   loading: 'Loading…',
   // The identity panel's nameplate (P5 — the label word plus the last-seen
   // figure on its right; the page's own h1 already carries the machine name).
