@@ -1,5 +1,5 @@
-import { useId } from 'react';
-import { Wand2Icon } from 'lucide-react';
+import { useId, type ReactNode } from 'react';
+import { PlusIcon, Wand2Icon, XIcon } from 'lucide-react';
 import { useI18n, type TranslationKey } from '@/i18n';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -25,16 +25,26 @@ import {
 
 /**
  * #60 — the claude-code dedicated panel. From the provider-config flow only
- * the connection (provider/credential) and the model list carry in; the knobs
- * here are claude-code's own vocabulary (tier pins, `[1m]` markers, token
- * caps, extra body, auth slot), stored on `spec.claudeCode` and written by
- * the daemon into the settings.json env block with revert semantics — an
- * unset knob REMOVES the managed key, everything else in the file stays
- * untouched (deliberately NOT cc-switch's common-config overlay).
+ * the CONNECTION (provider/credential) carries in; everything model-shaped or
+ * behavior-shaped is claude-code's own vocabulary, collected here so there is
+ * exactly one configuration surface per knob (no duplicate model fields
+ * beside the provider row):
+ *
+ *  - models: default model (+ the `[1m]` marker checkbox), the switchable
+ *    allowlist rows, the subagent model, alias-tier pins
+ *    (`ANTHROPIC_DEFAULT_{TIER}_MODEL` + `_NAME`/`_SUPPORTED_CAPABILITIES`)
+ *  - behavior: six managed switches (attribution/teammates/tool-search/
+ *    max-effort/auto-update/artifact) + the #49 default permission mode slot
+ *  - request: auth slot, token caps, extra body
+ *
+ * Stored on `spec.claudeCode` (plus the `[1m]` marker on `spec.model`) and
+ * written by the daemon into settings.json with revert semantics — an unset
+ * knob REMOVES the managed key, everything else in the file stays untouched
+ * (deliberately NOT cc-switch's common-config overlay).
  *
  * The `[1m]` marker lives inside the model strings end to end (cc-switch's
- * representation): the row checkboxes are derived state over
- * strip/set helpers, never a parallel boolean.
+ * representation): row checkboxes are derived state over strip/set helpers,
+ * never a parallel boolean.
  */
 
 export interface CcTierDraft {
@@ -43,11 +53,21 @@ export interface CcTierDraft {
   capabilities: string[];
 }
 
+export interface CcSwitchDraft {
+  attributionHidden: boolean;
+  teammates: boolean;
+  toolSearch: boolean;
+  maxEffort: boolean;
+  autoUpgradeDisabled: boolean;
+  artifactsDisabled: boolean;
+}
+
 export interface CcDraft {
   /** Rides `spec.model` (not `claudeCode`) — the marker is a model-id concept. */
   oneM: boolean;
   authField: 'ANTHROPIC_AUTH_TOKEN' | 'ANTHROPIC_API_KEY';
   tiers: Record<ClaudeCodeTier, CcTierDraft>;
+  switches: CcSwitchDraft;
   subagent: string;
   maxOutputTokens: string;
   maxContextTokens: string;
@@ -56,6 +76,22 @@ export interface CcDraft {
 
 /** The docs only give `effort,thinking` as an example — suggestions, not a closed set. */
 const CAPABILITY_SUGGESTIONS = ['effort', 'thinking'] as const;
+
+/** Registry chat-model shape the pickers consume (structural — #51 rows). */
+interface ChatModelOption {
+  id: string;
+  displayName?: string;
+}
+
+/** Behavior switches in display order — full translation keys, resolved at render. */
+const BEHAVIOR_SWITCHES: ReadonlyArray<{ key: keyof CcSwitchDraft; label: TranslationKey }> = [
+  { key: 'attributionHidden', label: 'machineDetail.ccSwAttribution' },
+  { key: 'teammates', label: 'machineDetail.ccSwTeammates' },
+  { key: 'toolSearch', label: 'machineDetail.ccSwToolSearch' },
+  { key: 'maxEffort', label: 'machineDetail.ccSwMaxEffort' },
+  { key: 'autoUpgradeDisabled', label: 'machineDetail.ccSwAutoUpgrade' },
+  { key: 'artifactsDisabled', label: 'machineDetail.ccSwArtifacts' },
+];
 
 /** CLAUDE_CODE_TIERS is exactly the record's key set — the one assertion point. */
 const tierRow = (draft: CcDraft, tier: ClaudeCodeTier): CcTierDraft => draft.tiers[tier]!;
@@ -69,6 +105,14 @@ export function emptyCcDraft(): CcDraft {
       opus: { model: '', displayName: '', capabilities: [] },
       fable: { model: '', displayName: '', capabilities: [] },
       haiku: { model: '', displayName: '', capabilities: [] },
+    },
+    switches: {
+      attributionHidden: false,
+      teammates: false,
+      toolSearch: false,
+      maxEffort: false,
+      autoUpgradeDisabled: false,
+      artifactsDisabled: false,
     },
     subagent: '',
     maxOutputTokens: '',
@@ -91,6 +135,14 @@ export function ccDraftFromSpec(spec: RuntimeConfigSpec | null): CcDraft {
       capabilities: [...(row.capabilities ?? [])],
     };
   }
+  draft.switches = {
+    attributionHidden: cc.switches?.attributionHidden === true,
+    teammates: cc.switches?.teammates === true,
+    toolSearch: cc.switches?.toolSearch === true,
+    maxEffort: cc.switches?.maxEffort === true,
+    autoUpgradeDisabled: cc.switches?.autoUpgradeDisabled === true,
+    artifactsDisabled: cc.switches?.artifactsDisabled === true,
+  };
   draft.subagent = cc.subagentModel ?? '';
   draft.maxOutputTokens = cc.maxOutputTokens?.toString() ?? '';
   draft.maxContextTokens = cc.maxContextTokens?.toString() ?? '';
@@ -141,6 +193,23 @@ export function serializeCcDraft(draft: CcDraft): ClaudeCodeConfig | undefined {
       };
     },
   );
+  const sw = draft.switches;
+  const switches =
+    sw.attributionHidden ||
+    sw.teammates ||
+    sw.toolSearch ||
+    sw.maxEffort ||
+    sw.autoUpgradeDisabled ||
+    sw.artifactsDisabled
+      ? {
+          ...(sw.attributionHidden ? { attributionHidden: true } : {}),
+          ...(sw.teammates ? { teammates: true } : {}),
+          ...(sw.toolSearch ? { toolSearch: true } : {}),
+          ...(sw.maxEffort ? { maxEffort: true } : {}),
+          ...(sw.autoUpgradeDisabled ? { autoUpgradeDisabled: true } : {}),
+          ...(sw.artifactsDisabled ? { artifactsDisabled: true } : {}),
+        }
+      : undefined;
   const num = (text: string): number | undefined => {
     if (text.trim() === '') return undefined;
     const n = Number(text);
@@ -158,6 +227,7 @@ export function serializeCcDraft(draft: CcDraft): ClaudeCodeConfig | undefined {
   const maxContextTokens = num(draft.maxContextTokens);
   const cfg: ClaudeCodeConfig = {
     ...(draft.authField !== 'ANTHROPIC_AUTH_TOKEN' ? { authField: draft.authField } : {}),
+    ...(switches !== undefined ? { switches } : {}),
     ...(tiers.length > 0 ? { tiers } : {}),
     ...(draft.subagent.trim() !== '' ? { subagentModel: draft.subagent.trim() } : {}),
     ...(maxOutputTokens !== undefined ? { maxOutputTokens } : {}),
@@ -166,6 +236,7 @@ export function serializeCcDraft(draft: CcDraft): ClaudeCodeConfig | undefined {
   };
   const empty =
     cfg.authField === undefined &&
+    cfg.switches === undefined &&
     cfg.tiers === undefined &&
     cfg.subagentModel === undefined &&
     cfg.maxOutputTokens === undefined &&
@@ -178,14 +249,24 @@ export function ClaudeCodePanel({
   draft,
   onChange,
   defaultModel,
-  suggestions,
+  onDefaultModelChange,
+  extraModels,
+  onExtraModelsChange,
+  chatModels,
+  behaviorSlot,
 }: {
   draft: CcDraft;
   onChange: (next: CcDraft) => void;
   /** The form's clean default-model id (marker handled by the oneM checkbox). */
   defaultModel: string;
-  /** Registry chat-model ids — free-text rows get them as datalist suggestions. */
-  suggestions: readonly string[];
+  onDefaultModelChange: (next: string) => void;
+  /** Switchable allowlist rows — same draft the generic form used, owned here now. */
+  extraModels: string[];
+  onExtraModelsChange: (next: string[]) => void;
+  /** Registry chat models of the picked provider; empty = free-text inputs. */
+  chatModels: readonly ChatModelOption[];
+  /** The #49 default permission mode row (machine-scoped save, rendered in place). */
+  behaviorSlot?: ReactNode;
 }) {
   const { t } = useI18n();
   const datalistId = useId();
@@ -195,6 +276,7 @@ export function ClaudeCodePanel({
     hasClaudeOneMarker(draft.subagent) ||
     CLAUDE_CODE_TIERS.some((tier) => hasClaudeOneMarker(tierRow(draft, tier).model));
   const contextConflict = draft.maxContextTokens.trim() !== '' && anyMarker;
+  const useModelSelect = chatModels.length > 0;
 
   const setTier = (tier: ClaudeCodeTier, patch: Partial<CcTierDraft>): void => {
     onChange({
@@ -202,48 +284,210 @@ export function ClaudeCodePanel({
       tiers: { ...draft.tiers, [tier]: { ...tierRow(draft, tier), ...patch } },
     });
   };
+  const setSwitch = (key: keyof CcSwitchDraft, value: boolean): void => {
+    onChange({ ...draft, switches: { ...draft.switches, [key]: value } });
+  };
 
   return (
-    <section className="flex flex-col gap-4 rounded-lg border p-4">
+    <section className="flex flex-col gap-5 rounded-lg border p-4">
       <div>
         <p className="text-sm font-medium">{t('machineDetail.ccTitle')}</p>
         <p className="text-muted-foreground text-xs">{t('machineDetail.ccDesc')}</p>
       </div>
 
       <datalist id={datalistId}>
-        {suggestions.map((id) => (
-          <option key={id} value={id} />
+        {chatModels.map((m) => (
+          <option key={m.id} value={m.id} />
         ))}
       </datalist>
 
-      <div className="flex max-w-3xl items-center gap-6">
-        <label className="flex items-center gap-2 text-sm">
-          <Checkbox
-            checked={draft.oneM}
-            onCheckedChange={(v) => onChange({ ...draft, oneM: v === true })}
-          />
-          {t('machineDetail.ccMainOneM')}
-        </label>
-        <p className="text-muted-foreground text-xs">{t('machineDetail.ccMainOneMHint')}</p>
+      {/* ---- models ---- */}
+      <div className="flex flex-col gap-3">
+        <p className="text-muted-foreground text-xs font-semibold tracking-wide uppercase">
+          {t('machineDetail.ccSectionModels')}
+        </p>
+        <div className="flex max-w-2xl items-end gap-4">
+          <div className="grid min-w-52 flex-1 gap-2">
+            <Label htmlFor="cc-model">{t('machineDetail.modelDefaultLabel')}</Label>
+            {useModelSelect ? (
+              <Select value={defaultModel} onValueChange={onDefaultModelChange}>
+                <SelectTrigger id="cc-model" className="font-mono text-xs">
+                  <SelectValue placeholder={t('machineDetail.pickModel')} />
+                </SelectTrigger>
+                <SelectContent>
+                  {/* A stored id that predates the registry stays visible and
+                      submittable — same honesty rule as the generic form. */}
+                  {defaultModel.trim() !== '' &&
+                  !chatModels.some((m) => m.id === defaultModel.trim()) ? (
+                    <SelectItem value={defaultModel.trim()} className="font-mono text-xs">
+                      {defaultModel.trim()}
+                    </SelectItem>
+                  ) : null}
+                  {chatModels.map((m) => (
+                    <SelectItem key={m.id} value={m.id} className="font-mono text-xs">
+                      {m.displayName ?? m.id}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            ) : (
+              <Input
+                id="cc-model"
+                value={defaultModel}
+                onChange={(e) => onDefaultModelChange(e.target.value)}
+                className="h-9 font-mono text-xs"
+                autoComplete="off"
+                spellCheck={false}
+              />
+            )}
+          </div>
+          <label className="flex h-9 items-center gap-2 pb-0.5 text-sm">
+            <Checkbox
+              checked={draft.oneM}
+              onCheckedChange={(v) => onChange({ ...draft, oneM: v === true })}
+            />
+            1M
+          </label>
+        </div>
+        <p className="text-muted-foreground max-w-2xl text-xs">
+          {t('machineDetail.ccMainOneMHint')}
+        </p>
+
+        <div className="flex flex-col gap-2">
+          <div className="flex items-center gap-2">
+            <span className="text-sm leading-none font-medium">
+              {t('machineDetail.extraModelsTitle')}
+            </span>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-7 px-2 text-xs"
+              onClick={() => onExtraModelsChange([...extraModels, ''])}
+            >
+              <PlusIcon className="size-3.5" />
+              {t('machineDetail.extraModelsAdd')}
+            </Button>
+          </div>
+          {extraModels.map((m, i) => {
+            const used = new Set(
+              [defaultModel, ...extraModels.filter((_, j) => j !== i)]
+                .map((x) => stripClaudeOneMarker(x.trim()))
+                .filter((x) => x !== ''),
+            );
+            const rowOptions = chatModels.filter((mm) => mm.id === m.trim() || !used.has(mm.id));
+            return (
+              <div key={i} className="flex max-w-2xl items-center gap-2">
+                {useModelSelect ? (
+                  <Select
+                    value={m}
+                    onValueChange={(v) =>
+                      onExtraModelsChange(extraModels.map((x, j) => (j === i ? v : x)))
+                    }
+                  >
+                    <SelectTrigger
+                      aria-label={t('machineDetail.pickModel')}
+                      className="h-9 min-w-0 flex-1 font-mono text-xs"
+                    >
+                      <SelectValue placeholder={t('machineDetail.pickModel')} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {m.trim() !== '' && !chatModels.some((mm) => mm.id === m.trim()) ? (
+                        <SelectItem value={m.trim()} className="font-mono text-xs">
+                          {m.trim()}
+                        </SelectItem>
+                      ) : null}
+                      {rowOptions.map((mm) => (
+                        <SelectItem key={mm.id} value={mm.id} className="font-mono text-xs">
+                          {mm.displayName ?? mm.id}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                ) : (
+                  <Input
+                    value={m}
+                    onChange={(e) =>
+                      onExtraModelsChange(extraModels.map((x, j) => (j === i ? e.target.value : x)))
+                    }
+                    placeholder={t('machineDetail.extraModelsPlaceholder')}
+                    className="h-9 font-mono text-xs"
+                    autoComplete="off"
+                    spellCheck={false}
+                  />
+                )}
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="text-muted-foreground h-9 shrink-0 px-2 text-xs hover:text-foreground"
+                  disabled={
+                    m.trim() === '' || m.trim() === stripClaudeOneMarker(defaultModel).trim()
+                  }
+                  onClick={() => {
+                    const id = m.trim();
+                    const old = defaultModel;
+                    onDefaultModelChange(id);
+                    const kept = extraModels.filter((_, j) => j !== i);
+                    if (old !== '' && old !== id && !kept.some((x) => x.trim() === old)) {
+                      kept.push(old);
+                    }
+                    onExtraModelsChange(kept);
+                  }}
+                >
+                  {t('machineDetail.extraModelsMakeDefault')}
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="text-muted-foreground size-8 shrink-0 hover:text-danger"
+                  onClick={() => onExtraModelsChange(extraModels.filter((_, j) => j !== i))}
+                  aria-label={t('machineDetail.extraModelsRemove', {
+                    model: m === '' ? '…' : m,
+                  })}
+                >
+                  <XIcon className="size-3.5" />
+                </Button>
+              </div>
+            );
+          })}
+          <p className="text-muted-foreground text-xs">{t('machineDetail.extraModelsHint')}</p>
+        </div>
+
+        <div className="flex max-w-2xl items-center gap-2">
+          <div className="grid flex-1 gap-2">
+            <Label htmlFor="cc-subagent">{t('machineDetail.ccSubagentLabel')}</Label>
+            <Input
+              id="cc-subagent"
+              value={stripClaudeOneMarker(draft.subagent)}
+              list={datalistId}
+              onChange={(e) =>
+                onChange({
+                  ...draft,
+                  subagent: setClaudeOneMarker(e.target.value, hasClaudeOneMarker(draft.subagent)),
+                })
+              }
+              placeholder={t('machineDetail.ccTierModelPh')}
+              className="h-9 font-mono text-xs"
+              autoComplete="off"
+              spellCheck={false}
+            />
+          </div>
+          <label className="flex h-9 items-center gap-2 pt-6 text-sm">
+            <Checkbox
+              checked={hasClaudeOneMarker(draft.subagent)}
+              onCheckedChange={(v) =>
+                onChange({ ...draft, subagent: setClaudeOneMarker(draft.subagent, v === true) })
+              }
+            />
+            1M
+          </label>
+        </div>
       </div>
 
-      <div className="grid max-w-72 gap-2">
-        <Label htmlFor="cc-auth">{t('machineDetail.ccAuthFieldLabel')}</Label>
-        <Select
-          value={draft.authField}
-          onValueChange={(v) => onChange({ ...draft, authField: v as CcDraft['authField'] })}
-        >
-          <SelectTrigger id="cc-auth" className="font-mono text-xs">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="ANTHROPIC_AUTH_TOKEN">{t('machineDetail.ccAuthBearer')}</SelectItem>
-            <SelectItem value="ANTHROPIC_API_KEY">{t('machineDetail.ccAuthXApiKey')}</SelectItem>
-          </SelectContent>
-        </Select>
-      </div>
-
-      <div className="flex flex-col gap-2">
+      {/* ---- alias tiers ---- */}
+      <div className="flex flex-col gap-2 border-t pt-4">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
             <p className="text-sm font-medium">{t('machineDetail.ccTiersTitle')}</p>
@@ -279,7 +523,7 @@ export function ClaudeCodePanel({
           </Button>
         </div>
 
-        <div className="hidden gap-2 px-1 text-xs font-medium text-muted-foreground md:grid md:grid-cols-[72px_minmax(0,1fr)_minmax(0,9rem)_minmax(0,13rem)_44px]">
+        <div className="text-muted-foreground hidden gap-2 px-1 text-xs font-medium md:grid md:grid-cols-[72px_minmax(0,1fr)_minmax(0,9rem)_minmax(0,13rem)_44px]">
           <span>{t('machineDetail.ccTierHeader')}</span>
           <span>{t('machineDetail.ccTierModelLabel')}</span>
           <span>{t('machineDetail.ccTierNameLabel')}</span>
@@ -295,7 +539,7 @@ export function ClaudeCodePanel({
               key={tier}
               className="grid gap-2 md:grid-cols-[72px_minmax(0,1fr)_minmax(0,9rem)_minmax(0,13rem)_44px]"
             >
-              <div className="flex h-9 items-center rounded-md border bg-muted/40 px-3 font-mono text-xs text-muted-foreground">
+              <div className="text-muted-foreground flex h-9 items-center rounded-md border bg-muted/40 px-3 font-mono text-xs">
                 {tier}
               </div>
               <Input
@@ -339,84 +583,97 @@ export function ClaudeCodePanel({
         })}
       </div>
 
-      <div className="flex max-w-2xl items-center gap-2">
-        <div className="grid flex-1 gap-2">
-          <Label htmlFor="cc-subagent">{t('machineDetail.ccSubagentLabel')}</Label>
-          <Input
-            id="cc-subagent"
-            value={stripClaudeOneMarker(draft.subagent)}
-            list={datalistId}
-            onChange={(e) =>
-              onChange({
-                ...draft,
-                subagent: setClaudeOneMarker(e.target.value, hasClaudeOneMarker(draft.subagent)),
-              })
-            }
-            placeholder={t('machineDetail.ccTierModelPh')}
-            className="h-9 font-mono text-xs"
+      {/* ---- behavior ---- */}
+      <div className="flex flex-col gap-3 border-t pt-4">
+        <p className="text-muted-foreground text-xs font-semibold tracking-wide uppercase">
+          {t('machineDetail.ccSectionBehavior')}
+        </p>
+        <div className="grid gap-x-6 gap-y-2 sm:grid-cols-2 lg:grid-cols-3">
+          {BEHAVIOR_SWITCHES.map(({ key, label }) => (
+            <label key={key} className="flex items-center gap-2 text-sm">
+              <Checkbox
+                checked={draft.switches[key]}
+                onCheckedChange={(v) => setSwitch(key, v === true)}
+              />
+              {t(label)}
+            </label>
+          ))}
+        </div>
+        {behaviorSlot}
+      </div>
+
+      {/* ---- request ---- */}
+      <div className="flex flex-col gap-3 border-t pt-4">
+        <p className="text-muted-foreground text-xs font-semibold tracking-wide uppercase">
+          {t('machineDetail.ccSectionRequest')}
+        </p>
+        <div className="flex flex-wrap gap-4">
+          <div className="grid max-w-72 gap-2">
+            <Label htmlFor="cc-auth">{t('machineDetail.ccAuthFieldLabel')}</Label>
+            <Select
+              value={draft.authField}
+              onValueChange={(v) => onChange({ ...draft, authField: v as CcDraft['authField'] })}
+            >
+              <SelectTrigger id="cc-auth" className="font-mono text-xs">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="ANTHROPIC_AUTH_TOKEN">
+                  {t('machineDetail.ccAuthBearer')}
+                </SelectItem>
+                <SelectItem value="ANTHROPIC_API_KEY">
+                  {t('machineDetail.ccAuthXApiKey')}
+                </SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="grid w-44 gap-2">
+            <Label htmlFor="cc-max-out">{t('machineDetail.ccMaxOutputLabel')}</Label>
+            <Input
+              id="cc-max-out"
+              type="number"
+              value={draft.maxOutputTokens}
+              onChange={(e) => onChange({ ...draft, maxOutputTokens: e.target.value })}
+              min={1}
+              max={128000}
+              step={1}
+              className="h-9 font-mono text-xs"
+              autoComplete="off"
+            />
+          </div>
+          <div className="grid flex-1 gap-2 md:max-w-72">
+            <Label htmlFor="cc-max-ctx">{t('machineDetail.ccMaxContextLabel')}</Label>
+            <Input
+              id="cc-max-ctx"
+              type="number"
+              value={draft.maxContextTokens}
+              onChange={(e) => onChange({ ...draft, maxContextTokens: e.target.value })}
+              min={1}
+              step={1}
+              className="h-9 font-mono text-xs"
+              autoComplete="off"
+            />
+            {contextConflict ? (
+              <p className="text-warn text-xs">{t('machineDetail.ccMaxContextConflict')}</p>
+            ) : (
+              <p className="text-muted-foreground text-xs">{t('machineDetail.ccMaxContextHint')}</p>
+            )}
+          </div>
+        </div>
+        <div className="grid gap-2">
+          <Label htmlFor="cc-extra-body">{t('machineDetail.ccExtraBodyLabel')}</Label>
+          <textarea
+            id="cc-extra-body"
+            value={draft.extraBody}
+            onChange={(e) => onChange({ ...draft, extraBody: e.target.value })}
+            placeholder={t('machineDetail.ccExtraBodyPh')}
+            rows={3}
+            className="border-input bg-transparent field-sizing-content focus-visible:border-ring focus-visible:ring-ring/50 w-full rounded-md border px-3 py-2 font-mono text-xs shadow-xs outline-none"
             autoComplete="off"
             spellCheck={false}
           />
+          {issue !== null ? <p className="text-danger text-xs">{t(issue)}</p> : null}
         </div>
-        <label className="flex h-9 items-center gap-2 pt-6 text-sm">
-          <Checkbox
-            checked={hasClaudeOneMarker(draft.subagent)}
-            onCheckedChange={(v) =>
-              onChange({ ...draft, subagent: setClaudeOneMarker(draft.subagent, v === true) })
-            }
-          />
-          1M
-        </label>
-      </div>
-
-      <div className="flex flex-wrap gap-4">
-        <div className="grid w-44 gap-2">
-          <Label htmlFor="cc-max-out">{t('machineDetail.ccMaxOutputLabel')}</Label>
-          <Input
-            id="cc-max-out"
-            type="number"
-            value={draft.maxOutputTokens}
-            onChange={(e) => onChange({ ...draft, maxOutputTokens: e.target.value })}
-            min={1}
-            max={128000}
-            step={1}
-            className="h-9 font-mono text-xs"
-            autoComplete="off"
-          />
-        </div>
-        <div className="grid flex-1 gap-2 md:max-w-72">
-          <Label htmlFor="cc-max-ctx">{t('machineDetail.ccMaxContextLabel')}</Label>
-          <Input
-            id="cc-max-ctx"
-            type="number"
-            value={draft.maxContextTokens}
-            onChange={(e) => onChange({ ...draft, maxContextTokens: e.target.value })}
-            min={1}
-            step={1}
-            className="h-9 font-mono text-xs"
-            autoComplete="off"
-          />
-          {contextConflict ? (
-            <p className="text-warn text-xs">{t('machineDetail.ccMaxContextConflict')}</p>
-          ) : (
-            <p className="text-muted-foreground text-xs">{t('machineDetail.ccMaxContextHint')}</p>
-          )}
-        </div>
-      </div>
-
-      <div className="grid gap-2">
-        <Label htmlFor="cc-extra-body">{t('machineDetail.ccExtraBodyLabel')}</Label>
-        <textarea
-          id="cc-extra-body"
-          value={draft.extraBody}
-          onChange={(e) => onChange({ ...draft, extraBody: e.target.value })}
-          placeholder={t('machineDetail.ccExtraBodyPh')}
-          rows={3}
-          className="border-input bg-transparent font-mono text-xs shadow-xs outline-none focus-visible:border-ring focus-visible:ring-ring/50 w-full rounded-md border px-3 py-2 field-sizing-content"
-          autoComplete="off"
-          spellCheck={false}
-        />
-        {issue !== null ? <p className="text-danger text-xs">{t(issue)}</p> : null}
       </div>
     </section>
   );

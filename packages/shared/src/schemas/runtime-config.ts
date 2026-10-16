@@ -105,6 +105,29 @@ export type ClaudeCodeTier = (typeof CLAUDE_CODE_TIERS)[number];
 export const claudeCodeConfigSchema = z.object({
   /** Which env slot carries the key: Bearer (default) vs x-api-key gateways. */
   authField: z.enum(['ANTHROPIC_AUTH_TOKEN', 'ANTHROPIC_API_KEY']).optional(),
+  /**
+   * Behavior switches (#60) — checked writes the managed key, unchecked
+   * removes it (claude-code's own default). Ground truth: the 2.1.205 binary
+   * + cc-switch's live writer. `attribution` is the settings-object form (the
+   * successor of the deprecated `includeCoAuthoredBy`); the rest are env
+   * vars, several deliberately UNPREFIXED (that is their documented spelling).
+   */
+  switches: z
+    .object({
+      /** settings `attribution = {commit:'', pr:'', sessionUrl:false}` */
+      attributionHidden: z.boolean().optional(),
+      /** env CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 */
+      teammates: z.boolean().optional(),
+      /** env ENABLE_TOOL_SEARCH=true (unprefixed on purpose) */
+      toolSearch: z.boolean().optional(),
+      /** env CLAUDE_CODE_EFFORT_LEVEL=max (the top of low..max) */
+      maxEffort: z.boolean().optional(),
+      /** env DISABLE_AUTOUPDATER=1 (unprefixed on purpose) */
+      autoUpgradeDisabled: z.boolean().optional(),
+      /** env CLAUDE_CODE_DISABLE_ARTIFACT=1 */
+      artifactsDisabled: z.boolean().optional(),
+    })
+    .optional(),
   /** Alias-tier pins (`ANTHROPIC_DEFAULT_{TIER}_MODEL` + `_NAME`/`_SUPPORTED_CAPABILITIES`). */
   tiers: z
     .array(

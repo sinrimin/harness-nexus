@@ -219,6 +219,14 @@ describe('applyRuntimeConfig — claude-code', () => {
           maxOutputTokens: 64000,
           maxContextTokens: 983616,
           extraBody: { enable_thinking: true },
+          switches: {
+            attributionHidden: true,
+            teammates: true,
+            toolSearch: true,
+            maxEffort: true,
+            autoUpgradeDisabled: true,
+            artifactsDisabled: true,
+          },
         },
       }),
       'sk-gw',
@@ -228,6 +236,7 @@ describe('applyRuntimeConfig — claude-code', () => {
       env: Record<string, string>;
       model: string;
       availableModels: string[];
+      attribution: { commit: string; pr: string; sessionUrl: boolean };
     };
     // auth slot swap: the key rides API_KEY, the other var is ours to remove
     expect(settings.env.ANTHROPIC_API_KEY).toBe('sk-gw');
@@ -250,6 +259,13 @@ describe('applyRuntimeConfig — claude-code', () => {
     expect(settings.env.CLAUDE_CODE_MAX_OUTPUT_TOKENS).toBe('64000');
     expect(settings.env.CLAUDE_CODE_MAX_CONTEXT_TOKENS).toBe('983616');
     expect(settings.env.CLAUDE_CODE_EXTRA_BODY).toBe('{"enable_thinking":true}');
+    // behavior switches (#60) — two are deliberately UNPREFIXED env names
+    expect(settings.env.CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS).toBe('1');
+    expect(settings.env.ENABLE_TOOL_SEARCH).toBe('true');
+    expect(settings.env.CLAUDE_CODE_EFFORT_LEVEL).toBe('max');
+    expect(settings.env.DISABLE_AUTOUPDATER).toBe('1');
+    expect(settings.env.CLAUDE_CODE_DISABLE_ARTIFACT).toBe('1');
+    expect(settings.attribution).toEqual({ commit: '', pr: '', sessionUrl: false });
     // allowlist: plain ids only (markers stripped), pins + subagent unioned in
     expect(settings.availableModels).toEqual(['gw-large', 'gw-mini']);
 
@@ -276,6 +292,14 @@ describe('applyRuntimeConfig — claude-code', () => {
           maxOutputTokens: 64000,
           maxContextTokens: 983616,
           extraBody: { enable_thinking: true },
+          switches: {
+            attributionHidden: true,
+            teammates: true,
+            toolSearch: true,
+            maxEffort: true,
+            autoUpgradeDisabled: true,
+            artifactsDisabled: true,
+          },
         },
       }),
       'sk-gw',
@@ -294,6 +318,7 @@ describe('applyRuntimeConfig — claude-code', () => {
     const settings = JSON.parse(readFileSync(path.join(home, '.claude/settings.json'), 'utf8')) as {
       env: Record<string, string>;
       availableModels: string[];
+      attribution?: unknown;
     };
     for (const key of [
       'ANTHROPIC_API_KEY',
@@ -305,9 +330,15 @@ describe('applyRuntimeConfig — claude-code', () => {
       'CLAUDE_CODE_MAX_OUTPUT_TOKENS',
       'CLAUDE_CODE_MAX_CONTEXT_TOKENS',
       'CLAUDE_CODE_EXTRA_BODY',
+      'CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS',
+      'ENABLE_TOOL_SEARCH',
+      'CLAUDE_CODE_EFFORT_LEVEL',
+      'DISABLE_AUTOUPDATER',
+      'CLAUDE_CODE_DISABLE_ARTIFACT',
     ]) {
       expect(settings.env[key], key).toBeUndefined();
     }
+    expect(settings.attribution).toBeUndefined();
     // back on the default auth slot, plain allowlist, user env intact
     expect(settings.env.ANTHROPIC_AUTH_TOKEN).toBe('sk-gw');
     expect(settings.availableModels).toEqual(['gw-large']);

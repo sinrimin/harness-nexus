@@ -214,7 +214,9 @@ const en = {
   ccTitle: 'Claude Code settings',
   ccDesc:
     'Applied into the machine\u2019s ~/.claude/settings.json. Only knobs configured here are written; unset ones remove the managed keys, everything else in the file stays untouched.',
-  ccMainOneM: '1M context on default model',
+  ccSectionModels: 'Models',
+  ccSectionBehavior: 'Behavior',
+  ccSectionRequest: 'Request',
   ccMainOneMHint:
     'Appends [1m] to the model id — it is stripped before sending and claude-code assumes a 1M window.',
   ccAuthFieldLabel: 'Auth field',
@@ -242,6 +244,12 @@ const en = {
   ccNumBadOutput: 'Max output tokens must be an integer between 1 and 128000.',
   ccNumBadContext: 'Context window must be a positive integer.',
   ccExtraBodyBad: 'Not a valid JSON object.',
+  ccSwAttribution: 'Hide AI attribution',
+  ccSwTeammates: 'Teammates mode',
+  ccSwToolSearch: 'Enable tool search',
+  ccSwMaxEffort: 'Max-effort thinking',
+  ccSwAutoUpgrade: 'Disable auto-upgrade',
+  ccSwArtifacts: 'Disable Artifact tool',
 };
 
 const zh: typeof en = {
@@ -431,7 +439,9 @@ const zh: typeof en = {
   ccTitle: 'Claude Code 专属配置',
   ccDesc:
     '应用时写入机器的 ~/.claude/settings.json。只写这里配置了的键，未配置的会移除平台管理的键，文件里的其余内容一概不动。',
-  ccMainOneM: '主模型 1M 上下文',
+  ccSectionModels: '模型',
+  ccSectionBehavior: '行为',
+  ccSectionRequest: '请求',
   ccMainOneMHint: '在模型 ID 后追加 [1m]——发送前会剥掉标记，claude-code 按 1M 窗口处理。',
   ccAuthFieldLabel: '认证字段',
   ccAuthBearer: 'Bearer（默认）',
@@ -457,6 +467,12 @@ const zh: typeof en = {
   ccNumBadOutput: '输出上限必须是 1–128000 的整数。',
   ccNumBadContext: '上下文窗口必须是正整数。',
   ccExtraBodyBad: '不是有效的 JSON 对象。',
+  ccSwAttribution: '隐藏 AI 署名',
+  ccSwTeammates: 'Teammates 模式',
+  ccSwToolSearch: '启用 Tool Search',
+  ccSwMaxEffort: '最大强度思考',
+  ccSwAutoUpgrade: '禁用自动升级',
+  ccSwArtifacts: '禁用 Artifact 工具',
 };
 
 export const machineDetailStrings = { en, zh };

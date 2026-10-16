@@ -151,6 +151,16 @@ function applyClaudeConfig(spec: RuntimeConfigSpec, secret: string, homeDir: str
     'CLAUDE_CODE_EXTRA_BODY',
     cc?.extraBody !== undefined ? JSON.stringify(cc.extraBody) : undefined,
   );
+  // #60 behavior switches — on writes the managed key, off removes ours (the
+  // attribution object is a settings-level key with BASE_URL-style ownership:
+  // while any spec exists, an unchecked toggle reverts it to claude-code's
+  // default, same as an unset base URL).
+  const sw = cc?.switches;
+  knob('CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS', sw?.teammates === true ? '1' : undefined);
+  knob('ENABLE_TOOL_SEARCH', sw?.toolSearch === true ? 'true' : undefined);
+  knob('CLAUDE_CODE_EFFORT_LEVEL', sw?.maxEffort === true ? 'max' : undefined);
+  knob('DISABLE_AUTOUPDATER', sw?.autoUpgradeDisabled === true ? '1' : undefined);
+  knob('CLAUDE_CODE_DISABLE_ARTIFACT', sw?.artifactsDisabled === true ? '1' : undefined);
   // 9 W13 — the picker allowlist. Written whenever a spec exists (even a
   // single model: under a gateway the built-in catalog is dead entries, same
   // policy as dsh/opencode). Platform-owned key: re-apply overwrites whatever
@@ -162,10 +172,13 @@ function applyClaudeConfig(spec: RuntimeConfigSpec, secret: string, homeDir: str
   const availableModels = [
     ...new Set([spec.model, ...(spec.models ?? []), ...pinned].map(stripClaudeOneMarker)),
   ];
-  writeSecretFile(
-    file,
-    `${JSON.stringify({ ...settings, env, model: spec.model, availableModels }, null, 2)}\n`,
-  );
+  const managed: Record<string, unknown> = { ...settings, env, model: spec.model, availableModels };
+  if (sw?.attributionHidden === true) {
+    managed.attribution = { commit: '', pr: '', sessionUrl: false };
+  } else {
+    delete managed.attribution;
+  }
+  writeSecretFile(file, `${JSON.stringify(managed, null, 2)}\n`);
   return [display(homeDir, file)];
 }
 
