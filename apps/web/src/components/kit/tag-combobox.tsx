@@ -90,6 +90,7 @@ export function TagCombobox({
           disabled && 'opacity-50',
         )}
         data-open={open}
+        data-slot="tag-combobox-field"
       >
         {value.map((v) => (
           <span
