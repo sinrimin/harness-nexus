@@ -47,6 +47,9 @@ export async function runtimeConfigRoutes(app: FastifyInstance): Promise<void> {
     ...(row.spec.modelEntries !== null && row.spec.modelEntries !== undefined
       ? { modelEntries: row.spec.modelEntries }
       : {}),
+    ...(row.spec.claudeCode !== null && row.spec.claudeCode !== undefined
+      ? { claudeCode: row.spec.claudeCode }
+      : {}),
     ...(row.spec.extra !== null ? { extra: row.spec.extra } : {}),
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
