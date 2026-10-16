@@ -719,10 +719,17 @@ function ProviderConfigForm({
       setProviderId(match?.id ?? MANUAL_PROVIDER);
       setProviderLabel(existing?.providerLabel ?? '');
       setBaseUrl(existing?.baseUrl ?? '');
-      setModel(existing?.model ?? '');
+      // #60 — the `[1m]` marker never rides the model STATE: prefill strips it
+      // into the panel's oneM checkbox, apply re-appends it (ccDraftFromSpec
+      // read the same spec, so the two agree).
+      setModel(existing?.model !== undefined ? stripClaudeOneMarker(existing.model) : '');
       setApiFlavor(existing?.api ?? apiOptions[0] ?? '');
       setCredentialName(existing?.credentialName ?? '');
-      setExtraModels((existing?.models ?? []).filter((m) => m !== existing?.model));
+      setExtraModels(
+        (existing?.models ?? []).filter(
+          (m) => m !== existing?.model && m !== stripClaudeOneMarker(existing?.model ?? ''),
+        ),
+      );
       setCc(ccDraftFromSpec(existing));
     })();
     return () => {
