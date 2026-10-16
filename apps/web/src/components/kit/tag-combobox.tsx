@@ -22,6 +22,11 @@ export interface TagComboboxProps {
   addLabel: (value: string) => string;
   /** Screen-reader label for a tag's × button. */
   removeLabel: (value: string) => string;
+  /**
+   * Accessible name for the input — once tags exist the placeholder is
+   * blanked, so the control needs an explicit label to stay named.
+   */
+  ariaLabel?: string;
   disabled?: boolean;
   className?: string;
 }
@@ -34,6 +39,7 @@ export function TagCombobox({
   placeholder,
   addLabel,
   removeLabel,
+  ariaLabel,
   disabled = false,
   className,
 }: TagComboboxProps) {
@@ -94,7 +100,7 @@ export function TagCombobox({
             <span className="role-data-sm truncate font-mono">{v}</span>
             <button
               type="button"
-              className="text-muted-foreground hover:text-danger shrink-0"
+              className="text-muted-foreground hover:text-danger -m-1.5 flex size-6 shrink-0 items-center justify-center"
               onClick={() => remove(v)}
               aria-label={removeLabel(v)}
               disabled={disabled}
@@ -129,6 +135,7 @@ export function TagCombobox({
             }
           }}
           placeholder={value.length === 0 ? placeholder : ''}
+          aria-label={ariaLabel}
           className="font-mono placeholder:text-muted-foreground min-w-16 flex-1 bg-transparent text-xs outline-none"
           autoComplete="off"
           spellCheck={false}

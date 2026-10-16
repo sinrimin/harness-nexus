@@ -12,6 +12,8 @@ import {
   RUNTIME_API_SUPPORT,
   DEFAULT_CHAT_PREWARM_SETTINGS,
   providerApiToSpecApi,
+  setClaudeOneMarker,
+  stripClaudeOneMarker,
   type ChatPrewarmSettings,
   type CredentialView,
   type LlmProviderView,
@@ -41,6 +43,14 @@ import {
   DrawerTitle,
 } from '@/components/ui/drawer';
 import { ConfirmDialog, EmptyState, Panel, PanelBody, PanelHeader, Well } from '@/components/kit';
+import {
+  ClaudeCodePanel,
+  ccDraftFromSpec,
+  ccIssue,
+  emptyCcDraft,
+  serializeCcDraft,
+  type CcDraft,
+} from './claude-code-panel.js';
 import type { InventoryEntry, RuntimeInfoView } from './types.js';
 
 /**
@@ -155,10 +165,19 @@ function AgentRuntimeCard({
             machine={machine}
             onChanged={onChanged}
           />
-          {entry.target === 'claude-code' ? (
-            <DefaultModeSelect machineId={machineId} machine={machine} onChanged={onChanged} />
-          ) : null}
-          <ProviderConfigForm machineId={machineId} target={entry.target} runtime={entry.runtime} />
+          <ProviderConfigForm
+            machineId={machineId}
+            target={entry.target}
+            runtime={entry.runtime}
+            // #60 — the claude-code panel owns every model-shaped and
+            // behavior-shaped control for that target; the #49 default
+            // permission mode rides along as its behavior section's slot.
+            defaultModeSlot={
+              entry.target === 'claude-code' ? (
+                <DefaultModeSelect machineId={machineId} machine={machine} onChanged={onChanged} />
+              ) : undefined
+            }
+          />
         </PanelBody>
       </Panel>
     </>
@@ -276,12 +295,10 @@ function DefaultModeSelect({
   }
 
   return (
-    // Same row idiom as the pre-warm switch above.
-    <div className="flex items-center justify-between gap-4 px-6 pb-4 pt-1">
-      <div>
-        <p className="text-sm font-medium">{t('machineDetail.defaultMode')}</p>
-        <p className="text-muted-foreground text-xs">{t('machineDetail.defaultModeDesc')}</p>
-      </div>
+    // Rendered INSIDE the claude-code panel's behavior section (#60) — the
+    // same three-line field idiom as 默认模型 above: label / select / hint.
+    <div className="grid gap-2 pt-1">
+      <Label htmlFor="default-mode">{t('machineDetail.defaultMode')}</Label>
       <Select
         value={current ?? 'none'}
         onValueChange={(v) => void apply(v)}
@@ -290,7 +307,7 @@ function DefaultModeSelect({
         <SelectTrigger
           id="default-mode"
           aria-label={t('machineDetail.defaultMode')}
-          className="w-[180px]"
+          className="w-full"
         >
           <SelectValue />
         </SelectTrigger>
@@ -302,6 +319,7 @@ function DefaultModeSelect({
           <SelectItem value="auto">Auto</SelectItem>
         </SelectContent>
       </Select>
+      <p className="text-muted-foreground text-xs">{t('machineDetail.defaultModeDesc')}</p>
     </div>
   );
 }
@@ -619,10 +637,12 @@ function ProviderConfigForm({
   machineId,
   target,
   runtime,
+  defaultModeSlot,
 }: {
   machineId: string;
   target: string;
   runtime: RuntimeInfoView | null;
+  defaultModeSlot?: ReactNode;
 }) {
   const { logout } = useAuth();
   const { t } = useI18n();
@@ -636,6 +656,8 @@ function ProviderConfigForm({
   const [apiFlavor, setApiFlavor] = useState<string>('');
   const [credentialName, setCredentialName] = useState('');
   const [extraModels, setExtraModels] = useState<string[]>([]);
+  // #60 — claude-code's dedicated panel knobs (draft shape; serialized at apply).
+  const [cc, setCc] = useState<CcDraft>(emptyCcDraft);
   const [busy, setBusy] = useState(false);
   // P6 — Apply config confirms first (the credential goes to the machine).
   const [asking, setAsking] = useState(false);
@@ -695,10 +717,18 @@ function ProviderConfigForm({
       setProviderId(match?.id ?? MANUAL_PROVIDER);
       setProviderLabel(existing?.providerLabel ?? '');
       setBaseUrl(existing?.baseUrl ?? '');
-      setModel(existing?.model ?? '');
+      // #60 — the `[1m]` marker never rides the model STATE: prefill strips it
+      // into the panel's oneM checkbox, apply re-appends it (ccDraftFromSpec
+      // read the same spec, so the two agree).
+      setModel(existing?.model !== undefined ? stripClaudeOneMarker(existing.model) : '');
       setApiFlavor(existing?.api ?? apiOptions[0] ?? '');
       setCredentialName(existing?.credentialName ?? '');
-      setExtraModels((existing?.models ?? []).filter((m) => m !== existing?.model));
+      setExtraModels(
+        (existing?.models ?? []).filter(
+          (m) => m !== existing?.model && m !== stripClaudeOneMarker(existing?.model ?? ''),
+        ),
+      );
+      setCc(ccDraftFromSpec(existing));
     })();
     return () => {
       cancelled = true;
@@ -718,20 +748,32 @@ function ProviderConfigForm({
     setBusy(true);
     try {
       // Row inputs are free-typed: normalize before sending (trim, drop
-      // empties and the default, dedupe — the PUT would reject them).
+      // empties and the default, dedupe — the PUT would reject them). The
+      // claude-code 1M checkbox may have put a `[1m]` marker on the default
+      // model — rows dedupe against BOTH spellings (#60).
+      const wireModel = setClaudeOneMarker(model.trim(), cc.oneM);
+      const baseModel = stripClaudeOneMarker(model.trim());
       const normalizedExtras = [
-        ...new Set(extraModels.map((m) => m.trim()).filter((m) => m !== '' && m !== model.trim())),
+        ...new Set(
+          extraModels
+            .map((m) => m.trim())
+            .filter((m) => m !== '' && m !== baseModel && m !== wireModel),
+        ),
       ];
+      // #60 — the panel serializes to undefined when everything is default,
+      // keeping untouched specs byte-identical to their pre-#60 shape.
+      const claudeCode = serializeCcDraft(cc);
       const spec: RuntimeConfigSpec = {
         providerLabel: (selectedProvider?.name ?? providerLabel).trim(),
         api: (selectedProvider !== null
           ? providerApiToSpecApi(selectedProvider.api)
           : apiFlavor || apiOptions[0]) as RuntimeConfigSpec['api'],
-        model: model.trim(),
+        model: wireModel,
         credentialName: selectedProvider?.credentialName ?? credentialName,
         ...(selectedProvider !== null ? { providerId: selectedProvider.id } : {}),
         ...(normalizedExtras.length > 0 ? { models: normalizedExtras } : {}),
         ...(effectiveBaseUrl !== '' ? { baseUrl: effectiveBaseUrl } : {}),
+        ...(claudeCode !== undefined ? { claudeCode } : {}),
       };
       await withAuthGuard(() => api.putRuntimeConfig(machineId, managedTarget!, spec), logout);
       toast.success(t('machineDetail.applyToast'));
@@ -745,18 +787,19 @@ function ProviderConfigForm({
   const ready =
     model.trim() !== '' &&
     !busy &&
+    ccIssue(cc) === null &&
     (selectedProvider !== null || (providerLabel.trim() !== '' && credentialName !== ''));
 
   const needBaseUrlNote = selectedProvider !== null && selectedProvider.baseUrl === null;
 
   return (
     <>
-      <div className="flex flex-col gap-3 border-t px-6 pt-4">
+      <div className="flex flex-col gap-3 border-t px-6 pt-4 pb-4">
         <div>
           <p className="text-sm font-medium">{t('machineDetail.providerTitle')}</p>
           <p className="text-muted-foreground text-xs">{t('machineDetail.providerDesc')}</p>
         </div>
-        <div className="flex flex-wrap items-end gap-3">
+        <div className="grid grid-cols-1 gap-3 sm:flex sm:flex-wrap sm:items-end">
           <div className="grid min-w-52 gap-2">
             <Label htmlFor={`pc-provider-${target}`}>{t('machineDetail.providerPickLabel')}</Label>
             <Select
@@ -777,7 +820,7 @@ function ProviderConfigForm({
                 setExtraModels((prev) => prev.filter((x) => ids.has(x.trim())));
               }}
             >
-              <SelectTrigger id={`pc-provider-${target}`}>
+              <SelectTrigger id={`pc-provider-${target}`} className="w-full">
                 <SelectValue placeholder={t('machineDetail.pickProvider')} />
               </SelectTrigger>
               <SelectContent>
@@ -898,42 +941,51 @@ function ProviderConfigForm({
             </>
           ) : null}
 
-          <div className="grid min-w-44 gap-2">
-            <Label htmlFor={`pc-model-${target}`}>{t('machineDetail.modelDefaultLabel')}</Label>
-            {useModelSelect ? (
-              <Select value={model} onValueChange={setModel}>
-                <SelectTrigger id={`pc-model-${target}`} className="font-mono text-xs">
-                  <SelectValue placeholder={t('machineDetail.pickModel')} />
-                </SelectTrigger>
-                <SelectContent>
-                  {/* A stored id that predates the registry stays visible and
+          {/* #60 — for claude-code the default-model picker lives inside the
+            dedicated panel (one surface per knob); other targets keep the
+            generic grid. */}
+          {managedTarget !== 'claude-code' ? (
+            <div className="grid min-w-44 gap-2">
+              <Label htmlFor={`pc-model-${target}`}>{t('machineDetail.modelDefaultLabel')}</Label>
+              {useModelSelect ? (
+                <Select value={model} onValueChange={setModel}>
+                  <SelectTrigger id={`pc-model-${target}`} className="font-mono text-xs">
+                    <SelectValue placeholder={t('machineDetail.pickModel')} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {/* A stored id that predates the registry stays visible and
                       submittable — the cutover never silently drops a working
                       route (registry-less rows are reset on provider CHANGE,
                       not on open). */}
-                  {model.trim() !== '' && !chatModels.some((m) => m.id === model.trim()) ? (
-                    <SelectItem value={model.trim()} className="font-mono text-xs">
-                      {model.trim()}
-                    </SelectItem>
-                  ) : null}
-                  {chatModels.map((m) => (
-                    <SelectItem key={m.id} value={m.id} className="font-mono text-xs">
-                      {m.displayName ?? m.id}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            ) : (
-              <Input
-                id={`pc-model-${target}`}
-                value={model}
-                onChange={(e) => setModel(e.target.value)}
-                className="font-mono text-xs"
-                autoComplete="off"
-                spellCheck={false}
-              />
-            )}
-          </div>
-          <Button onClick={() => setAsking(true)} disabled={!ready}>
+                    {model.trim() !== '' && !chatModels.some((m) => m.id === model.trim()) ? (
+                      <SelectItem value={model.trim()} className="font-mono text-xs">
+                        {model.trim()}
+                      </SelectItem>
+                    ) : null}
+                    {chatModels.map((m) => (
+                      <SelectItem key={m.id} value={m.id} className="font-mono text-xs">
+                        {m.displayName ?? m.id}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              ) : (
+                <Input
+                  id={`pc-model-${target}`}
+                  value={model}
+                  onChange={(e) => setModel(e.target.value)}
+                  className="font-mono text-xs"
+                  autoComplete="off"
+                  spellCheck={false}
+                />
+              )}
+            </div>
+          ) : null}
+          <Button
+            onClick={() => setAsking(true)}
+            disabled={!ready}
+            className="w-full sm:w-auto [@media(pointer:coarse)]:h-11"
+          >
             {busy ? t('machineDetail.applying') : t('machineDetail.applyButton')}
           </Button>
         </div>
@@ -958,106 +1010,125 @@ function ProviderConfigForm({
           rows pick from its registry, minus ids already used elsewhere (the
           row's own id stays selectable); a registry-less provider and the
           manual arm keep free-text rows. Any row can still be promoted to
-          the default (the old default swaps into the rows). */}
-        <div className="flex flex-col gap-2">
-          <div className="flex items-center gap-2">
-            <span className="text-sm leading-none font-medium">
-              {t('machineDetail.extraModelsTitle')}
-            </span>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="h-7 px-2 text-xs"
-              onClick={() => setExtraModels((prev) => [...prev, ''])}
-            >
-              <PlusIcon className="size-3.5" />
-              {t('machineDetail.extraModelsAdd')}
-            </Button>
-          </div>
-          {extraModels.map((m, i) => {
-            const used = new Set(
-              [model, ...extraModels.filter((_, j) => j !== i)]
-                .map((x) => x.trim())
-                .filter((x) => x !== ''),
-            );
-            const rowOptions = chatModels.filter((mm) => mm.id === m.trim() || !used.has(mm.id));
-            return (
-              <div key={i} className="flex max-w-2xl items-center gap-2">
-                {useModelSelect ? (
-                  <Select
-                    value={m}
-                    onValueChange={(v) =>
-                      setExtraModels((prev) => prev.map((x, j) => (j === i ? v : x)))
-                    }
-                  >
-                    <SelectTrigger
-                      aria-label={t('machineDetail.pickModel')}
-                      className="h-9 min-w-0 flex-1 font-mono text-xs"
-                    >
-                      <SelectValue placeholder={t('machineDetail.pickModel')} />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {m.trim() !== '' && !chatModels.some((mm) => mm.id === m.trim()) ? (
-                        <SelectItem value={m.trim()} className="font-mono text-xs">
-                          {m.trim()}
-                        </SelectItem>
-                      ) : null}
-                      {rowOptions.map((mm) => (
-                        <SelectItem key={mm.id} value={mm.id} className="font-mono text-xs">
-                          {mm.displayName ?? mm.id}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                ) : (
-                  <Input
-                    value={m}
-                    onChange={(e) =>
-                      setExtraModels((prev) => prev.map((x, j) => (j === i ? e.target.value : x)))
-                    }
-                    placeholder={t('machineDetail.extraModelsPlaceholder')}
-                    className="h-9 font-mono text-xs"
-                    autoComplete="off"
-                    spellCheck={false}
-                  />
-                )}
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  className="text-muted-foreground h-9 shrink-0 px-2 text-xs hover:text-foreground"
-                  disabled={m.trim() === '' || m.trim() === model.trim()}
-                  onClick={() => {
-                    const id = m.trim();
-                    const old = model.trim();
-                    setModel(id);
-                    setExtraModels((prev) => {
-                      const kept = prev.filter((_, j) => j !== i);
-                      if (old !== '' && old !== id && !kept.some((x) => x.trim() === old)) {
-                        kept.push(old);
+          the default (the old default swaps into the rows). #60: for
+          claude-code these rows moved into the dedicated panel. */}
+        {managedTarget !== 'claude-code' ? (
+          <div className="flex flex-col gap-2">
+            <div className="flex items-center gap-2">
+              <span className="text-sm leading-none font-medium">
+                {t('machineDetail.extraModelsTitle')}
+              </span>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-7 px-2 text-xs"
+                onClick={() => setExtraModels((prev) => [...prev, ''])}
+              >
+                <PlusIcon className="size-3.5" />
+                {t('machineDetail.extraModelsAdd')}
+              </Button>
+            </div>
+            {extraModels.map((m, i) => {
+              const used = new Set(
+                [model, ...extraModels.filter((_, j) => j !== i)]
+                  .map((x) => x.trim())
+                  .filter((x) => x !== ''),
+              );
+              const rowOptions = chatModels.filter((mm) => mm.id === m.trim() || !used.has(mm.id));
+              return (
+                <div key={i} className="flex max-w-2xl flex-wrap items-center gap-2">
+                  {useModelSelect ? (
+                    <Select
+                      value={m}
+                      onValueChange={(v) =>
+                        setExtraModels((prev) => prev.map((x, j) => (j === i ? v : x)))
                       }
-                      return kept;
-                    });
-                  }}
-                >
-                  {t('machineDetail.extraModelsMakeDefault')}
-                </Button>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  className="text-muted-foreground size-8 shrink-0 hover:text-danger"
-                  onClick={() => setExtraModels((prev) => prev.filter((_, j) => j !== i))}
-                  aria-label={t('machineDetail.extraModelsRemove', { model: m === '' ? '…' : m })}
-                >
-                  <XIcon className="size-3.5" />
-                </Button>
-              </div>
-            );
-          })}
-          <p className="text-muted-foreground text-xs">{t('machineDetail.extraModelsHint')}</p>
-        </div>
+                    >
+                      <SelectTrigger
+                        aria-label={t('machineDetail.pickModel')}
+                        className="h-9 min-w-0 flex-1 font-mono text-xs"
+                      >
+                        <SelectValue placeholder={t('machineDetail.pickModel')} />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {m.trim() !== '' && !chatModels.some((mm) => mm.id === m.trim()) ? (
+                          <SelectItem value={m.trim()} className="font-mono text-xs">
+                            {m.trim()}
+                          </SelectItem>
+                        ) : null}
+                        {rowOptions.map((mm) => (
+                          <SelectItem key={mm.id} value={mm.id} className="font-mono text-xs">
+                            {mm.displayName ?? mm.id}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  ) : (
+                    <Input
+                      value={m}
+                      onChange={(e) =>
+                        setExtraModels((prev) => prev.map((x, j) => (j === i ? e.target.value : x)))
+                      }
+                      placeholder={t('machineDetail.extraModelsPlaceholder')}
+                      className="h-9 font-mono text-xs"
+                      autoComplete="off"
+                      spellCheck={false}
+                    />
+                  )}
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="text-muted-foreground h-9 shrink-0 px-2 text-xs hover:text-foreground"
+                    disabled={m.trim() === '' || m.trim() === model.trim()}
+                    onClick={() => {
+                      const id = m.trim();
+                      const old = model.trim();
+                      setModel(id);
+                      setExtraModels((prev) => {
+                        const kept = prev.filter((_, j) => j !== i);
+                        if (old !== '' && old !== id && !kept.some((x) => x.trim() === old)) {
+                          kept.push(old);
+                        }
+                        return kept;
+                      });
+                    }}
+                  >
+                    {t('machineDetail.extraModelsMakeDefault')}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="text-muted-foreground size-8 shrink-0 hover:text-danger"
+                    onClick={() => setExtraModels((prev) => prev.filter((_, j) => j !== i))}
+                    aria-label={t('machineDetail.extraModelsRemove', { model: m === '' ? '…' : m })}
+                  >
+                    <XIcon className="size-3.5" />
+                  </Button>
+                </div>
+              );
+            })}
+            <p className="text-muted-foreground text-xs">{t('machineDetail.extraModelsHint')}</p>
+          </div>
+        ) : null}
+
+        {/* #60 — claude-code's own knob panel: the agent's whole model +
+          behavior surface (the provider row above keeps only the connection).
+          The `[1m]` marker checkbox rides the draft, not the model string. */}
+        {managedTarget === 'claude-code' ? (
+          <ClaudeCodePanel
+            draft={cc}
+            onChange={setCc}
+            defaultModel={model}
+            onDefaultModelChange={setModel}
+            extraModels={extraModels}
+            onExtraModelsChange={setExtraModels}
+            chatModels={chatModels}
+            behaviorSlot={defaultModeSlot}
+          />
+        ) : null}
       </div>
 
       {asking ? (

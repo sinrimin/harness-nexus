@@ -181,6 +181,9 @@ export async function planRuntimeConfigUpsert(
       providerId: spec.providerId ?? null,
       models,
       modelEntries: modelEntries ?? null,
+      // #60 — the claude-code panel rides the row verbatim (zod-validated
+      // above; null keeps untouched rows in their pre-#60 shape).
+      claudeCode: spec.claudeCode ?? null,
       extra: spec.extra ?? null,
     },
     createdAt: existing?.createdAt ?? now,

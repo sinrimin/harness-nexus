@@ -35,7 +35,41 @@ export interface RuntimeConfigSpecData {
    * serverTools/extraBody never leave the server.
    */
   modelEntries: RuntimeModelEntry[] | null;
+  /**
+   * #60 — claude-code's dedicated panel knobs (see `ClaudeCodeConfigData`).
+   * null = panel untouched (the row keeps its pre-#60 shape); the daemon
+   * writes each present knob into settings.json with revert semantics.
+   */
+  claudeCode: ClaudeCodeConfigData | null;
   extra: Record<string, unknown> | null;
+}
+
+/** #60 — plain mirror of `claudeCodeConfigSchema` in shared (kept in sync). */
+export interface ClaudeCodeConfigData {
+  authField?: 'ANTHROPIC_AUTH_TOKEN' | 'ANTHROPIC_API_KEY' | undefined;
+  switches?: ClaudeCodeSwitchData | undefined;
+  tiers?: ClaudeCodeTierPin[] | undefined;
+  subagentModel?: string | undefined;
+  maxOutputTokens?: number | undefined;
+  maxContextTokens?: number | undefined;
+  extraBody?: Record<string, unknown> | undefined;
+}
+
+export interface ClaudeCodeSwitchData {
+  attributionHidden?: boolean | undefined;
+  teammates?: boolean | undefined;
+  toolSearch?: boolean | undefined;
+  maxEffort?: boolean | undefined;
+  autoUpgradeDisabled?: boolean | undefined;
+  artifactsDisabled?: boolean | undefined;
+}
+
+export interface ClaudeCodeTierPin {
+  tier: 'sonnet' | 'opus' | 'fable' | 'haiku';
+  /** May carry the `[1m]` marker. */
+  model: string;
+  displayName?: string | undefined;
+  capabilities?: string[] | undefined;
 }
 
 /** #51 — the metadata subset of a ProviderModelConfig that may ride a spec. */
