@@ -155,6 +155,15 @@ export function MachineDetailPage() {
     setSearchParams(v === 'overview' ? {} : { tab: v }, { replace: true });
   };
 
+  // The strip scrolls ITSELF on the narrowest phones (#61) — selection must
+  // follow: keyboard/programmatic activation brings the active trigger into
+  // view, or the focused tab can sit 30px past the hidden edge.
+  useEffect(() => {
+    document
+      .querySelector('[role=tab][data-state=active]')
+      ?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  }, [tab]);
+
   // The machine's name is this page's identity, so it rides the topbar (with the
   // MESH crumb back to the list — the old back button is gone). A string, not a
   // portal: `page-slots.tsx` explains why.
