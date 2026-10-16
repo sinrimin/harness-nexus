@@ -820,7 +820,7 @@ function ProviderConfigForm({
                 setExtraModels((prev) => prev.filter((x) => ids.has(x.trim())));
               }}
             >
-              <SelectTrigger id={`pc-provider-${target}`}>
+              <SelectTrigger id={`pc-provider-${target}`} className="w-full">
                 <SelectValue placeholder={t('machineDetail.pickProvider')} />
               </SelectTrigger>
               <SelectContent>

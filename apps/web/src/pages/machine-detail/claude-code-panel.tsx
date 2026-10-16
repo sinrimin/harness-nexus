@@ -646,7 +646,7 @@ export function ClaudeCodePanel({
               value={draft.authField}
               onValueChange={(v) => onChange({ ...draft, authField: v as CcDraft['authField'] })}
             >
-              <SelectTrigger id="cc-auth" className="font-mono text-xs">
+              <SelectTrigger id="cc-auth" className="w-full font-mono text-xs">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
