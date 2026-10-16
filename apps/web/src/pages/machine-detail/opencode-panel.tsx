@@ -124,14 +124,8 @@ export function ocIssue(draft: OcDraft, ids: readonly string[]): TranslationKey 
       const n = Number(out);
       if (!Number.isInteger(n) || n < 1 || n > 128000) return 'machineDetail.ocNumBadOutput';
     }
-    for (const e of d.options) {
-      if (EXTRA_BODY_BOOLEAN_KEYS.has(e.key)) continue;
-      try {
-        JSON.parse(e.text);
-      } catch {
-        return 'llmProviders.extraBodyInvalid';
-      }
-    }
+    const fault = optionsFault(d);
+    if (fault !== null) return fault;
   }
   return null;
 }
@@ -327,7 +321,7 @@ export function OpencodePanel({
                       onExtraModelsChange(extraModels.map((x, j) => (j === i ? e.target.value : x)))
                     }
                     placeholder={t('machineDetail.extraModelsPlaceholder')}
-                    className="h-9 font-mono text-xs"
+                    className="h-9 min-w-0 flex-1 font-mono text-xs"
                     autoComplete="off"
                     spellCheck={false}
                   />
@@ -384,7 +378,7 @@ export function OpencodePanel({
               <div key={id} className="rounded-md border bg-muted/20">
                 <button
                   type="button"
-                  className="flex w-full items-center justify-between gap-2 px-3 py-2.5 text-left"
+                  className="hover:bg-tray/40 flex w-full cursor-pointer items-center justify-between gap-2 px-3 py-2.5 text-left"
                   aria-expanded={isOpen}
                   onClick={() => setExpanded((prev) => ({ ...prev, [id]: !prev[id] }))}
                 >
@@ -473,10 +467,11 @@ export function OpencodePanel({
                       {t('machineDetail.ocTemperatureHint')}
                     </p>
                     <div className="grid gap-1.5">
-                      <span className="text-muted-foreground text-xs">
+                      <Label htmlFor={`oc-opts-${cssEscape(id)}`}>
                         {t('machineDetail.ocOptionsLabel')}
-                      </span>
+                      </Label>
                       <TagCombobox
+                        id={`oc-opts-${cssEscape(id)}`}
                         value={d.options.map((e) => e.key)}
                         options={[]}
                         onChange={(keys) =>
@@ -543,7 +538,6 @@ export function OpencodePanel({
             );
           })
         )}
-        {issue !== null ? <p className="text-danger text-xs">{t(issue)}</p> : null}
       </div>
 
       {/* ---- behavior ---- */}
@@ -580,6 +574,19 @@ export function OpencodePanel({
       </div>
     </section>
   );
+}
+
+/** One model's options fault, or null — rendered inside its own group. */
+function optionsFault(d: OcModelDraft): TranslationKey | null {
+  for (const e of d.options) {
+    if (EXTRA_BODY_BOOLEAN_KEYS.has(e.key)) continue;
+    try {
+      JSON.parse(e.text);
+    } catch {
+      return 'llmProviders.extraBodyInvalid';
+    }
+  }
+  return null;
 }
 
 /** The switchable set: the default plus the extras, trimmed, deduped. */
