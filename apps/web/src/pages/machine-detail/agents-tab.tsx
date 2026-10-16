@@ -297,7 +297,7 @@ function DefaultModeSelect({
   return (
     // Rendered INSIDE the claude-code panel's behavior section (#60) — lean
     // row, no card padding of its own.
-    <div className="flex items-center justify-between gap-4 pt-1">
+    <div className="flex flex-col gap-2 pt-1 sm:flex-row sm:items-center sm:justify-between">
       <div>
         <p className="text-sm font-medium">{t('machineDetail.defaultMode')}</p>
         <p className="text-muted-foreground text-xs">{t('machineDetail.defaultModeDesc')}</p>
@@ -310,7 +310,7 @@ function DefaultModeSelect({
         <SelectTrigger
           id="default-mode"
           aria-label={t('machineDetail.defaultMode')}
-          className="w-[180px]"
+          className="w-full sm:w-[180px]"
         >
           <SelectValue />
         </SelectTrigger>
@@ -796,12 +796,12 @@ function ProviderConfigForm({
 
   return (
     <>
-      <div className="flex flex-col gap-3 border-t px-6 pt-4">
+      <div className="flex flex-col gap-3 border-t px-6 pt-4 pb-4">
         <div>
           <p className="text-sm font-medium">{t('machineDetail.providerTitle')}</p>
           <p className="text-muted-foreground text-xs">{t('machineDetail.providerDesc')}</p>
         </div>
-        <div className="flex flex-wrap items-end gap-3">
+        <div className="grid grid-cols-1 gap-3 sm:flex sm:flex-wrap sm:items-end">
           <div className="grid min-w-52 gap-2">
             <Label htmlFor={`pc-provider-${target}`}>{t('machineDetail.providerPickLabel')}</Label>
             <Select
@@ -983,7 +983,11 @@ function ProviderConfigForm({
               )}
             </div>
           ) : null}
-          <Button onClick={() => setAsking(true)} disabled={!ready}>
+          <Button
+            onClick={() => setAsking(true)}
+            disabled={!ready}
+            className="w-full sm:w-auto [@media(pointer:coarse)]:h-11"
+          >
             {busy ? t('machineDetail.applying') : t('machineDetail.applyButton')}
           </Button>
         </div>
@@ -1035,7 +1039,7 @@ function ProviderConfigForm({
               );
               const rowOptions = chatModels.filter((mm) => mm.id === m.trim() || !used.has(mm.id));
               return (
-                <div key={i} className="flex max-w-2xl items-center gap-2">
+                <div key={i} className="flex max-w-2xl flex-wrap items-center gap-2">
                   {useModelSelect ? (
                     <Select
                       value={m}

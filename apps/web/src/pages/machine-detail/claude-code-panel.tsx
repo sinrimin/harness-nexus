@@ -12,7 +12,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { TagCombobox } from '@/components/kit';
+import { Textarea } from '@/components/ui/textarea';
+import { LabelText, TagCombobox } from '@/components/kit';
 import {
   CLAUDE_CODE_TIERS,
   hasClaudeOneMarker,
@@ -303,15 +304,13 @@ export function ClaudeCodePanel({
 
       {/* ---- models ---- */}
       <div className="flex flex-col gap-3">
-        <p className="text-muted-foreground text-xs font-semibold tracking-wide uppercase">
-          {t('machineDetail.ccSectionModels')}
-        </p>
+        <LabelText as="p">{t('machineDetail.ccSectionModels')}</LabelText>
         <div className="flex max-w-2xl items-end gap-4">
           <div className="grid min-w-52 flex-1 gap-2">
             <Label htmlFor="cc-model">{t('machineDetail.modelDefaultLabel')}</Label>
             {useModelSelect ? (
               <Select value={defaultModel} onValueChange={onDefaultModelChange}>
-                <SelectTrigger id="cc-model" className="font-mono text-xs">
+                <SelectTrigger id="cc-model" className="w-full font-mono text-xs">
                   <SelectValue placeholder={t('machineDetail.pickModel')} />
                 </SelectTrigger>
                 <SelectContent>
@@ -344,9 +343,10 @@ export function ClaudeCodePanel({
           <label className="flex h-9 items-center gap-2 pb-0.5 text-sm">
             <Checkbox
               checked={draft.oneM}
+              disabled={stripClaudeOneMarker(defaultModel).trim() === ''}
               onCheckedChange={(v) => onChange({ ...draft, oneM: v === true })}
             />
-            1M
+            {t('machineDetail.ccOneM')}
           </label>
         </div>
         <p className="text-muted-foreground max-w-2xl text-xs">
@@ -362,7 +362,7 @@ export function ClaudeCodePanel({
               type="button"
               variant="outline"
               size="sm"
-              className="h-7 px-2 text-xs"
+              className="h-7 px-2 text-xs [@media(pointer:coarse)]:h-9"
               onClick={() => onExtraModelsChange([...extraModels, ''])}
             >
               <PlusIcon className="size-3.5" />
@@ -377,7 +377,7 @@ export function ClaudeCodePanel({
             );
             const rowOptions = chatModels.filter((mm) => mm.id === m.trim() || !used.has(mm.id));
             return (
-              <div key={i} className="flex max-w-2xl items-center gap-2">
+              <div key={i} className="flex max-w-2xl flex-wrap items-center gap-2">
                 {useModelSelect ? (
                   <Select
                     value={m}
@@ -477,11 +477,12 @@ export function ClaudeCodePanel({
           <label className="flex h-9 items-center gap-2 pt-6 text-sm">
             <Checkbox
               checked={hasClaudeOneMarker(draft.subagent)}
+              disabled={stripClaudeOneMarker(draft.subagent).trim() === ''}
               onCheckedChange={(v) =>
                 onChange({ ...draft, subagent: setClaudeOneMarker(draft.subagent, v === true) })
               }
             />
-            1M
+            {t('machineDetail.ccOneM')}
           </label>
         </div>
       </div>
@@ -490,14 +491,14 @@ export function ClaudeCodePanel({
       <div className="flex flex-col gap-2 border-t pt-4">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
-            <p className="text-sm font-medium">{t('machineDetail.ccTiersTitle')}</p>
+            <LabelText as="p">{t('machineDetail.ccTiersTitle')}</LabelText>
             <p className="text-muted-foreground text-xs">{t('machineDetail.ccTiersHint')}</p>
           </div>
           <Button
             type="button"
             variant="outline"
             size="sm"
-            className="h-7 gap-1 px-2 text-xs"
+            className="h-7 gap-1 px-2 text-xs [@media(pointer:coarse)]:h-9"
             disabled={stripClaudeOneMarker(defaultModel).trim() === ''}
             onClick={() => {
               const base = stripClaudeOneMarker(defaultModel).trim();
@@ -523,58 +524,90 @@ export function ClaudeCodePanel({
           </Button>
         </div>
 
-        <div className="text-muted-foreground hidden gap-2 px-1 text-xs font-medium md:grid md:grid-cols-[72px_minmax(0,1fr)_minmax(0,9rem)_minmax(0,13rem)_44px]">
+        <div className="text-muted-foreground hidden gap-2 text-xs font-medium md:grid md:grid-cols-[72px_minmax(0,1fr)_minmax(0,9rem)_minmax(0,13rem)_44px]">
           <span>{t('machineDetail.ccTierHeader')}</span>
           <span>{t('machineDetail.ccTierModelLabel')}</span>
           <span>{t('machineDetail.ccTierNameLabel')}</span>
           <span>{t('machineDetail.ccTierCapsLabel')}</span>
-          <span>1M</span>
+          <span>{t('machineDetail.ccOneM')}</span>
         </div>
 
         {CLAUDE_CODE_TIERS.map((tier) => {
           const row = tierRow(draft, tier);
           const oneM = hasClaudeOneMarker(row.model);
+          const oneMDisabled = stripClaudeOneMarker(row.model).trim() === '';
+          const toggleOneM = (v: boolean): void =>
+            setTier(tier, { model: setClaudeOneMarker(row.model, v) });
           return (
             <div
               key={tier}
-              className="grid gap-2 md:grid-cols-[72px_minmax(0,1fr)_minmax(0,9rem)_minmax(0,13rem)_44px]"
+              className="flex flex-col gap-2 rounded-md border bg-muted/20 p-3 md:grid md:grid-cols-[72px_minmax(0,1fr)_minmax(0,9rem)_minmax(0,13rem)_44px] md:items-start md:gap-2 md:rounded-none md:border-0 md:bg-transparent md:p-0"
             >
-              <div className="text-muted-foreground flex h-9 items-center rounded-md border bg-muted/40 px-3 font-mono text-xs">
-                {tier}
+              {/* tier id — the mobile group header carries the 1M toggle;
+                  desktop keeps the bare chip cell */}
+              <div className="flex items-center justify-between gap-2 md:block">
+                <div className="text-muted-foreground flex h-9 items-center rounded-md border bg-muted/40 px-3 font-mono text-xs">
+                  {tier}
+                </div>
+                <label className="flex items-center gap-2 text-sm md:hidden">
+                  <Checkbox
+                    checked={oneM}
+                    disabled={oneMDisabled}
+                    onCheckedChange={(v) => toggleOneM(v === true)}
+                  />
+                  {t('machineDetail.ccOneM')}
+                </label>
               </div>
-              <Input
-                aria-label={`${tier} ${t('machineDetail.ccTierModelLabel')}`}
-                value={stripClaudeOneMarker(row.model)}
-                list={datalistId}
-                onChange={(e) => setTier(tier, { model: setClaudeOneMarker(e.target.value, oneM) })}
-                placeholder={t('machineDetail.ccTierModelPh')}
-                className="h-9 font-mono text-xs"
-                autoComplete="off"
-                spellCheck={false}
-              />
-              <Input
-                aria-label={`${tier} ${t('machineDetail.ccTierNameLabel')}`}
-                value={row.displayName}
-                onChange={(e) => setTier(tier, { displayName: e.target.value })}
-                placeholder={t('machineDetail.ccTierNamePh')}
-                className="h-9 text-xs"
-                autoComplete="off"
-              />
-              <TagCombobox
-                value={row.capabilities}
-                options={CAPABILITY_SUGGESTIONS}
-                onChange={(capabilities) => setTier(tier, { capabilities })}
-                placeholder={t('machineDetail.ccTierCapsPh')}
-                addLabel={(value) => t('llmProviders.tagComboboxAdd', { value })}
-                removeLabel={(value) => t('llmProviders.tagComboboxRemove', { value })}
-                className="h-9 text-xs"
-              />
-              <label className="flex h-9 items-center justify-center">
+              <div className="grid gap-1 md:contents">
+                <span className="text-muted-foreground text-xs md:hidden">
+                  {t('machineDetail.ccTierModelLabel')}
+                </span>
+                <Input
+                  aria-label={`${tier} ${t('machineDetail.ccTierModelLabel')}`}
+                  value={stripClaudeOneMarker(row.model)}
+                  list={datalistId}
+                  onChange={(e) =>
+                    setTier(tier, { model: setClaudeOneMarker(e.target.value, oneM) })
+                  }
+                  placeholder={t('machineDetail.ccTierModelPh')}
+                  className="h-9 font-mono text-xs"
+                  autoComplete="off"
+                  spellCheck={false}
+                />
+              </div>
+              <div className="grid gap-1 md:contents">
+                <span className="text-muted-foreground text-xs md:hidden">
+                  {t('machineDetail.ccTierNameLabel')}
+                </span>
+                <Input
+                  aria-label={`${tier} ${t('machineDetail.ccTierNameLabel')}`}
+                  value={row.displayName}
+                  onChange={(e) => setTier(tier, { displayName: e.target.value })}
+                  placeholder={t('machineDetail.ccTierNamePh')}
+                  className="h-9 text-xs"
+                  autoComplete="off"
+                />
+              </div>
+              <div className="grid gap-1 md:contents">
+                <span className="text-muted-foreground text-xs md:hidden">
+                  {t('machineDetail.ccTierCapsLabel')}
+                </span>
+                <TagCombobox
+                  value={row.capabilities}
+                  options={CAPABILITY_SUGGESTIONS}
+                  onChange={(capabilities) => setTier(tier, { capabilities })}
+                  placeholder={t('machineDetail.ccTierCapsPh')}
+                  addLabel={(value) => t('llmProviders.tagComboboxAdd', { value })}
+                  removeLabel={(value) => t('llmProviders.tagComboboxRemove', { value })}
+                  ariaLabel={`${tier} ${t('machineDetail.ccTierCapsLabel')}`}
+                  className="min-h-9 text-xs"
+                />
+              </div>
+              <label className="hidden h-9 items-center justify-center md:flex">
                 <Checkbox
                   checked={oneM}
-                  onCheckedChange={(v) =>
-                    setTier(tier, { model: setClaudeOneMarker(row.model, v === true) })
-                  }
+                  disabled={oneMDisabled}
+                  onCheckedChange={(v) => toggleOneM(v === true)}
                   aria-label={`1M ${tier}`}
                 />
               </label>
@@ -585,12 +618,13 @@ export function ClaudeCodePanel({
 
       {/* ---- behavior ---- */}
       <div className="flex flex-col gap-3 border-t pt-4">
-        <p className="text-muted-foreground text-xs font-semibold tracking-wide uppercase">
-          {t('machineDetail.ccSectionBehavior')}
-        </p>
+        <LabelText as="p">{t('machineDetail.ccSectionBehavior')}</LabelText>
         <div className="grid gap-x-6 gap-y-2 sm:grid-cols-2 lg:grid-cols-3">
           {BEHAVIOR_SWITCHES.map(({ key, label }) => (
-            <label key={key} className="flex items-center gap-2 text-sm">
+            <label
+              key={key}
+              className="flex items-center gap-2 py-1 text-sm [@media(pointer:coarse)]:py-2.5"
+            >
               <Checkbox
                 checked={draft.switches[key]}
                 onCheckedChange={(v) => setSwitch(key, v === true)}
@@ -604,11 +638,9 @@ export function ClaudeCodePanel({
 
       {/* ---- request ---- */}
       <div className="flex flex-col gap-3 border-t pt-4">
-        <p className="text-muted-foreground text-xs font-semibold tracking-wide uppercase">
-          {t('machineDetail.ccSectionRequest')}
-        </p>
-        <div className="flex flex-wrap gap-4">
-          <div className="grid max-w-72 gap-2">
+        <LabelText as="p">{t('machineDetail.ccSectionRequest')}</LabelText>
+        <div className="grid gap-4 sm:grid-cols-3">
+          <div className="grid content-start gap-2">
             <Label htmlFor="cc-auth">{t('machineDetail.ccAuthFieldLabel')}</Label>
             <Select
               value={draft.authField}
@@ -627,7 +659,7 @@ export function ClaudeCodePanel({
               </SelectContent>
             </Select>
           </div>
-          <div className="grid w-44 gap-2">
+          <div className="grid content-start gap-2">
             <Label htmlFor="cc-max-out">{t('machineDetail.ccMaxOutputLabel')}</Label>
             <Input
               id="cc-max-out"
@@ -641,7 +673,7 @@ export function ClaudeCodePanel({
               autoComplete="off"
             />
           </div>
-          <div className="grid flex-1 gap-2 md:max-w-72">
+          <div className="grid content-start gap-2">
             <Label htmlFor="cc-max-ctx">{t('machineDetail.ccMaxContextLabel')}</Label>
             <Input
               id="cc-max-ctx"
@@ -662,13 +694,13 @@ export function ClaudeCodePanel({
         </div>
         <div className="grid gap-2">
           <Label htmlFor="cc-extra-body">{t('machineDetail.ccExtraBodyLabel')}</Label>
-          <textarea
+          <Textarea
             id="cc-extra-body"
             value={draft.extraBody}
             onChange={(e) => onChange({ ...draft, extraBody: e.target.value })}
             placeholder={t('machineDetail.ccExtraBodyPh')}
             rows={3}
-            className="border-input bg-transparent field-sizing-content focus-visible:border-ring focus-visible:ring-ring/50 w-full rounded-md border px-3 py-2 font-mono text-xs shadow-xs outline-none"
+            className="min-h-20 font-mono text-xs"
             autoComplete="off"
             spellCheck={false}
           />

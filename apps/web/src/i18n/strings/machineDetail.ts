@@ -217,6 +217,8 @@ const en = {
   ccSectionModels: 'Models',
   ccSectionBehavior: 'Behavior',
   ccSectionRequest: 'Request',
+  /** The wire marker itself — stays "1M" in both locales. */
+  ccOneM: '1M',
   ccMainOneMHint:
     'Appends [1m] to the model id — it is stripped before sending and claude-code assumes a 1M window.',
   ccAuthFieldLabel: 'Auth field',
@@ -442,6 +444,7 @@ const zh: typeof en = {
   ccSectionModels: '模型',
   ccSectionBehavior: '行为',
   ccSectionRequest: '请求',
+  ccOneM: '1M',
   ccMainOneMHint: '在模型 ID 后追加 [1m]——发送前会剥掉标记，claude-code 按 1M 窗口处理。',
   ccAuthFieldLabel: '认证字段',
   ccAuthBearer: 'Bearer（默认）',
@@ -453,7 +456,7 @@ const zh: typeof en = {
   ccTierModelLabel: '模型',
   ccTierModelPh: 'model id',
   ccTierNameLabel: '显示名',
-  ccTierNamePh: '例如 Gateway Large',
+  ccTierNamePh: '网关大模型',
   ccTierCapsLabel: '能力声明',
   ccTierCapsPh: 'effort、thinking…',
   ccApplyAll: '模型应用到所有档',
