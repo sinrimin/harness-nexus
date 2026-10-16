@@ -252,6 +252,41 @@ const en = {
   ccSwMaxEffort: 'Max-effort thinking',
   ccSwAutoUpgrade: 'Disable auto-upgrade',
   ccSwArtifacts: 'Disable Artifact tool',
+  // #62 — the opencode dedicated panel. Wire/protocol values (limit keys,
+  // small_model, autoupdate) stay English in both locales per the i18n rules.
+  ocTitle: 'opencode settings',
+  ocDesc:
+    'Applied into the machine\u2019s ~/.config/opencode/opencode.json. Only knobs configured here are written; unset fields fall back to the registry snapshot, then to conservative defaults. Everything else in the file stays untouched.',
+  ocSectionModels: 'Models',
+  ocSectionDetails: 'Model details',
+  ocSectionBehavior: 'Behavior',
+  ocDetailsHint:
+    'Per-model knobs ride the provider\u2019s models map; panel values override the registry snapshot.',
+  ocDetailsEmpty: 'Add models above to configure their details.',
+  ocNameLabel: 'Display name',
+  ocNamePh: 'e.g. Gateway Large',
+  ocContextLabel: 'Context window (tokens)',
+  ocContextHint: 'Informational — drives the context-remaining readout and auto-compaction.',
+  ocOutputLabel: 'Output cap (tokens)',
+  ocOutputHint: 'A real request cap; opencode clamps it globally to 32000.',
+  ocReasoning: 'Reasoning',
+  ocTemperatureGate: 'Temperature gate',
+  ocTemperatureHint:
+    'The gate only decides whether an agent\u2019s temperature value is sent at all — the value itself is per-agent in opencode.',
+  ocVision: 'Vision',
+  ocOptionsLabel: 'Request options',
+  ocOptionsKeyPh: 'key, e.g. enable_thinking',
+  ocOptionsHint:
+    'Merged verbatim into the request body on the openai-compatible wire; no passthrough on the anthropic wire.',
+  ocSmallModelLabel: 'Background small model',
+  ocSmallModelNone: 'None (removed)',
+  ocSmallModelHint:
+    'opencode uses it for lightweight tasks like title generation; unset falls back to the main model.',
+  ocAutoupdate: 'Disable auto-update',
+  ocAutoupdateHint:
+    'May not apply to package-manager installs (npm included — our install channel).',
+  ocNumBadContext: 'Context window must be a positive integer.',
+  ocNumBadOutput: 'Output cap must be an integer between 1 and 128000.',
 };
 
 const zh: typeof en = {
@@ -476,6 +511,34 @@ const zh: typeof en = {
   ccSwMaxEffort: '最大强度思考',
   ccSwAutoUpgrade: '禁用自动升级',
   ccSwArtifacts: '禁用 Artifact 工具',
+  ocTitle: 'opencode 专属配置',
+  ocDesc:
+    '应用时写入机器的 ~/.config/opencode/opencode.json。只写这里配置了的键；未配置的字段先回落注册表快照、再回落保守默认值。文件里的其余内容一概不动。',
+  ocSectionModels: '模型',
+  ocSectionDetails: '模型详情',
+  ocSectionBehavior: '行为',
+  ocDetailsHint: '逐模型的配置写入供应商的 models 映射；面板值优先于注册表快照。',
+  ocDetailsEmpty: '先在上方添加模型，才能配置其详情。',
+  ocNameLabel: '显示名',
+  ocNamePh: '例如 Gateway Large',
+  ocContextLabel: '上下文窗口（tokens）',
+  ocContextHint: '信息性——驱动剩余上下文显示与自动压缩。',
+  ocOutputLabel: '输出上限（tokens）',
+  ocOutputHint: '真实请求上限；opencode 全局钳到 32000。',
+  ocReasoning: '推理',
+  ocTemperatureGate: '温度门',
+  ocTemperatureHint: '只决定是否发送 agent 的温度值——值本身属于 opencode 的逐 agent 配置。',
+  ocVision: '视觉',
+  ocOptionsLabel: '请求选项',
+  ocOptionsKeyPh: '键名，如 enable_thinking',
+  ocOptionsHint: '仅 openai 兼容线会原样并入请求体；anthropic 线无此通道。',
+  ocSmallModelLabel: '后台小模型',
+  ocSmallModelNone: '无（移除）',
+  ocSmallModelHint: 'opencode 用它跑标题生成等轻任务；未设置时回落主模型。',
+  ocAutoupdate: '禁用自动升级',
+  ocAutoupdateHint: '对包管理器安装（含 npm——我们的安装通道）可能不生效。',
+  ocNumBadContext: '上下文窗口必须是正整数。',
+  ocNumBadOutput: '输出上限必须是 1–128000 的整数。',
 };
 
 export const machineDetailStrings = { en, zh };

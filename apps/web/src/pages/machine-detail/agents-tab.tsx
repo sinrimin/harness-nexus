@@ -51,6 +51,14 @@ import {
   serializeCcDraft,
   type CcDraft,
 } from './claude-code-panel.js';
+import {
+  OpencodePanel,
+  ocDraftFromSpec,
+  ocIssue,
+  emptyOcDraft,
+  serializeOcDraft,
+  type OcDraft,
+} from './opencode-panel.js';
 import type { InventoryEntry, RuntimeInfoView } from './types.js';
 
 /**
@@ -658,6 +666,8 @@ function ProviderConfigForm({
   const [extraModels, setExtraModels] = useState<string[]>([]);
   // #60 — claude-code's dedicated panel knobs (draft shape; serialized at apply).
   const [cc, setCc] = useState<CcDraft>(emptyCcDraft);
+  // #62 — opencode's dedicated panel knobs.
+  const [oc, setOc] = useState<OcDraft>(emptyOcDraft);
   const [busy, setBusy] = useState(false);
   // P6 — Apply config confirms first (the credential goes to the machine).
   const [asking, setAsking] = useState(false);
@@ -729,6 +739,7 @@ function ProviderConfigForm({
         ),
       );
       setCc(ccDraftFromSpec(existing));
+      setOc(ocDraftFromSpec(existing));
     })();
     return () => {
       cancelled = true;
@@ -760,9 +771,12 @@ function ProviderConfigForm({
             .filter((m) => m !== '' && m !== baseModel && m !== wireModel),
         ),
       ];
-      // #60 — the panel serializes to undefined when everything is default,
-      // keeping untouched specs byte-identical to their pre-#60 shape.
+      // #60/#62 — each panel serializes to undefined when everything is
+      // default, keeping untouched specs byte-identical to their old shape.
       const claudeCode = serializeCcDraft(cc);
+      const opencode = serializeOcDraft(oc, [
+        ...new Set([model, ...extraModels].map((x) => x.trim()).filter((x) => x !== '')),
+      ]);
       const spec: RuntimeConfigSpec = {
         providerLabel: (selectedProvider?.name ?? providerLabel).trim(),
         api: (selectedProvider !== null
@@ -774,6 +788,7 @@ function ProviderConfigForm({
         ...(normalizedExtras.length > 0 ? { models: normalizedExtras } : {}),
         ...(effectiveBaseUrl !== '' ? { baseUrl: effectiveBaseUrl } : {}),
         ...(claudeCode !== undefined ? { claudeCode } : {}),
+        ...(opencode !== undefined ? { opencode } : {}),
       };
       await withAuthGuard(() => api.putRuntimeConfig(machineId, managedTarget!, spec), logout);
       toast.success(t('machineDetail.applyToast'));
@@ -788,6 +803,9 @@ function ProviderConfigForm({
     model.trim() !== '' &&
     !busy &&
     ccIssue(cc) === null &&
+    ocIssue(oc, [
+      ...new Set([model, ...extraModels].map((x) => x.trim()).filter((x) => x !== '')),
+    ]) === null &&
     (selectedProvider !== null || (providerLabel.trim() !== '' && credentialName !== ''));
 
   const needBaseUrlNote = selectedProvider !== null && selectedProvider.baseUrl === null;
@@ -941,10 +959,10 @@ function ProviderConfigForm({
             </>
           ) : null}
 
-          {/* #60 — for claude-code the default-model picker lives inside the
-            dedicated panel (one surface per knob); other targets keep the
-            generic grid. */}
-          {managedTarget !== 'claude-code' ? (
+          {/* #60/#62 — for claude-code and opencode the default-model picker
+            lives inside the dedicated panel (one surface per knob); other
+            targets keep the generic grid. */}
+          {managedTarget !== 'claude-code' && managedTarget !== 'opencode' ? (
             <div className="grid min-w-44 gap-2">
               <Label htmlFor={`pc-model-${target}`}>{t('machineDetail.modelDefaultLabel')}</Label>
               {useModelSelect ? (
@@ -1010,9 +1028,9 @@ function ProviderConfigForm({
           rows pick from its registry, minus ids already used elsewhere (the
           row's own id stays selectable); a registry-less provider and the
           manual arm keep free-text rows. Any row can still be promoted to
-          the default (the old default swaps into the rows). #60: for
-          claude-code these rows moved into the dedicated panel. */}
-        {managedTarget !== 'claude-code' ? (
+          the default (the old default swaps into the rows). #60/#62: for
+          claude-code and opencode these rows moved into the dedicated panel. */}
+        {managedTarget !== 'claude-code' && managedTarget !== 'opencode' ? (
           <div className="flex flex-col gap-2">
             <div className="flex items-center gap-2">
               <span className="text-sm leading-none font-medium">
@@ -1127,6 +1145,17 @@ function ProviderConfigForm({
             onExtraModelsChange={setExtraModels}
             chatModels={chatModels}
             behaviorSlot={defaultModeSlot}
+          />
+        ) : null}
+        {managedTarget === 'opencode' ? (
+          <OpencodePanel
+            draft={oc}
+            onChange={setOc}
+            defaultModel={model}
+            onDefaultModelChange={setModel}
+            extraModels={extraModels}
+            onExtraModelsChange={setExtraModels}
+            chatModels={chatModels}
           />
         ) : null}
       </div>

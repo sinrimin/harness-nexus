@@ -589,6 +589,123 @@ describe('applyRuntimeConfig — opencode (9 W12)', () => {
     expect(models['gw-mini']).toEqual({ limit: { output: 8192, context: 128_000 } });
   });
 
+  it('#62 — panel detail wins per-field over the seed; capabilities, options, small_model, autoupdate', () => {
+    applyRuntimeConfig(
+      'opencode',
+      spec({
+        api: 'openai',
+        model: 'gw-large',
+        models: ['gw-mini'],
+        modelEntries: [
+          {
+            id: 'gw-large',
+            displayName: 'Seeded Name',
+            contextWindow: 200_000,
+            maxOutputTokens: 16_384,
+          },
+        ],
+        opencode: {
+          models: [
+            {
+              id: 'gw-large',
+              name: 'Panel Name', // panel name wins over the seed
+              maxOutputTokens: 32_000, // panel output wins; context still seeds
+              reasoning: true,
+              temperatureEnabled: true,
+              vision: true,
+              options: { enable_thinking: true },
+            },
+            { id: 'gw-mini', contextWindow: 65_536 }, // bare id gets panel-only context
+          ],
+          smallModel: 'gw-mini',
+          autoupdateDisabled: true,
+        },
+      }),
+      'sk-panel',
+      home,
+    );
+    const parsed = JSON.parse(readFileSync(cfg(), 'utf8')) as {
+      small_model: string;
+      autoupdate: boolean;
+      provider: { 'harness-nexus'?: { models: Record<string, unknown> } };
+    };
+    const models = parsed.provider['harness-nexus']!.models;
+    expect(models['gw-large']).toEqual({
+      name: 'Panel Name',
+      reasoning: true,
+      temperature: true,
+      attachment: true,
+      options: { enable_thinking: true },
+      limit: { output: 32_000, context: 200_000 },
+    });
+    expect(models['gw-mini']).toEqual({ limit: { output: 8192, context: 65_536 } });
+    expect(parsed.small_model).toBe('harness-nexus/gw-mini');
+    expect(parsed.autoupdate).toBe(false);
+
+    // idempotent re-apply
+    const first = readFileSync(cfg(), 'utf8');
+    applyRuntimeConfig(
+      'opencode',
+      spec({
+        api: 'openai',
+        model: 'gw-large',
+        models: ['gw-mini'],
+        modelEntries: [
+          {
+            id: 'gw-large',
+            displayName: 'Seeded Name',
+            contextWindow: 200_000,
+            maxOutputTokens: 16_384,
+          },
+        ],
+        opencode: {
+          models: [
+            {
+              id: 'gw-large',
+              name: 'Panel Name',
+              maxOutputTokens: 32_000,
+              reasoning: true,
+              temperatureEnabled: true,
+              vision: true,
+              options: { enable_thinking: true },
+            },
+            { id: 'gw-mini', contextWindow: 65_536 },
+          ],
+          smallModel: 'gw-mini',
+          autoupdateDisabled: true,
+        },
+      }),
+      'sk-panel',
+      home,
+    );
+    expect(readFileSync(cfg(), 'utf8')).toBe(first);
+  });
+
+  it('#62 — a knob-less re-apply REMOVES small_model/autoupdate; limits fall back', () => {
+    applyRuntimeConfig(
+      'opencode',
+      spec({
+        api: 'openai',
+        model: 'gw-large',
+        models: undefined,
+        modelEntries: [{ id: 'gw-large', contextWindow: 131_072 }],
+      }),
+      'sk-panel',
+      home,
+    );
+    const parsed = JSON.parse(readFileSync(cfg(), 'utf8')) as {
+      small_model?: string;
+      autoupdate?: boolean;
+      provider: { 'harness-nexus'?: { models: Record<string, unknown> } };
+    };
+    expect(parsed.small_model).toBeUndefined();
+    expect(parsed.autoupdate).toBeUndefined();
+    // capabilities gone, limits back to seed → fallback chain
+    expect(parsed.provider['harness-nexus']!.models['gw-large']).toEqual({
+      limit: { output: 8192, context: 131_072 },
+    });
+  });
+
   it('preserves user config keys and other providers', () => {
     writeRel(
       '.config/opencode/opencode.json',
