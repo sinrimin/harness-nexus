@@ -213,6 +213,56 @@ export const opencodeConfigSchema = z.object({
 });
 export type OpencodeConfig = z.infer<typeof opencodeConfigSchema>;
 
+/**
+ * #63 — codex's dedicated panel knobs. Ground truth: codex-cli 0.154.0 on the
+ * rig (root keys verified in `config/src/config_toml.rs` at that tag) + the
+ * official config reference. Every knob is a TOP-LEVEL `~/.codex/config.toml`
+ * key (single global value per install) with the claude-code revert semantic:
+ * configured → the writer writes ours, unset → the writer REMOVES ours (the
+ * one layered exception: `contextWindow` falls back to the #51 `modelEntries`
+ * seed of the default model before removing).
+ *
+ * Explicitly NOT here (source-verified dead or missing at 0.154.0):
+ * `model_max_output_tokens` (key never existed), `disable_response_storage`
+ * (removed from codex — cc-switch still writes the dead key), temperature /
+ * top_p / arbitrary body merge (no surface), `model_catalog_json` (the
+ * catalog replaces codex's model metadata INCLUDING the system-prompt
+ * instructions template — owning it means owning the prompt; stays a research
+ * design question).
+ */
+/** #63 — `model_reasoning_effort` (docs: minimal–xhigh, xhigh model-dependent). */
+export const CODEX_REASONING_EFFORTS = ['minimal', 'low', 'medium', 'high', 'xhigh'] as const;
+export type CodexReasoningEffort = (typeof CODEX_REASONING_EFFORTS)[number];
+
+/** #63 — `model_reasoning_summary` (auto is codex's default). */
+export const CODEX_REASONING_SUMMARIES = ['auto', 'concise', 'detailed', 'none'] as const;
+export type CodexReasoningSummary = (typeof CODEX_REASONING_SUMMARIES)[number];
+
+/** #63 — `model_verbosity`. */
+export const CODEX_VERBOSITIES = ['low', 'medium', 'high'] as const;
+export type CodexVerbosity = (typeof CODEX_VERBOSITIES)[number];
+
+export const codexConfigSchema = z.object({
+  reasoningEffort: z.enum(CODEX_REASONING_EFFORTS).optional(),
+  reasoningSummary: z.enum(CODEX_REASONING_SUMMARIES).optional(),
+  verbosity: z.enum(CODEX_VERBOSITIES).optional(),
+  /**
+   * `model_context_window` — overrides the catalog's window (single global
+   * value; codex assumes 272k for slugs it does not know). Writer precedence:
+   * this value > the #51 seed of the default model > key removed.
+   */
+  contextWindow: z.number().int().positive().max(10_000_000).optional(),
+  /** `model_auto_compact_token_limit` — unset uses the model's default. */
+  autoCompactTokenLimit: z.number().int().positive().max(10_000_000).optional(),
+  switches: z
+    .object({
+      /** `check_for_update_on_startup = false` while switched on. */
+      updateCheckDisabled: z.boolean().optional(),
+    })
+    .optional(),
+});
+export type CodexConfig = z.infer<typeof codexConfigSchema>;
+
 export const runtimeConfigSpecSchema = z.object({
   /** Display label only — surfaces in the harness's own config UI. */
   providerLabel: z.string().min(1).max(64),
@@ -268,6 +318,11 @@ export const runtimeConfigSpecSchema = z.object({
    * same additive contract as `claudeCode`.
    */
   opencode: opencodeConfigSchema.optional(),
+  /**
+   * #63 — codex's dedicated panel knobs (see `codexConfigSchema`),
+   * same additive contract as `claudeCode`/`opencode`.
+   */
+  codex: codexConfigSchema.optional(),
   /** Target-specific extras (kept schema-loose on purpose). */
   extra: z.record(z.string(), z.unknown()).optional(),
 });

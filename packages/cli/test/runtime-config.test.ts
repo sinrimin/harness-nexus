@@ -84,6 +84,15 @@ describe('mergeTomlRootKeys', () => {
     expect(out.indexOf('model_provider =')).toBeLessThan(out.indexOf('[profiles.work]'));
   });
 
+  it('renders numbers/booleans bare and null REMOVES the key line (#63)', () => {
+    const doc = 'a = "x"\nb = 2\nc = true\n[s]\nk = 1\n';
+    expect(mergeTomlRootKeys(doc, { a: null, b: 7, c: false, d: 'e' })).toBe(
+      'b = 7\nc = false\nd = "e"\n[s]\nk = 1\n',
+    );
+    // removing a key that is not there is a no-op, not an append
+    expect(mergeTomlRootKeys('x = 1\n', { y: null })).toBe('x = 1\n');
+  });
+
   it('inserts missing keys before the first section header when only sections exist', () => {
     const doc = '[servers.alpha]\nurl = "x"\n';
     const out = mergeTomlRootKeys(doc, { model: 'm' });
@@ -384,6 +393,75 @@ describe('applyRuntimeConfig — codex', () => {
     const toml = readFileSync(path.join(home, '.codex/config.toml'), 'utf8');
     expect(toml).not.toContain('base_url');
     expect(toml).toContain('requires_openai_auth = true');
+  });
+
+  it('#63 — panel dials: effort/summary/verbosity, ints bare, seed fallback', () => {
+    const cfg = writeRel('.codex/config.toml', '');
+    applyRuntimeConfig(
+      'codex',
+      spec({
+        modelEntries: [{ id: 'gw-large', contextWindow: 272000 }],
+        codex: {
+          reasoningEffort: 'high',
+          reasoningSummary: 'detailed',
+          verbosity: 'low',
+          autoCompactTokenLimit: 900000,
+          switches: { updateCheckDisabled: true },
+        },
+      }),
+      'k',
+      home,
+    );
+    const toml = readFileSync(cfg, 'utf8');
+    expect(toml).toContain('model_reasoning_effort = "high"');
+    expect(toml).toContain('model_reasoning_summary = "detailed"');
+    expect(toml).toContain('model_verbosity = "low"');
+    // panel-unset contextWindow falls back to the DEFAULT model's seed entry…
+    expect(toml).toContain('model_context_window = 272000');
+    // …and integers render BARE — a quoted value is a TOML string, not i64
+    expect(toml).not.toContain('model_context_window = "');
+    expect(toml).toContain('model_auto_compact_token_limit = 900000');
+    expect(toml).toContain('check_for_update_on_startup = false');
+  });
+
+  it('#63 — contextWindow: panel beats seed; no panel + no seed = key removed', () => {
+    const cfg = writeRel('.codex/config.toml', 'model_context_window = 400000\n');
+    applyRuntimeConfig(
+      'codex',
+      spec({
+        modelEntries: [{ id: 'gw-large', contextWindow: 272000 }],
+        codex: { contextWindow: 1000000 },
+      }),
+      'k',
+      home,
+    );
+    expect(readFileSync(cfg, 'utf8')).toContain('model_context_window = 1000000');
+
+    applyRuntimeConfig(
+      'codex',
+      spec({ modelEntries: [{ id: 'gw-large', contextWindow: 272000 }] }),
+      'k',
+      home,
+    );
+    expect(readFileSync(cfg, 'utf8')).toContain('model_context_window = 272000');
+
+    applyRuntimeConfig('codex', spec(), 'k', home);
+    expect(readFileSync(cfg, 'utf8')).not.toContain('model_context_window');
+  });
+
+  it('#63 — a knob-less re-apply REMOVES every managed dial (revert semantics)', () => {
+    const cfg = writeRel(
+      '.codex/config.toml',
+      'model_reasoning_effort = "low"\nmodel_verbosity = "high"\ncheck_for_update_on_startup = false\n# keep\n[profiles.p]\nmodel = "p"\n',
+    );
+    applyRuntimeConfig('codex', spec(), 'k', home);
+    const toml = readFileSync(cfg, 'utf8');
+    expect(toml).not.toContain('model_reasoning_effort');
+    expect(toml).not.toContain('model_verbosity');
+    expect(toml).not.toContain('check_for_update_on_startup');
+    expect(toml).toContain('# keep');
+    expect(toml).toContain('[profiles.p]');
+    expect(toml).toContain('model = "p"'); // section key, not ours
   });
 });
 

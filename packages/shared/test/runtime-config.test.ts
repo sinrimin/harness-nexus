@@ -135,6 +135,50 @@ describe('runtimeConfigSpecSchema', () => {
       runtimeConfigSpecSchema.safeParse({ ...base, opencode: { smallModel: '' } }).success,
     ).toBe(false);
   });
+
+  it('#63 — accepts a full codex knob set and stays optional', () => {
+    expect(runtimeConfigSpecSchema.safeParse(validSpec).success).toBe(true);
+    const parsed = runtimeConfigSpecSchema.safeParse({
+      ...validSpec,
+      codex: {
+        reasoningEffort: 'xhigh',
+        reasoningSummary: 'none',
+        verbosity: 'low',
+        contextWindow: 1_000_000,
+        autoCompactTokenLimit: 900_000,
+        switches: { updateCheckDisabled: true },
+      },
+    });
+    expect(parsed.success).toBe(true);
+  });
+
+  it('#63 — rejects off-enum dials and non-positive token counts', () => {
+    const base = { ...validSpec, api: 'openai' as const };
+    expect(
+      runtimeConfigSpecSchema.safeParse({
+        ...base,
+        codex: { reasoningEffort: 'ultra' },
+      }).success,
+    ).toBe(false);
+    expect(
+      runtimeConfigSpecSchema.safeParse({ ...base, codex: { verbosity: 'terse' } }).success,
+    ).toBe(false);
+    expect(
+      runtimeConfigSpecSchema.safeParse({
+        ...base,
+        codex: { reasoningSummary: 'verbose' },
+      }).success,
+    ).toBe(false);
+    expect(
+      runtimeConfigSpecSchema.safeParse({ ...base, codex: { contextWindow: 0 } }).success,
+    ).toBe(false);
+    expect(
+      runtimeConfigSpecSchema.safeParse({
+        ...base,
+        codex: { autoCompactTokenLimit: 20_000_001 },
+      }).success,
+    ).toBe(false);
+  });
 });
 
 describe('claude-code [1m] marker helpers (#60)', () => {

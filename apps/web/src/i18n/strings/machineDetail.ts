@@ -287,6 +287,38 @@ const en = {
     'May not apply to package-manager installs (npm included — our install channel).',
   ocNumBadContext: 'Context window must be a positive integer.',
   ocNumBadOutput: 'Output cap must be an integer between 1 and 128000.',
+
+  // #63 — the codex dedicated panel. Wire/protocol values (the dial enums)
+  // stay English in both locales per the i18n rules.
+  cxTitle: 'codex settings',
+  cxDesc:
+    'Applied into the machine\u2019s ~/.codex/config.toml as top-level keys. Only knobs configured here are written; clearing one removes it and codex falls back to its own default. Everything else in the file stays untouched.',
+  cxSectionModels: 'Models',
+  cxExtrasHint:
+    'Switchable in platform chat sessions; codex\u2019s own terminal /model picker keeps its built-in catalog.',
+  cxSectionReasoning: 'Reasoning & output',
+  cxReasoningHint:
+    'Single global value per install — applies to every model codex runs, not per model.',
+  cxDialDefault: 'Codex default',
+  cxEffortLabel: 'Reasoning effort',
+  cxEffortHint: 'model_reasoning_effort — xhigh depends on model support.',
+  cxSummaryLabel: 'Reasoning summary',
+  cxSummaryHint: 'model_reasoning_summary — none disables summaries.',
+  cxVerbosityLabel: 'Verbosity',
+  cxVerbosityHint: 'model_verbosity — output detail on GPT-5 models.',
+  cxSectionContext: 'Context',
+  cxOneM: '1M context (pairs the window with a 900k compaction threshold)',
+  cxContextLabel: 'Context window (tokens)',
+  cxContextHint:
+    'model_context_window — overrides codex\u2019s assumption (272k for ids it does not know); empty uses the registry snapshot, then codex\u2019s default.',
+  cxCompactLabel: 'Auto-compact threshold (tokens)',
+  cxCompactHint:
+    'model_auto_compact_token_limit — codex clamps it to 90% of the window; empty uses the model default.',
+  cxSectionBehavior: 'Behavior',
+  cxUpdateCheck: 'Disable update check on startup',
+  cxUpdateCheckHint: 'check_for_update_on_startup = false.',
+  cxNumBadContext: 'Context window must be an integer between 1 and 10000000.',
+  cxNumBadCompact: 'Auto-compact threshold must be an integer between 1 and 10000000.',
 };
 
 const zh: typeof en = {
@@ -539,6 +571,34 @@ const zh: typeof en = {
   ocAutoupdateHint: '对包管理器安装（含 npm——我们的安装通道）可能不生效。',
   ocNumBadContext: '上下文窗口必须是正整数。',
   ocNumBadOutput: '输出上限必须是 1–128000 的整数。',
+
+  // #63 — codex 专属配置。拨档枚举是协议值，两种语言下都保持英文。
+  cxTitle: 'codex 专属配置',
+  cxDesc:
+    '应用时作为顶层键写入机器的 ~/.codex/config.toml。只写这里配置了的键；清空即移除该键，codex 回落自身默认。文件里的其余内容一概不动。',
+  cxSectionModels: '模型',
+  cxExtrasHint: '在平台聊天会话中可切换；codex 终端自身的 /model 选择器仍用其内置目录。',
+  cxSectionReasoning: '推理与输出',
+  cxReasoningHint: '每安装一份全局唯一——作用于 codex 跑的所有模型，不区分模型。',
+  cxDialDefault: 'codex 默认',
+  cxEffortLabel: '推理力度',
+  cxEffortHint: 'model_reasoning_effort——xhigh 依赖模型支持。',
+  cxSummaryLabel: '推理摘要',
+  cxSummaryHint: 'model_reasoning_summary——none 关闭摘要。',
+  cxVerbosityLabel: '输出详尽度',
+  cxVerbosityHint: 'model_verbosity——GPT-5 系模型的输出详尽度。',
+  cxSectionContext: '上下文',
+  cxOneM: '1M 上下文（窗口配 90 万压缩阈值）',
+  cxContextLabel: '上下文窗口（tokens）',
+  cxContextHint:
+    'model_context_window——覆盖 codex 的假设（未知型号按 272k）；留空先用注册表快照、再用 codex 默认。',
+  cxCompactLabel: '自动压缩阈值（tokens）',
+  cxCompactHint: 'model_auto_compact_token_limit——codex 会钳到窗口的 90%；留空用模型默认。',
+  cxSectionBehavior: '行为',
+  cxUpdateCheck: '禁用启动时更新检查',
+  cxUpdateCheckHint: 'check_for_update_on_startup = false。',
+  cxNumBadContext: '上下文窗口必须是 1–10000000 的整数。',
+  cxNumBadCompact: '自动压缩阈值必须是 1–10000000 的整数。',
 };
 
 export const machineDetailStrings = { en, zh };
