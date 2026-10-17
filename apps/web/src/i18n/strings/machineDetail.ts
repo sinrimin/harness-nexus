@@ -319,6 +319,31 @@ const en = {
   cxUpdateCheckHint: 'check_for_update_on_startup = false.',
   cxNumBadContext: 'Context window must be an integer between 1 and 10000000.',
   cxNumBadCompact: 'Auto-compact threshold must be an integer between 1 and 10000000.',
+
+  // #64 — the dsh dedicated panel. Wire/protocol values (the settings keys)
+  // stay English in both locales per the i18n rules.
+  dsTitle: 'deepseek settings',
+  dsDesc:
+    'Applied into the machine\u2019s ~/.dsh/settings.yaml (the llm-pi-ai provider route). Only fields configured here are written per model; unset fields fall back to the registry snapshot, then to the route\u2019s own defaults. Everything outside the managed region stays untouched.',
+  dsSectionModels: 'Models',
+  dsExtrasHint:
+    'The models list is the session-switchable set; the leading one is the default route.',
+  dsSectionDetails: 'Model details',
+  dsDetailsHint:
+    'Per-model knobs ride the route\u2019s models entries; panel values override the registry snapshot.',
+  dsDetailsEmpty: 'Add models above to configure their details.',
+  dsNameLabel: 'Display name',
+  dsNamePh: 'e.g. Gateway Large',
+  dsContextLabel: 'Context window (tokens)',
+  dsContextHint: 'Maximum combined request + response context; drives auto-compaction.',
+  dsOutputLabel: 'Output cap (tokens)',
+  dsOutputHint:
+    'A configured value also becomes this model\u2019s per-request default; the route default is 32768.',
+  dsVision: 'Vision',
+  dsVisionHint:
+    'Claims image input on the endpoint (input: text+image) — a claim, not a check; a gateway that refuses images fails mid-turn.',
+  dsNumBadContext: 'Context window must be a positive integer.',
+  dsNumBadOutput: 'Output cap must be a positive integer.',
 };
 
 const zh: typeof en = {
@@ -599,6 +624,27 @@ const zh: typeof en = {
   cxUpdateCheckHint: 'check_for_update_on_startup = false。',
   cxNumBadContext: '上下文窗口必须是 1–10000000 的整数。',
   cxNumBadCompact: '自动压缩阈值必须是 1–10000000 的整数。',
+
+  // #64 — dsh 专属配置。协议键名两种语言下都保持英文。
+  dsTitle: 'deepseek 专属配置',
+  dsDesc:
+    '应用时写入机器的 ~/.dsh/settings.yaml（llm-pi-ai 供应商路由）。只写入这里逐模型配置过的字段；未配置的先回落注册表快照、再回落路由自身默认值。托管区域之外的内容一概不动。',
+  dsSectionModels: '模型',
+  dsExtrasHint: '模型列表即会话可切换集；首项为默认路由。',
+  dsSectionDetails: '模型详情',
+  dsDetailsHint: '逐模型的配置写入路由的 models 条目；面板值优先于注册表快照。',
+  dsDetailsEmpty: '先在上方添加模型，才能配置其详情。',
+  dsNameLabel: '显示名',
+  dsNamePh: '例如 Gateway Large',
+  dsContextLabel: '上下文窗口（tokens）',
+  dsContextHint: '请求+响应合计的最大上下文；驱动自动压缩。',
+  dsOutputLabel: '输出上限（tokens）',
+  dsOutputHint: '配置值还会成为该模型的逐请求默认；路由默认为 32768。',
+  dsVision: '视觉',
+  dsVisionHint:
+    '声明端点接受图片输入（input: text+image）——只是声明不做校验；网关不支持时会在回合中失败。',
+  dsNumBadContext: '上下文窗口必须是正整数。',
+  dsNumBadOutput: '输出上限必须是正整数。',
 };
 
 export const machineDetailStrings = { en, zh };

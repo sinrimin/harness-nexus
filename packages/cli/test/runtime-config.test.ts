@@ -546,6 +546,52 @@ describe('applyRuntimeConfig — deepseek', () => {
     expect(patch).not.toContain('gw-mini');
   });
 
+  it('#64 — per-model detail: panel wins per-field over the seed; vision claims images', () => {
+    applyRuntimeConfig(
+      'deepseek',
+      spec({
+        models: ['gw-mini'],
+        modelEntries: [
+          {
+            id: 'gw-large',
+            displayName: 'Seed Large',
+            contextWindow: 200000,
+            maxOutputTokens: 16000,
+            vision: true,
+          },
+          { id: 'gw-mini', contextWindow: 64000 },
+        ],
+        deepseek: { models: [{ id: 'gw-large', name: 'Panel Large', maxOutputTokens: 8000 }] },
+      }),
+      'sk-dsh',
+      home,
+    );
+    const settings = readFileSync(path.join(home, '.dsh/settings.yaml'), 'utf8');
+    // Panel name + maxTokens beat the seed; contextWindow falls to the seed
+    // (unquoted — a YAML number, not a string); vision rides the seed.
+    expect(settings).toContain('- id: "gw-large"');
+    expect(settings).toContain('name: "Panel Large"');
+    expect(settings).toContain('contextWindow: 200000');
+    expect(settings).toContain('maxTokens: 8000');
+    expect(settings).toContain('input: ["text", "image"]');
+    expect(settings).not.toContain('Seed Large');
+    // Seed-only entry: its contextWindow, no name, no vision claim.
+    expect(settings).toContain('- id: "gw-mini"');
+    expect(settings).toMatch(
+      /- id: "gw-mini"\s*\n\s*contextWindow: 64000\s*\n\s*agent-default-model:/,
+    );
+  });
+
+  it('#64 — bare ids stay byte-identical with no detail and no seed (compat)', () => {
+    applyRuntimeConfig('deepseek', spec(), 'sk-dsh', home);
+    const doc = readFileSync(path.join(home, '.dsh/settings.yaml'), 'utf8');
+    expect(doc).toContain('models:\n        - id: "gw-large"\nagent-default-model:');
+    // no detail keys leaked for a bare id
+    expect(doc).not.toContain('contextWindow:');
+    expect(doc).not.toContain('maxTokens:');
+    expect(doc).not.toContain('input:');
+  });
+
   it('a []-placeholder base is absorbed, not appended after (two docs = boot error)', () => {
     const only = mkdtempSync(path.join(tmpdir(), 'hnx-rc-empty-'));
     mkdirSync(path.join(only, '.dsh'), { recursive: true });

@@ -179,6 +179,46 @@ describe('runtimeConfigSpecSchema', () => {
       }).success,
     ).toBe(false);
   });
+
+  it('#64 — accepts a full deepseek detail set and stays optional', () => {
+    expect(runtimeConfigSpecSchema.safeParse(validSpec).success).toBe(true);
+    const parsed = runtimeConfigSpecSchema.safeParse({
+      ...validSpec,
+      api: 'anthropic-messages',
+      deepseek: {
+        models: [
+          {
+            id: 'gw-large',
+            name: 'Gateway Large',
+            contextWindow: 1_000_000,
+            maxOutputTokens: 384_000,
+            vision: true,
+          },
+          { id: 'gw-mini' },
+        ],
+      },
+    });
+    expect(parsed.success).toBe(true);
+  });
+
+  it('#64 — rejects non-positive detail numbers and an id-less entry', () => {
+    const base = { ...validSpec, api: 'anthropic-messages' as const };
+    expect(
+      runtimeConfigSpecSchema.safeParse({
+        ...base,
+        deepseek: { models: [{ id: 'x', contextWindow: 0 }] },
+      }).success,
+    ).toBe(false);
+    expect(
+      runtimeConfigSpecSchema.safeParse({
+        ...base,
+        deepseek: { models: [{ id: 'x', maxOutputTokens: -1 }] },
+      }).success,
+    ).toBe(false);
+    expect(
+      runtimeConfigSpecSchema.safeParse({ ...base, deepseek: { models: [{ name: 'x' }] } }).success,
+    ).toBe(false);
+  });
 });
 
 describe('claude-code [1m] marker helpers (#60)', () => {

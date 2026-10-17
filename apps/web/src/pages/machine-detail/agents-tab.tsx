@@ -67,6 +67,14 @@ import {
   serializeCxDraft,
   type CxDraft,
 } from './codex-panel.js';
+import {
+  DeepseekPanel,
+  dsDraftFromSpec,
+  dsIssue,
+  emptyDsDraft,
+  serializeDsDraft,
+  type DsDraft,
+} from './deepseek-panel.js';
 import type { InventoryEntry, RuntimeInfoView } from './types.js';
 
 /**
@@ -678,6 +686,8 @@ function ProviderConfigForm({
   const [oc, setOc] = useState<OcDraft>(emptyOcDraft);
   // #63 — codex's dedicated panel knobs.
   const [cx, setCx] = useState<CxDraft>(emptyCxDraft);
+  // #64 — dsh's dedicated panel knobs.
+  const [ds, setDs] = useState<DsDraft>(emptyDsDraft);
   const [busy, setBusy] = useState(false);
   // P6 — Apply config confirms first (the credential goes to the machine).
   const [asking, setAsking] = useState(false);
@@ -751,6 +761,7 @@ function ProviderConfigForm({
       setCc(ccDraftFromSpec(existing));
       setOc(ocDraftFromSpec(existing));
       setCx(cxDraftFromSpec(existing));
+      setDs(dsDraftFromSpec(existing));
     })();
     return () => {
       cancelled = true;
@@ -782,13 +793,16 @@ function ProviderConfigForm({
             .filter((m) => m !== '' && m !== baseModel && m !== wireModel),
         ),
       ];
-      // #60/#62/#63 — each panel serializes to undefined when everything is
-      // default, keeping untouched specs byte-identical to their old shape.
+      // #60/#62/#63/#64 — each panel serializes to undefined when everything
+      // is default, keeping untouched specs byte-identical to their old shape.
       const claudeCode = serializeCcDraft(cc);
       const opencode = serializeOcDraft(oc, [
         ...new Set([model, ...extraModels].map((x) => x.trim()).filter((x) => x !== '')),
       ]);
       const codex = serializeCxDraft(cx);
+      const deepseek = serializeDsDraft(ds, [
+        ...new Set([model, ...extraModels].map((x) => x.trim()).filter((x) => x !== '')),
+      ]);
       const spec: RuntimeConfigSpec = {
         providerLabel: (selectedProvider?.name ?? providerLabel).trim(),
         api: (selectedProvider !== null
@@ -802,6 +816,7 @@ function ProviderConfigForm({
         ...(claudeCode !== undefined ? { claudeCode } : {}),
         ...(opencode !== undefined ? { opencode } : {}),
         ...(codex !== undefined ? { codex } : {}),
+        ...(deepseek !== undefined ? { deepseek } : {}),
       };
       await withAuthGuard(() => api.putRuntimeConfig(machineId, managedTarget!, spec), logout);
       toast.success(t('machineDetail.applyToast'));
@@ -820,6 +835,9 @@ function ProviderConfigForm({
       ...new Set([model, ...extraModels].map((x) => x.trim()).filter((x) => x !== '')),
     ]) === null &&
     cxIssue(cx) === null &&
+    dsIssue(ds, [
+      ...new Set([model, ...extraModels].map((x) => x.trim()).filter((x) => x !== '')),
+    ]) === null &&
     (selectedProvider !== null || (providerLabel.trim() !== '' && credentialName !== ''));
 
   const needBaseUrlNote = selectedProvider !== null && selectedProvider.baseUrl === null;
@@ -973,12 +991,13 @@ function ProviderConfigForm({
             </>
           ) : null}
 
-          {/* #60/#62/#63 — for claude-code, opencode and codex the
-            default-model picker lives inside the dedicated panel (one surface
-            per knob); other targets keep the generic grid. */}
+          {/* #60/#62/#63/#64 — for claude-code, opencode, codex and deepseek
+            the default-model picker lives inside the dedicated panel (one
+            surface per knob); other targets keep the generic grid. */}
           {managedTarget !== 'claude-code' &&
           managedTarget !== 'opencode' &&
-          managedTarget !== 'codex' ? (
+          managedTarget !== 'codex' &&
+          managedTarget !== 'deepseek' ? (
             <div className="grid min-w-44 gap-2">
               <Label htmlFor={`pc-model-${target}`}>{t('machineDetail.modelDefaultLabel')}</Label>
               {useModelSelect ? (
@@ -1044,12 +1063,13 @@ function ProviderConfigForm({
           rows pick from its registry, minus ids already used elsewhere (the
           row's own id stays selectable); a registry-less provider and the
           manual arm keep free-text rows. Any row can still be promoted to
-          the default (the old default swaps into the rows). #60/#62/#63: for
-          claude-code, opencode and codex these rows moved into the dedicated
-          panel. */}
+          the default (the old default swaps into the rows). #60/#62/#63/#64:
+          for claude-code, opencode, codex and deepseek these rows moved into
+          the dedicated panel. */}
         {managedTarget !== 'claude-code' &&
         managedTarget !== 'opencode' &&
-        managedTarget !== 'codex' ? (
+        managedTarget !== 'codex' &&
+        managedTarget !== 'deepseek' ? (
           <div className="flex flex-col gap-2">
             <div className="flex items-center gap-2">
               <span className="text-sm leading-none font-medium">
@@ -1183,6 +1203,19 @@ function ProviderConfigForm({
           <CodexPanel
             draft={cx}
             onChange={setCx}
+            defaultModel={model}
+            onDefaultModelChange={setModel}
+            extraModels={extraModels}
+            onExtraModelsChange={setExtraModels}
+            chatModels={chatModels}
+          />
+        ) : null}
+        {/* #64 — dsh's own knob panel (the provider row keeps the
+          connection). */}
+        {managedTarget === 'deepseek' ? (
+          <DeepseekPanel
+            draft={ds}
+            onChange={setDs}
             defaultModel={model}
             onDefaultModelChange={setModel}
             extraModels={extraModels}

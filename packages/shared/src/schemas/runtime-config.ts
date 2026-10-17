@@ -263,6 +263,41 @@ export const codexConfigSchema = z.object({
 });
 export type CodexConfig = z.infer<typeof codexConfigSchema>;
 
+/**
+ * #64 — dsh's dedicated panel knobs. Ground truth: dsh 0.2.0-rc.2 on the rig
+ * (the `llm-pi-ai` plugin's `PiAiModelProfile`, typings re-verified 2026-10-17
+ * — same shape the research §3.5 baseline recorded). dsh's per-model surface
+ * is the detail below ONLY: the `reasoningEfforts` dict and the route-level
+ * `reasoning` dial need per-gateway wire spellings we cannot guess (v1
+ * follow-ups), `compat` is wire machinery dsh's own UI gates, and NO sampling
+ * knobs exist anywhere in dsh's settings schema — so there is no behavior
+ * section; the panel is honestly thin. Writer precedence per field is the
+ * opencode contract: panel value > #51 modelEntries seed > key OMITTED (the
+ * route's own defaults 262,144/32,768 apply — the pi-writer stance, never a
+ * guessed value). A configured `maxTokens` additionally becomes that model's
+ * per-request default (a catalog/fallback-inherited one does not).
+ */
+export const deepseekModelDetailSchema = z.object({
+  /** `name` — display name for dsh's model selectors. */
+  name: z.string().max(256).optional(),
+  /** `contextWindow` — maximum combined request+response context. */
+  contextWindow: z.number().int().positive().optional(),
+  /** `maxTokens` — max output tokens; configured ⇒ also the per-request default. */
+  maxOutputTokens: z.number().int().positive().optional(),
+  /** `input: ["text","image"]` while true; absent stays text (no catalog entry to inherit for unknown ids). */
+  vision: z.boolean().optional(),
+});
+export type DeepseekModelDetail = z.infer<typeof deepseekModelDetailSchema>;
+
+export const deepseekConfigSchema = z.object({
+  /** Per-model detail, keyed against the switchable set (default + extras). */
+  models: z
+    .array(deepseekModelDetailSchema.extend({ id: z.string().min(1).max(128) }))
+    .max(17)
+    .optional(),
+});
+export type DeepseekConfig = z.infer<typeof deepseekConfigSchema>;
+
 export const runtimeConfigSpecSchema = z.object({
   /** Display label only — surfaces in the harness's own config UI. */
   providerLabel: z.string().min(1).max(64),
@@ -323,6 +358,11 @@ export const runtimeConfigSpecSchema = z.object({
    * same additive contract as `claudeCode`/`opencode`.
    */
   codex: codexConfigSchema.optional(),
+  /**
+   * #64 — dsh's dedicated panel knobs (see `deepseekConfigSchema`),
+   * same additive contract as the panels above.
+   */
+  deepseek: deepseekConfigSchema.optional(),
   /** Target-specific extras (kept schema-loose on purpose). */
   extra: z.record(z.string(), z.unknown()).optional(),
 });
