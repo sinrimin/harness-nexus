@@ -334,13 +334,13 @@ export function ClaudeCodePanel({
                 id="cc-model"
                 value={defaultModel}
                 onChange={(e) => onDefaultModelChange(e.target.value)}
-                className="h-9 font-mono text-xs"
+                className="font-mono text-xs"
                 autoComplete="off"
                 spellCheck={false}
               />
             )}
           </div>
-          <label className="flex h-9 items-center gap-2 pb-0.5 text-sm">
+          <label className="flex h-(--control-h) items-center gap-2 pb-0.5 text-sm">
             <Checkbox
               checked={draft.oneM}
               disabled={stripClaudeOneMarker(defaultModel).trim() === ''}
@@ -387,7 +387,7 @@ export function ClaudeCodePanel({
                   >
                     <SelectTrigger
                       aria-label={t('machineDetail.pickModel')}
-                      className="h-9 min-w-0 flex-1 font-mono text-xs"
+                      className="min-w-0 flex-1 font-mono text-xs"
                     >
                       <SelectValue placeholder={t('machineDetail.pickModel')} />
                     </SelectTrigger>
@@ -411,7 +411,7 @@ export function ClaudeCodePanel({
                       onExtraModelsChange(extraModels.map((x, j) => (j === i ? e.target.value : x)))
                     }
                     placeholder={t('machineDetail.extraModelsPlaceholder')}
-                    className="h-9 font-mono text-xs"
+                    className="font-mono text-xs"
                     autoComplete="off"
                     spellCheck={false}
                   />
@@ -420,7 +420,7 @@ export function ClaudeCodePanel({
                   type="button"
                   variant="ghost"
                   size="sm"
-                  className="text-muted-foreground h-9 shrink-0 px-2 text-xs hover:text-foreground"
+                  className="text-muted-foreground h-(--control-h) shrink-0 px-2 text-xs hover:text-foreground"
                   disabled={
                     m.trim() === '' || m.trim() === stripClaudeOneMarker(defaultModel).trim()
                   }
@@ -469,12 +469,12 @@ export function ClaudeCodePanel({
                 })
               }
               placeholder={t('machineDetail.ccTierModelPh')}
-              className="h-9 font-mono text-xs"
+              className="font-mono text-xs"
               autoComplete="off"
               spellCheck={false}
             />
           </div>
-          <label className="flex h-9 items-center gap-2 pt-6 text-sm">
+          <label className="flex h-(--control-h) items-center gap-2 pt-6 text-sm">
             <Checkbox
               checked={hasClaudeOneMarker(draft.subagent)}
               disabled={stripClaudeOneMarker(draft.subagent).trim() === ''}
@@ -546,7 +546,7 @@ export function ClaudeCodePanel({
               {/* tier id — the mobile group header carries the 1M toggle;
                   desktop keeps the bare chip cell */}
               <div className="flex items-center justify-between gap-2 md:block">
-                <div className="text-muted-foreground flex h-9 items-center rounded-md border bg-muted/40 px-3 font-mono text-xs">
+                <div className="text-muted-foreground flex h-(--control-h) items-center rounded-md border bg-muted/40 px-3 font-mono text-xs">
                   {tier}
                 </div>
                 <label className="flex items-center gap-2 text-sm md:hidden">
@@ -570,7 +570,7 @@ export function ClaudeCodePanel({
                     setTier(tier, { model: setClaudeOneMarker(e.target.value, oneM) })
                   }
                   placeholder={t('machineDetail.ccTierModelPh')}
-                  className="h-9 font-mono text-xs"
+                  className="font-mono text-xs"
                   autoComplete="off"
                   spellCheck={false}
                 />
@@ -584,7 +584,7 @@ export function ClaudeCodePanel({
                   value={row.displayName}
                   onChange={(e) => setTier(tier, { displayName: e.target.value })}
                   placeholder={t('machineDetail.ccTierNamePh')}
-                  className="h-9 text-xs"
+                  className="text-xs"
                   autoComplete="off"
                 />
               </div>
@@ -600,10 +600,10 @@ export function ClaudeCodePanel({
                   addLabel={(value) => t('llmProviders.tagComboboxAdd', { value })}
                   removeLabel={(value) => t('llmProviders.tagComboboxRemove', { value })}
                   ariaLabel={`${tier} ${t('machineDetail.ccTierCapsLabel')}`}
-                  className="min-h-9 text-xs"
+                  className="min-h-(--control-h) text-xs"
                 />
               </div>
-              <label className="hidden h-9 items-center justify-center md:flex">
+              <label className="hidden h-(--control-h) items-center justify-center md:flex">
                 <Checkbox
                   checked={oneM}
                   disabled={oneMDisabled}
@@ -669,7 +669,7 @@ export function ClaudeCodePanel({
               min={1}
               max={128000}
               step={1}
-              className="h-9 font-mono text-xs"
+              className="font-mono text-xs"
               autoComplete="off"
             />
           </div>
@@ -682,7 +682,7 @@ export function ClaudeCodePanel({
               onChange={(e) => onChange({ ...draft, maxContextTokens: e.target.value })}
               min={1}
               step={1}
-              className="h-9 font-mono text-xs"
+              className="font-mono text-xs"
               autoComplete="off"
             />
             {contextConflict ? (

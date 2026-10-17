@@ -47,6 +47,13 @@ export interface RuntimeConfigSpecData {
    * modelEntries seed > conservative fallback in the writer.
    */
   opencode: OpencodeConfigData | null;
+  /**
+   * #63 — codex's dedicated panel knobs (see `CodexConfigData`).
+   * null = panel untouched; the writer writes each configured top-level
+   * config.toml key and REMOVES ours when unset (contextWindow falls back
+   * to the modelEntries seed of the default model first).
+   */
+  codex: CodexConfigData | null;
   extra: Record<string, unknown> | null;
 }
 
@@ -95,6 +102,20 @@ export interface OpencodeModelDetailData {
   temperatureEnabled?: boolean | undefined;
   vision?: boolean | undefined;
   options?: Record<string, unknown> | undefined;
+}
+
+/** #63 — plain mirror of `codexConfigSchema` in shared (kept in sync). */
+export interface CodexConfigData {
+  reasoningEffort?: 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | undefined;
+  reasoningSummary?: 'auto' | 'concise' | 'detailed' | 'none' | undefined;
+  verbosity?: 'low' | 'medium' | 'high' | undefined;
+  contextWindow?: number | undefined;
+  autoCompactTokenLimit?: number | undefined;
+  switches?: CodexSwitchData | undefined;
+}
+
+export interface CodexSwitchData {
+  updateCheckDisabled?: boolean | undefined;
 }
 
 /** #51 — the metadata subset of a ProviderModelConfig that may ride a spec. */

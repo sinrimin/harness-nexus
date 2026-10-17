@@ -255,7 +255,7 @@ export function OpencodePanel({
                 id="oc-model"
                 value={defaultModel}
                 onChange={(e) => onDefaultModelChange(e.target.value)}
-                className="h-9 font-mono text-xs"
+                className="font-mono text-xs"
                 autoComplete="off"
                 spellCheck={false}
               />
@@ -297,7 +297,7 @@ export function OpencodePanel({
                   >
                     <SelectTrigger
                       aria-label={t('machineDetail.pickModel')}
-                      className="h-9 min-w-0 flex-1 font-mono text-xs"
+                      className="min-w-0 flex-1 font-mono text-xs"
                     >
                       <SelectValue placeholder={t('machineDetail.pickModel')} />
                     </SelectTrigger>
@@ -321,7 +321,7 @@ export function OpencodePanel({
                       onExtraModelsChange(extraModels.map((x, j) => (j === i ? e.target.value : x)))
                     }
                     placeholder={t('machineDetail.extraModelsPlaceholder')}
-                    className="h-9 min-w-0 flex-1 font-mono text-xs"
+                    className="min-w-0 flex-1 font-mono text-xs"
                     autoComplete="off"
                     spellCheck={false}
                   />
@@ -330,7 +330,7 @@ export function OpencodePanel({
                   type="button"
                   variant="ghost"
                   size="sm"
-                  className="text-muted-foreground h-9 shrink-0 px-2 text-xs hover:text-foreground"
+                  className="text-muted-foreground h-(--control-h) shrink-0 px-2 text-xs hover:text-foreground"
                   disabled={m.trim() === '' || m.trim() === defaultModel.trim()}
                   onClick={() => {
                     const id = m.trim();
@@ -400,7 +400,7 @@ export function OpencodePanel({
                         value={d.name}
                         onChange={(e) => setDetail(id, { name: e.target.value })}
                         placeholder={t('machineDetail.ocNamePh')}
-                        className="h-9 text-xs"
+                        className="text-xs"
                         autoComplete="off"
                       />
                     </div>
@@ -416,7 +416,7 @@ export function OpencodePanel({
                           onChange={(e) => setDetail(id, { contextWindow: e.target.value })}
                           min={1}
                           step={1}
-                          className="h-9 font-mono text-xs"
+                          className="font-mono text-xs"
                           autoComplete="off"
                         />
                         <p className="text-muted-foreground text-xs">
@@ -435,7 +435,7 @@ export function OpencodePanel({
                           min={1}
                           max={128000}
                           step={1}
-                          className="h-9 font-mono text-xs"
+                          className="font-mono text-xs"
                           autoComplete="off"
                         />
                         <p className="text-muted-foreground text-xs">
@@ -486,7 +486,7 @@ export function OpencodePanel({
                         addLabel={(value) => t('llmProviders.tagComboboxAdd', { value })}
                         removeLabel={(value) => t('llmProviders.tagComboboxRemove', { value })}
                         ariaLabel={`${id} ${t('machineDetail.ocOptionsLabel')}`}
-                        className="min-h-9 text-xs"
+                        className="min-h-(--control-h) text-xs"
                       />
                       {d.options.map((e) => (
                         <div
@@ -521,7 +521,7 @@ export function OpencodePanel({
                                 })
                               }
                               placeholder={t('llmProviders.extraBodyValuePlaceholder')}
-                              className="h-9 font-mono text-xs"
+                              className="font-mono text-xs"
                               autoComplete="off"
                               spellCheck={false}
                             />

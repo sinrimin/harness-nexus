@@ -49,6 +49,12 @@ import { logOp } from './logbook.js';
  *    env var). `~/.codex/auth.json` — apikey mode with the key as
  *    `OPENAI_API_KEY`. `wire_api` is NOT set: current codex removed `chat`, so
  *    every route speaks Responses — gateways must be Responses-compatible.
+ *    #63 adds the panel dials (`spec.codex`): `model_reasoning_effort`,
+ *    `model_reasoning_summary`, `model_verbosity`,
+ *    `model_context_window` (panel value > the #51 modelEntries seed of the
+ *    default model > key removed), `model_auto_compact_token_limit`, and
+ *    `check_for_update_on_startup = false` while the switch is on — all
+ *    TOP-LEVEL keys with the claude-code unset-REMOVES-ours revert semantic.
  *  - deepseek: the SETTINGS layer (`~/.dsh/settings.yaml`, namespace
  *    `llm-pi-ai` with the provider route + `agent-default-model` selecting
  *    it). NOT loader-entry inserts in `cordis.patch.yml` — the dsh
@@ -185,13 +191,21 @@ function applyClaudeConfig(spec: RuntimeConfigSpec, secret: string, homeDir: str
 // ---- codex ----
 
 /**
- * Set TOP-LEVEL `key = "value"` pairs in a TOML document, preserving every
- * other byte. Only the region before the first `[section]` header is ours to
- * edit (a `model` inside a section belongs to that section); missing keys are
- * appended to that region. JSON string escaping is valid TOML basic-string
- * escaping.
+ * Set TOP-LEVEL key/value pairs in a TOML document, preserving every other
+ * byte. Only the region before the first `[section]` header is ours to edit
+ * (a `model` inside a section belongs to that section); missing keys are
+ * appended to that region. Values render TOML-native: strings JSON-escaped
+ * (valid TOML basic-string escaping), numbers/booleans bare. A `null` value
+ * REMOVES the key's line (0.154-era codex ignores unknown keys, but a stale
+ * managed value must not linger after the panel clears it) — the claude-code
+ * writer's unset-REMOVES-ours revert semantic, here in TOML.
  */
-export function mergeTomlRootKeys(existing: string, values: Record<string, string>): string {
+export function mergeTomlRootKeys(
+  existing: string,
+  values: Record<string, string | number | boolean | null>,
+): string {
+  const render = (v: string | number | boolean): string =>
+    typeof v === 'string' ? JSON.stringify(v) : String(v);
   const headerRe = /^\s*\[/;
   const lines = existing.split('\n');
   const firstHeader = lines.findIndex((l) => headerRe.test(l));
@@ -204,21 +218,26 @@ export function mergeTomlRootKeys(existing: string, values: Record<string, strin
   for (const line of top) {
     const key = /^(\s*[A-Za-z0-9_-]+)\s*=/.exec(line)?.[1]?.trim();
     const hit = key !== undefined ? remaining.get(key) : undefined;
-    if (key !== undefined && hit !== undefined) {
-      rewritten.push(`${key} = ${JSON.stringify(hit)}`);
+    if (key !== undefined && hit != null) {
+      rewritten.push(`${key} = ${render(hit)}`);
       remaining.delete(key);
+    } else if (key !== undefined && hit === null) {
+      remaining.delete(key); // removal — drop the managed line entirely
     } else {
       rewritten.push(line);
     }
   }
   // Append missing keys at the end of the top-level region (before trailing
-  // blank lines so a header below keeps its spacing).
+  // blank lines so a header below keeps its spacing). Null-valued keys that
+  // never matched a line are pure removals of absent keys — nothing to append.
   let insertAt = rewritten.length;
   while (insertAt > 0 && rewritten[insertAt - 1]!.trim() === '') insertAt--;
   rewritten.splice(
     insertAt,
     0,
-    ...[...remaining.entries()].map(([k, v]) => `${k} = ${JSON.stringify(v)}`),
+    ...[...remaining.entries()]
+      .filter(([, v]) => v !== null)
+      .map(([k, v]) => `${k} = ${render(v as string | number | boolean)}`),
   );
 
   const out = [...rewritten, ...rest].join('\n').replace(/\s+$/, '');
@@ -234,13 +253,30 @@ function applyCodexConfig(spec: RuntimeConfigSpec, secret: string, homeDir: stri
   } catch {
     cfg = ''; // absent file — fresh document
   }
+  const cx = spec.codex;
+  // #63 — the panel's dials are TOP-LEVEL keys, single global value per
+  // install, platform-owned while a spec exists: configured writes ours,
+  // unset REMOVES ours. `model_context_window` is the one layered exception —
+  // an untouched panel still writes the #51 seed of the default model (a real
+  // registry window beats codex's 272k assumption for unknown slugs); with no
+  // seed either, the key comes off and codex assumes 272k.
+  const seedWindow = (spec.modelEntries ?? []).find((e) => e.id === spec.model)?.contextWindow;
   const sectionBody = [
     `name = ${JSON.stringify(spec.providerLabel)}`,
     ...(spec.baseUrl !== undefined ? [`base_url = ${JSON.stringify(spec.baseUrl)}`] : []),
     'requires_openai_auth = true',
   ].join('\n');
   cfg = mergeTomlSection(
-    mergeTomlRootKeys(cfg, { model: spec.model, model_provider: CODEX_PROVIDER_ID }),
+    mergeTomlRootKeys(cfg, {
+      model: spec.model,
+      model_provider: CODEX_PROVIDER_ID,
+      model_reasoning_effort: cx?.reasoningEffort ?? null,
+      model_reasoning_summary: cx?.reasoningSummary ?? null,
+      model_verbosity: cx?.verbosity ?? null,
+      model_context_window: cx?.contextWindow ?? seedWindow ?? null,
+      model_auto_compact_token_limit: cx?.autoCompactTokenLimit ?? null,
+      check_for_update_on_startup: cx?.switches?.updateCheckDisabled === true ? false : null,
+    }),
     `model_providers.${CODEX_PROVIDER_ID}`,
     sectionBody,
   );
