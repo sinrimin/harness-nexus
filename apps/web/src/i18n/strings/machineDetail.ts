@@ -676,7 +676,7 @@ const zh: typeof en = {
   // #65 — pi 专属配置。协议值两种语言下都保持英文。
   piTitle: 'pi 专属配置',
   piDesc:
-    '应用时写入机器的 ~/.pi/agent/models.json（harness-nexus 供应商务）与 settings.json（默认路由 + 启用列表）。只写入这里逐模型配置过的字段；未配置的先回落注册表快照、再回落 pi 自身默认值。',
+    '应用时写入机器的 ~/.pi/agent/models.json（harness-nexus 供应商条目）与 settings.json（默认路由 + 启用列表）。只写入这里逐模型配置过的字段；未配置的先回落注册表快照、再回落 pi 自身默认值。',
   piSectionModels: '模型',
   piExtrasHint: '启用列表即会话可切换集；首项为默认路由。',
   piSectionDetails: '模型详情',
