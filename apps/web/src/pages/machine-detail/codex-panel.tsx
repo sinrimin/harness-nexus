@@ -141,6 +141,7 @@ export function CodexPanel({
   const { t } = useI18n();
   const useModelSelect = chatModels.length > 0;
   const oneM = draft.contextWindow.trim() === '1000000';
+  const issue = cxIssue(draft);
 
   return (
     <section className="flex flex-col gap-5 rounded-lg border p-4">
@@ -179,7 +180,7 @@ export function CodexPanel({
                 id="cx-model"
                 value={defaultModel}
                 onChange={(e) => onDefaultModelChange(e.target.value)}
-                className="h-9 font-mono text-xs"
+                className="font-mono text-xs"
                 autoComplete="off"
                 spellCheck={false}
               />
@@ -221,7 +222,7 @@ export function CodexPanel({
                   >
                     <SelectTrigger
                       aria-label={t('machineDetail.pickModel')}
-                      className="h-9 min-w-0 flex-1 font-mono text-xs"
+                      className="min-w-0 flex-1 font-mono text-xs"
                     >
                       <SelectValue placeholder={t('machineDetail.pickModel')} />
                     </SelectTrigger>
@@ -245,7 +246,7 @@ export function CodexPanel({
                       onExtraModelsChange(extraModels.map((x, j) => (j === i ? e.target.value : x)))
                     }
                     placeholder={t('machineDetail.extraModelsPlaceholder')}
-                    className="h-9 min-w-0 flex-1 font-mono text-xs"
+                    className="min-w-0 flex-1 font-mono text-xs"
                     autoComplete="off"
                     spellCheck={false}
                   />
@@ -254,7 +255,7 @@ export function CodexPanel({
                   type="button"
                   variant="ghost"
                   size="sm"
-                  className="text-muted-foreground h-9 shrink-0 px-2 text-xs hover:text-foreground"
+                  className="text-muted-foreground h-(--control-h) shrink-0 px-2 text-xs hover:text-foreground"
                   disabled={m.trim() === '' || m.trim() === defaultModel.trim()}
                   onClick={() => {
                     const id = m.trim();
@@ -389,7 +390,7 @@ export function CodexPanel({
               onChange={(e) => onChange({ ...draft, contextWindow: e.target.value })}
               min={1}
               step={1}
-              className="h-9 font-mono text-xs"
+              className="font-mono text-xs"
               autoComplete="off"
             />
             <p className="text-muted-foreground text-xs">{t('machineDetail.cxContextHint')}</p>
@@ -403,12 +404,15 @@ export function CodexPanel({
               onChange={(e) => onChange({ ...draft, autoCompactTokenLimit: e.target.value })}
               min={1}
               step={1}
-              className="h-9 font-mono text-xs"
+              className="font-mono text-xs"
               autoComplete="off"
             />
             <p className="text-muted-foreground text-xs">{t('machineDetail.cxCompactHint')}</p>
           </div>
         </div>
+        {/* The validation gate renders inline (the cc-panel pattern): a bad
+          number explains itself instead of only disabling Apply. */}
+        {issue !== null ? <p className="text-danger text-xs">{t(issue)}</p> : null}
       </div>
 
       {/* ---- behavior ---- */}

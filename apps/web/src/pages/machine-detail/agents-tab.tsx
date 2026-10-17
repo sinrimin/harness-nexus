@@ -1084,7 +1084,7 @@ function ProviderConfigForm({
                     >
                       <SelectTrigger
                         aria-label={t('machineDetail.pickModel')}
-                        className="h-9 min-w-0 flex-1 font-mono text-xs"
+                        className="min-w-0 flex-1 font-mono text-xs"
                       >
                         <SelectValue placeholder={t('machineDetail.pickModel')} />
                       </SelectTrigger>
@@ -1108,7 +1108,7 @@ function ProviderConfigForm({
                         setExtraModels((prev) => prev.map((x, j) => (j === i ? e.target.value : x)))
                       }
                       placeholder={t('machineDetail.extraModelsPlaceholder')}
-                      className="h-9 font-mono text-xs"
+                      className="font-mono text-xs"
                       autoComplete="off"
                       spellCheck={false}
                     />
@@ -1117,7 +1117,7 @@ function ProviderConfigForm({
                     type="button"
                     variant="ghost"
                     size="sm"
-                    className="text-muted-foreground h-9 shrink-0 px-2 text-xs hover:text-foreground"
+                    className="text-muted-foreground h-(--control-h) shrink-0 px-2 text-xs hover:text-foreground"
                     disabled={m.trim() === '' || m.trim() === model.trim()}
                     onClick={() => {
                       const id = m.trim();
