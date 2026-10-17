@@ -617,7 +617,7 @@ const MANUAL_PROVIDER = '__manual__';
  *
  * The body is the kit's `Well`, not a hand-rolled box: these are protocol
  * values (a base URL, an api flavour, a credential NAME), i.e. exactly what the
- * well material exists for, and a hand-rolled `bg-muted/50 h-9 rounded-md` box
+ * well material exists for, and a hand-rolled `bg-muted/50` fixed-height box
  * was unreachable for skins — BAY painted its LCD inputs dark and left these
  * three light, with a 36px body next to 30px controls (reported from a phone,
  * P8). Height comes from the density token now.
@@ -949,8 +949,8 @@ function ProviderConfigForm({
                   </Select>
                 </div>
               ) : (
-                // Single-flavor target — same read-only h-9 cell as the preset
-                // arm, so the row heights match (was a tiny standalone badge).
+                // Single-flavor target — same read-only control-height cell as
+                // the preset arm, so the row heights match (was a badge).
                 <ReadonlyField label={t('machineDetail.apiLabel')} className="min-w-36">
                   {apiOptions[0]}
                 </ReadonlyField>
