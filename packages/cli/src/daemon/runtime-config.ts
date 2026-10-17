@@ -64,6 +64,10 @@ import { logOp } from './logbook.js';
  *    `--profile acp`. A legacy W3 patch region is retired by the same apply.
  *    The key goes to `~/.dsh/.env` under `HARNESS_NEXUS_API_KEY` — dsh's own
  *    user-env credential layer, read on EVERY launch (user shells included).
+ *    #64 adds per-model detail on the `models:` entries (`name` /
+ *    `contextWindow` / `maxTokens` / `input` for vision) with the opencode
+ *    precedence — panel value (`spec.deepseek`) > #51 modelEntries seed >
+ *    key omitted (the route's own defaults apply; never a guessed value).
  */
 
 /** dsh resolves this name through process env > ~/.dsh/.credentials.yaml > ./.env > ~/.dsh/.env. */
@@ -390,6 +394,28 @@ function applyDshConfig(spec: RuntimeConfigSpec, secret: string, homeDir: string
   // the default model leads. (The server already dedupes against `model`,
   // this is belt-and-braces for hand-queued bundles.)
   const modelIds = [...new Set([spec.model, ...(spec.models ?? [])])];
+  // #64 — per-model detail overlays the #51 seed per field; an id with
+  // neither stays a BARE entry (byte-identical to the pre-#64 emission, so
+  // an untouched spec re-applies unchanged). `vision: true` claims images
+  // (`input: ["text","image"]` — JSON flow is valid YAML); absent stays the
+  // route default (text), the pi-writer stance of never guessing.
+  const entriesById = new Map((spec.modelEntries ?? []).map((e) => [e.id, e]));
+  const detailById = new Map((spec.deepseek?.models ?? []).map((m) => [m.id, m]));
+  const modelEntryLines = modelIds.flatMap((id) => {
+    const e = entriesById.get(id);
+    const d = detailById.get(id);
+    const name = d?.name ?? e?.displayName;
+    const contextWindow = d?.contextWindow ?? e?.contextWindow;
+    const maxTokens = d?.maxOutputTokens ?? e?.maxOutputTokens;
+    const vision = d?.vision === true || e?.vision === true;
+    return [
+      `        - id: ${yq(id)}`,
+      ...(name !== undefined && name !== '' ? [`          name: ${yq(name)}`] : []),
+      ...(contextWindow !== undefined ? [`          contextWindow: ${contextWindow}`] : []),
+      ...(maxTokens !== undefined ? [`          maxTokens: ${maxTokens}`] : []),
+      ...(vision ? ['          input: ["text", "image"]'] : []),
+    ];
+  });
   const region = [
     SETTINGS_BEGIN,
     `${DSH_LLM_NS}:`,
@@ -400,7 +426,7 @@ function applyDshConfig(spec: RuntimeConfigSpec, secret: string, homeDir: string
     `      baseURL: ${yq(spec.baseUrl!)}`,
     `      apiKeyEnv: ${DSH_API_KEY_ENV}`,
     `      models:`,
-    ...modelIds.map((id) => `        - id: ${yq(id)}`),
+    ...modelEntryLines,
     `${DSH_DEFAULT_MODEL_NS}:`,
     `  provider: harness-nexus`,
     `  model: ${yq(spec.model)}`,

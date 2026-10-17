@@ -54,6 +54,12 @@ export interface RuntimeConfigSpecData {
    * to the modelEntries seed of the default model first).
    */
   codex: CodexConfigData | null;
+  /**
+   * #64 — dsh's dedicated panel knobs (see `DeepseekConfigData`).
+   * null = panel untouched; per-field precedence is panel value >
+   * modelEntries seed > key omitted (the route's own defaults apply).
+   */
+  deepseek: DeepseekConfigData | null;
   extra: Record<string, unknown> | null;
 }
 
@@ -116,6 +122,19 @@ export interface CodexConfigData {
 
 export interface CodexSwitchData {
   updateCheckDisabled?: boolean | undefined;
+}
+
+/** #64 — plain mirror of `deepseekConfigSchema` in shared (kept in sync). */
+export interface DeepseekConfigData {
+  models?: DeepseekModelDetailData[] | undefined;
+}
+
+export interface DeepseekModelDetailData {
+  id: string;
+  name?: string | undefined;
+  contextWindow?: number | undefined;
+  maxOutputTokens?: number | undefined;
+  vision?: boolean | undefined;
 }
 
 /** #51 — the metadata subset of a ProviderModelConfig that may ride a spec. */
