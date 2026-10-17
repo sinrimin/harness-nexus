@@ -652,6 +652,12 @@ const PI_API: Record<RuntimeConfigSpec['api'], string> = {
  *  3. `~/.pi/agent/harness-nexus.key` — the secret, 0600, NO trailing
  *     newline (`!cat` hands the bytes to pi verbatim).
  *
+ * #65 adds the panel overlay on the models array (`spec.pi.models`): per
+ * field panel value > #51 modelEntries seed > omitted (the family
+ * contract), plus the panel-only `reasoning: true` capability flag and
+ * `samplingParams` (free body keys, effective on the openai wires,
+ * silently ignored on anthropic). Bare ids stay `{ id }` byte-identical.
+ *
  * Both JSON files fail `JSON.parse` if hand-mangled → the job errors without
  * touching them (same stance as opencode). A baseUrl-less spec is rejected
  * at the route AND re-checked here — pi's custom provider REQUIRES an
@@ -672,8 +678,11 @@ function applyPiConfig(spec: RuntimeConfigSpec, secret: string, homeDir: string)
   // #51 — metadata from the provider registry (snapshot in the spec): ids
   // with an entry get real contextWindow/maxTokens/name, so pi's usage
   // contextSize stops hiding (W16's honest degradation resolves). Ids without
-  // stay bare — never guessed.
+  // stay bare — never guessed. #65 — the panel overlay wins per field
+  // (`spec.pi.models`), and adds the panel-only `reasoning` flag and
+  // `samplingParams`; a bare id with neither stays `{ id }`.
   const entriesById = new Map((spec.modelEntries ?? []).map((e) => [e.id, e]));
+  const detailById = new Map((spec.pi?.models ?? []).map((m) => [m.id, m]));
   const providers = {
     ...((modelsDoc.providers as Record<string, unknown> | undefined) ?? {}),
     [PI_PROVIDER_ID]: {
@@ -683,13 +692,22 @@ function applyPiConfig(spec: RuntimeConfigSpec, secret: string, homeDir: string)
       apiKey: `!cat ${JSON.stringify(keyPath)}`,
       models: modelIds.map((id) => {
         const e = entriesById.get(id);
-        if (e === undefined) return { id };
+        const d = detailById.get(id);
+        if (e === undefined && d === undefined) return { id };
+        const name = d?.name ?? e?.displayName;
+        const contextWindow = d?.contextWindow ?? e?.contextWindow;
+        const maxTokens = d?.maxOutputTokens ?? e?.maxOutputTokens;
+        const vision = d?.vision === true || e?.vision === true;
         return {
           id,
-          ...(e.displayName !== undefined ? { name: e.displayName } : {}),
-          ...(e.contextWindow !== undefined ? { contextWindow: e.contextWindow } : {}),
-          ...(e.maxOutputTokens !== undefined ? { maxTokens: e.maxOutputTokens } : {}),
-          ...(e.vision === true ? { input: ['text', 'image'] } : {}),
+          ...(name !== undefined && name !== '' ? { name } : {}),
+          ...(contextWindow !== undefined ? { contextWindow } : {}),
+          ...(maxTokens !== undefined ? { maxTokens } : {}),
+          ...(vision ? { input: ['text', 'image'] } : {}),
+          ...(d?.reasoning === true ? { reasoning: true } : {}),
+          ...(d?.samplingParams !== undefined && Object.keys(d.samplingParams).length > 0
+            ? { samplingParams: d.samplingParams }
+            : {}),
         };
       }),
     },

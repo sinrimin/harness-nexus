@@ -60,6 +60,13 @@ export interface RuntimeConfigSpecData {
    * modelEntries seed > key omitted (the route's own defaults apply).
    */
   deepseek: DeepseekConfigData | null;
+  /**
+   * #65 — pi's dedicated panel knobs (see `PiConfigData`).
+   * null = panel untouched; per-field precedence is panel value >
+   * modelEntries seed > key omitted (reasoning/samplingParams are
+   * panel-only — the seed carries no such fields).
+   */
+  pi: PiConfigData | null;
   extra: Record<string, unknown> | null;
 }
 
@@ -135,6 +142,21 @@ export interface DeepseekModelDetailData {
   contextWindow?: number | undefined;
   maxOutputTokens?: number | undefined;
   vision?: boolean | undefined;
+}
+
+/** #65 — plain mirror of `piConfigSchema` in shared (kept in sync). */
+export interface PiConfigData {
+  models?: PiModelDetailData[] | undefined;
+}
+
+export interface PiModelDetailData {
+  id: string;
+  name?: string | undefined;
+  contextWindow?: number | undefined;
+  maxOutputTokens?: number | undefined;
+  vision?: boolean | undefined;
+  reasoning?: boolean | undefined;
+  samplingParams?: Record<string, unknown> | undefined;
 }
 
 /** #51 — the metadata subset of a ProviderModelConfig that may ride a spec. */

@@ -344,6 +344,33 @@ const en = {
     'Claims image input on the endpoint (input: text+image) — a claim, not a check; a gateway that refuses images fails mid-turn.',
   dsNumBadContext: 'Context window must be a positive integer.',
   dsNumBadOutput: 'Output cap must be a positive integer.',
+
+  // #65 — the pi dedicated panel. Wire/protocol values stay English in both
+  // locales per the i18n rules.
+  piTitle: 'pi settings',
+  piDesc:
+    'Applied into the machine\u2019s ~/.pi/agent/models.json (the harness-nexus provider entry) and settings.json (the default route + enabled models). Only fields configured here are written per model; unset fields fall back to the registry snapshot, then to pi\u2019s own defaults.',
+  piSectionModels: 'Models',
+  piExtrasHint: 'The enabled list is the switchable set; the leading one is the default route.',
+  piSectionDetails: 'Model details',
+  piDetailsHint:
+    'Per-model knobs ride the provider\u2019s models entries; panel values override the registry snapshot.',
+  piDetailsEmpty: 'Add models above to configure their details.',
+  piNameLabel: 'Display name',
+  piNamePh: 'e.g. Gateway Large',
+  piContextLabel: 'Context window (tokens)',
+  piContextHint: 'Context size pi assumes for the model.',
+  piOutputLabel: 'Output cap (tokens)',
+  piOutputHint: 'Max output tokens.',
+  piVision: 'Vision',
+  piReasoning: 'Reasoning',
+  piReasoningHint: 'Vision claims image input; reasoning declares thinking capability.',
+  piParamsLabel: 'Sampling params',
+  piParamsKeyPh: 'key, e.g. enable_thinking',
+  piParamsHint:
+    'Merged into the request body on the openai wires only; silently ignored on the anthropic wire.',
+  piNumBadContext: 'Context window must be a positive integer.',
+  piNumBadOutput: 'Output cap must be a positive integer.',
 };
 
 const zh: typeof en = {
@@ -645,6 +672,30 @@ const zh: typeof en = {
     '声明端点接受图片输入（input: text+image）——只是声明不做校验；网关不支持时会在回合中失败。',
   dsNumBadContext: '上下文窗口必须是正整数。',
   dsNumBadOutput: '输出上限必须是正整数。',
+
+  // #65 — pi 专属配置。协议值两种语言下都保持英文。
+  piTitle: 'pi 专属配置',
+  piDesc:
+    '应用时写入机器的 ~/.pi/agent/models.json（harness-nexus 供应商条目）与 settings.json（默认路由 + 启用列表）。只写入这里逐模型配置过的字段；未配置的先回落注册表快照、再回落 pi 自身默认值。',
+  piSectionModels: '模型',
+  piExtrasHint: '启用列表即会话可切换集；首项为默认路由。',
+  piSectionDetails: '模型详情',
+  piDetailsHint: '逐模型的配置写入供应商的 models 条目；面板值优先于注册表快照。',
+  piDetailsEmpty: '先在上方添加模型，才能配置其详情。',
+  piNameLabel: '显示名',
+  piNamePh: '例如 Gateway Large',
+  piContextLabel: '上下文窗口（tokens）',
+  piContextHint: 'pi 为该模型假定的上下文大小。',
+  piOutputLabel: '输出上限（tokens）',
+  piOutputHint: '最大输出 tokens。',
+  piVision: '视觉',
+  piReasoning: '推理',
+  piReasoningHint: '视觉声明图片输入；推理声明思考能力。',
+  piParamsLabel: '采样参数',
+  piParamsKeyPh: '键名，如 enable_thinking',
+  piParamsHint: '仅 openai 线会并入请求体；anthropic 线静默忽略。',
+  piNumBadContext: '上下文窗口必须是正整数。',
+  piNumBadOutput: '输出上限必须是正整数。',
 };
 
 export const machineDetailStrings = { en, zh };

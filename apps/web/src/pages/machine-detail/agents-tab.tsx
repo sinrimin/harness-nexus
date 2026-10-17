@@ -75,6 +75,14 @@ import {
   serializeDsDraft,
   type DsDraft,
 } from './deepseek-panel.js';
+import {
+  PiPanel,
+  piDraftFromSpec,
+  piIssue,
+  emptyPiDraft,
+  serializePiDraft,
+  type PiDraft,
+} from './pi-panel.js';
 import type { InventoryEntry, RuntimeInfoView } from './types.js';
 
 /**
@@ -688,6 +696,8 @@ function ProviderConfigForm({
   const [cx, setCx] = useState<CxDraft>(emptyCxDraft);
   // #64 — dsh's dedicated panel knobs.
   const [ds, setDs] = useState<DsDraft>(emptyDsDraft);
+  // #65 — pi's dedicated panel knobs.
+  const [pi, setPi] = useState<PiDraft>(emptyPiDraft);
   const [busy, setBusy] = useState(false);
   // P6 — Apply config confirms first (the credential goes to the machine).
   const [asking, setAsking] = useState(false);
@@ -762,6 +772,7 @@ function ProviderConfigForm({
       setOc(ocDraftFromSpec(existing));
       setCx(cxDraftFromSpec(existing));
       setDs(dsDraftFromSpec(existing));
+      setPi(piDraftFromSpec(existing));
     })();
     return () => {
       cancelled = true;
@@ -803,6 +814,9 @@ function ProviderConfigForm({
       const deepseek = serializeDsDraft(ds, [
         ...new Set([model, ...extraModels].map((x) => x.trim()).filter((x) => x !== '')),
       ]);
+      const piCfg = serializePiDraft(pi, [
+        ...new Set([model, ...extraModels].map((x) => x.trim()).filter((x) => x !== '')),
+      ]);
       const spec: RuntimeConfigSpec = {
         providerLabel: (selectedProvider?.name ?? providerLabel).trim(),
         api: (selectedProvider !== null
@@ -817,6 +831,7 @@ function ProviderConfigForm({
         ...(opencode !== undefined ? { opencode } : {}),
         ...(codex !== undefined ? { codex } : {}),
         ...(deepseek !== undefined ? { deepseek } : {}),
+        ...(piCfg !== undefined ? { pi: piCfg } : {}),
       };
       await withAuthGuard(() => api.putRuntimeConfig(machineId, managedTarget!, spec), logout);
       toast.success(t('machineDetail.applyToast'));
@@ -836,6 +851,9 @@ function ProviderConfigForm({
     ]) === null &&
     cxIssue(cx) === null &&
     dsIssue(ds, [
+      ...new Set([model, ...extraModels].map((x) => x.trim()).filter((x) => x !== '')),
+    ]) === null &&
+    piIssue(pi, [
       ...new Set([model, ...extraModels].map((x) => x.trim()).filter((x) => x !== '')),
     ]) === null &&
     (selectedProvider !== null || (providerLabel.trim() !== '' && credentialName !== ''));
@@ -991,13 +1009,14 @@ function ProviderConfigForm({
             </>
           ) : null}
 
-          {/* #60/#62/#63/#64 — for claude-code, opencode, codex and deepseek
-            the default-model picker lives inside the dedicated panel (one
-            surface per knob); other targets keep the generic grid. */}
+          {/* #60/#62/#63/#64/#65 — for claude-code, opencode, codex, deepseek
+            and pi the default-model picker lives inside the dedicated panel
+            (one surface per knob); other targets keep the generic grid. */}
           {managedTarget !== 'claude-code' &&
           managedTarget !== 'opencode' &&
           managedTarget !== 'codex' &&
-          managedTarget !== 'deepseek' ? (
+          managedTarget !== 'deepseek' &&
+          managedTarget !== 'pi' ? (
             <div className="grid min-w-44 gap-2">
               <Label htmlFor={`pc-model-${target}`}>{t('machineDetail.modelDefaultLabel')}</Label>
               {useModelSelect ? (
@@ -1063,13 +1082,14 @@ function ProviderConfigForm({
           rows pick from its registry, minus ids already used elsewhere (the
           row's own id stays selectable); a registry-less provider and the
           manual arm keep free-text rows. Any row can still be promoted to
-          the default (the old default swaps into the rows). #60/#62/#63/#64:
-          for claude-code, opencode, codex and deepseek these rows moved into
-          the dedicated panel. */}
+          the default (the old default swaps into the rows). #60/#62/#63/#64/#65:
+          for claude-code, opencode, codex, deepseek and pi these rows moved
+          into the dedicated panel. */}
         {managedTarget !== 'claude-code' &&
         managedTarget !== 'opencode' &&
         managedTarget !== 'codex' &&
-        managedTarget !== 'deepseek' ? (
+        managedTarget !== 'deepseek' &&
+        managedTarget !== 'pi' ? (
           <div className="flex flex-col gap-2">
             <div className="flex items-center gap-2">
               <span className="text-sm leading-none font-medium">
@@ -1216,6 +1236,19 @@ function ProviderConfigForm({
           <DeepseekPanel
             draft={ds}
             onChange={setDs}
+            defaultModel={model}
+            onDefaultModelChange={setModel}
+            extraModels={extraModels}
+            onExtraModelsChange={setExtraModels}
+            chatModels={chatModels}
+          />
+        ) : null}
+        {/* #65 — pi's own knob panel (the provider row keeps the
+          connection). */}
+        {managedTarget === 'pi' ? (
+          <PiPanel
+            draft={pi}
+            onChange={setPi}
             defaultModel={model}
             onDefaultModelChange={setModel}
             extraModels={extraModels}

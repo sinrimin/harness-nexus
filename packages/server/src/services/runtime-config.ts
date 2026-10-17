@@ -184,11 +184,12 @@ export async function planRuntimeConfigUpsert(
       // #60 — the claude-code panel rides the row verbatim (zod-validated
       // above; null keeps untouched rows in their pre-#60 shape). #62 — same
       // contract for the opencode panel. #63 — same for the codex panel.
-      // #64 — same for the dsh panel.
+      // #64 — same for the dsh panel. #65 — same for the pi panel.
       claudeCode: spec.claudeCode ?? null,
       opencode: spec.opencode ?? null,
       codex: spec.codex ?? null,
       deepseek: spec.deepseek ?? null,
+      pi: spec.pi ?? null,
       extra: spec.extra ?? null,
     },
     createdAt: existing?.createdAt ?? now,
