@@ -298,6 +298,47 @@ export const deepseekConfigSchema = z.object({
 });
 export type DeepseekConfig = z.infer<typeof deepseekConfigSchema>;
 
+/**
+ * #65 — pi's dedicated panel knobs. Ground truth: pi-coding-agent 0.85.1 on
+ * the rig (`ModelDefinitionSchema` in core/model-config.js, re-verified
+ * 2026-10-17). The W16 writer already lands name/contextWindow/maxTokens/
+ * input from the #51 `modelEntries` seed; the panel overlays per field
+ * (panel value > seed > omitted — the family contract) and adds pi's OWN
+ * knob vocabulary: `reasoning` (a simple BOOLEAN capability declaration)
+ * and `samplingParams` (free `Record<string, unknown>` — pi-ai merges
+ * `{...model.samplingParams, ...byLevel[level], ...requestParams}`).
+ * samplingParams is effective on the openai wires and silently ignored on
+ * anthropic (the registry's documented warn-not-reject stance);
+ * `serverTools` deliberately does NOT ride `samplingParams.tools` (the
+ * research §4.2 clobber risk). OUT of v1 (same class as dsh's wire-dict
+ * gaps): thinkingLevelMap, samplingParamsByThinkingLevel, cost, headers,
+ * compat.
+ */
+export const piModelDetailSchema = z.object({
+  /** `name` — display name in pi's model picker. */
+  name: z.string().max(256).optional(),
+  /** `contextWindow` — context size pi assumes for the model. */
+  contextWindow: z.number().int().positive().optional(),
+  /** `maxTokens` — max output tokens. */
+  maxOutputTokens: z.number().int().positive().optional(),
+  /** `input: ["text","image"]` while true; absent stays pi's text default. */
+  vision: z.boolean().optional(),
+  /** `reasoning: true` — thinking-capability declaration (panel-only). */
+  reasoning: z.boolean().optional(),
+  /** `samplingParams` — free request-body keys, openai wires only. */
+  samplingParams: z.record(z.string(), z.unknown()).optional(),
+});
+export type PiModelDetail = z.infer<typeof piModelDetailSchema>;
+
+export const piConfigSchema = z.object({
+  /** Per-model detail, keyed against the switchable set (default + extras). */
+  models: z
+    .array(piModelDetailSchema.extend({ id: z.string().min(1).max(128) }))
+    .max(17)
+    .optional(),
+});
+export type PiConfig = z.infer<typeof piConfigSchema>;
+
 export const runtimeConfigSpecSchema = z.object({
   /** Display label only — surfaces in the harness's own config UI. */
   providerLabel: z.string().min(1).max(64),
@@ -363,6 +404,11 @@ export const runtimeConfigSpecSchema = z.object({
    * same additive contract as the panels above.
    */
   deepseek: deepseekConfigSchema.optional(),
+  /**
+   * #65 — pi's dedicated panel knobs (see `piConfigSchema`),
+   * same additive contract as the panels above.
+   */
+  pi: piConfigSchema.optional(),
   /** Target-specific extras (kept schema-loose on purpose). */
   extra: z.record(z.string(), z.unknown()).optional(),
 });

@@ -1053,4 +1053,72 @@ describe('applyRuntimeConfig — pi modelEntries (#51)', () => {
       { id: 'gw-unknown' }, // absent from the registry → honest bare id
     ]);
   });
+
+  it('#65 — panel overlay wins per-field; reasoning + samplingParams are panel-only', () => {
+    rmSync(path.join(home, '.pi'), { recursive: true, force: true });
+    applyRuntimeConfig(
+      'pi',
+      spec({
+        api: 'openai',
+        model: 'gw-large',
+        modelEntries: [
+          {
+            id: 'gw-large',
+            displayName: 'Seed Large',
+            contextWindow: 256_000,
+            maxOutputTokens: 32_000,
+            vision: true,
+          },
+        ],
+        pi: {
+          models: [
+            {
+              id: 'gw-large',
+              name: 'Panel Large',
+              contextWindow: 128_000,
+              reasoning: true,
+              samplingParams: { enable_thinking: true, top_p: 0.9 },
+            },
+          ],
+        },
+      }),
+      'sk-pi-10',
+      home,
+    );
+    const modelsDoc = JSON.parse(readFileSync(models(), 'utf8')) as {
+      providers: Record<string, { models: Array<Record<string, unknown>> }>;
+    };
+    const entry = modelsDoc.providers['harness-nexus']!.models[0]!;
+    // panel name + contextWindow beat the seed; maxTokens falls to the seed;
+    // vision rides the seed (panel left it unset); the two panel-only knobs ride along
+    expect(entry).toEqual({
+      id: 'gw-large',
+      name: 'Panel Large',
+      contextWindow: 128_000,
+      maxTokens: 32_000,
+      input: ['text', 'image'],
+      reasoning: true,
+      samplingParams: { enable_thinking: true, top_p: 0.9 },
+    });
+
+    // a knob-less re-apply drops the panel overlay and returns to the seed shape
+    applyRuntimeConfig(
+      'pi',
+      spec({
+        api: 'openai',
+        model: 'gw-large',
+        modelEntries: [{ id: 'gw-large', displayName: 'Seed Large', contextWindow: 256_000 }],
+      }),
+      'sk-pi-10',
+      home,
+    );
+    const resealed = JSON.parse(readFileSync(models(), 'utf8')) as {
+      providers: Record<string, { models: Array<Record<string, unknown>> }>;
+    };
+    expect(resealed.providers['harness-nexus']!.models[0]).toEqual({
+      id: 'gw-large',
+      name: 'Seed Large',
+      contextWindow: 256_000,
+    });
+  });
 });

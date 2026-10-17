@@ -219,6 +219,47 @@ describe('runtimeConfigSpecSchema', () => {
       runtimeConfigSpecSchema.safeParse({ ...base, deepseek: { models: [{ name: 'x' }] } }).success,
     ).toBe(false);
   });
+
+  it('#65 — accepts a full pi detail set and stays optional', () => {
+    expect(runtimeConfigSpecSchema.safeParse(validSpec).success).toBe(true);
+    const parsed = runtimeConfigSpecSchema.safeParse({
+      ...validSpec,
+      pi: {
+        models: [
+          {
+            id: 'gw-large',
+            name: 'Gateway Large',
+            contextWindow: 1_000_000,
+            maxOutputTokens: 384_000,
+            vision: true,
+            reasoning: true,
+            samplingParams: { enable_thinking: true, top_p: 0.9 },
+          },
+          { id: 'gw-mini' },
+        ],
+      },
+    });
+    expect(parsed.success).toBe(true);
+  });
+
+  it('#65 — rejects non-positive detail numbers and an id-less entry', () => {
+    const base = { ...validSpec, api: 'openai' as const };
+    expect(
+      runtimeConfigSpecSchema.safeParse({
+        ...base,
+        pi: { models: [{ id: 'x', contextWindow: 0 }] },
+      }).success,
+    ).toBe(false);
+    expect(
+      runtimeConfigSpecSchema.safeParse({
+        ...base,
+        pi: { models: [{ id: 'x', maxOutputTokens: -1 }] },
+      }).success,
+    ).toBe(false);
+    expect(
+      runtimeConfigSpecSchema.safeParse({ ...base, pi: { models: [{ name: 'x' }] } }).success,
+    ).toBe(false);
+  });
 });
 
 describe('claude-code [1m] marker helpers (#60)', () => {

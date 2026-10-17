@@ -57,6 +57,7 @@ export async function runtimeConfigRoutes(app: FastifyInstance): Promise<void> {
     ...(row.spec.deepseek !== null && row.spec.deepseek !== undefined
       ? { deepseek: row.spec.deepseek }
       : {}),
+    ...(row.spec.pi !== null && row.spec.pi !== undefined ? { pi: row.spec.pi } : {}),
     ...(row.spec.extra !== null ? { extra: row.spec.extra } : {}),
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
