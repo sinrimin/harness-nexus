@@ -1040,7 +1040,7 @@ function ProviderConfigForm({
                 type="button"
                 variant="outline"
                 size="sm"
-                className="h-7 px-2 text-xs"
+                className="h-7 px-2 text-xs [@media(pointer:coarse)]:h-9"
                 onClick={() => setExtraModels((prev) => [...prev, ''])}
               >
                 <PlusIcon className="size-3.5" />
