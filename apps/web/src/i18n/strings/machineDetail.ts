@@ -628,7 +628,7 @@ const zh: typeof en = {
   // #64 — dsh 专属配置。协议键名两种语言下都保持英文。
   dsTitle: 'deepseek 专属配置',
   dsDesc:
-    '应用时写入机器的 ~/.dsh/settings.yaml（llm-pi-ai 供应商路由）。只写这里逐模型配置了的字段；未配置的先回落注册表快照、再回落路由自身默认值。托管区域之外的内容一概不动。',
+    '应用时写入机器的 ~/.dsh/settings.yaml（llm-pi-ai 供应商路由）。只写入这里逐模型配置过的字段；未配置的先回落注册表快照、再回落路由自身默认值。托管区域之外的内容一概不动。',
   dsSectionModels: '模型',
   dsExtrasHint: '模型列表即会话可切换集；首项为默认路由。',
   dsSectionDetails: '模型详情',
@@ -642,7 +642,7 @@ const zh: typeof en = {
   dsOutputHint: '配置值还会成为该模型的逐请求默认；路由默认为 32768。',
   dsVision: '视觉',
   dsVisionHint:
-    '声明端点接受图片输入（input: text+image）——只是声明不做校验；网关若不支持会话中失败。',
+    '声明端点接受图片输入（input: text+image）——只是声明不做校验；网关不支持时会在回合中失败。',
   dsNumBadContext: '上下文窗口必须是正整数。',
   dsNumBadOutput: '输出上限必须是正整数。',
 };
