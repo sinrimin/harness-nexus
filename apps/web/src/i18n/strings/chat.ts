@@ -172,6 +172,8 @@ const en = {
     'This channel is no longer live (the server or agent restarted) — open a new one.',
   errWorkspaceNotSet: 'This machine has no base workspace — set one in the picker first.',
   errWorkspaceInvalid: 'That directory is outside the machine base workspace.',
+  subagentTaskLabel: 'Task',
+  subagentTranscript: 'Sub-agent transcript',
 };
 
 const zh: typeof en = {
@@ -323,6 +325,8 @@ const zh: typeof en = {
   errSessionGone: '该通道已不再在线（服务器或 Agent 重启过）—— 请重新打开一个。',
   errWorkspaceNotSet: '此机器未设置基础工作区——请先在选择器中设置。',
   errWorkspaceInvalid: '该目录不在机器基础工作区内。',
+  subagentTaskLabel: '任务',
+  subagentTranscript: '子代理记录',
 };
 
 export const chatStrings = { en, zh };

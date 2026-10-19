@@ -669,6 +669,36 @@ export const chatStreamEventSchema = z.discriminatedUnion('kind', [
     commands: z.array(availableCommandViewSchema).max(64),
   }),
   z.object({ kind: z.literal('raw'), method: z.string().min(1).max(64), params: z.unknown() }),
+  // #71 — native sub-agent sessions (claude-agent-acp's `subagents`
+  // capability): the adapter announces each child (`subagent_spawned`), streams
+  // the child's updates on the CHILD's own sessionId, and closes with a state.
+  // The daemon routes by frame sessionId and wraps child events in
+  // `subagent_update`; the three kinds reach the browser only in that wrapped
+  // shape, so the child's activity renders inside a sub-agent card instead of
+  // interleaving with the main agent's transcript.
+  z.object({
+    kind: z.literal('subagent_spawned'),
+    subagentId: z.string().min(1).max(256),
+    name: z.string().max(256),
+    task: z.string().max(8192),
+  }),
+  z.object({
+    kind: z.literal('subagent_update'),
+    subagentId: z.string().min(1).max(256),
+    /** The child-side event set — config/usage/permissions are root-session
+     *  concerns and are never wrapped (the daemon drops them child-side). */
+    event: z.discriminatedUnion('kind', [
+      z.object({ kind: z.literal('message_delta'), delta: z.string().min(0).max(100000) }),
+      z.object({ kind: z.literal('thought_delta'), delta: z.string().min(0).max(100000) }),
+      z.object({ kind: z.literal('tool_call'), call: acpToolCallViewSchema }),
+      z.object({ kind: z.literal('raw'), method: z.string().min(1).max(64), params: z.unknown() }),
+    ]),
+  }),
+  z.object({
+    kind: z.literal('subagent_done'),
+    subagentId: z.string().min(1).max(256),
+    state: z.enum(['completed', 'failed', 'cancelled', 'disconnected']),
+  }),
 ]);
 
 /** `chat:event` envelope — daemon→server and (relayed) server→browser share it. */
@@ -1138,6 +1168,14 @@ export type AcpPermissionOption = z.infer<typeof acpPermissionOptionSchema>;
 export type ElicitationField = z.infer<typeof elicitationFieldSchema>;
 export type PromptBlock = z.infer<typeof promptBlockSchema>;
 export type ChatStreamEvent = z.infer<typeof chatStreamEventSchema>;
+/**
+ * #71 — the child-side event shapes a `subagent_update` may carry (the wrapped
+ * arm of the union above; config/usage/permissions are root-session concerns).
+ */
+export type SubagentChildEvent = Extract<
+  ChatStreamEvent,
+  { kind: 'message_delta' } | { kind: 'thought_delta' } | { kind: 'tool_call' } | { kind: 'raw' }
+>;
 export type SessionMode = z.infer<typeof sessionModeSchema>;
 export type SessionModeState = z.infer<typeof sessionModeStateSchema>;
 export type SessionConfigValue = z.infer<typeof sessionConfigValueSchema>;

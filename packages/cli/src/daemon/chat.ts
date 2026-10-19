@@ -43,6 +43,7 @@ import {
   type PromptBlock,
   type SessionConfigOption,
   type SessionModeState,
+  type SubagentChildEvent,
 } from '@harness-nexus/shared';
 import {
   AcpAgentConnection,
@@ -184,6 +185,13 @@ interface DaemonSession {
    * has the same trade-off).
    */
   tapDead: boolean;
+  /**
+   * #71 — live native sub-agent session ids announced by `subagent_spawned`.
+   * Frames whose `sessionId` is in here route into wrapped `subagent_update`
+   * events instead of the main stream (claude-agent-acp only, via the
+   * `subagents` initialize capability).
+   */
+  subagents: Set<string>;
 }
 
 const HISTORY_MAX = 2000;
@@ -880,7 +888,7 @@ export function attachChatHandlers(
           // parse its transcript file instead).
           if (sessionCaps.load) {
             const captured: HistoryItem[] = [];
-            const stopCapture = wireCapture(conn, captured);
+            const stopCapture = wireCapture(conn, captured, resume.sessionId);
             try {
               const loaded = (await establish(conn, 'session/load', {
                 sessionId: resume.sessionId,
@@ -942,6 +950,7 @@ export function attachChatHandlers(
           tapMapper: null,
           tapTurnEndAt: 0,
           tapDead: false,
+          subagents: new Set(),
         };
         sessions.set(sessionId, session);
         liveConn = null; // registered — teardown owns the connection from here
@@ -1438,11 +1447,25 @@ async function establish(
  * used while `session/load` replays an agent's history (claude/codex replay
  * BEFORE the load response resolves). `user_message_chunk` becomes a USER
  * item (on the live path it is dropped as a browser echo); everything else
- * maps through the ordinary update mapping. Returns the deactivation.
+ * maps through the ordinary update mapping. #71 — sub-agent frames route the
+ * same way as the live path, so a replayed session reconstructs its child
+ * cards. Returns the deactivation.
  */
-function wireCapture(conn: AgentConnection, items: HistoryItem[]): () => void {
+function wireCapture(
+  conn: AgentConnection,
+  items: HistoryItem[],
+  rootSessionId: string,
+): () => void {
+  const subagents = new Set<string>();
   const handler = (method: string, params: Record<string, unknown>): void => {
     if (method !== 'session/update') return;
+    if (
+      routeSubagentFrame(params, rootSessionId, subagents, (e) =>
+        items.push({ type: 'event', event: e }),
+      )
+    ) {
+      return;
+    }
     const update = (params.update ?? {}) as Record<string, unknown>;
     if (update.sessionUpdate === 'user_message_chunk') {
       const text = textOf(update.contentBlock) || textOf(update.content);
@@ -1507,6 +1530,15 @@ function wireSession(
 
   conn.setNotificationHandler((method, params) => {
     if (method !== 'session/update') return;
+    // #71 — native sub-agent frames route BEFORE the root handling: child
+    // sessions must never fold into the main transcript.
+    if (
+      routeSubagentFrame(params, session.acpSessionId, session.subagents, (e) =>
+        emitEvent(session, e),
+      )
+    ) {
+      return;
+    }
     const update = (params.update ?? {}) as Record<string, unknown>;
     // 9 W9 A — session-config pushes merge into the daemon's snapshot and
     // re-emit it in full (needs the session state, so they are intercepted
@@ -1939,9 +1971,99 @@ export function mapAcpUpdate(params: UnknownRecord): ChatStreamEvent | null {
       // The browser echoes the user's message optimistically on the live
       // path; history batches (capture mode) turn these into USER items.
       return null;
+    case 'subagent_spawned': {
+      // #71 — native sub-agent sessions (claude-agent-acp, `subagents`
+      // capability): the child's Task tool call is suppressed from the parent
+      // transcript and replaced by this announcement. `capabilities` and any
+      // later re-announce (replay of an already-known child) are ignored —
+      // the caller registers the id and the web upserts its card.
+      const subagentId = boundedId(update.subagentSessionId);
+      const name = boundedText(update.name, 256);
+      const task = boundedText(update.task, 8192);
+      if (subagentId === null) return null;
+      return { kind: 'subagent_spawned', subagentId, name, task };
+    }
+    case 'subagent_state_update': {
+      const subagentId = boundedId(update.subagentSessionId);
+      const state = update.state;
+      if (subagentId === null) return null;
+      if (
+        state === 'completed' ||
+        state === 'failed' ||
+        state === 'cancelled' ||
+        state === 'disconnected'
+      ) {
+        return { kind: 'subagent_done', subagentId, state };
+      }
+      return null;
+    }
     default:
       return { kind: 'raw', method: 'session/update', params: update };
   }
+}
+
+/** Non-empty bounded id (sub-agent session ids ride the update fields). */
+function boundedId(raw: unknown): string | null {
+  return typeof raw === 'string' && raw !== '' && raw.length <= 256 ? raw : null;
+}
+
+/** Non-empty bounded text, normalized to '' when absent. */
+function boundedText(raw: unknown, max: number): string {
+  if (typeof raw !== 'string' || raw === '') return '';
+  return raw.length <= max ? raw : raw.slice(0, max);
+}
+
+/**
+ * #71 — the child-side event set `subagent_update` may carry. Config, usage,
+ * plans and commands are root-session concerns; a child frame carrying one
+ * is dropped rather than wrapped (no adapter emits them today).
+ */
+function isSubagentChildEvent(event: ChatStreamEvent): event is SubagentChildEvent {
+  return (
+    event.kind === 'message_delta' ||
+    event.kind === 'thought_delta' ||
+    event.kind === 'tool_call' ||
+    event.kind === 'raw'
+  );
+}
+
+/**
+ * #71 — route one `session/update` frame for a channel whose root ACP session
+ * is `rootSessionId` and whose announced children live in `subagents`. Child
+ * frames wrap into `subagent_update`; parent-side spawn/state frames map and
+ * REGISTER the child id. Returns null when the frame is fully handled here,
+ * otherwise the caller maps it through the ordinary root path.
+ */
+function routeSubagentFrame(
+  params: UnknownRecord,
+  rootSessionId: string,
+  subagents: Set<string>,
+  emit: (event: ChatStreamEvent) => void,
+): boolean {
+  const update = (params.update ?? {}) as UnknownRecord;
+  const kind = update.sessionUpdate;
+  if (kind === 'subagent_spawned' || kind === 'subagent_state_update') {
+    const mapped = mapAcpUpdate(params);
+    if (mapped !== null) {
+      if (mapped.kind === 'subagent_spawned') subagents.add(mapped.subagentId);
+      emit(mapped);
+    }
+    return true;
+  }
+  const frameSessionId =
+    typeof params.sessionId === 'string' && params.sessionId !== '' ? params.sessionId : null;
+  if (
+    frameSessionId !== null &&
+    frameSessionId !== rootSessionId &&
+    subagents.has(frameSessionId)
+  ) {
+    const child = mapAcpUpdate(params);
+    if (child !== null && isSubagentChildEvent(child)) {
+      emit({ kind: 'subagent_update', subagentId: frameSessionId, event: child });
+    }
+    return true;
+  }
+  return false;
 }
 
 /** Extract display text from an ACP ContentBlock chunk. */

@@ -56,6 +56,24 @@ export interface ToolCallNode {
   endedAt?: number;
 }
 
+/**
+ * #71 — a native sub-agent session (claude's Task/Agent children): the child
+ * is announced (`subagent_spawned`), streams its own updates wrapped in
+ * `subagent_update`, and closes with a state (`subagent_done`). The child's
+ * activity lives in its OWN fold so it renders inside a collapsible card
+ * instead of interleaving with the main agent's transcript.
+ */
+export interface SubagentNode {
+  subagentId: string;
+  name: string;
+  task: string;
+  state: 'running' | 'completed' | 'failed' | 'cancelled' | 'disconnected';
+  /** The child's own fold (steps + tool rows only — no cards/slices). */
+  fold: FoldState;
+  startedAt: number;
+  endedAt?: number;
+}
+
 interface ContentBlock {
   type: 'text' | 'reasoning';
   text: string;
@@ -84,6 +102,7 @@ type ConversationRow =
   | { row: 'user'; key: string; blocks: UserBlock[] }
   | { row: 'assistant'; key: string; step: AssistantStep }
   | { row: 'tool'; key: string; root: ToolCallNode }
+  | { row: 'subagent'; key: string; agent: SubagentNode }
   | { row: 'system'; key: string; text: string; tone: 'info' | 'success' | 'error' }
   | { row: 'turn-tail'; key: string; stats: TurnStats };
 
@@ -106,6 +125,8 @@ export interface ElicitationCardState {
 export interface FoldState {
   rows: ConversationRow[];
   toolRowIndex: Map<string, number>;
+  /** #71 — sub-agent rows by subagentId (upsert target for spawned/update/done). */
+  subagentRowIndex: Map<string, number>;
   currentStepIdx: number;
   stepClosed: boolean;
   seq: number;
@@ -162,6 +183,7 @@ export function createFoldState(): FoldState {
   return {
     rows: [],
     toolRowIndex: new Map(),
+    subagentRowIndex: new Map(),
     currentStepIdx: -1,
     stepClosed: true,
     seq: 0,
@@ -282,6 +304,43 @@ function patchToolRow(state: FoldState, call: ChatToolCallView): FoldState {
   return { ...state, rows };
 }
 
+// ---- #71 — native sub-agent rows ----
+
+/** Upsert a sub-agent row; a new child settles the current step like a tool. */
+function spawnSubagent(state: FoldState, agent: SubagentNode): FoldState {
+  const idx = state.subagentRowIndex.get(agent.subagentId);
+  if (idx !== undefined) {
+    const row = state.rows[idx];
+    if (row !== undefined && row.row === 'subagent') {
+      const rows = state.rows.slice();
+      rows[idx] = { ...row, agent: { ...row.agent, name: agent.name, task: agent.task } };
+      return { ...state, rows };
+    }
+  }
+  const rows = [
+    ...state.rows,
+    { row: 'subagent', key: nextKey(state, 'sub'), agent } as ConversationRow,
+  ];
+  const subagentRowIndex = new Map(state.subagentRowIndex);
+  subagentRowIndex.set(agent.subagentId, rows.length - 1);
+  return settleCurrentStep({ ...state, rows, subagentRowIndex, stepClosed: true });
+}
+
+/** Apply a mutation to one sub-agent row; a no-op when the id is unknown. */
+function patchSubagent(
+  state: FoldState,
+  subagentId: string,
+  fn: (agent: SubagentNode) => SubagentNode,
+): FoldState {
+  const idx = state.subagentRowIndex.get(subagentId);
+  if (idx === undefined) return state;
+  const row = state.rows[idx];
+  if (row === undefined || row.row !== 'subagent') return state;
+  const rows = state.rows.slice();
+  rows[idx] = { ...row, agent: fn(row.agent) };
+  return { ...state, rows };
+}
+
 /** Sweep every running step/tool — the idempotent turn tail guard. */
 function sweepRows(state: FoldState, interrupted: boolean): ConversationRow[] {
   return state.rows.map((row, idx) => {
@@ -300,8 +359,31 @@ function sweepRows(state: FoldState, interrupted: boolean): ConversationRow[] {
     if (row.row === 'tool' && row.root.status === 'running') {
       return { ...row, root: { ...row.root, status: 'completed' as const } };
     }
+    if (row.row === 'subagent' && row.agent.state === 'running') {
+      return {
+        ...row,
+        agent: {
+          ...row.agent,
+          state: 'completed' as const,
+          fold: settleChildFold(row.agent.fold),
+          endedAt: Date.now(),
+        },
+      };
+    }
     return row;
   });
+}
+
+/** Settle a child fold in place (no synthetic tail row — the card carries it). */
+function settleChildFold(child: FoldState): FoldState {
+  if (!child.rows.some(isRunningRow)) return child;
+  return {
+    ...child,
+    rows: sweepRows(child, false),
+    currentStepIdx: -1,
+    stepClosed: true,
+    turnActive: false,
+  };
 }
 
 /**
@@ -344,6 +426,44 @@ function applyEvent(state: FoldState, event: ChatStreamEvent): FoldState {
     }
     case 'tool_call':
       return patchToolRow(state, event.call);
+    case 'subagent_spawned':
+      return spawnSubagent(state, {
+        subagentId: event.subagentId,
+        name: event.name,
+        task: event.task,
+        state: 'running',
+        fold: createFoldState(),
+        startedAt: Date.now(),
+      });
+    case 'subagent_update': {
+      // A wrapped update for a child the fold never saw announced (ring
+      // truncation, resync edge) still renders — placeholder first.
+      const base = state.subagentRowIndex.has(event.subagentId)
+        ? state
+        : spawnSubagent(state, {
+            subagentId: event.subagentId,
+            name: '',
+            task: '',
+            state: 'running',
+            fold: createFoldState(),
+            startedAt: Date.now(),
+          });
+      return patchSubagent(base, event.subagentId, (agent) => ({
+        ...agent,
+        fold: applyEvent(agent.fold, event.event),
+      }));
+    }
+    case 'subagent_done':
+      return patchSubagent(state, event.subagentId, (agent) =>
+        agent.state === 'running'
+          ? {
+              ...agent,
+              state: event.state,
+              fold: settleChildFold(agent.fold),
+              endedAt: Date.now(),
+            }
+          : agent,
+      );
     case 'usage':
       return {
         ...state,
@@ -404,7 +524,11 @@ function applyEvent(state: FoldState, event: ChatStreamEvent): FoldState {
       const noRunning = rows.every((r) =>
         r.row === 'assistant'
           ? r.step.status !== 'running'
-          : r.row !== 'tool' || r.root.status !== 'running',
+          : r.row === 'tool'
+            ? r.root.status !== 'running'
+            : r.row === 'subagent'
+              ? r.agent.state !== 'running'
+              : true,
       );
       if (noRunning && lastRow !== undefined && lastRow.row === 'turn-tail') {
         return { ...next, rows };
@@ -558,5 +682,6 @@ function promptBlocksToUserBlocks(blocks: readonly PromptBlock[]): UserBlock[] {
 function isRunningRow(r: ConversationRow): boolean {
   if (r.row === 'assistant') return r.step.status === 'running';
   if (r.row === 'tool') return r.root.status === 'running';
+  if (r.row === 'subagent') return r.agent.state === 'running';
   return false;
 }

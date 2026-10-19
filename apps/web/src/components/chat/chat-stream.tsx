@@ -4,6 +4,7 @@ import { useI18n } from '@/i18n';
 import type { FoldState } from './fold.js';
 import { AssistantStepRow, SystemNote, TurnTail, UserMessage } from './rows.js';
 import { ToolCallRow } from './tool-card.js';
+import { SubagentRow } from './subagent-card.js';
 import { PermissionCards } from './permission-cards.js';
 import { ElicitationCards } from './elicitation-cards.js';
 
@@ -121,6 +122,8 @@ export function ChatStream({
                 return <AssistantStepRow key={row.key} step={row.step} />;
               case 'tool':
                 return <ToolCallRow key={row.key} node={row.root} cwd={cwd} />;
+              case 'subagent':
+                return <SubagentRow key={row.key} agent={row.agent} cwd={cwd} />;
               case 'system':
                 return <SystemNote key={row.key} text={row.text} tone={row.tone} />;
               case 'turn-tail':

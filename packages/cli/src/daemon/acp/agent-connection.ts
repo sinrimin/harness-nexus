@@ -235,7 +235,18 @@ export class AcpAgentConnection implements AgentConnection {
         // render elicitations, and only forwards MCP-server elicitations for
         // advertised modes. Other adapters ignore the capability. url mode is
         // deliberately NOT advertised (no OAuth-jump UI in the portal).
-        { protocolVersion: 1, clientCapabilities: { elicitation: { form: {} } } },
+        //
+        // #71 — advertise native sub-agent sessions: claude-agent-acp then
+        // suppresses the Task tool call from the parent transcript, announces
+        // each child (`subagent_spawned`), streams the child's updates on the
+        // CHILD's own sessionId, and replays child transcripts on session/load.
+        // Without it the child's tool activity pours into the root session and
+        // interleaves with the main agent's transcript. Other adapters ignore
+        // the capability.
+        {
+          protocolVersion: 1,
+          clientCapabilities: { elicitation: { form: {} }, subagents: {} },
+        },
         initializeTimeoutMs,
       )) as typeof result;
     } catch (e) {

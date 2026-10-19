@@ -109,6 +109,21 @@ export type ChatStreamEvent =
   | ({ kind: 'session_config' } & SessionConfigPatch)
   | ({ kind: 'plan' } & PlanPatch)
   | ({ kind: 'commands' } & CommandsPatch)
+  | { kind: 'raw'; method: string; params: unknown }
+  /** #71 — native sub-agent sessions (wrapped daemon-side by frame sessionId). */
+  | { kind: 'subagent_spawned'; subagentId: string; name: string; task: string }
+  | { kind: 'subagent_update'; subagentId: string; event: SubagentChildEvent }
+  | {
+      kind: 'subagent_done';
+      subagentId: string;
+      state: 'completed' | 'failed' | 'cancelled' | 'disconnected';
+    };
+
+/** #71 — the child-side event set a `subagent_update` may carry. */
+export type SubagentChildEvent =
+  | { kind: 'message_delta'; delta: string }
+  | { kind: 'thought_delta'; delta: string }
+  | { kind: 'tool_call'; call: ChatToolCallView }
   | { kind: 'raw'; method: string; params: unknown };
 
 // ---- 9 W14 — ACP plan (todo) snapshots (mirrors shared/realtime.ts) ----
