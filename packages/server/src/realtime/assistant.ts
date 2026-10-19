@@ -53,6 +53,17 @@ interface LiveChannel {
   run: RunningTurn | null;
   openedAt: number;
   /**
+   * #66 — the CURRENT turn's event ring. Assistant rows batch-persist at
+   * turn END, so a viewer reconnecting mid-turn would otherwise miss the
+   * in-flight generation (history stops at the last complete turn and live
+   * deltas resume mid-message). resync/rejoin replay history (complete
+   * turns) then this ring (the in-flight one); it is cleared when the turn
+   * settles, at which point history covers it. `user_message` echoes are
+   * deliberately EXCLUDED — the turn's user row is persisted at turn START,
+   * so history already carries it and a replayed echo would duplicate.
+   */
+  ring: ChatStreamEvent[];
+  /**
    * #54 — LAZY persistence: the not-yet-saved row of a fresh open. Nothing
    * hits the DB until the first message (startTurn saves it), so an
    * open-then-abandon conversation leaves no trace behind a refresh.
@@ -93,8 +104,29 @@ export class AssistantRealtimeService {
 
   // ---- helpers ----
 
+  /** #66 — events kept per live channel for the mid-turn reconnect replay. */
+  private static readonly RING_MAX = 2000;
+
   private emit(sessionId: string, event: ChatStreamEvent): void {
     this.io.toChannel(sessionId, 'assistant:event', { sessionId, event });
+    // #66 — feed the reconnect ring (see LiveChannel.ring). The user_message
+    // echo is history's row already; replaying it would duplicate the row.
+    if (event.kind === 'user_message') return;
+    const ch = this.live.get(sessionId);
+    if (ch === undefined) return;
+    ch.ring.push(event);
+    if (ch.ring.length > AssistantRealtimeService.RING_MAX) {
+      ch.ring.splice(0, ch.ring.length - AssistantRealtimeService.RING_MAX);
+    }
+  }
+
+  /** #66 — replay the in-flight turn's ring into the room (rejoin/resync). */
+  private replayRing(sessionId: string): void {
+    const ch = this.live.get(sessionId);
+    if (ch === undefined || ch.ring.length === 0) return;
+    for (const event of ch.ring) {
+      this.io.toChannel(sessionId, 'assistant:event', { sessionId, event });
+    }
   }
 
   private channelOf(userId: string, sessionId: string): LiveChannel | null {
@@ -230,6 +262,7 @@ export class AssistantRealtimeService {
         queuedPrompt: null,
         run: null,
         openedAt: Date.now(),
+        ring: [],
         ...(sessionId === undefined ? { pending: session } : {}),
       };
       this.live.set(session.id, ch);
@@ -244,6 +277,9 @@ export class AssistantRealtimeService {
       sessionId: session.id,
       items: await rowsToHistoryItems(rows, this.historyResolver()),
     });
+    // #66 — a rejoin mid-turn continues the timeline past history with the
+    // ring (the in-flight generation), BEFORE the synthetic active status.
+    this.replayRing(session.id);
     this.emit(session.id, await this.sessionConfigEvent(ch));
     if (this.running.get(userId) === session.id) {
       this.emit(session.id, { kind: 'session_status', state: 'active' });
@@ -556,6 +592,10 @@ export class AssistantRealtimeService {
       this.emit(ch.sessionId, { kind: 'turn_result', stopReason: 'end_turn' });
       this.emit(ch.sessionId, { kind: 'session_status', state: 'idle' });
     } finally {
+      // #66 — the turn settled and its rows are persisted: history now
+      // covers everything the ring held. Clear it BEFORE flushQueue so a
+      // next-turn flush starts with an empty ring of its own.
+      ch.ring.length = 0;
       // The gate ALWAYS releases — a thrown turn must not wedge the user.
       if (this.running.get(ch.ownerId) === ch.sessionId) this.running.delete(ch.ownerId);
       ch.run = null;
@@ -592,11 +632,13 @@ export class AssistantRealtimeService {
   /**
    * `assistant:session.sync` — re-push the open-time bundle (ready + history
    * + config) into the room. Idempotent (history ingestion rebuilds), and it
-   * closes the open-ack/listener race for freshly mounted panes.
+   * closes the open-ack/listener race for freshly mounted panes. #66: also
+   * the reconnect-recovery verb, so the caller is owner-checked here (the
+   * room receive path must never be joinable by another user).
    */
-  async resync(sessionId: string, socketId: string): Promise<boolean> {
+  async resync(userId: string, sessionId: string, socketId: string): Promise<boolean> {
     const ch = this.live.get(sessionId);
-    if (ch === undefined) return false;
+    if (ch === undefined || ch.ownerId !== userId) return false;
     this.io.joinChannel(socketId, sessionId);
     const config = await this.configOf(ch.ownerId, ch.assistantId);
     this.io.toChannel(sessionId, 'assistant:session.ready', {
@@ -609,6 +651,8 @@ export class AssistantRealtimeService {
       sessionId,
       items: await rowsToHistoryItems(rows, this.historyResolver()),
     });
+    // #66 — the in-flight turn's events continue the timeline past history.
+    this.replayRing(sessionId);
     this.emit(sessionId, await this.sessionConfigEvent(ch));
     if (this.running.get(ch.ownerId) === sessionId) {
       this.emit(sessionId, { kind: 'session_status', state: 'active' });

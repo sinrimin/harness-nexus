@@ -105,6 +105,13 @@ export interface ServerConfig {
    */
   chatIdleTtlMs: number;
   /**
+   * #66 — /app VIEWER grace: when a user's last browser socket drops (weak
+   * network, phone lock screen), their channels are reaped only after this
+   * window; any /app reconnect within it cancels the reap. The browser twin
+   * of chatReconnectGraceMs. 0 = legacy immediate reap on last-socket-gone.
+   */
+  chatViewerGraceMs: number;
+  /**
    * Phase 8 C2 — marketplace emitter `.mcp.json` shape. `client` (default):
    * one stdio `hnx mcp serve` entry per profile. `server`: the pre-C2
    * aggregated-endpoint + PAT-env output (the no-`hnx` fallback).
@@ -187,6 +194,11 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
     chatReadyTimeoutMs: Number(env.CHAT_READY_TIMEOUT_MS ?? '30000'),
     chatReconnectGraceMs: Number(env.CHAT_RECONNECT_GRACE_MS ?? '8000'),
     chatIdleTtlMs: Number(env.CHAT_IDLE_TTL_MS ?? '0'),
+    // #66 — /app viewer grace: how long a user's channels survive the LAST
+    // browser socket dropping (weak-network blip, phone lock screen). 0 =
+    // legacy immediate reap. Presence-based, orthogonal to CHAT_IDLE_TTL_MS
+    // (activity-based).
+    chatViewerGraceMs: Number(env.CHAT_VIEWER_GRACE_MS ?? '300000'),
     emitterMode: (env.EMITTER_MODE as ServerConfig['emitterMode']) ?? 'client',
   };
 }

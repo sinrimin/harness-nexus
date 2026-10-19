@@ -10,6 +10,7 @@ import { ConfirmDialog, DataText, EmptyState } from '@/components/kit';
 import {
   appSocket,
   emitWithAck,
+  onAppResubscribe,
   type AssistantClosedPush,
   type AssistantEventEnvelope,
   type AssistantHistoryEvent,
@@ -233,6 +234,18 @@ export function AssistantSessionPage() {
     if (buffered.configDone === true) {
       appSocket().emit('assistant:session.sync', { sessionId }, () => undefined);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionId]);
+
+  // #66 — silent /app reconnect (weak network, lock screen): the socket lost
+  // every chan-room membership while this pane stayed mounted. Re-sync the
+  // open session; the server re-joins the socket, re-pushes ready + history
+  // (+ the in-flight turn's ring), so the timeline continues seamlessly.
+  useEffect(() => {
+    if (sessionId === '') return;
+    return onAppResubscribe(() => {
+      appSocket().emit('assistant:session.sync', { sessionId }, () => undefined);
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId]);
 

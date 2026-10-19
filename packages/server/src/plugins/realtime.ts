@@ -112,6 +112,7 @@ export async function registerRealtime(
     chatReadyTimeoutMs: number;
     chatReconnectGraceMs: number;
     chatIdleTtlMs: number;
+    chatViewerGraceMs: number;
     sessionsListTimeoutMs: number;
     adaptersReportTimeoutMs: number;
   },
@@ -160,6 +161,7 @@ export async function registerRealtime(
       permissionTimeoutMs: opts.chatPermissionTimeoutMs,
       readyTimeoutMs: opts.chatReadyTimeoutMs,
       idleTtlMs: opts.chatIdleTtlMs,
+      viewerGraceMs: opts.chatViewerGraceMs,
     },
   );
   const assistant = new AssistantRealtimeService(
@@ -346,6 +348,9 @@ export async function registerRealtime(
         realtime.broadcastStatus(updated, true);
         // The daemon is back — drain anything queued while it was offline.
         void realtime.jobs.dispatchPending(machineId);
+        // #66 — re-flush parked chat send-queue entries held back by the
+        // offline guard (same transition, same reason as dispatchPending).
+        realtime.chat.onMachineOnline(machineId);
       }
     })();
 
@@ -629,6 +634,9 @@ export async function registerRealtime(
 
   app.io.of('/app').on('connection', (socket: Socket) => {
     void socket.join(`user:${socket.data.userId as string}`);
+    // #66 — a reconnecting viewer cancels any armed viewer-grace reap FIRST
+    // (before the snapshot below can race the reap's close pushes).
+    realtime.chat.onViewerBack(socket.data.userId as string);
     // 9 W11 B — fresh /app sockets get the live-channel snapshot immediately
     // (the tab bar's initial paint; later changes arrive as pushes).
     realtime.chat.sendSnapshot(socket.data.userId as string);
@@ -860,7 +868,7 @@ export async function registerRealtime(
         return;
       }
       void realtime.assistant
-        .resync(sid, socket.id)
+        .resync(socket.data.userId as string, sid, socket.id)
         .then((ok) => ack?.(ok ? { synced: true } : { error: 'SESSION_NOT_FOUND' }));
     });
 

@@ -217,6 +217,7 @@ export async function buildApp(config: ServerConfig): Promise<FastifyInstance> {
     chatReadyTimeoutMs: config.chatReadyTimeoutMs,
     chatReconnectGraceMs: config.chatReconnectGraceMs,
     chatIdleTtlMs: config.chatIdleTtlMs,
+    chatViewerGraceMs: config.chatViewerGraceMs,
   });
   app.realtime.jobs.start();
   app.addHook('onClose', async () => {

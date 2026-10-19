@@ -19,6 +19,7 @@ import { DataText, LabelText, Well, ConfirmDialog } from '@/components/kit';
 import {
   appSocket,
   emitWithAck,
+  onAppResubscribe,
   type ChatChannelView,
   type ChatEventEnvelope,
   type ChatHistoryEvent,
@@ -699,6 +700,20 @@ export function AgentSessionPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId]);
 
+  // #66 — silent /app reconnect (weak network, lock screen): the socket is a
+  // NEW connection with no chan-room membership while this pane stays
+  // mounted. Re-join the open channel on reconnect; the server re-pushes
+  // ready + resync and the daemon ring replays whatever the gap missed. A
+  // channel that died anyway (grace expiry) bounces SESSION_NOT_FOUND and
+  // the error path surfaces it — honest, never a frozen pane.
+  useEffect(() => {
+    if (sessionId === '') return;
+    return onAppResubscribe(() => {
+      void openChannel(sessionId);
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionId]);
+
   // Live channel wiring — the same contract as the C5 page, plus 9 W7 history.
   useEffect(() => {
     if (sessionId === '') return;
@@ -930,7 +945,9 @@ export function AgentSessionPage() {
           ? t('chat.queueFull')
           : ack.error === 'MACHINE_BUSY'
             ? t('chat.errMachineBusy')
-            : ack.error,
+            : ack.error === 'MACHINE_OFFLINE'
+              ? t('chat.errMachineOffline')
+              : ack.error,
       );
     } else if (ack.queued === true) {
       toast.info(t('chat.queuedToast'));
