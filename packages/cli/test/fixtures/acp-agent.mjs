@@ -20,10 +20,12 @@
  *     prompt containing 'ask-user' (9 W14.1):
  *        elicitation/create (a REQUEST, form mode) → the client's response is
  *        echoed as "elicitation answered: <json>" → end_turn
- *     prompt containing 'run-subagent' (#71):
- *        subagent_spawned (parent) → child frames on the CHILD's sessionId
- *        (text, a Write tool_call, a usage frame that must be dropped) →
- *        subagent_state_update completed → parent text → end_turn
+ *     prompt containing 'run-subagent' (#71, RFD form as spoken by
+ *        claude-agent-acp ≥0.93): Agent tool_call (parent, ordinary) →
+ *        subagent_update running (parent announce) → session_message + text +
+ *        a Write tool_call + a usage frame on the CHILD's sessionId (usage
+ *        must be dropped child-side) → subagent_update idle/end_turn →
+ *        Agent tool_call_update completed → parent text → end_turn
  *     any other prompt: one thought chunk + one text chunk (echo) + usage → end_turn
  *   session/cancel → the pending prompt resolves {stopReason: 'cancelled'}
  *   session/close → {}
@@ -479,20 +481,45 @@ function runPlanShowcase(id, sessionId) {
 }
 
 // #71 — native sub-agent sessions: the adapter-side sequence the daemon must
-// route BY FRAME SESSION ID — the child is announced on the parent, streams
+// route BY FRAME SESSION ID — the child is announced on the parent (the RFD
+// form claude-agent-acp ≥0.93 speaks for a plain `subagents` client), streams
 // its updates on the CHILD's own id (including a usage frame that must be
-// dropped child-side), and closes with a state on the parent. Nothing the
-// child emits may leak into the root stream.
+// dropped child-side), and closes with a terminal state on the parent.
+// Nothing the child emits may leak into the root stream.
 function emitSubagentSequence(parentId) {
   const childId = 'fx-sub-1';
+  // The RFD protocol keeps the launch as an ordinary parent tool call.
+  updateMeta(
+    parentId,
+    {
+      sessionUpdate: 'tool_call',
+      toolCallUpdate: {
+        toolCallId: 'fx-agent-1',
+        title: 'Create the fixture greeting',
+        kind: 'think',
+        status: 'in_progress',
+      },
+    },
+    { claudeCode: { toolName: 'Agent' } },
+  );
   notify('session/update', {
     sessionId: parentId,
     update: {
-      sessionUpdate: 'subagent_spawned',
-      subagentSessionId: childId,
-      name: 'fixture-worker',
-      task: 'Write the fixture greeting',
-      capabilities: {},
+      sessionUpdate: 'subagent_update',
+      sessionId: childId,
+      title: 'fixture-worker',
+      description: 'Write the fixture greeting',
+      state: { state: 'running' },
+    },
+  });
+  notify('session/update', {
+    sessionId: childId,
+    update: {
+      sessionUpdate: 'session_message',
+      recipientSessionId: childId,
+      senderSessionId: parentId,
+      messageId: 'fx-agent-1',
+      content: [{ type: 'text', text: 'please write the greeting file' }],
     },
   });
   notify('session/update', {
@@ -527,11 +554,24 @@ function emitSubagentSequence(parentId) {
   notify('session/update', {
     sessionId: parentId,
     update: {
-      sessionUpdate: 'subagent_state_update',
-      subagentSessionId: childId,
-      state: 'completed',
+      sessionUpdate: 'subagent_update',
+      sessionId: childId,
+      state: { state: 'idle', stopReason: 'end_turn' },
     },
   });
+  updateMeta(
+    parentId,
+    {
+      sessionUpdate: 'tool_call_update',
+      toolCallUpdate: {
+        toolCallId: 'fx-agent-1',
+        title: 'Create the fixture greeting',
+        kind: 'think',
+        status: 'completed',
+      },
+    },
+    { claudeCode: { toolName: 'Agent' } },
+  );
   return childId;
 }
 

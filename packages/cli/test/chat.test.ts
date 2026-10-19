@@ -479,7 +479,7 @@ describe('resolveAcpCommand', () => {
       resolveAcpCommand('claude-code', {}, { homeDir: mkdtempSync(join(tmpdir(), 'hnx-home-')) }),
     ).toEqual({
       command: 'npx',
-      args: ['-y', '@agentclientprotocol/claude-agent-acp@0.79.0'],
+      args: ['-y', '@agentclientprotocol/claude-agent-acp@0.93.0'],
       env: { CLAUDE_CODE_ENABLE_TODO_TOOLS: '1' },
     });
     // 9 W12 — opencode speaks ACP NATIVELY (`opencode acp`).
@@ -3122,15 +3122,16 @@ describe('native sub-agent sessions (#71)', () => {
       name: 'fixture-worker',
       task: 'Write the fixture greeting',
     });
-    // The child's text and tool call arrive WRAPPED — the root stream only
-    // keeps the parent's own message.
+    // The child's incoming prompt (session_message → raw), text and tool call
+    // arrive WRAPPED — the root stream only keeps the parent's own frames
+    // (the Agent launch tool call included: the RFD form keeps it ordinary).
     const updates = events.filter((e) => e.kind === 'subagent_update') as {
       subagentId: string;
       event: ChatStreamEvent;
     }[];
-    expect(updates.map((u) => u.event.kind)).toEqual(['message_delta', 'tool_call']);
+    expect(updates.map((u) => u.event.kind)).toEqual(['raw', 'message_delta', 'tool_call']);
     expect(updates.every((u) => u.subagentId === 'fx-sub-1')).toBe(true);
-    const childTool = updates[1]!.event as { call: { toolName?: string } };
+    const childTool = updates[2]!.event as { call: { toolName?: string } };
     expect(childTool.call.toolName).toBe('Write');
     // Child usage never wraps (root-session concern).
     expect(updates.some((u) => u.event.kind === 'usage')).toBe(false);
@@ -3178,14 +3179,18 @@ describe('native sub-agent sessions (#71)', () => {
     );
     expect(kinds).toEqual([
       'user',
+      'tool_call',
       'subagent_spawned',
       'subagent_update',
       'subagent_update',
+      'subagent_update',
       'subagent_done',
+      'tool_call',
       'turn_result',
     ]);
     const updates = history.items.filter((i) => i.event?.kind === 'subagent_update');
     expect(updates.map((u) => (u.event as { event: ChatStreamEvent }).event.kind)).toEqual([
+      'raw',
       'message_delta',
       'tool_call',
     ]);

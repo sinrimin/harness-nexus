@@ -29,7 +29,7 @@ describe('resolveAcpCommand pinned installs (issue #2)', () => {
     const cmd = resolveAcpCommand('claude-code', ENV, { homeDir: pinnedHome() });
     expect(cmd).toEqual({
       command: 'npx',
-      args: ['-y', '@agentclientprotocol/claude-agent-acp@0.79.0'],
+      args: ['-y', '@agentclientprotocol/claude-agent-acp@0.93.0'],
       env: { CLAUDE_CODE_ENABLE_TODO_TOOLS: '1' },
     });
   });

@@ -1971,12 +1971,42 @@ export function mapAcpUpdate(params: UnknownRecord): ChatStreamEvent | null {
       // The browser echoes the user's message optimistically on the live
       // path; history batches (capture mode) turn these into USER items.
       return null;
+    case 'subagent_update': {
+      // #71 — the RFD sub-agent protocol (claude-agent-acp ≥0.93 for a client
+      // advertising plain `clientCapabilities.subagents`): the parent frame
+      // carries the child's lifecycle. `state.state === 'running'` is the
+      // ANNOUNCE (labels ride `title`/`description`); any later state ends
+      // the child — `idle` + `stopReason` maps onto our terminal states and
+      // `unknown` (unobservable) onto disconnected.
+      const subagentId = boundedId(update.sessionId);
+      if (subagentId === null) return null;
+      const state = asRecord(update.state);
+      const s = state !== null ? state.state : undefined;
+      if (s === 'running') {
+        return {
+          kind: 'subagent_spawned',
+          subagentId,
+          name: boundedText(update.title, 256),
+          task: boundedText(update.description, 8192),
+        };
+      }
+      const stopReason =
+        state !== null && typeof state.stopReason === 'string' ? state.stopReason : undefined;
+      const hasError = state !== null && state.error !== undefined;
+      const terminal: 'completed' | 'failed' | 'cancelled' | 'disconnected' =
+        s === 'unknown'
+          ? 'disconnected'
+          : stopReason === 'cancelled'
+            ? 'cancelled'
+            : stopReason === 'error' || hasError
+              ? 'failed'
+              : 'completed';
+      return { kind: 'subagent_done', subagentId, state: terminal };
+    }
     case 'subagent_spawned': {
-      // #71 — native sub-agent sessions (claude-agent-acp, `subagents`
-      // capability): the child's Task tool call is suppressed from the parent
-      // transcript and replaced by this announcement. `capabilities` and any
-      // later re-announce (replay of an already-known child) are ignored —
-      // the caller registers the id and the web upserts its card.
+      // The 0.79-era AIR draft shape (kept for back-compat; our pin is the
+      // RFD form above): the child's Task tool call is suppressed from the
+      // parent transcript and replaced by this announcement.
       const subagentId = boundedId(update.subagentSessionId);
       const name = boundedText(update.name, 256);
       const task = boundedText(update.task, 8192);
@@ -2042,7 +2072,11 @@ function routeSubagentFrame(
 ): boolean {
   const update = (params.update ?? {}) as UnknownRecord;
   const kind = update.sessionUpdate;
-  if (kind === 'subagent_spawned' || kind === 'subagent_state_update') {
+  if (
+    kind === 'subagent_update' ||
+    kind === 'subagent_spawned' ||
+    kind === 'subagent_state_update'
+  ) {
     const mapped = mapAcpUpdate(params);
     if (mapped !== null) {
       if (mapped.kind === 'subagent_spawned') subagents.add(mapped.subagentId);

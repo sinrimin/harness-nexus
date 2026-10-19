@@ -53,9 +53,20 @@ const DEFAULT_ACP_COMMANDS: Record<AgentTarget, AcpAdapterSpec | null> = {
   // them the agent never emits the ACP plan updates the W14 todo panel feeds
   // on. This documented opt-in revives them (rig-verified: plan snapshots
   // flow end-to-end; ground truth in wiki research-phase-9-w14.1-claude-ground-truth.md).
+  // #71 — 0.79.0 → 0.93.0: two reasons, both rig-verified against the
+  // installed packages. (1) The pinned ACP SDK 1.4.0 zod schema STRIPS an
+  // unknown `clientCapabilities.subagents`, so the daemon's native-subagent
+  // advertisement never reached the runtime; SDK 1.9.0 (bundled by 0.93.0)
+  // keeps it, which is what routes each Task/Agent child onto its own
+  // sessionId instead of pouring the child's tool calls into the parent
+  // stream. (2) agent-sdk 0.3.274's getSessionMessages returns NO sidechain
+  // entries, so a resumed session could not reconstruct sub-agents at all;
+  // 0.3.300 (bundled by 0.93.0) replays them (announce → child frames →
+  // terminal state). The #2 setModel-skip dist patch is RETIRED with this
+  // bump — upstream landed its own skip (`skipSetModel` in session-model.js).
   'claude-code': {
-    command: ['npx', '-y', '@agentclientprotocol/claude-agent-acp@0.79.0'],
-    pkg: ['@agentclientprotocol/claude-agent-acp@0.79.0', 'claude-agent-acp'],
+    command: ['npx', '-y', '@agentclientprotocol/claude-agent-acp@0.93.0'],
+    pkg: ['@agentclientprotocol/claude-agent-acp@0.93.0', 'claude-agent-acp'],
     env: { CLAUDE_CODE_ENABLE_TODO_TOOLS: '1' },
   },
   // Official Zed adapter wrapping the OpenAI Codex CLI (needs `codex` on PATH).
