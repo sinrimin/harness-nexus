@@ -118,8 +118,11 @@ function DefaultPromptDisclosure() {
         {t(open ? 'assistants.defaultPromptHide' : 'assistants.defaultPromptShow')}
       </button>
       {open ? (
-        <Well variant="text" truncate={false} className="mt-1 max-h-64 overflow-auto">
-          <pre className="text-muted-foreground whitespace-pre-wrap font-mono text-xs">
+        // block geometry, not text: wells' inline variants CENTER their
+        // value, which clips a scrollable document's head above the
+        // scrollport (ui-visual P0) — block wells are top-aligned flow.
+        <Well variant="block" truncate={false} className="mt-1 max-h-64 overflow-auto">
+          <pre className="text-muted-foreground break-normal whitespace-pre-wrap font-mono text-xs">
             {DEFAULT_ASSISTANT_SYSTEM_PROMPT}
           </pre>
         </Well>
