@@ -43,22 +43,10 @@ export interface AdapterPatch {
   reason: string;
 }
 
-const SET_MODEL_SKIP_PATCH: AdapterPatch = {
-  id: 'skip-redundant-setmodel-on-resume',
-  pkg: 'claude-agent-acp',
-  file: 'node_modules/@agentclientprotocol/claude-agent-acp/dist/session-model.js',
-  anchor: '    const skipSetModel = resolvedFromInput === undefined ||',
-  replacement:
-    '    const resumedAlreadyRunning = isResumedSession && resumedModelHint !== undefined &&\n' +
-    '        currentModel.value === matchResumedModel(models, resumedModelHint).value;\n' +
-    '    const skipSetModel = resumedAlreadyRunning || resolvedFromInput === undefined ||',
-  marker: 'resumedAlreadyRunning',
-  reason:
-    'skip the setModel re-assert on resume when the session already runs the resolved model ' +
-    '(the control request queues behind the CLI resume bootstrap; rig: session/load 3.37s → 0.98s)',
-};
-
-export const ADAPTER_PATCHES: readonly AdapterPatch[] = [SET_MODEL_SKIP_PATCH];
+// #71 — the setModel-skip patch (issue #2) is RETIRED: upstream 0.93.0 landed
+// its own skip (`skipSetModel` in session-model.js), so the list ships empty.
+// The mechanism stays — a future pinned-version regression gets a patch here.
+export const ADAPTER_PATCHES: readonly AdapterPatch[] = [];
 
 export interface PatchOutcome {
   applied: string[];
@@ -69,10 +57,14 @@ export interface PatchOutcome {
 /**
  * Apply the patch set to an ALREADY installed adapter store. Idempotent: a
  * file carrying the marker (patched before, or by hand) counts as `already`.
+ * `patches` is injectable for tests; production always uses ADAPTER_PATCHES.
  */
-export function applyAdapterPatches(storeDir: string): PatchOutcome {
+export function applyAdapterPatches(
+  storeDir: string,
+  patches: readonly AdapterPatch[] = ADAPTER_PATCHES,
+): PatchOutcome {
   const outcome: PatchOutcome = { applied: [], already: [], failed: [] };
-  for (const patch of ADAPTER_PATCHES) {
+  for (const patch of patches) {
     const file = join(storeDir, patch.file);
     let src: string;
     try {
@@ -105,6 +97,8 @@ export interface ProvisionOptions {
   runNpm?: (args: string[]) => Promise<void>;
   /** npm install timeout (default 10 min, mirroring harness jobs). */
   timeoutMs?: number;
+  /** Overridable for tests: the patch set to apply (defaults to ADAPTER_PATCHES). */
+  patches?: readonly AdapterPatch[];
 }
 
 export interface ProvisionResult extends PatchOutcome {
@@ -131,7 +125,7 @@ export async function provisionAdapters(
 ): Promise<ProvisionResult> {
   const storeDir = join(home, '.hnx', 'acp-adapters');
   if (binsAllPresent(storeDir)) {
-    return { installed: false, ...applyAdapterPatches(storeDir) };
+    return { installed: false, ...applyAdapterPatches(storeDir, opts.patches) };
   }
 
   const specs: readonly string[] = PINNED_ADAPTER_SPECS.map((s: PinnedAdapterSpec) => s.spec);
@@ -175,7 +169,7 @@ export async function provisionAdapters(
     await runNpm(['install', '--prefix', staging, '--no-audit', '--no-fund', ...specs]);
     // Patch INSIDE staging so the store is born patched — a patch failure on
     // a fresh install is reported but never blocks the install itself.
-    const patches = applyAdapterPatches(staging);
+    const patches = applyAdapterPatches(staging, opts.patches);
     rmSync(storeDir, { recursive: true, force: true });
     renameSync(staging, storeDir);
     return { installed: true, ...patches };

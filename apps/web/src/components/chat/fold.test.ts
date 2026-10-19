@@ -206,3 +206,108 @@ describe('#68 hnx/note raw events (dispatch backflow)', () => {
     expect(state.rows).toHaveLength(0);
   });
 });
+
+describe('native sub-agent rows (#71)', () => {
+  const spawned = {
+    kind: 'subagent_spawned' as const,
+    subagentId: 'sub-1',
+    name: 'worker',
+    task: 'write the greeting',
+  };
+
+  it('spawn/update/done fold into one subagent row whose child fold keeps the activity', () => {
+    // The user turn + a main step before the child.
+    let state = fold(createFoldState(), {
+      type: 'event',
+      event: { kind: 'user_message', blocks: [{ type: 'text', text: 'go' }] },
+    });
+    state = fold(state, {
+      type: 'event',
+      event: { kind: 'message_delta', delta: 'delegating…' },
+    });
+    state = fold(state, { type: 'event', event: spawned });
+    state = fold(state, {
+      type: 'event',
+      event: {
+        kind: 'subagent_update',
+        subagentId: 'sub-1',
+        event: { kind: 'message_delta', delta: 'child text' },
+      },
+    });
+    state = fold(state, {
+      type: 'event',
+      event: {
+        kind: 'subagent_update',
+        subagentId: 'sub-1',
+        event: {
+          kind: 'tool_call',
+          call: { toolCallId: 'c1', status: 'completed', toolName: 'Write' },
+        },
+      },
+    });
+    state = fold(state, {
+      type: 'event',
+      event: { kind: 'subagent_done', subagentId: 'sub-1', state: 'completed' },
+    });
+    state = fold(state, { type: 'event', event: { kind: 'message_delta', delta: ' done' } });
+
+    const subRows = state.rows.filter((r) => r.row === 'subagent');
+    expect(subRows).toHaveLength(1);
+    const agent = (subRows[0] as { agent: { state: string; fold: { rows: unknown[] } } }).agent;
+    expect(agent.state).toBe('completed');
+    // The child fold holds the child's text + tool row; the MAIN stream keeps
+    // only the parent's text in its own step.
+    const childKinds = agent.fold.rows.map((r) => (r as { row: string }).row);
+    expect(childKinds).toEqual(['assistant', 'tool']);
+    const mainDeltas = state.rows
+      .filter((r) => r.row === 'assistant')
+      .map((r) =>
+        (r as { step: { blocks: { text: string }[] } }).step.blocks.map((b) => b.text).join(''),
+      );
+    expect(mainDeltas.join('')).toBe('delegating… done');
+    // Main-level tool rows: none from the child.
+    expect(state.rows.some((r) => r.row === 'tool')).toBe(false);
+  });
+
+  it('a wrapped update for an unannounced child still renders (placeholder row)', () => {
+    const state = fold(createFoldState(), {
+      type: 'event',
+      event: {
+        kind: 'subagent_update',
+        subagentId: 'sub-x',
+        event: { kind: 'message_delta', delta: 'orphan child text' },
+      },
+    });
+    const subRows = state.rows.filter((r) => r.row === 'subagent');
+    expect(subRows).toHaveLength(1);
+    const agent = subRows[0] as { agent: { subagentId: string; fold: { rows: unknown[] } } };
+    expect(agent.agent.subagentId).toBe('sub-x');
+    expect(agent.agent.fold.rows).toHaveLength(1);
+  });
+
+  it('history replay reconstructs the card and the turn sweep settles a running child', () => {
+    const items: HistoryItem[] = [
+      { type: 'user', blocks: [{ type: 'text', text: 'go' }] },
+      { type: 'event', event: spawned },
+      {
+        type: 'event',
+        event: {
+          kind: 'subagent_update',
+          subagentId: 'sub-1',
+          event: { kind: 'message_delta', delta: 'child text' },
+        },
+      },
+      // No subagent_done: the replay-tail sweep must settle the child.
+    ];
+    const state = fold(createFoldState(), { type: 'history', items });
+    const subRows = state.rows.filter((r) => r.row === 'subagent');
+    expect(subRows).toHaveLength(1);
+    const agent = subRows[0] as {
+      agent: { state: string; fold: { rows: { row: string; step?: { status: string } }[] } };
+    };
+    expect(agent.agent.state).toBe('completed');
+    expect(
+      agent.agent.fold.rows.every((r) => r.step === undefined || r.step.status !== 'running'),
+    ).toBe(true);
+  });
+});

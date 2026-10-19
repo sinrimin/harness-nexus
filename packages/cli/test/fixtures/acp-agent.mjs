@@ -20,6 +20,12 @@
  *     prompt containing 'ask-user' (9 W14.1):
  *        elicitation/create (a REQUEST, form mode) → the client's response is
  *        echoed as "elicitation answered: <json>" → end_turn
+ *     prompt containing 'run-subagent' (#71, RFD form as spoken by
+ *        claude-agent-acp ≥0.93): Agent tool_call (parent, ordinary) →
+ *        subagent_update running (parent announce) → session_message + text +
+ *        a Write tool_call + a usage frame on the CHILD's sessionId (usage
+ *        must be dropped child-side) → subagent_update idle/end_turn →
+ *        Agent tool_call_update completed → parent text → end_turn
  *     any other prompt: one thought chunk + one text chunk (echo) + usage → end_turn
  *   session/cancel → the pending prompt resolves {stopReason: 'cancelled'}
  *   session/close → {}
@@ -474,6 +480,114 @@ function runPlanShowcase(id, sessionId) {
   finish();
 }
 
+// #71 — native sub-agent sessions: the adapter-side sequence the daemon must
+// route BY FRAME SESSION ID — the child is announced on the parent (the RFD
+// form claude-agent-acp ≥0.93 speaks for a plain `subagents` client), streams
+// its updates on the CHILD's own id (including a usage frame that must be
+// dropped child-side), and closes with a terminal state on the parent.
+// Nothing the child emits may leak into the root stream.
+function emitSubagentSequence(parentId) {
+  const childId = 'fx-sub-1';
+  // The RFD protocol keeps the launch as an ordinary parent tool call.
+  updateMeta(
+    parentId,
+    {
+      sessionUpdate: 'tool_call',
+      toolCallUpdate: {
+        toolCallId: 'fx-agent-1',
+        title: 'Create the fixture greeting',
+        kind: 'think',
+        status: 'in_progress',
+      },
+    },
+    { claudeCode: { toolName: 'Agent' } },
+  );
+  notify('session/update', {
+    sessionId: parentId,
+    update: {
+      sessionUpdate: 'subagent_update',
+      sessionId: childId,
+      title: 'fixture-worker',
+      description: 'Write the fixture greeting',
+      state: { state: 'running' },
+    },
+  });
+  notify('session/update', {
+    sessionId: childId,
+    update: {
+      sessionUpdate: 'session_message',
+      recipientSessionId: childId,
+      senderSessionId: parentId,
+      messageId: 'fx-agent-1',
+      content: [{ type: 'text', text: 'please write the greeting file' }],
+    },
+  });
+  notify('session/update', {
+    sessionId: childId,
+    update: {
+      sessionUpdate: 'agent_message_chunk',
+      contentBlock: { type: 'text', text: 'child step one\n' },
+    },
+  });
+  updateMeta(
+    childId,
+    {
+      sessionUpdate: 'tool_call',
+      toolCallUpdate: {
+        toolCallId: 'fx-sub-write-1',
+        title: 'greeting.txt',
+        kind: 'edit',
+        status: 'completed',
+        rawInput: { file_path: 'greeting.txt', content: 'hi from the child' },
+      },
+    },
+    { claudeCode: { toolName: 'Write' } },
+  );
+  // Child usage is a root-session concern — dropped, never wrapped.
+  notify('session/update', {
+    sessionId: childId,
+    update: {
+      sessionUpdate: 'usage_update',
+      usage: { input_tokens: 10, output_tokens: 5 },
+    },
+  });
+  notify('session/update', {
+    sessionId: parentId,
+    update: {
+      sessionUpdate: 'subagent_update',
+      sessionId: childId,
+      state: { state: 'idle', stopReason: 'end_turn' },
+    },
+  });
+  updateMeta(
+    parentId,
+    {
+      sessionUpdate: 'tool_call_update',
+      toolCallUpdate: {
+        toolCallId: 'fx-agent-1',
+        title: 'Create the fixture greeting',
+        kind: 'think',
+        status: 'completed',
+      },
+    },
+    { claudeCode: { toolName: 'Agent' } },
+  );
+  return childId;
+}
+
+function runSubagentShowcase(id, parentId) {
+  emitSubagentSequence(parentId);
+  notify('session/update', {
+    sessionId: parentId,
+    update: {
+      sessionUpdate: 'agent_message_chunk',
+      contentBlock: { type: 'text', text: 'echo: subagent finished\n' },
+    },
+  });
+  update(parentId, 'usage_update');
+  respond(id, { stopReason: 'end_turn' });
+}
+
 function runPrompt(id, text, deferred = false) {
   const sessionId = 'fx-session'; // single-session fixture; content is what matters
   const finish = (stopReason) => {
@@ -535,6 +649,11 @@ function runPrompt(id, text, deferred = false) {
 
   if (text.includes('show-plan')) {
     runPlanShowcase(id, sessionId);
+    return;
+  }
+
+  if (text.includes('run-subagent')) {
+    runSubagentShowcase(id, sessionId);
     return;
   }
 
@@ -742,6 +861,15 @@ function handleRequest(msg) {
   const { id, method, params } = msg;
   switch (method) {
     case 'initialize':
+      // #71 — tests point FIXTURE_INIT_FILE here to assert the initialize
+      // params (e.g. that clientCapabilities.subagents is advertised).
+      if (process.env.FIXTURE_INIT_FILE) {
+        try {
+          appendFileSync(process.env.FIXTURE_INIT_FILE, `${JSON.stringify(params)}\n`);
+        } catch {
+          /* best effort */
+        }
+      }
       // FIXTURE_NO_INIT=1 — emulate a wrapper that never completes the
       // handshake (e.g. npx dying on a corrupted cache): one stderr line as
       // the diagnostic breadcrumb, and NO response. Tests drive start()
@@ -840,6 +968,21 @@ function handleRequest(msg) {
     case 'session/load': {
       // The claude/codex shape: replay the prior turn BEFORE responding.
       const sid = params?.sessionId ?? 'fx-native-1';
+      // #71 — a resumed session that used a sub-agent replays the child the
+      // same way the live path saw it (announce → child-id frames → state),
+      // so the capture path routes identically.
+      if (sid === 'fx-native-sub') {
+        notify('session/update', {
+          sessionId: sid,
+          update: {
+            sessionUpdate: 'user_message_chunk',
+            contentBlock: { type: 'text', text: 'please run-subagent now' },
+          },
+        });
+        emitSubagentSequence(sid);
+        respond(id, { sessionId: sid });
+        return;
+      }
       if (sid === 'fx-native-fail') {
         // Establishment failure (the dsh pinned-model class) — the daemon
         // must surface the error AND kill this adapter process.

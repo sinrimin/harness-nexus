@@ -479,7 +479,7 @@ describe('resolveAcpCommand', () => {
       resolveAcpCommand('claude-code', {}, { homeDir: mkdtempSync(join(tmpdir(), 'hnx-home-')) }),
     ).toEqual({
       command: 'npx',
-      args: ['-y', '@agentclientprotocol/claude-agent-acp@0.79.0'],
+      args: ['-y', '@agentclientprotocol/claude-agent-acp@0.93.0'],
       env: { CLAUDE_CODE_ENABLE_TODO_TOOLS: '1' },
     });
     // 9 W12 — opencode speaks ACP NATIVELY (`opencode acp`).
@@ -3051,4 +3051,148 @@ describe('ACP client version gate (#46)', () => {
     expect(ready.error).toContain('@deepseek-ai/dsh@latest');
     expect(readAdapterLedger(home)).toHaveLength(0);
   }, 10000);
+});
+
+describe('native sub-agent sessions (#71)', () => {
+  function waitFor<T>(fn: () => T | undefined, ms = 5000): Promise<T> {
+    return new Promise((resolve, reject) => {
+      const started = Date.now();
+      const tick = (): void => {
+        const v = fn();
+        if (v !== undefined) return resolve(v);
+        if (Date.now() - started > ms) return reject(new Error('waitFor: timeout'));
+        setTimeout(tick, 20);
+      };
+      tick();
+    });
+  }
+
+  it('initialize advertises the subagents capability', async () => {
+    const { mkdtempSync, readFileSync, rmSync } = await import('node:fs');
+    const { tmpdir } = await import('node:os');
+    const { join } = await import('node:path');
+    const initFile = join(mkdtempSync(join(tmpdir(), 'hnx-init-')), 'init.jsonl');
+    const socket = new FakeSocket();
+    attachChatHandlers(socket as never, {
+      env: { HN_ACP_COMMAND_HERMES: `node ${FIXTURE}`, PATH: process.env.PATH ?? '' },
+      spawnEnv: { FIXTURE_INIT_FILE: initFile },
+      homeDir: LEDGER_HOME,
+    });
+    socket.receive('chat:session.start', {
+      sessionId: 'sess-sub-cap',
+      agentInstanceId: 'ag-1',
+      target: 'hermes',
+      cwd: '/tmp',
+    });
+    await waitFor(() => socket.emitted.find((e) => e.event === 'chat:session.ready')?.payload);
+    const params = JSON.parse(readFileSync(initFile, 'utf8')) as {
+      clientCapabilities?: { subagents?: unknown; elicitation?: unknown };
+    };
+    expect(params.clientCapabilities?.subagents).toEqual({});
+    expect(params.clientCapabilities?.elicitation).toEqual({ form: {} });
+    rmSync(initFile, { recursive: true, force: true });
+  }, 10000);
+
+  it('live: child frames wrap into subagent_* events and never leak into the root stream', async () => {
+    const socket = new FakeSocket();
+    attachChatHandlers(socket as never, {
+      env: { HN_ACP_COMMAND_HERMES: `node ${FIXTURE}`, PATH: process.env.PATH ?? '' },
+      homeDir: LEDGER_HOME,
+    });
+    socket.receive('chat:session.start', {
+      sessionId: 'sess-sub-1',
+      agentInstanceId: 'ag-1',
+      target: 'hermes',
+      cwd: '/tmp',
+    });
+    await waitFor(() => socket.emitted.find((e) => e.event === 'chat:session.ready')?.payload);
+
+    socket.receive('chat:message.send', {
+      sessionId: 'sess-sub-1',
+      prompt: [{ type: 'text', text: 'please run-subagent now' }],
+    });
+    await waitFor(() => socket.chatEvents().find((e) => e.kind === 'subagent_done'));
+
+    const events = socket.chatEvents();
+    const spawned = events.find((e) => e.kind === 'subagent_spawned') as
+      { subagentId: string; name: string; task: string } | undefined;
+    expect(spawned).toEqual({
+      kind: 'subagent_spawned',
+      subagentId: 'fx-sub-1',
+      name: 'fixture-worker',
+      task: 'Write the fixture greeting',
+    });
+    // The child's incoming prompt (session_message → raw), text and tool call
+    // arrive WRAPPED — the root stream only keeps the parent's own frames
+    // (the Agent launch tool call included: the RFD form keeps it ordinary).
+    const updates = events.filter((e) => e.kind === 'subagent_update') as {
+      subagentId: string;
+      event: ChatStreamEvent;
+    }[];
+    expect(updates.map((u) => u.event.kind)).toEqual(['raw', 'message_delta', 'tool_call']);
+    expect(updates.every((u) => u.subagentId === 'fx-sub-1')).toBe(true);
+    const childTool = updates[2]!.event as { call: { toolName?: string } };
+    expect(childTool.call.toolName).toBe('Write');
+    // Child usage never wraps (root-session concern).
+    expect(updates.some((u) => u.event.kind === 'usage')).toBe(false);
+    // Nothing leaked: no root-level delta/tool row from the child, and the
+    // parent's own text is intact.
+    const rootDeltas = events.filter((e) => e.kind === 'message_delta') as { delta: string }[];
+    expect(rootDeltas.map((d) => d.delta).join('')).toContain('echo: subagent finished');
+    expect(rootDeltas.some((d) => d.delta.includes('child step one'))).toBe(false);
+    expect(
+      events.some(
+        (e) =>
+          e.kind === 'tool_call' &&
+          (e as { call: { toolCallId: string } }).call.toolCallId === 'fx-sub-write-1',
+      ),
+    ).toBe(false);
+    const done = events.find((e) => e.kind === 'subagent_done') as { state: string };
+    expect(done.state).toBe('completed');
+  }, 15000);
+
+  it('resume: the session/load replay routes the child the same way (capture path)', async () => {
+    const socket = new FakeSocket();
+    attachChatHandlers(socket as never, {
+      env: { HN_ACP_COMMAND_HERMES: `node ${FIXTURE}`, PATH: process.env.PATH ?? '' },
+      homeDir: LEDGER_HOME,
+    });
+    socket.receive('chat:session.start', {
+      sessionId: 'sess-sub-2',
+      agentInstanceId: 'ag-1',
+      target: 'hermes',
+      cwd: '/tmp',
+      resume: { sessionId: 'fx-native-sub', cwd: '/tmp' },
+    });
+    const ready = await waitFor(
+      () =>
+        socket.emitted.find((e) => e.event === 'chat:session.ready')?.payload as
+          { error?: string } | undefined,
+    );
+    expect(ready.error).toBeUndefined();
+
+    const history = socket.eventsOf('chat:history')[0]!.payload as {
+      items: { type: string; event?: ChatStreamEvent }[];
+    };
+    const kinds = history.items.map((i) =>
+      i.type === 'user' ? 'user' : (i.event!.kind as string),
+    );
+    expect(kinds).toEqual([
+      'user',
+      'tool_call',
+      'subagent_spawned',
+      'subagent_update',
+      'subagent_update',
+      'subagent_update',
+      'subagent_done',
+      'tool_call',
+      'turn_result',
+    ]);
+    const updates = history.items.filter((i) => i.event?.kind === 'subagent_update');
+    expect(updates.map((u) => (u.event as { event: ChatStreamEvent }).event.kind)).toEqual([
+      'raw',
+      'message_delta',
+      'tool_call',
+    ]);
+  }, 15000);
 });
