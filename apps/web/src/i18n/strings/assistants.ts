@@ -55,6 +55,12 @@ const en = {
   noAssistants: 'No assistant configured',
   noAssistantsHint: 'Create one to chat with the platform.',
   noSessions: 'No conversations yet',
+  // #68 — stopping a turn that has live dispatched client-agent sessions.
+  stopChoiceTitle: 'Stop the assistant?',
+  stopChoiceConsequence:
+    'This turn has {count} live dispatched client-agent session(s). Stop only the client agents (the assistant turn keeps running and learns of the stop), or stop both (the client agents first, then this turn)?',
+  stopClientsOnly: 'Stop client agents only',
+  stopAll: 'Stop all',
   createAssistantCta: 'Create an assistant',
   errNoAssistant: 'This assistant is no longer available.',
   errUnknown: 'Unknown error',
@@ -110,6 +116,11 @@ const zh: typeof en = {
   noAssistants: '尚未配置助理',
   noAssistantsHint: '创建一个即可与平台对话。',
   noSessions: '还没有会话',
+  stopChoiceTitle: '停止平台助理？',
+  stopChoiceConsequence:
+    '当前回合有 {count} 个进行中的被调度客户端 Agent 会话。可仅停止客户端 Agent（平台助理回合继续运行，并会收到停止通知），或全部停止（先停客户端 Agent，再停本回合）。',
+  stopClientsOnly: '仅停客户端 Agent',
+  stopAll: '全部停止',
   createAssistantCta: '创建助理',
   errNoAssistant: '该助理已不可用。',
   errUnknown: '未知错误',

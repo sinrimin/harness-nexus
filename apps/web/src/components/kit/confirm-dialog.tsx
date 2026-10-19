@@ -66,6 +66,12 @@ type ConfirmDialogProps = {
   hazard?: boolean;
   busy?: boolean;
   onConfirm: () => void;
+  /**
+   * #68 — a SECOND action beside the primary one, for a choice dialog
+   * ("stop only the client agents" vs "stop everything"): softer than the
+   * primary, rendered as an outline button in declaration order.
+   */
+  secondaryAction?: { label: ReactNode; onAction: () => void };
   children?: ReactNode;
 };
 
@@ -82,6 +88,7 @@ export function ConfirmDialog({
   hazard,
   busy,
   onConfirm,
+  secondaryAction,
   children,
 }: ConfirmDialogProps) {
   const { t } = useI18n();
@@ -158,6 +165,16 @@ export function ConfirmDialog({
           >
             {t('common.cancel')}
           </Button>
+          {secondaryAction !== undefined ? (
+            <Button
+              type="button"
+              variant="outline"
+              onClick={secondaryAction.onAction}
+              disabled={busy === true}
+            >
+              {secondaryAction.label}
+            </Button>
+          ) : null}
           <Button
             type="button"
             variant={tone === 'danger' ? 'destructive' : 'default'}

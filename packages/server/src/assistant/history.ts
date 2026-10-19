@@ -183,13 +183,29 @@ export function rowsToPiMessages(
     for (const idx of userIdxs.slice(-images.keepTurns)) keepRows.add(idx);
   }
   let i = 0;
+  // #68 — modelVisible notes (dispatch backflow) ride ALONG the conversation,
+  // never as standalone turns: they prepend to the NEXT user row, so a note
+  // that landed mid-turn (between a toolCall and its toolResult in seq order
+  // would break provider alternation) reaches the model exactly one turn
+  // later — which is also the earliest the running turn could see it anyway.
+  const pendingNotes: string[] = [];
+  const takeNotes = (): string | null => {
+    if (pendingNotes.length === 0) return null;
+    const text = pendingNotes.map((n) => `[platform note] ${n}`).join('\n');
+    pendingNotes.length = 0;
+    return text;
+  };
   while (i < rows.length) {
     const row = rows[i]!;
     if (row.type === 'user') {
       const keep = images === undefined ? true : keepRows.has(i);
+      const note = takeNotes();
       out.push({
         role: 'user',
-        content: withImageOnlyGuard(row.blocks.map((b) => toPiUserContent(b, keep, imageMap))),
+        content: withImageOnlyGuard([
+          ...(note !== null ? [{ type: 'text' as const, text: note }] : []),
+          ...row.blocks.map((b) => toPiUserContent(b, keep, imageMap)),
+        ]),
         timestamp: now,
       });
     } else if (row.type === 'assistant') {
@@ -232,8 +248,25 @@ export function rowsToPiMessages(
         });
       }
     }
-    // note rows are platform annotations — display-only, never model context.
+    // note rows are platform annotations — only the modelVisible arm (#68)
+    // reaches the model, folded into the next user turn (see pendingNotes).
+    if (row.type === 'note' && row.modelVisible === true) pendingNotes.push(row.text);
     i += 1;
+  }
+  // Trailing notes (e.g. a completion note after the last assistant turn):
+  // merge into a trailing user row when one exists, else a final user turn.
+  const trailing = takeNotes();
+  if (trailing !== null) {
+    const last = out[out.length - 1];
+    if (last !== undefined && last.role === 'user') {
+      const prev = last.content;
+      last.content = [
+        ...(typeof prev === 'string' ? [{ type: 'text' as const, text: prev }] : prev),
+        { type: 'text' as const, text: trailing },
+      ];
+    } else {
+      out.push({ role: 'user', content: [{ type: 'text', text: trailing }], timestamp: now });
+    }
   }
   return out;
 }
@@ -277,10 +310,17 @@ export async function rowsToHistoryItems(
     if (row.type === 'note') {
       // Failure annotations surface as error system rows; informational notes
       // (rebinds) render nothing in M1 — the config selects show the truth.
+      // The modelVisible arm (#68 — dispatch backflow) renders as a neutral
+      // annotation row, replaying exactly like the live raw event does.
       if (row.text.startsWith('error:')) {
         items.push({
           type: 'event',
           event: { kind: 'raw', method: 'hnx/prompt-error', params: { message: row.text } },
+        });
+      } else if (row.modelVisible === true) {
+        items.push({
+          type: 'event',
+          event: { kind: 'raw', method: 'hnx/note', params: { message: row.text } },
         });
       }
       continue;

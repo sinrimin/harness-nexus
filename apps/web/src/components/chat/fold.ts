@@ -473,6 +473,20 @@ function applyEvent(state: FoldState, event: ChatStreamEvent): FoldState {
           };
         }
       }
+      if (event.method === 'hnx/note') {
+        // #68 — dispatch backflow (user ops on a driven channel, completions):
+        // a platform annotation the conversation should show in place.
+        const message = (event.params as { message?: string } | undefined)?.message;
+        if (message !== undefined && message !== '') {
+          return {
+            ...state,
+            rows: [
+              ...state.rows,
+              { row: 'system', key: nextKey(state, 'note'), text: message, tone: 'info' },
+            ],
+          };
+        }
+      }
       return state;
     default:
       return state;

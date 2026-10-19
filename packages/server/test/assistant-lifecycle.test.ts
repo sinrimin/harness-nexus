@@ -156,3 +156,26 @@ describe('#54 — lazy session persistence', () => {
     expect(snap.sessions.map((s) => s.id)).not.toContain('legacy-empty');
   });
 });
+
+describe("#68 — mid-turn notes survive the turn's settle batch", () => {
+  it('a dispatch-backflow note written mid-turn keeps its row and its seq', async () => {
+    const h = await setup();
+    const id = await makeConfig(h.uow);
+    h.faux.setResponses([piAi.fauxAssistantMessage([piAi.fauxText('done talking')])]);
+    const res = await h.svc.open(owner.userId, id, undefined, 'sock-1');
+    const sessionId = res.ok ? res.sessionId : '';
+    await h.svc.onMessageSend(owner.userId, sessionId, 'hi');
+    // The backflow note lands while the turn is still streaming — its seq
+    // allocation must not collide with the turn's settle-time row batch
+    // (pre-#68 the batch overwrote the note: both claimed max(seq)+1).
+    await h.svc.addDispatchNote(sessionId, 'dispatch c1: the user stopped the driven agent turn');
+    await settle(h.svc, h.uow, sessionId);
+    const rows = await h.uow.assistants.listMessages(sessionId);
+    const note = rows.find((r) => r.type === 'note' && r.text.includes('user stopped'));
+    expect(note).toBeDefined();
+    expect(note!.type === 'note' && note!.modelVisible).toBe(true);
+    expect(rows.some((r) => r.type === 'assistant')).toBe(true);
+    const seqs = rows.map((r) => r.seq);
+    expect(new Set(seqs).size).toBe(seqs.length);
+  });
+});

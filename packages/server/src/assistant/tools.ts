@@ -108,12 +108,15 @@ function profileSummary(p: { id: string; name: string; scope: string; version: s
 /**
  * Build the enabled groups' tools for one turn. The principal is captured at
  * TURN START (the runner re-reads the owner's role from the DB there), so a
- * disable/demote takes effect on the next turn.
+ * disable/demote takes effect on the next turn. `session` (#68) routes the
+ * dispatch backflow (user-op notes, completion pushes) to the assistant
+ * session the tools run for.
  */
 export function buildAssistantTools(
   deps: AssistantToolDeps,
   principal: Principal,
   groups: readonly AssistantToolGroup[],
+  session?: { sessionId: string },
 ): AgentTool<TSchema>[] {
   const enabled = new Set<AssistantToolGroup>(groups);
   const tools: AgentTool<TSchema>[] = [];
@@ -280,7 +283,7 @@ export function buildAssistantTools(
         name: 'agent_dispatch',
         label: 'Dispatch client agent',
         description:
-          "Send a prompt to a client agent (AgentInstance) on one of the user's machines and return a handle immediately — the agent runs ASYNC; poll the outcome with agent_dispatch_poll. To CONTINUE a previous dispatch's native session, pass resume = { sessionId, cwd } exactly as that dispatch's poll result reported them. The channel shows in the user's web chat tabs; permission prompts the driven agent raises are answerable there.",
+          "Send a prompt to a client agent (AgentInstance) on one of the user's machines and return a handle immediately — the agent runs ASYNC; poll the outcome with agent_dispatch_poll. To CONTINUE a previous dispatch's native session, pass resume = { sessionId, cwd } exactly as that dispatch's poll result reported them. The channel shows in the user's web chat tabs; permission prompts the driven agent raises are answerable there, and anything the USER does on it (stopping it, interjecting, closing it) comes back via poll notices.",
         parameters: Type.Object({
           agentInstanceId: Type.String({
             description: 'The agent instance to drive (machine_agents_list).',
@@ -306,6 +309,7 @@ export function buildAssistantTools(
             dispatch.dispatch(principal.userId, {
               agentInstanceId: params.agentInstanceId,
               prompt: params.prompt,
+              ...(session !== undefined ? { assistantSessionId: session.sessionId } : {}),
               ...(params.directory !== undefined ? { directory: params.directory } : {}),
               ...(params.resume !== undefined ? { resume: params.resume } : {}),
             }),
@@ -315,7 +319,7 @@ export function buildAssistantTools(
         name: 'agent_dispatch_poll',
         label: 'Poll dispatched agent',
         description:
-          "Fetch a dispatch's outcome. status running/starting = still working (optionally waitMs to block for a change, max 60000); done carries the turn's final text, stopReason, usage, and the nativeSessionId+cwd continuation handle; closed/failed are terminal and explain themselves. pendingPermission=true means the driven agent waits on a permission card the user must answer in the web chat tab.",
+          "Fetch a dispatch's outcome. status running/starting = still working (optionally waitMs to block for a change, max 60000); done carries the turn's final text, stopReason, usage, and the nativeSessionId+cwd continuation handle; closed/failed are terminal and explain themselves. pendingPermission=true means the driven agent waits on a permission card the user must answer in the web chat tab. notices[] lists USER operations on the driven channel since your last poll (the user stopped/interjected/reconfigured it) — they carry the user's intent, not failures.",
         parameters: Type.Object({
           channelId: Type.String({ description: 'The handle agent_dispatch returned.' }),
           waitMs: Type.Optional(

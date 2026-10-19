@@ -229,7 +229,11 @@ export function startAssistantTurn(
       new Date().toISOString(),
     );
 
-    const tools = buildAssistantTools(deps, principal, config.enabledToolGroups);
+    // #68 — the dispatch tools carry the session id so the backflow (user-op
+    // notes, completion pushes) routes to THIS assistant session.
+    const tools = buildAssistantTools(deps, principal, config.enabledToolGroups, {
+      sessionId: session.id,
+    });
 
     // M2 — configured skills (prompt index + read_skill) and MCP servers
     // (pooled tools wrapped as AgentTools). Availability resolves against

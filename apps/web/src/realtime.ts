@@ -274,6 +274,22 @@ export interface ChatChannelsPush {
   channels: ChatChannelView[];
 }
 
+// ---- #68 — assistant dispatch backflow (mirrors server assistant-dispatch.ts) ----
+
+/** One dispatch record of an assistant session, as pushed to the owner. */
+export interface AssistantDispatchView {
+  channelId: string;
+  agentInstanceId: string;
+  status: 'starting' | 'running' | 'done' | 'failed' | 'closed';
+  busy: boolean;
+}
+
+/** The per-session dispatch snapshot (on open/sync and every lifecycle change). */
+export interface AssistantDispatchesPush {
+  sessionId: string;
+  dispatches: AssistantDispatchView[];
+}
+
 // ---- 9 W7 — native session history (mirrors shared/realtime.ts) ----
 
 /** One prompt block the browser may send / one history user item carries. */

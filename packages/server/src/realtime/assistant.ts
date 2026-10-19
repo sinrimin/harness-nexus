@@ -532,11 +532,17 @@ export class AssistantRealtimeService {
     }
 
     const rowsBefore = await this.deps.uow.assistants.listMessages(ch.sessionId);
-    let seq = rowsBefore.reduce((max, r) => Math.max(max, r.seq), 0) + 1;
-    await this.deps.uow.assistants.appendMessage(ch.sessionId, {
-      seq,
-      type: 'user',
-      blocks: prompt,
+    // #68 — every transcript write allocates its seq UNDER the session's
+    // chain (a mid-turn backflow note may have bumped the tail since
+    // rowsBefore was read).
+    await this.transact(ch.sessionId, async () => {
+      const rowsNow = await this.deps.uow.assistants.listMessages(ch.sessionId);
+      const seq = rowsNow.reduce((max, r) => Math.max(max, r.seq), 0) + 1;
+      await this.deps.uow.assistants.appendMessage(ch.sessionId, {
+        seq,
+        type: 'user',
+        blocks: prompt,
+      });
     });
     // #11 — the echo is the single source of the user row for every viewer.
     // #59 — the echo carries the WIRE view (refs resolved inline, transient).
@@ -554,8 +560,13 @@ export class AssistantRealtimeService {
         emit: (event) => this.emit(ch.sessionId, event),
         requestApproval: this.makeApprovalSeam(ch),
         append: async (row: AssistantMessageRow) => {
-          seq += 1;
-          await this.deps.uow.assistants.appendMessage(ch.sessionId, { ...row, seq });
+          // #68 — allocate from the LIVE tail (a mid-turn note may have
+          // claimed this seq since the turn started).
+          await this.transact(ch.sessionId, async () => {
+            const rowsNow = await this.deps.uow.assistants.listMessages(ch.sessionId);
+            const seq = rowsNow.reduce((max, r) => Math.max(max, r.seq), 0) + 1;
+            await this.deps.uow.assistants.appendMessage(ch.sessionId, { ...row, seq });
+          });
         },
         settle: async (summary) => {
           const now = new Date().toISOString();
@@ -578,11 +589,14 @@ export class AssistantRealtimeService {
       if (!(err instanceof TurnSetupError)) throw err;
       // Setup failures (provider/credential/model drift) end the turn
       // honestly: an error row + system note, never a wedged busy gate.
-      seq += 1;
-      await this.deps.uow.assistants.appendMessage(ch.sessionId, {
-        seq,
-        type: 'note',
-        text: `error: ${err.message}`,
+      await this.transact(ch.sessionId, async () => {
+        const rowsNow = await this.deps.uow.assistants.listMessages(ch.sessionId);
+        const seq = rowsNow.reduce((max, r) => Math.max(max, r.seq), 0) + 1;
+        await this.deps.uow.assistants.appendMessage(ch.sessionId, {
+          seq,
+          type: 'note',
+          text: `error: ${err.message}`,
+        });
       });
       this.emit(ch.sessionId, {
         kind: 'raw',
@@ -623,10 +637,54 @@ export class AssistantRealtimeService {
     }
   }
 
-  private async appendNote(sessionId: string, text: string): Promise<void> {
-    const rows = await this.deps.uow.assistants.listMessages(sessionId);
-    const seq = rows.reduce((max, r) => Math.max(max, r.seq), 0) + 1;
-    await this.deps.uow.assistants.appendMessage(sessionId, { seq, type: 'note', text });
+  private async appendNote(sessionId: string, text: string, modelVisible = false): Promise<void> {
+    await this.transact(sessionId, async () => {
+      const rows = await this.deps.uow.assistants.listMessages(sessionId);
+      const seq = rows.reduce((max, r) => Math.max(max, r.seq), 0) + 1;
+      await this.deps.uow.assistants.appendMessage(sessionId, {
+        seq,
+        type: 'note',
+        text,
+        ...(modelVisible ? { modelVisible: true as const } : {}),
+      });
+    });
+  }
+
+  /**
+   * #68 — serialize per-session seq allocation. Mid-turn notes (dispatch
+   * backflow) and the turn's settle-time row batch both allocate max(seq)+1;
+   * unsynchronized they collide and one silently overwrites the other (the
+   * memory driver keys by seq; sqlite's PK would throw). One chain per
+   * session keeps every writer strictly ordered; the chain entry drops
+   * itself once idle.
+   */
+  private seqChains = new Map<string, Promise<unknown>>();
+
+  private transact<T>(sessionId: string, fn: () => Promise<T>): Promise<T> {
+    const prev = this.seqChains.get(sessionId) ?? Promise.resolve();
+    const run = prev.then(fn);
+    const tail = run.then(
+      () => undefined,
+      () => undefined,
+    );
+    this.seqChains.set(sessionId, tail);
+    void tail.then(() => {
+      if (this.seqChains.get(sessionId) === tail) this.seqChains.delete(sessionId);
+    });
+    return run;
+  }
+
+  /**
+   * #68 — a dispatch-backflow note (user operation on a driven channel, or a
+   * dispatch completion): persisted as a modelVisible note row AND relayed
+   * live to the session's room, so an open stream shows it the moment it
+   * happens and the next model turn folds it into its context. Called by the
+   * dispatch coordinator at any time — a closed page just misses the live
+   * relay and finds the row in history.
+   */
+  async addDispatchNote(sessionId: string, text: string): Promise<void> {
+    await this.appendNote(sessionId, text, true);
+    this.emit(sessionId, { kind: 'raw', method: 'hnx/note', params: { message: text } });
   }
 
   /**

@@ -12,6 +12,8 @@ import {
   emitWithAck,
   onAppResubscribe,
   type AssistantClosedPush,
+  type AssistantDispatchesPush,
+  type AssistantDispatchView,
   type AssistantEventEnvelope,
   type AssistantHistoryEvent,
   type AssistantReadyPush,
@@ -179,6 +181,17 @@ export function AssistantSessionPage() {
    */
   const noAssistants = loaded && (assistants ?? []).length === 0;
 
+  // #68 — the open session's dispatch snapshot (assistant:dispatches pushes).
+  // LIVE entries drive the stop-choice: cancelling the assistant turn alone
+  // would leave the driven client agents running (or wake it on completion).
+  const [dispatches, setDispatches] = useState<AssistantDispatchView[]>([]);
+  useEffect(() => {
+    setDispatches([]);
+  }, [sessionId]);
+  const liveDispatches = dispatches.filter(
+    (d) => d.status === 'starting' || d.status === 'running',
+  );
+
   const refreshSessions = useCallback(() => {
     // The push hook owns the rail's truth; this exists to re-ask after a
     // config page round-trip (a deleted config changes what can open).
@@ -275,15 +288,22 @@ export function AssistantSessionPage() {
       setPhase('closed');
       setError(push.reason);
     };
+    // #68 — this session's dispatch snapshot (the stop-choice UI's truth).
+    const onDispatches = (push: AssistantDispatchesPush): void => {
+      if (push.sessionId !== sessionId) return;
+      setDispatches(push.dispatches);
+    };
     socket.on('assistant:event', onEvent);
     socket.on('assistant:history', onHistory);
     socket.on('assistant:session.ready', onReady);
     socket.on('assistant:session.closed', onClosed);
+    socket.on('assistant:dispatches', onDispatches);
     return () => {
       socket.off('assistant:event', onEvent);
       socket.off('assistant:history', onHistory);
       socket.off('assistant:session.ready', onReady);
       socket.off('assistant:session.closed', onClosed);
+      socket.off('assistant:dispatches', onDispatches);
     };
   }, [sessionId]);
 
@@ -404,6 +424,22 @@ export function AssistantSessionPage() {
   async function cancelTurn(): Promise<void> {
     if (sessionId === '') return;
     await emitWithAck('assistant:turn.cancel', { sessionId });
+  }
+
+  // #68 — a turn with LIVE dispatches stops by CHOICE: only the driven client
+  // agents (this turn keeps running and learns the stop through the backflow),
+  // or both (clients FIRST — a completing client would otherwise wake the
+  // aborted turn — then this turn). The cancels ride the ordinary chat verb,
+  // so each one lands in the assistant session as a user-stopped note.
+  const [stopChoice, setStopChoice] = useState(false);
+  async function stopDispatchedClients(): Promise<void> {
+    for (const d of liveDispatches) {
+      await emitWithAck('chat:turn.cancel', { sessionId: d.channelId });
+    }
+  }
+  function requestStop(): void {
+    if (liveDispatches.length > 0) setStopChoice(true);
+    else void cancelTurn();
   }
 
   async function configSet(set: ChatConfigSetPayload): Promise<void> {
@@ -725,7 +761,7 @@ export function AssistantSessionPage() {
                       turnActive={conversation.turnActive}
                       usage={conversation.usage}
                       onSend={() => void send()}
-                      onCancel={() => void cancelTurn()}
+                      onCancel={requestStop}
                       attachments={attachments}
                       fileRefs={[]}
                       onRemoveAttachment={(id) =>
@@ -761,6 +797,32 @@ export function AssistantSessionPage() {
           tone="danger"
           irreversible
           onConfirm={() => void deleteSession()}
+        />
+      ) : null}
+
+      {stopChoice ? (
+        <ConfirmDialog
+          open
+          onOpenChange={setStopChoice}
+          title={t('assistants.stopChoiceTitle')}
+          consequence={t('assistants.stopChoiceConsequence', { count: liveDispatches.length })}
+          actionLabel={t('assistants.stopAll')}
+          secondaryAction={{
+            label: t('assistants.stopClientsOnly'),
+            onAction: () => {
+              setStopChoice(false);
+              void stopDispatchedClients();
+            },
+          }}
+          hazard
+          irreversible={false}
+          onConfirm={() => {
+            setStopChoice(false);
+            void (async () => {
+              await stopDispatchedClients();
+              await cancelTurn();
+            })();
+          }}
         />
       ) : null}
     </>

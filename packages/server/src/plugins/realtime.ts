@@ -58,6 +58,19 @@ import { AssistantRealtimeService } from '../realtime/assistant.js';
 import { ReconnectGuard } from '../realtime/reconnect.js';
 import { JobService } from '../jobs/service.js';
 
+/** #68 — a send's text (string or blocks) for the dispatch backflow note. */
+function chatTextOf(content: string | unknown[]): string {
+  if (typeof content === 'string') return content;
+  if (!Array.isArray(content)) return '';
+  return content
+    .filter(
+      (b): b is { type: 'text'; text: string } =>
+        typeof b === 'object' && b !== null && (b as { type?: unknown }).type === 'text',
+    )
+    .map((b) => b.text)
+    .join('\n');
+}
+
 /**
  * Realtime channel (Phase 8) — Socket.IO attached to the Fastify HTTP server.
  *
@@ -203,6 +216,16 @@ export async function registerRealtime(
     // M3 — write-gate watchdog; same latency budget as machine-chat permissions.
     { permissionTimeoutMs: opts.chatPermissionTimeoutMs },
   );
+  // #68 — the dispatch backflow sink: user operations / completions on driven
+  // channels land as model-visible notes in the owning assistant session, and
+  // the session's dispatch snapshot pushes to the owner's /app sockets (the
+  // stop-choice UI's source of truth).
+  assistantDispatch.attach({
+    note: (sessionId, text) => assistant.addDispatchNote(sessionId, text),
+    dispatches: (userId, sessionId, views) => {
+      appNs.to(`user:${userId}`).emit('assistant:dispatches', { sessionId, dispatches: views });
+    },
+  });
 
   const jobs = new JobService(
     {
@@ -710,6 +733,16 @@ export async function registerRealtime(
         parsed.data.sessionId,
         parsed.data.content,
       );
+      if (result.ok) {
+        // #68 — an interjection into a driven channel flows back to the
+        // dispatching assistant session (it runs as the channel's next turn).
+        realtime.assistantDispatch.noteUserOp(
+          socket.data.userId as string,
+          parsed.data.sessionId,
+          'message.send',
+          { text: chatTextOf(parsed.data.content) },
+        );
+      }
       // #10 — `queued` tells the Sender its message parked in the slot (the
       // queue_state event follows as the durable truth).
       ack?.(result.ok ? { accepted: true, queued: result.queued } : { error: result.code });
@@ -726,6 +759,13 @@ export async function registerRealtime(
         socket.data.userId as string,
         parsed.data.sessionId,
       );
+      if (result.ok) {
+        realtime.assistantDispatch.noteUserOp(
+          socket.data.userId as string,
+          parsed.data.sessionId,
+          'queue.cancel',
+        );
+      }
       ack?.(result.ok ? { accepted: true } : { error: result.code });
     });
 
@@ -739,6 +779,15 @@ export async function registerRealtime(
         socket.data.userId as string,
         parsed.data.sessionId,
       );
+      if (result.ok) {
+        // #68 — "the user stopped it" reaches the assistant as intent, not a
+        // failure to retry (a driven channel's cancel is ambiguous otherwise).
+        realtime.assistantDispatch.noteUserOp(
+          socket.data.userId as string,
+          parsed.data.sessionId,
+          'turn.cancel',
+        );
+      }
       ack?.(result.ok ? { accepted: true } : { error: result.code });
     });
 
@@ -753,6 +802,16 @@ export async function registerRealtime(
       }
       const { sessionId, ...set } = parsed.data;
       const result = realtime.chat.onConfigSet(socket.data.userId as string, sessionId, set);
+      if (result.ok) {
+        realtime.assistantDispatch.noteUserOp(
+          socket.data.userId as string,
+          sessionId,
+          'config.set',
+          {
+            config: set,
+          },
+        );
+      }
       ack?.(result.ok ? { accepted: true } : { error: result.code });
     });
 
@@ -768,6 +827,16 @@ export async function registerRealtime(
         parsed.data.requestId,
         parsed.data.optionId,
       );
+      if (result.ok) {
+        realtime.assistantDispatch.noteUserOp(
+          socket.data.userId as string,
+          parsed.data.sessionId,
+          'permission.respond',
+          {
+            ...(parsed.data.optionId !== undefined ? { optionId: parsed.data.optionId } : {}),
+          },
+        );
+      }
       ack?.(result.ok ? { accepted: true } : { error: result.code });
     });
 
@@ -786,6 +855,14 @@ export async function registerRealtime(
         action,
         values,
       );
+      if (result.ok) {
+        realtime.assistantDispatch.noteUserOp(
+          socket.data.userId as string,
+          sessionId,
+          'elicitation.respond',
+          { action },
+        );
+      }
       ack?.(result.ok ? { accepted: true } : { error: result.code });
     });
 
@@ -801,6 +878,13 @@ export async function registerRealtime(
           parsed.data.sessionId,
           parsed.data.reason,
         );
+        if (result.ok) {
+          realtime.assistantDispatch.noteUserOp(
+            socket.data.userId as string,
+            parsed.data.sessionId,
+            'session.close',
+          );
+        }
         ack?.(result.ok ? { closed: true } : { error: result.code });
       })();
     });
@@ -819,6 +903,9 @@ export async function registerRealtime(
           socket.data.userId as string,
           parsed.data.idleOnly ?? false,
         );
+        if (result.closed > 0 || result.deferred > 0) {
+          realtime.assistantDispatch.noteCloseAll(socket.data.userId as string);
+        }
         ack?.(result);
       })();
     });
@@ -855,6 +942,8 @@ export async function registerRealtime(
           ack?.({ error: result.code });
           return;
         }
+        // #68 — the stop-choice UI needs this session's live dispatches.
+        realtime.assistantDispatch.pushFor(socket.data.userId as string, result.sessionId);
         ack?.({ sessionId: result.sessionId, assistantName: result.assistantName });
       })();
     });
@@ -875,9 +964,10 @@ export async function registerRealtime(
         ack?.({ error: 'proto:invalid' });
         return;
       }
-      void realtime.assistant
-        .resync(socket.data.userId as string, sid, socket.id)
-        .then((ok) => ack?.(ok ? { synced: true } : { error: 'SESSION_NOT_FOUND' }));
+      void realtime.assistant.resync(socket.data.userId as string, sid, socket.id).then((ok) => {
+        if (ok) realtime.assistantDispatch.pushFor(socket.data.userId as string, sid);
+        ack?.(ok ? { synced: true } : { error: 'SESSION_NOT_FOUND' });
+      });
     });
 
     socket.on('assistant:message.send', (payload: unknown, ack?: (res: unknown) => void) => {
