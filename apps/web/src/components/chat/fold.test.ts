@@ -162,3 +162,47 @@ describe('fold history ingestion (#8: user item = turn boundary)', () => {
     expect(twice.rows.length).toBe(once.rows.length);
   });
 });
+
+describe('#68 hnx/note raw events (dispatch backflow)', () => {
+  it('renders as an info system row, live and via history replay alike', () => {
+    const state = fold(createFoldState(), {
+      type: 'event',
+      event: {
+        kind: 'raw',
+        method: 'hnx/note',
+        params: { message: 'dispatch c1: the user stopped the driven agent turn manually' },
+      },
+    });
+    const row = state.rows[state.rows.length - 1];
+    if (row === undefined || row.row !== 'system') throw new Error('expected a system row');
+    expect(row.text).toContain('user stopped');
+    expect(row.tone).toBe('info');
+
+    const replayed = fold(createFoldState(), {
+      type: 'history',
+      items: [
+        { type: 'user', blocks: [{ type: 'text', text: 'run it' }] },
+        {
+          type: 'event',
+          event: {
+            kind: 'raw',
+            method: 'hnx/note',
+            params: { message: 'dispatch c1: the driven turn finished' },
+          },
+        },
+      ],
+    });
+    const replayRow = replayed.rows.find((r) => r.row === 'system');
+    if (replayRow === undefined) throw new Error('expected a system row in replay');
+    expect(replayRow.tone).toBe('info');
+    expect(replayRow.text).toContain('finished');
+  });
+
+  it('unknown raw methods stay silent (no phantom rows)', () => {
+    const state = fold(createFoldState(), {
+      type: 'event',
+      event: { kind: 'raw', method: 'hnx/something-else', params: {} },
+    });
+    expect(state.rows).toHaveLength(0);
+  });
+});

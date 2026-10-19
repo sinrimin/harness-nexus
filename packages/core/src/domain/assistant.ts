@@ -119,8 +119,11 @@ export interface AssistantToolResultItem {
 /**
  * The persisted transcript, append-only per session. `seq` is the fold order.
  * The `note` arm records platform-side annotations (rebind to another
- * assistant config, refusal-to-run reasons) — shown in history, never sent to
- * the model.
+ * assistant config, refusal-to-run reasons). Notes are display-only by
+ * default; `modelVisible: true` (#68 — dispatch backflow) marks notes the
+ * MODEL must also see on its next turn (user operations on a dispatched
+ * client agent, dispatch completions) — they fold into the following user
+ * turn at context-build time, never between a toolCall and its toolResult.
  */
 export type AssistantMessageRow =
   | { seq: number; type: 'user'; blocks: AssistantPromptBlock[] }
@@ -136,7 +139,7 @@ export type AssistantMessageRow =
       error?: string;
     }
   | { seq: number; type: 'toolResult'; results: AssistantToolResultItem[] }
-  | { seq: number; type: 'note'; text: string };
+  | { seq: number; type: 'note'; text: string; modelVisible?: true };
 
 /** Audit row — one per tool execution, written from the pi after-hook. */
 export interface AssistantToolCallAudit {

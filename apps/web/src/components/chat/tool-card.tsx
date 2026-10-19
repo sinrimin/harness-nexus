@@ -1,17 +1,21 @@
 import { Component, memo, useState, type ComponentType, type ReactNode } from 'react';
+import { Link } from 'react-router-dom';
 import {
   SquareTerminalIcon,
   BookOpenIcon,
   ChevronDownIcon,
+  ExternalLinkIcon,
   FileEditIcon,
   GlobeIcon,
   ListTodoIcon,
   SearchIcon,
+  SendIcon,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useI18n } from '@/i18n';
 import { StateSignal } from '@/components/state-signal';
 import type { ToolCallNode } from './fold.js';
+import { useChatChannels } from './use-chat-channels.js';
 import {
   bashCommandParts,
   editDiffParts,
@@ -246,6 +250,92 @@ function prettyInput(node: ToolCallNode): string | null {
   return s === '{}' ? null : s;
 }
 
+// ---- #67/#68 — the assistant's dispatch tools ----
+
+/** The dispatch handle: the poll carries it in its args; the opener only in
+ *  its (JSON) result. Null until either is available. */
+function dispatchChannelId(node: ToolCallNode): string | null {
+  const input = node.rawInput;
+  const fromArgs =
+    typeof input === 'object' && input !== null
+      ? (input as { channelId?: unknown }).channelId
+      : undefined;
+  if (typeof fromArgs === 'string' && fromArgs !== '') return fromArgs;
+  if (node.output !== undefined && node.output !== '') {
+    try {
+      const parsed = JSON.parse(node.output) as { channelId?: unknown };
+      if (typeof parsed.channelId === 'string' && parsed.channelId !== '') return parsed.channelId;
+    } catch {
+      // a non-JSON result (error text) — no handle to link
+    }
+  }
+  return null;
+}
+
+function dispatchSummary(node: ToolCallNode): string | undefined {
+  const input = node.rawInput;
+  if (
+    node.toolName === 'agent_dispatch' &&
+    typeof input === 'object' &&
+    input !== null &&
+    typeof (input as { prompt?: unknown }).prompt === 'string'
+  ) {
+    const prompt = (input as { prompt: string }).prompt;
+    return prompt.length > 80 ? `${prompt.slice(0, 80)}…` : prompt;
+  }
+  if (node.output !== undefined && node.output !== '') {
+    try {
+      const parsed = JSON.parse(node.output) as { status?: unknown; stopReason?: unknown };
+      if (typeof parsed.status === 'string') {
+        return (
+          parsed.status + (typeof parsed.stopReason === 'string' ? ` (${parsed.stopReason})` : '')
+        );
+      }
+    } catch {
+      // fall through to the generic preview
+    }
+  }
+  return toolArgumentsPreview(node);
+}
+
+const DispatchCard = memo(function DispatchCard({ node }: ToolCardProps) {
+  const { t } = useI18n();
+  const channels = useChatChannels();
+  // #68 — the live-session link exists exactly while the channel does (the
+  // driven channel closes itself at the dispatch's turn end).
+  const channelId = dispatchChannelId(node);
+  const channel = channelId !== null ? channels.find((c) => c.sessionId === channelId) : undefined;
+  const liveLink =
+    channel !== undefined && channelId !== null ? (
+      <Link
+        to={`/chat/agents/${channel.agentInstanceId}?ch=${encodeURIComponent(channelId)}`}
+        className="text-signal hover:text-signal/80 flex h-6 shrink-0 items-center gap-1 text-[11px] font-medium"
+      >
+        {t('chat.dispatchLiveLink')}
+        <ExternalLinkIcon className="size-3" aria-hidden />
+      </Link>
+    ) : undefined;
+  return (
+    <ToolCardShell
+      node={node}
+      icon={<SendIcon className="size-3.5" />}
+      title={node.toolName ?? 'agent_dispatch'}
+      summary={dispatchSummary(node)}
+      errorSummary={firstOutputLine(node)}
+      headerTrailing={liveLink}
+      body={
+        prettyInput(node) !== null || (node.output ?? '') !== '' ? (
+          <IoCard
+            body={prettyInput(node)}
+            output={node.output === '' ? null : node.output}
+            failed={node.status === 'failed'}
+          />
+        ) : undefined
+      }
+    />
+  );
+});
+
 const GenericToolCard = memo(function GenericToolCard({ node }: ToolCardProps) {
   const bodyText =
     node.content?.find((c) => c.type === 'content')?.content?.text ?? node.output ?? null;
@@ -284,6 +374,8 @@ const toolCardRegistry: Record<string, ComponentType<ToolCardProps>> = {
   Agent: TaskCard,
   TaskOutput: TaskCard,
   TodoWrite: TodoCard,
+  agent_dispatch: DispatchCard,
+  agent_dispatch_poll: DispatchCard,
 };
 
 const kindCardRegistry: Record<string, ComponentType<ToolCardProps>> = {
@@ -326,6 +418,9 @@ interface ToolCardShellProps {
   errorSummary?: string | null;
   body?: ReactNode;
   collapsible?: boolean;
+  /** #68 — a non-interactive action zone at the header's END (outside the
+   *  expand button — interactive content may not nest in it). */
+  headerTrailing?: ReactNode;
 }
 
 function ToolCardShell({
@@ -337,6 +432,7 @@ function ToolCardShell({
   errorSummary,
   body,
   collapsible = true,
+  headerTrailing,
 }: ToolCardShellProps) {
   const { t } = useI18n();
   const [expanded, setExpanded] = useState(false);
@@ -360,50 +456,53 @@ function ToolCardShell({
 
   return (
     <div
-      className={cn('rounded-sm text-xs', node.status === 'running' && 'lamp-breath')}
+      className={cn('flex flex-col rounded-sm text-xs', node.status === 'running' && 'lamp-breath')}
       data-tool-status={node.status}
     >
-      <button
-        type="button"
-        aria-expanded={expandable ? open : undefined}
-        disabled={!expandable}
-        onClick={() => setExpanded((v) => !v)}
-        className={cn(
-          'flex h-6 w-full items-center gap-1.5 text-left',
-          expandable && 'hover:text-foreground',
-          !expandable && 'cursor-default',
-        )}
-      >
-        {node.status === 'running' || node.status === 'failed' ? statusMark : icon}
-        {expandable ? <ChevronDownIcon className="size-3 shrink-0" /> : null}
-        <span className="text-muted-foreground shrink-0 font-medium">{title}</span>
-        <span className="text-muted-foreground/40" aria-hidden>
-          ·
-        </span>
-        {showSummary !== undefined && showSummary !== '' ? (
-          <span
-            className={cn(
-              'min-w-0 truncate',
-              failed && errorSummary != null
-                ? 'text-destructive'
-                : summaryIsPath
-                  ? 'text-muted-foreground font-mono'
-                  : 'text-muted-foreground',
-            )}
-          >
-            {showSummary}
+      <div className="flex min-w-0 items-center gap-1">
+        <button
+          type="button"
+          aria-expanded={expandable ? open : undefined}
+          disabled={!expandable}
+          onClick={() => setExpanded((v) => !v)}
+          className={cn(
+            'flex h-6 min-w-0 flex-1 items-center gap-1.5 text-left',
+            expandable && 'hover:text-foreground',
+            !expandable && 'cursor-default',
+          )}
+        >
+          {node.status === 'running' || node.status === 'failed' ? statusMark : icon}
+          {expandable ? <ChevronDownIcon className="size-3 shrink-0" /> : null}
+          <span className="text-muted-foreground shrink-0 font-medium">{title}</span>
+          <span className="text-muted-foreground/40" aria-hidden>
+            ·
           </span>
-        ) : null}
-        <span className="min-w-0 flex-1" />
-        {duration !== null ? (
-          <span className="text-muted-foreground/60 shrink-0 font-mono text-[10px] tabular-nums">
-            {duration}
-          </span>
-        ) : null}
-        {node.status === 'running' ? (
-          <span className="text-muted-foreground shrink-0 text-[10px]">{t('chat.running')}</span>
-        ) : null}
-      </button>
+          {showSummary !== undefined && showSummary !== '' ? (
+            <span
+              className={cn(
+                'min-w-0 truncate',
+                failed && errorSummary != null
+                  ? 'text-destructive'
+                  : summaryIsPath
+                    ? 'text-muted-foreground font-mono'
+                    : 'text-muted-foreground',
+              )}
+            >
+              {showSummary}
+            </span>
+          ) : null}
+          <span className="min-w-0 flex-1" />
+          {duration !== null ? (
+            <span className="text-muted-foreground/60 shrink-0 font-mono text-[10px] tabular-nums">
+              {duration}
+            </span>
+          ) : null}
+          {node.status === 'running' ? (
+            <span className="text-muted-foreground shrink-0 text-[10px]">{t('chat.running')}</span>
+          ) : null}
+        </button>
+        {headerTrailing}
+      </div>
       {open && body !== undefined ? <div className="mt-1 mb-2 min-w-0">{body}</div> : null}
     </div>
   );

@@ -83,6 +83,8 @@ const en = {
   // ---- composer / lifecycle ----
   connecting: 'connecting…',
   working: 'working',
+  // #68 — the dispatch tools' live-session link (exists while the channel does).
+  dispatchLiveLink: 'Live session',
   closed: 'closed',
   closedWithError: 'closed — {error}',
   placeholderReady: 'Send a message… (Enter to send, Shift+Enter for a new line)',
@@ -239,6 +241,7 @@ const zh: typeof en = {
   permissionsSettled: '已处理 {count} 个权限请求',
   connecting: '连接中…',
   working: '处理中',
+  dispatchLiveLink: '实时会话',
   closed: '已关闭',
   closedWithError: '已关闭 — {error}',
   placeholderReady: '发送消息…（Enter 发送，Shift+Enter 换行）',

@@ -341,3 +341,210 @@ describe('#67 dispatch tool surface', () => {
     expect(WRITE_TOOLS.has('agent_dispatch_poll')).toBe(false);
   });
 });
+
+describe('#68 dispatch backflow', () => {
+  /** A fresh assistant session row per test (note-row assertions stay isolated). */
+  const makeAssistantSession = async (id: string): Promise<string> => {
+    const now = new Date().toISOString();
+    await app.uow.assistants.saveSession({
+      id,
+      ownerId: userId,
+      assistantId: 'cfg-68-test',
+      title: 'backflow',
+      createdAt: now,
+      updatedAt: now,
+      lastMessageAt: null,
+    });
+    return id;
+  };
+
+  /** Dispatch + ready + the turn's first delta, WAITED until the server has
+   *  marked the channel busy (emissions are async — the caller's next verb
+   *  must not race the busy flip: queue-on-busy and the active budget both
+   *  branch on it). */
+  const dispatchMidTurn = async (
+    d: Socket,
+    assistantSessionId: string,
+    prompt: string,
+  ): Promise<string> => {
+    const startP = once(d, 'chat:session.start');
+    const res = await app.realtime.assistantDispatch.dispatch(userId, {
+      agentInstanceId: agentId,
+      prompt,
+      assistantSessionId,
+    });
+    if (!res.ok) throw new Error(`dispatch failed: ${res.code}`);
+    const start = (await startP) as { sessionId: string };
+    void d.emit('chat:session.ready', { sessionId: start.sessionId, agentName: 'fixture-agent' });
+    await once(d, 'chat:message.send');
+    void d.emit('chat:event', {
+      sessionId: start.sessionId,
+      event: { kind: 'session_status', state: 'active' },
+    });
+    void d.emit('chat:event', {
+      sessionId: start.sessionId,
+      event: { kind: 'message_delta', delta: 'partial' },
+    });
+    // The turn is observably running before the caller proceeds.
+    for (let i = 0; i < 100; i += 1) {
+      const p = await app.realtime.assistantDispatch.poll(userId, res.channelId, 0);
+      if (p.ok === true && p.busy) return res.channelId;
+      await new Promise((r) => setTimeout(r, 20));
+    }
+    throw new Error('dispatch turn never went busy');
+  };
+
+  it('a user stop flows back: poll notices (drained once) + a modelVisible note row', async () => {
+    const d = daemon!;
+    const sid = await makeAssistantSession('as-68-stop');
+    const channelId = await dispatchMidTurn(d, sid, 'will be stopped');
+
+    // The /app handler's marking, called directly: the user stopped the turn.
+    app.realtime.assistantDispatch.noteUserOp(userId, channelId, 'turn.cancel');
+
+    const poll = await app.realtime.assistantDispatch.poll(userId, channelId, 100);
+    expect(poll.ok === true && poll.notices?.some((n) => n.includes('user stopped'))).toBe(true);
+    // Drained — a repeat poll does not re-see the notice.
+    const again = await app.realtime.assistantDispatch.poll(userId, channelId, 50);
+    expect(again.ok === true && again.notices === undefined).toBe(true);
+    // The transcript carries the note for the model's NEXT turn.
+    const rows = await app.uow.assistants.listMessages(sid);
+    const note = rows.find((r) => r.type === 'note' && r.text.includes('user stopped'));
+    expect(note).toBeDefined();
+    expect(note!.type === 'note' && note!.modelVisible).toBe(true);
+
+    // Settle so the suite's channel count stays bounded.
+    void d.emit('chat:event', {
+      sessionId: channelId,
+      event: { kind: 'turn_result', stopReason: 'cancelled' },
+    });
+    const done = await app.realtime.assistantDispatch.poll(userId, channelId, 5000);
+    expect(done.ok === true && done.status === 'done').toBe(true);
+  }, 15000);
+
+  it('a completion with no poll waiting leaves a note + a poll notice', async () => {
+    const d = daemon!;
+    const sid = await makeAssistantSession('as-68-complete');
+    const channelId = await dispatchMidTurn(d, sid, 'nobody watches');
+
+    void d.emit('chat:event', {
+      sessionId: channelId,
+      event: { kind: 'turn_result', stopReason: 'end_turn' },
+    });
+    // First contact AFTER the outcome (poll(0) until the terminal lands — a
+    // long wait would register a waiter and consume it live instead).
+    let done: Awaited<ReturnType<typeof app.realtime.assistantDispatch.poll>> | undefined;
+    for (let i = 0; i < 150 && done === undefined; i += 1) {
+      const p = await app.realtime.assistantDispatch.poll(userId, channelId, 0);
+      if (p.ok === true && p.status === 'done') done = p;
+      else await new Promise((r) => setTimeout(r, 20));
+    }
+    expect(done?.ok === true && done.status === 'done').toBe(true);
+    expect(done?.notices?.some((n) => n.includes('finished'))).toBe(true);
+    const rows = await app.uow.assistants.listMessages(sid);
+    expect(rows.some((r) => r.type === 'note' && r.text.includes('finished'))).toBe(true);
+  }, 15000);
+
+  it('a poll blocked in waitMs consumes the outcome directly — no completion note', async () => {
+    const d = daemon!;
+    const sid = await makeAssistantSession('as-68-waiter');
+    const channelId = await dispatchMidTurn(d, sid, 'watched live');
+
+    const pollP = app.realtime.assistantDispatch.poll(userId, channelId, 8000);
+    await new Promise((r) => setTimeout(r, 100)); // let the waiter register
+    void d.emit('chat:event', {
+      sessionId: channelId,
+      event: { kind: 'turn_result', stopReason: 'end_turn' },
+    });
+    const out = await pollP;
+    expect(out.ok === true && out.status === 'done').toBe(true);
+    expect(out.ok === true && !out.notices?.some((n) => n.includes('finished'))).toBe(true);
+    const rows = await app.uow.assistants.listMessages(sid);
+    expect(rows.some((r) => r.type === 'note' && r.text.includes('finished'))).toBe(false);
+  }, 15000);
+
+  it('a queued user interjection defers the settle: the channel runs a second turn', async () => {
+    const d = daemon!;
+    const sid = await makeAssistantSession('as-68-interject');
+    const channelId = await dispatchMidTurn(d, sid, 'first question');
+
+    // The user interjects through the ordinary door (queue-on-busy) + marking.
+    const queued = app.realtime.chat.onMessageSend(userId, channelId, 'follow-up question');
+    expect(queued).toMatchObject({ ok: true, queued: true });
+    app.realtime.assistantDispatch.noteUserOp(userId, channelId, 'message.send', {
+      text: 'follow-up question',
+    });
+
+    // The turn ends — but the parked interjection keeps the channel alive.
+    const sendP2 = once(d, 'chat:message.send');
+    void d.emit('chat:event', {
+      sessionId: channelId,
+      event: { kind: 'turn_result', stopReason: 'end_turn' },
+    });
+    void d.emit('chat:event', {
+      sessionId: channelId,
+      event: { kind: 'session_status', state: 'idle' },
+    });
+    const second = (await sendP2) as {
+      sessionId: string;
+      prompt: { type: string; text?: string }[];
+    };
+    expect(second.sessionId).toBe(channelId);
+    expect(second.prompt.some((b) => b.text === 'follow-up question')).toBe(true);
+    // Mid-flight check: still running, with the interjection notice aboard.
+    const mid = await app.realtime.assistantDispatch.poll(userId, channelId, 50);
+    expect(mid.ok === true && mid.status === 'running').toBe(true);
+    expect(mid.ok === true && mid.notices?.some((n) => n.includes('sent a message'))).toBe(true);
+
+    // The second turn runs and settles the dispatch with BOTH turns' text.
+    void d.emit('chat:event', {
+      sessionId: channelId,
+      event: { kind: 'session_status', state: 'active' },
+    });
+    void d.emit('chat:event', {
+      sessionId: channelId,
+      event: { kind: 'message_delta', delta: 'second answer' },
+    });
+    void d.emit('chat:event', {
+      sessionId: channelId,
+      event: { kind: 'turn_result', stopReason: 'end_turn' },
+    });
+    const done = await app.realtime.assistantDispatch.poll(userId, channelId, 5000);
+    expect(done).toMatchObject({ status: 'done', text: 'partial\nsecond answer' });
+  }, 15000);
+
+  it("the session's dispatch snapshot pushes to the owner's /app sockets", async () => {
+    const d = daemon!;
+    const sid = await makeAssistantSession('as-68-push');
+    const viewer = io(`${baseUrl}/app`, {
+      auth: { token: jwt },
+      transports: ['websocket'],
+      reconnection: false,
+      forceNew: true,
+    });
+    await once(viewer, 'connect');
+    const pushes: { sessionId: string; dispatches: { channelId: string; status: string }[] }[] = [];
+    viewer.on('assistant:dispatches', (p: (typeof pushes)[number]) => pushes.push(p));
+    try {
+      const channelId = await dispatchMidTurn(d, sid, 'pushed live');
+      await waitFor(() =>
+        pushes.some(
+          (p) => p.sessionId === sid && p.dispatches.some((x) => x.channelId === channelId),
+        ),
+      );
+      void d.emit('chat:event', {
+        sessionId: channelId,
+        event: { kind: 'turn_result', stopReason: 'end_turn' },
+      });
+      await waitFor(() =>
+        pushes.some(
+          (p) =>
+            p.sessionId === sid &&
+            p.dispatches.some((x) => x.channelId === channelId && x.status === 'done'),
+        ),
+      );
+    } finally {
+      viewer.disconnect();
+    }
+  }, 15000);
+});

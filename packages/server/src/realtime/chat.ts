@@ -750,6 +750,16 @@ export class ChatService {
     }
   }
 
+  /**
+   * #68 — is a user interjection parked on this channel's send queue? The
+   * dispatch coordinator's settle gate: a driven turn must NOT settle while a
+   * queued message waits (the flush runs it as the next turn of the same
+   * native session — the user's interjection survives the dispatch).
+   */
+  hasQueuedPrompt(sessionId: string): boolean {
+    return this.live.get(sessionId)?.queuedPrompt != null;
+  }
+
   /** Daemon's `chat:history` (9 W7) — relay the transcript batch to the room. */
   onHistory(machineId: string, payload: { sessionId: string; items: unknown[] }): { ok: boolean } {
     const session = this.live.get(payload.sessionId);

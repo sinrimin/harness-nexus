@@ -163,6 +163,8 @@ export const assistantMessageRowSchema = z.discriminatedUnion('type', [
     seq: z.number().int().min(0),
     type: z.literal('note'),
     text: z.string().min(1).max(2000),
+    /** #68 — also part of the model's context on the next turn (dispatch backflow). */
+    modelVisible: z.literal(true).optional(),
   }),
 ]);
 export type AssistantMessageRowWire = z.infer<typeof assistantMessageRowSchema>;
