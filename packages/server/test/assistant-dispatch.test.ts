@@ -147,8 +147,11 @@ describe('#67 assistant dispatch', () => {
     expect(res.ok).toBe(true);
     if (!res.ok) return;
     expect(res.cwd).toBe('/home/tester/.hermes');
-    const start = (await startP) as { sessionId: string };
+    const start = (await startP) as { sessionId: string; createDirectory?: boolean };
     expect(start.sessionId).toBe(res.channelId);
+    // #70 — a dispatch promises a NEW session directory: the daemon creates
+    // it when it does not exist yet.
+    expect(start.createDirectory).toBe(true);
 
     const closeP = once(d, 'chat:session.close');
     readyWithTurn(d, start, { nativeSessionId: 'fx-native-1', text: 'all done' });

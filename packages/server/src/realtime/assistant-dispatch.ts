@@ -179,6 +179,10 @@ export class AssistantDispatchService {
       null,
       input.directory,
       input.resume,
+      // #70 — the dispatch tool promises a NEW session directory; a fresh
+      // project path must not die on "does not exist" (the server already
+      // containment-checked it inside baseWorkspace).
+      true,
     );
     if (!opened.ok) return { ok: false, code: opened.code };
     const channelId = opened.sessionId;

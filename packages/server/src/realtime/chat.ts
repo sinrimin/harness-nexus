@@ -247,6 +247,7 @@ export class ChatService {
     openerSocketId: string | null,
     directory: string | undefined,
     resume: ChatResumeArm | undefined,
+    createDirectory: boolean | undefined = undefined,
   ): Promise<ChatOpenResult> {
     if (rejoinSessionId !== undefined) {
       const existing = this.live.get(rejoinSessionId);
@@ -386,6 +387,8 @@ export class ChatService {
       target: agent.target,
       cwd,
       ...(resume !== undefined ? { resume } : {}),
+      // #70 — the directory may not exist yet: the daemon mkdir -p's it.
+      ...(createDirectory === true ? { createDirectory: true } : {}),
       ...(modelOptions !== undefined ? { modelOptions } : {}),
       ...(defaultMode !== undefined ? { defaultMode } : {}),
       ...(prewarm ? { prewarm: true } : {}),

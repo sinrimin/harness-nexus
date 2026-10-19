@@ -777,6 +777,7 @@ export function AgentSessionPage() {
     rejoinId?: string,
     directory?: string,
     resume?: { sessionId: string; cwd: string },
+    createDirectory?: boolean,
   ): Promise<void> {
     if (agentId === '') return;
     setRailOpen(false);
@@ -797,6 +798,9 @@ export function AgentSessionPage() {
       ...(rejoinId !== undefined ? { sessionId: rejoinId } : {}),
       ...(directory !== undefined ? { directory } : {}),
       ...(resume !== undefined ? { resume } : {}),
+      // #70 — the picker's 自动创建目录: a typed NEW path is created on the
+      // machine at open; unchecked + missing = the daemon's honest refusal.
+      ...(createDirectory === true ? { createDirectory: true } : {}),
     });
     if (ack.error !== undefined || ack.sessionId === undefined) {
       const code = ack.error ?? 'unknown error';
@@ -1361,7 +1365,9 @@ export function AgentSessionPage() {
           onBaseWorkspaceSaved={(base) =>
             setMachine((prev) => (prev === null ? prev : { ...prev, baseWorkspace: base }))
           }
-          onPick={(directory) => void openChannel(undefined, directory)}
+          onPick={(directory, createDirectory) =>
+            void openChannel(undefined, directory, undefined, createDirectory)
+          }
         />
       ) : null}
       {pendingDelete !== null ? (

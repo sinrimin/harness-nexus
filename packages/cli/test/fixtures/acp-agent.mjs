@@ -752,7 +752,9 @@ function handleRequest(msg) {
       }
       respond(id, {
         protocolVersion: 1,
-        agentInfo: { name: 'fixture-agent', version: '0.1.0' },
+        // #70 — FIXTURE_AGENT_NAME reflects an env var the DAEMON's own
+        // environment carried into the spawn (proves the process.env base).
+        agentInfo: { name: process.env.FIXTURE_AGENT_NAME ?? 'fixture-agent', version: '0.1.0' },
         authMethods: [],
         agentCapabilities: {
           // 9 W9 B — FIXTURE_IMAGE_CAPS=1 flips the image capability (dsh
