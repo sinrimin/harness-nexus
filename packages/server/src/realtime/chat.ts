@@ -134,6 +134,9 @@ export class ChatService {
 
   private idleSweepTimer: NodeJS.Timeout | null = null;
 
+  /** #66 — armed viewer-grace reaps, one per absent user (userId → timer). */
+  private viewerGrace = new Map<string, NodeJS.Timeout>();
+
   constructor(
     private readonly deps: ChatServiceDeps,
     private readonly opts: {
@@ -143,6 +146,14 @@ export class ChatService {
       readyTimeoutMs: number;
       /** 9 W11 D6 — 0 disables the idle TTL sweep (the default). */
       idleTtlMs: number;
+      /**
+       * #66 — /app viewer grace. The user's last browser socket dropping
+       * (weak-network blip, phone lock screen) arms a per-user timer instead
+       * of reaping immediately; any /app reconnect within the window cancels
+       * it (onViewerBack). 0 = the legacy immediate reap. The browser twin of
+       * the /ctl ReconnectGuard.
+       */
+      viewerGraceMs: number;
     },
   ) {
     if (this.opts.idleTtlMs > 0) {
@@ -161,6 +172,8 @@ export class ChatService {
       clearInterval(this.idleSweepTimer);
       this.idleSweepTimer = null;
     }
+    for (const timer of this.viewerGrace.values()) clearTimeout(timer);
+    this.viewerGrace.clear();
     for (const session of [...this.live.values()]) {
       await this.closeInternal(session, 'server-shutdown', { notifyDaemon: true });
     }
@@ -362,6 +375,9 @@ export class ChatService {
    * emitted one — the real push lands when the agent comes up).
    */
   private reattach(existing: LiveSession, openerSocketId: string): ChatOpenResult {
+    // #66 — a viewer came back: revoke the deferred close armed when the last
+    // viewer left mid-turn (the premise "nobody is watching" no longer holds).
+    existing.closeWhenIdle = false;
     if (existing.phase === 'starting') {
       // 9 W11: with user-scoped liveness a channel SURVIVES its opener's
       // page refresh mid-spawn (another window may be watching the tab) —
@@ -515,12 +531,18 @@ export class ChatService {
     this.pushSnapshot(session.ownerId);
 
     // The opener joined at open(); if the USER has no connected window left
-    // by the time the agent comes up, nobody is watching — close instead of
-    // running an agent subprocess unattended. (9 W11: user-scoped — the
-    // opener's page may have refreshed while another window of the same user
-    // still shows the tab bar; that window keeps the channel alive.)
+    // by the time the agent comes up, nobody is watching — instead of closing
+    // outright, ride the #66 viewer grace: a blipped viewer (lock screen,
+    // weak network) may still come back inside the window; 0 grace keeps the
+    // legacy immediate close. (9 W11: user-scoped — the opener's page may
+    // have refreshed while another window of the same user still shows the
+    // tab bar; that window keeps the channel alive.)
     if ((await this.deps.io.userSockets(session.ownerId)).length === 0) {
-      await this.closeInternal(session, 'connection-lost', { notifyDaemon: true });
+      if (this.opts.viewerGraceMs <= 0) {
+        await this.closeInternal(session, 'connection-lost', { notifyDaemon: true });
+        return;
+      }
+      this.armViewerGrace(session.ownerId);
       return;
     }
     this.deps.io.toChannel(session.sessionId, 'chat:session.ready', {
@@ -606,22 +628,49 @@ export class ChatService {
     // #10 — the busy→idle transition is the flush hook: the parked message
     // now runs as the NEXT turn. Emitted after the idle relay so the viewer
     // first sees the turn complete, then the queue drain, then the new turn.
+    // #66 — a daemon that just went offline would DROP the ctl emit (the
+    // prompt would vanish with only the echo painted): re-park instead and
+    // let onMachineOnline flush it when the daemon is back.
     if (
       event.kind === 'session_status' &&
       event.state === 'idle' &&
       session.queuedPrompt !== null &&
       session.phase === 'ready'
     ) {
-      const queued = session.queuedPrompt;
-      session.queuedPrompt = null;
-      this.emitQueueState(session, null, true);
-      this.emitUserMessage(session, queued);
-      this.deps.io.toCtl(session.machineId, 'chat:message.send', {
-        sessionId,
-        prompt: queued,
-      });
+      if (this.deps.isOnline(session.machineId)) this.flushQueued(session);
     }
     return { ok: true };
+  }
+
+  /** #10/#66 — run the parked prompt as a new turn (single emit path). */
+  private flushQueued(session: LiveSession): void {
+    const queued = session.queuedPrompt;
+    if (queued === null) return;
+    session.queuedPrompt = null;
+    this.emitQueueState(session, null, true);
+    this.emitUserMessage(session, queued);
+    this.deps.io.toCtl(session.machineId, 'chat:message.send', {
+      sessionId: session.sessionId,
+      prompt: queued,
+    });
+  }
+
+  /**
+   * #66 — the machine's daemon (re)connected: re-flush parked send-queue
+   * entries whose flush was held back by the offline guard (companion of
+   * jobs.dispatchPending on the same transition).
+   */
+  onMachineOnline(machineId: string): void {
+    for (const session of this.live.values()) {
+      if (
+        session.machineId === machineId &&
+        session.phase === 'ready' &&
+        !session.busy &&
+        session.queuedPrompt !== null
+      ) {
+        this.flushQueued(session);
+      }
+    }
   }
 
   /** Daemon's `chat:history` (9 W7) — relay the transcript batch to the room. */
@@ -653,6 +702,11 @@ export class ChatService {
     const session = this.live.get(sessionId);
     if (!session || session.ownerId !== ownerId) return { ok: false, code: 'SESSION_NOT_FOUND' };
     if (session.phase !== 'ready') return { ok: false, code: 'SESSION_NOT_READY' };
+    // #66 — honest refusal instead of a silent drop: a ctl emit while the
+    // daemon socket is down never reaches the machine, but the user_message
+    // echo would still paint the row (the prompt would look sent and never
+    // run). Bounce so the composer keeps the draft.
+    if (!this.deps.isOnline(session.machineId)) return { ok: false, code: 'MACHINE_OFFLINE' };
     const prompt: PromptBlock[] =
       typeof content === 'string' ? [{ type: 'text', text: content }] : content;
     // #10 — a busy session no longer bounces: the message parks in the
@@ -727,6 +781,8 @@ export class ChatService {
   onTurnCancel(ownerId: string, sessionId: string): ChatSimpleResult {
     const session = this.live.get(sessionId);
     if (!session || session.ownerId !== ownerId) return { ok: false, code: 'SESSION_NOT_FOUND' };
+    // #66 — a dropped cancel is a cancel that did not happen; refuse loudly.
+    if (!this.deps.isOnline(session.machineId)) return { ok: false, code: 'MACHINE_OFFLINE' };
     // #10 — stopping the turn DROPS the parked entry (it does not auto-send).
     if (session.queuedPrompt !== null) {
       session.queuedPrompt = null;
@@ -751,6 +807,8 @@ export class ChatService {
     const session = this.live.get(sessionId);
     if (!session || session.ownerId !== ownerId) return { ok: false, code: 'SESSION_NOT_FOUND' };
     if (session.phase !== 'ready') return { ok: false, code: 'SESSION_NOT_READY' };
+    // #66 — the option would never reach the adapter; refuse loudly.
+    if (!this.deps.isOnline(session.machineId)) return { ok: false, code: 'MACHINE_OFFLINE' };
     this.deps.io.toCtl(session.machineId, 'chat:config.set', { sessionId, ...set });
     return { ok: true };
   }
@@ -766,6 +824,10 @@ export class ChatService {
     if (!session || session.ownerId !== ownerId) return { ok: false, code: 'SESSION_NOT_FOUND' };
     const timer = session.permissionTimers.get(requestId);
     if (timer === undefined) return { ok: false, code: 'PERMISSION_NOT_FOUND' };
+    // #66 — refused BEFORE the watchdog clears: an offline daemon would drop
+    // the forward (the agent still gets the watchdog cancel), and the card
+    // stays answerable if the user retries after the reconnect.
+    if (!this.deps.isOnline(session.machineId)) return { ok: false, code: 'MACHINE_OFFLINE' };
     clearTimeout(timer);
     session.permissionTimers.delete(requestId);
     this.deps.io.toCtl(session.machineId, 'chat:permission.respond', {
@@ -800,6 +862,8 @@ export class ChatService {
     if (!session || session.ownerId !== ownerId) return { ok: false, code: 'SESSION_NOT_FOUND' };
     const timer = session.elicitationTimers.get(requestId);
     if (timer === undefined) return { ok: false, code: 'ELICITATION_NOT_FOUND' };
+    // #66 — same refusal as permissions (the forward would drop offline).
+    if (!this.deps.isOnline(session.machineId)) return { ok: false, code: 'MACHINE_OFFLINE' };
     clearTimeout(timer);
     session.elicitationTimers.delete(requestId);
     this.deps.io.toCtl(session.machineId, 'chat:elicitation.respond', {
@@ -941,8 +1005,45 @@ export class ChatService {
    * tab bar, "last viewer" meant "last socket in the channel's room" — a
    * second window watching the tabs did not count, and its tabs could be
    * yanked away by another window's refresh.)
+   *
+   * #66 — the reap is now GRACE-DELAYED (viewerGraceMs, 0 = legacy immediate):
+   * a weak-network blip or phone lock screen drops every socket for seconds
+   * without the SPA ever going away; an instant reap killed channels the user
+   * was actively watching (the /app twin of the W11 E daemon-blip guard). Any
+   * /app reconnect within the window cancels the reap (onViewerBack).
    */
   async onViewerGone(userId: string): Promise<void> {
+    if ((await this.deps.io.userSockets(userId)).length > 0) return;
+    if (this.opts.viewerGraceMs <= 0) {
+      await this.reapViewer(userId);
+      return;
+    }
+    this.armViewerGrace(userId);
+  }
+
+  /** A /app socket of this user (re)connected — cancel any armed reap. */
+  onViewerBack(userId: string): void {
+    const timer = this.viewerGrace.get(userId);
+    if (timer === undefined) return;
+    clearTimeout(timer);
+    this.viewerGrace.delete(userId);
+  }
+
+  /** #66 — arm the per-user reap timer (idempotent within a grace cycle). */
+  private armViewerGrace(userId: string): void {
+    if (this.viewerGrace.has(userId)) return;
+    const timer = setTimeout(() => {
+      this.viewerGrace.delete(userId);
+      void this.reapViewer(userId);
+    }, this.opts.viewerGraceMs);
+    timer.unref();
+    this.viewerGrace.set(userId, timer);
+  }
+
+  /** #66 — the grace-expired (or grace-disabled) viewer reap. */
+  private async reapViewer(userId: string): Promise<void> {
+    // Re-check: a socket may have reconnected without firing onViewerBack
+    // (e.g. the connect handler raced this timer's tick).
     if ((await this.deps.io.userSockets(userId)).length > 0) return;
     for (const session of [...this.live.values()]) {
       if (session.ownerId !== userId) continue;

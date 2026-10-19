@@ -1,4 +1,5 @@
 import { io, type Socket } from 'socket.io-client';
+import { createResubscribeGate } from '@/lib/resubscribe';
 import { TOKEN_KEY } from './api.js';
 
 /**
@@ -26,11 +27,23 @@ export interface MachineStatusEvent {
 
 let socket: Socket | null = null;
 
+const resubscribeGate = createResubscribeGate();
+
+/**
+ * Register a recovery action for /app RE-connects (the #66 silent-blip case:
+ * weak network, lock screen). The callback runs on connect-after-disconnect;
+ * unregister on unmount.
+ */
+export function onAppResubscribe(fn: () => void): () => void {
+  return resubscribeGate.subscribe(fn);
+}
+
 export function appSocket(): Socket {
   if (socket === null) {
     socket = io('/app', {
       auth: (cb) => cb({ token: localStorage.getItem(TOKEN_KEY) ?? '' }),
     });
+    socket.on('connect', () => resubscribeGate.onConnect());
   }
   return socket;
 }

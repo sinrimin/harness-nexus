@@ -36,6 +36,10 @@ export function testConfig(overrides: Partial<ServerConfig> = {}): ServerConfig 
     // 9 W11 E — long enough that a simulated blip + fast manual reconnect
     // lands inside the window; the expiry test waits past it.
     chatReconnectGraceMs: 2000,
+    // #66 — 0 by default = legacy immediate reap (the suites that test the
+    // viewer grace override it with a small window).
+    chatIdleTtlMs: 0,
+    chatViewerGraceMs: 0,
     adaptersReportTimeoutMs: 400,
     ...overrides,
   };
