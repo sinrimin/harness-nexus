@@ -22,6 +22,7 @@ import { listMachineJobs } from '../services/jobs.js';
 import { getSystemInfo } from '../services/system.js';
 import { searchSkills, type SkillsDeps } from '../services/skills.js';
 import type { Principal, ServiceDeps } from '../services/principal.js';
+import type { AssistantDispatchService } from '../realtime/assistant-dispatch.js';
 
 /**
  * The assistant's v1 tool surface (#52 §5): read-heavy, grouped, and
@@ -39,6 +40,11 @@ import type { Principal, ServiceDeps } from '../services/principal.js';
 
 export interface AssistantToolDeps extends ServiceDeps {
   skills: SkillsDeps;
+  /**
+   * #67 — the client-agent dispatch coordinator (realtime seam, injected by
+   * the plugin after ChatService exists). Absent (tests) = no dispatch tools.
+   */
+  dispatch?: AssistantDispatchService;
 }
 
 /** Cap a tool result's model-facing text (rows can be huge; the model needs bounded input). */
@@ -267,6 +273,69 @@ export function buildAssistantTools(
     );
   }
 
+  if (enabled.has('agent-dispatch') && deps.dispatch !== undefined) {
+    const dispatch = deps.dispatch;
+    tools.push(
+      tool({
+        name: 'agent_dispatch',
+        label: 'Dispatch client agent',
+        description:
+          "Send a prompt to a client agent (AgentInstance) on one of the user's machines and return a handle immediately — the agent runs ASYNC; poll the outcome with agent_dispatch_poll. To CONTINUE a previous dispatch's native session, pass resume = { sessionId, cwd } exactly as that dispatch's poll result reported them. The channel shows in the user's web chat tabs; permission prompts the driven agent raises are answerable there.",
+        parameters: Type.Object({
+          agentInstanceId: Type.String({
+            description: 'The agent instance to drive (machine_agents_list).',
+          }),
+          prompt: Type.String({ description: 'The prompt for the agent.' }),
+          directory: Type.Optional(
+            Type.String({
+              description:
+                "Optional project directory for a NEW session (must be the machine baseWorkspace or under it); omit to use the agent's own directory.",
+            }),
+          ),
+          resume: Type.Optional(
+            Type.Object({
+              sessionId: Type.String({
+                description: 'The native session id from a previous dispatch result.',
+              }),
+              cwd: Type.String({ description: 'The cwd from that dispatch result (verbatim).' }),
+            }),
+          ),
+        }),
+        execute: async (_id, params) =>
+          call(() =>
+            dispatch.dispatch(principal.userId, {
+              agentInstanceId: params.agentInstanceId,
+              prompt: params.prompt,
+              ...(params.directory !== undefined ? { directory: params.directory } : {}),
+              ...(params.resume !== undefined ? { resume: params.resume } : {}),
+            }),
+          ),
+      }),
+      tool({
+        name: 'agent_dispatch_poll',
+        label: 'Poll dispatched agent',
+        description:
+          "Fetch a dispatch's outcome. status running/starting = still working (optionally waitMs to block for a change, max 60000); done carries the turn's final text, stopReason, usage, and the nativeSessionId+cwd continuation handle; closed/failed are terminal and explain themselves. pendingPermission=true means the driven agent waits on a permission card the user must answer in the web chat tab.",
+        parameters: Type.Object({
+          channelId: Type.String({ description: 'The handle agent_dispatch returned.' }),
+          waitMs: Type.Optional(
+            Type.Number({
+              description: 'Wait up to this many ms for a state change (0-60000, default 0).',
+            }),
+          ),
+        }),
+        execute: async (_id, params) =>
+          call(async () =>
+            dispatch.poll(
+              principal.userId,
+              params.channelId,
+              Math.max(0, Math.min(60_000, params.waitMs ?? 0)),
+            ),
+          ),
+      }),
+    );
+  }
+
   if (enabled.has('system')) {
     tools.push(
       tool({
@@ -293,6 +362,9 @@ export const WRITE_TOOLS: ReadonlySet<string> = new Set([
   'resources_update',
   'profiles_create',
   'profiles_update',
+  // #67 — dispatching drives an agent on the user's machine: the highest
+  // blast radius in the platform, gated per call like the other writes.
+  'agent_dispatch',
 ]);
 
 /**
@@ -306,5 +378,6 @@ export const TOOL_NAMES_BY_GROUP: Record<AssistantToolGroup, readonly string[]> 
   mcp: ['mcp_servers_list'],
   'skills-hub': ['skills_search'],
   machines: ['machines_list', 'machine_agents_list', 'machine_jobs_list'],
+  'agent-dispatch': ['agent_dispatch', 'agent_dispatch_poll'],
   system: ['system_info'],
 };

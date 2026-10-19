@@ -53,6 +53,7 @@ import { SessionsCoordinator } from '../realtime/sessions.js';
 import { AdaptersReportCoordinator } from '../realtime/adapters.js';
 import { DetectedInstanceSync } from '../realtime/runtime-instances.js';
 import { ChatService } from '../realtime/chat.js';
+import { AssistantDispatchService } from '../realtime/assistant-dispatch.js';
 import { AssistantRealtimeService } from '../realtime/assistant.js';
 import { ReconnectGuard } from '../realtime/reconnect.js';
 import { JobService } from '../jobs/service.js';
@@ -82,6 +83,8 @@ export interface RealtimeService {
   chat: ChatService;
   /** Platform assistant turns (#52) — /app rooms over persisted sessions. */
   assistant: AssistantRealtimeService;
+  /** #67 — the assistant's client-agent dispatch coordinator (tests + tools). */
+  assistantDispatch: AssistantDispatchService;
   /** Redacted config-view waiters (Phase 9 W4). */
   configView: ConfigViewerCoordinator;
   /** Workspace directory-listing waiters (Phase 9 W6 chat picker). */
@@ -164,6 +167,9 @@ export async function registerRealtime(
       viewerGraceMs: opts.chatViewerGraceMs,
     },
   );
+  // #67 — ONE coordinator instance: the assistant's tool seam and the
+  // RealtimeService export (tests) must share the in-flight records.
+  const assistantDispatch = new AssistantDispatchService(chat);
   const assistant = new AssistantRealtimeService(
     {
       uow: app.uow,
@@ -173,6 +179,7 @@ export async function registerRealtime(
         catalog: app.skillCatalog,
         allowlist: app.marketplaceAllowlist,
       },
+      dispatch: assistantDispatch,
     },
     {
       toChannel: (sessionId, event, payload) => {
@@ -232,6 +239,7 @@ export async function registerRealtime(
     jobs,
     chat,
     assistant,
+    assistantDispatch,
     configView,
     workspace,
     sessions,

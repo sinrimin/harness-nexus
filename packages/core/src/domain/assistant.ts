@@ -11,9 +11,14 @@
  * family, so the web folds both on one path.
  */
 
-/** Tool groups the assistant may call (v1: read-heavy, NO delete/credential tools). */
+/**
+ * Tool groups the assistant may call (v1: read-heavy, NO delete/credential
+ * tools). `agent-dispatch` (#67, DEFAULT OFF) drives client agents on the
+ * owner's machines — the platform's highest-blast-radius surface, opt-in per
+ * config and approval-gated per call.
+ */
 export type AssistantToolGroup =
-  'resources' | 'profiles' | 'mcp' | 'skills-hub' | 'machines' | 'system';
+  'resources' | 'profiles' | 'mcp' | 'skills-hub' | 'machines' | 'agent-dispatch' | 'system';
 
 /** One named assistant configuration — many per user, name unique per owner. */
 export interface AssistantConfig {

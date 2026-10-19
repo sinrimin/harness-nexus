@@ -54,7 +54,7 @@ export interface ChatServiceDeps {
 }
 
 export type ChatOpenResult =
-  | { ok: true; sessionId: string; joined: boolean; phase: 'starting' | 'ready' }
+  | { ok: true; sessionId: string; joined: boolean; phase: 'starting' | 'ready'; cwd: string }
   | {
       ok: false;
       code:
@@ -78,6 +78,20 @@ export interface ChatResumeArm {
   sessionId: string;
   cwd: string;
 }
+
+/**
+ * #67 — an in-process observer of ONE channel's lifecycle. The assistant
+ * dispatch rides this instead of a browser socket: `ready` carries the
+ * native session id (the continuation handle), `event` mirrors every
+ * semantic stream event the room sees, `closed` fires exactly once with the
+ * terminal reason (spawn-failed, evicted, connection-lost, user, dispatch,
+ * …). Taps are synchronous callbacks off the service's own code paths —
+ * ordering versus the room relays is guaranteed (same call site).
+ */
+export type ChatTapEvent =
+  | { kind: 'ready'; nativeSessionId?: string; agentName?: string }
+  | { kind: 'event'; event: ChatStreamEvent }
+  | { kind: 'closed'; reason: string; failed: boolean; error?: string };
 
 interface LiveSession {
   sessionId: string;
@@ -123,6 +137,14 @@ interface LiveSession {
   promptCapabilities?: PromptCapabilities | undefined;
   /** Socket of the browser that opened the channel; joined on ready. */
   openerSocketId: string | null;
+  /**
+   * #67 — an assistant DISPATCH channel (in-process consumer, no opener
+   * socket). Its lifecycle is owned by the dispatch (machine budgets, daemon
+   * liveness, the dispatch's own close at turn end) — viewer presence never
+   * reaps it: the tab bar makes it WATCHABLE, not watch-required (an
+   * assistant turn may legitimately outlive its viewer).
+   */
+  dispatch: boolean;
   readyTimer: NodeJS.Timeout | null;
   permissionTimers: Map<string, NodeJS.Timeout>;
   /** 9 W14.1 — elicitation watchdogs, same policy as permissions. */
@@ -136,6 +158,33 @@ export class ChatService {
 
   /** #66 — armed viewer-grace reaps, one per absent user (userId → timer). */
   private viewerGrace = new Map<string, NodeJS.Timeout>();
+
+  /** #67 — in-process channel observers (the assistant dispatch's seam). */
+  private taps = new Map<string, Set<(e: ChatTapEvent) => void>>();
+
+  /**
+   * #67 — observe one channel's lifecycle. The unregister function detaches
+   * silently (a closed channel's taps are dropped wholesale by
+   * closeInternal). Taps are informational only — they can't mutate state.
+   */
+  tap(sessionId: string, cb: (e: ChatTapEvent) => void): () => void {
+    let set = this.taps.get(sessionId);
+    if (set === undefined) {
+      set = new Set();
+      this.taps.set(sessionId, set);
+    }
+    set.add(cb);
+    return () => {
+      set.delete(cb);
+      if (set.size === 0) this.taps.delete(sessionId);
+    };
+  }
+
+  private emitTap(sessionId: string, e: ChatTapEvent): void {
+    const set = this.taps.get(sessionId);
+    if (set === undefined) return;
+    for (const cb of [...set]) cb(e);
+  }
 
   constructor(
     private readonly deps: ChatServiceDeps,
@@ -195,7 +244,7 @@ export class ChatService {
     ownerId: string,
     agentInstanceId: string,
     rejoinSessionId: string | undefined,
-    openerSocketId: string,
+    openerSocketId: string | null,
     directory: string | undefined,
     resume: ChatResumeArm | undefined,
   ): Promise<ChatOpenResult> {
@@ -263,8 +312,10 @@ export class ChatService {
 
     const sessionId = generateId();
     // Join the opener NOW: spawn-failed / spawn-timeout notifications must
-    // reach the browser even though the agent never came up.
-    this.deps.io.joinChannel(openerSocketId, sessionId);
+    // reach the browser even though the agent never came up. A NULL opener
+    // (#67 assistant dispatch) joins nothing — the in-process tap is the
+    // consumer and the channel is visible in the tab bar for a human.
+    if (openerSocketId !== null) this.deps.io.joinChannel(openerSocketId, sessionId);
     const session: LiveSession = {
       sessionId,
       machineId: machine.id,
@@ -280,6 +331,7 @@ export class ChatService {
       lastActiveAt: Date.now(),
       ...(resume !== undefined ? { resumingNativeId: resume.sessionId } : {}),
       openerSocketId,
+      dispatch: openerSocketId === null,
       readyTimer: null,
       permissionTimers: new Map(),
       elicitationTimers: new Map(),
@@ -339,7 +391,7 @@ export class ChatService {
       ...(prewarm ? { prewarm: true } : {}),
     });
     this.pushSnapshot(ownerId);
-    return { ok: true, sessionId, joined: false, phase: 'starting' };
+    return { ok: true, sessionId, joined: false, phase: 'starting', cwd };
   }
 
   /**
@@ -372,9 +424,10 @@ export class ChatService {
    * Attach the caller to a channel that already exists (explicit rejoin, or
    * the resume-dedupe path). The PLUGIN joins the socket when
    * `joined: true`; a starting channel needs no ready re-push (it never
-   * emitted one — the real push lands when the agent comes up).
+   * emitted one — the real push lands when the agent comes up). A NULL
+   * opener (#67 dispatch) joins nothing — it only takes the ack.
    */
-  private reattach(existing: LiveSession, openerSocketId: string): ChatOpenResult {
+  private reattach(existing: LiveSession, openerSocketId: string | null): ChatOpenResult {
     // #66 — a viewer came back: revoke the deferred close armed when the last
     // viewer left mid-turn (the premise "nobody is watching" no longer holds).
     existing.closeWhenIdle = false;
@@ -382,7 +435,13 @@ export class ChatService {
       // 9 W11: with user-scoped liveness a channel SURVIVES its opener's
       // page refresh mid-spawn (another window may be watching the tab) —
       // reattach silently: join + ack 'starting'.
-      return { ok: true, sessionId: existing.sessionId, joined: true, phase: 'starting' };
+      return {
+        ok: true,
+        sessionId: existing.sessionId,
+        joined: true,
+        phase: 'starting',
+        cwd: existing.cwd,
+      };
     }
     // Join the opener BEFORE pushing. The /app handler's join runs after
     // open() resolves, so pushes emitted here would reach a room a FRESH
@@ -390,7 +449,7 @@ export class ChatService {
     // ready re-push was simply lost. (Same-SPA tab switches need the
     // browser-side switch buffer as well: the pushes can predate the
     // keyed listeners regardless of room membership.)
-    this.deps.io.joinChannel(openerSocketId, existing.sessionId);
+    if (openerSocketId !== null) this.deps.io.joinChannel(openerSocketId, existing.sessionId);
     // A re-join may be a page refresh whose listeners were attached after
     // the original ready push — re-push so every viewer settles.
     this.deps.io.toChannel(existing.sessionId, 'chat:session.ready', {
@@ -415,7 +474,13 @@ export class ChatService {
     if (existing.queuedPrompt !== null) {
       this.emitQueueState(existing, existing.queuedPrompt, false);
     }
-    return { ok: true, sessionId: existing.sessionId, joined: true, phase: existing.phase };
+    return {
+      ok: true,
+      sessionId: existing.sessionId,
+      joined: true,
+      phase: existing.phase,
+      cwd: existing.cwd,
+    };
   }
 
   /**
@@ -528,6 +593,13 @@ export class ChatService {
     session.agentVersion = evt.agentVersion;
     session.nativeSessionId = evt.nativeSessionId;
     session.promptCapabilities = evt.promptCapabilities;
+    // #67 — the dispatch sends its prompt on this tap (the in-process
+    // consumer has no room to observe the ready push from).
+    this.emitTap(session.sessionId, {
+      kind: 'ready',
+      ...(evt.nativeSessionId !== undefined ? { nativeSessionId: evt.nativeSessionId } : {}),
+      ...(evt.agentName !== undefined ? { agentName: evt.agentName } : {}),
+    });
     this.pushSnapshot(session.ownerId);
 
     // The opener joined at open(); if the USER has no connected window left
@@ -537,7 +609,9 @@ export class ChatService {
     // legacy immediate close. (9 W11: user-scoped — the opener's page may
     // have refreshed while another window of the same user still shows the
     // tab bar; that window keeps the channel alive.)
-    if ((await this.deps.io.userSockets(session.ownerId)).length === 0) {
+    // #67 — a DISPATCH channel skips the coupling entirely: the in-process
+    // consumer is its watcher.
+    if (!session.dispatch && (await this.deps.io.userSockets(session.ownerId)).length === 0) {
       if (this.opts.viewerGraceMs <= 0) {
         await this.closeInternal(session, 'connection-lost', { notifyDaemon: true });
         return;
@@ -625,6 +699,9 @@ export class ChatService {
       }
     }
     this.deps.io.toChannel(sessionId, 'chat:event', { sessionId, event });
+    // #67 — the dispatch's transcript buffer rides the same relay point, so
+    // tap order === room order by construction.
+    this.emitTap(sessionId, { kind: 'event', event });
     // #10 — the busy→idle transition is the flush hook: the parked message
     // now runs as the NEXT turn. Emitted after the idle relay so the viewer
     // first sees the turn complete, then the queue drain, then the new turn.
@@ -1047,6 +1124,9 @@ export class ChatService {
     if ((await this.deps.io.userSockets(userId)).length > 0) return;
     for (const session of [...this.live.values()]) {
       if (session.ownerId !== userId) continue;
+      // #67 — dispatch channels are never viewer-reaped: the dispatch (and
+      // the machine's daemon liveness) owns their lifecycle.
+      if (session.dispatch) continue;
       if (session.busy) {
         session.closeWhenIdle = true;
         continue;
@@ -1067,6 +1147,15 @@ export class ChatService {
   ): Promise<void> {
     if (this.live.get(session.sessionId) !== session) return; // already closed
     this.live.delete(session.sessionId);
+    // #67 — exactly-once terminal notification, then the channel's taps are
+    // gone with it (a late unregister is a harmless no-op).
+    this.emitTap(session.sessionId, {
+      kind: 'closed',
+      reason,
+      failed: opts.failed === true,
+      ...(opts.error !== undefined ? { error: opts.error } : {}),
+    });
+    this.taps.delete(session.sessionId);
     if (session.readyTimer !== null) clearTimeout(session.readyTimer);
     for (const timer of session.permissionTimers.values()) clearTimeout(timer);
     session.permissionTimers.clear();
