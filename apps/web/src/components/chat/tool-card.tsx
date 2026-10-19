@@ -471,7 +471,13 @@ function ToolCardShell({
             !expandable && 'cursor-default',
           )}
         >
-          {node.status === 'running' || node.status === 'failed' ? statusMark : icon}
+          {/* #72 — the leading mark never flex-shrinks: a long summary (the
+              dispatch card's 80-char prompt preview) squeezed the svg to
+              ~11px while sibling cards kept 14px. The status dot already
+              carries shrink-0 in its base class. */}
+          <span className="flex shrink-0 items-center">
+            {node.status === 'running' || node.status === 'failed' ? statusMark : icon}
+          </span>
           {expandable ? <ChevronDownIcon className="size-3 shrink-0" /> : null}
           <span className="text-muted-foreground shrink-0 font-medium">{title}</span>
           <span className="text-muted-foreground/40" aria-hidden>
