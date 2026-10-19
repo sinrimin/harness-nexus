@@ -42,13 +42,14 @@ import {
   type AssistantConfigView,
   type LlmProviderView,
 } from '@harness-nexus/sdk';
-/** The v1 tool groups (kept in sync with shared's ASSISTANT_TOOL_GROUPS). */
+/** The tool groups (kept in sync with shared's ASSISTANT_TOOL_GROUPS). */
 const ASSISTANT_TOOL_GROUPS = [
   'resources',
   'profiles',
   'mcp',
   'skills-hub',
   'machines',
+  'agent-dispatch',
   'system',
 ] as const;
 import { Checkbox } from '@/components/ui/checkbox';

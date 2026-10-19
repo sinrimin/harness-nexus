@@ -21,6 +21,8 @@ export const ASSISTANT_TOOL_GROUPS = [
   'mcp',
   'skills-hub',
   'machines',
+  // #67 — client-agent dispatch; deliberately NOT in the defaults (opt-in).
+  'agent-dispatch',
   'system',
 ] as const;
 
