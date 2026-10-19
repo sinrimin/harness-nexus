@@ -287,6 +287,26 @@ export class AssistantDispatchService {
     this.sink.dispatches(userId, assistantSessionId, views);
   }
 
+  /**
+   * #69 — the turn-start brief: this assistant session's still-live
+   * dispatches, as prompt text. The model's transcript holds the handles;
+   * without this it cannot know they are STILL RUNNING — or that the user
+   * drove them further since. '' when nothing is live (no noise).
+   */
+  briefFor(assistantSessionId: string): string {
+    const lines: string[] = [];
+    for (const record of this.records.values()) {
+      if (record.assistantSessionId !== assistantSessionId || this.isTerminal(record)) continue;
+      lines.push(
+        `- ${record.channelId} on agent ${record.agentInstanceId}: ${record.status}` +
+          `${record.busy ? ', mid-turn' : ''}` +
+          `${record.openPermissions.size > 0 ? ', a permission card awaits the user' : ''}`,
+      );
+    }
+    if (lines.length === 0) return '';
+    return `Live dispatched client-agent sessions (handles from your earlier turns; state at this turn's start — poll before acting on them):\n${lines.join('\n')}`;
+  }
+
   // ---- internals ----
 
   private note(record: DispatchRecord, text: string): void {

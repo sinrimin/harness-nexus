@@ -55,6 +55,9 @@ const en = {
   noAssistants: 'No assistant configured',
   noAssistantsHint: 'Create one to chat with the platform.',
   noSessions: 'No conversations yet',
+  // #69 — the platform default the override replaces, viewable in the dialog.
+  defaultPromptShow: 'Show the platform default prompt',
+  defaultPromptHide: 'Hide the platform default prompt',
   // #68 — stopping a turn that has live dispatched client-agent sessions.
   stopChoiceTitle: 'Stop the assistant?',
   stopChoiceConsequence:
@@ -116,6 +119,8 @@ const zh: typeof en = {
   noAssistants: '尚未配置助理',
   noAssistantsHint: '创建一个即可与平台对话。',
   noSessions: '还没有会话',
+  defaultPromptShow: '查看平台默认提示词',
+  defaultPromptHide: '收起平台默认提示词',
   stopChoiceTitle: '停止平台助理？',
   stopChoiceConsequence:
     '当前回合有 {count} 个进行中的被调度客户端 Agent 会话。可仅停止客户端 Agent（平台助理回合继续运行，并会收到停止通知），或全部停止（先停客户端 Agent，再停本回合）。',

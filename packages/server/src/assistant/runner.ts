@@ -259,10 +259,16 @@ export function startAssistantTurn(
     // names + read_skill) — belt-and-braces against rebind races.
     const allowed = new Set(tools.map((t) => t.name));
 
-    const systemPrompt =
+    // #69 — ground truth at turn start: which of this session's dispatch
+    // handles are still live. Appended AFTER the extras addendum and to
+    // overrides too — the default prompt's dispatch discipline tells the
+    // model to re-check these before acting on them.
+    const dispatchBrief = deps.dispatch?.briefFor(session.id) ?? '';
+    const basePrompt =
       extras.promptAddendum === ''
         ? (config.systemPromptOverride ?? DEFAULT_ASSISTANT_SYSTEM_PROMPT)
         : `${config.systemPromptOverride ?? DEFAULT_ASSISTANT_SYSTEM_PROMPT}\n\n${extras.promptAddendum}`;
+    const systemPrompt = dispatchBrief === '' ? basePrompt : `${basePrompt}\n\n${dispatchBrief}`;
 
     const agent = new Agent({
       initialState: {
