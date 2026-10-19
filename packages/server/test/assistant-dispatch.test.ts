@@ -547,4 +547,38 @@ describe('#68 dispatch backflow', () => {
       viewer.disconnect();
     }
   }, 15000);
+
+  it("lists only THIS session's live dispatches; terminal records and strangers stay out", async () => {
+    const d = daemon!;
+    const sid = 'as-69-brief';
+    await app.uow.assistants.saveSession({
+      id: sid,
+      ownerId: userId,
+      assistantId: 'cfg-68-test',
+      title: 'brief',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      lastMessageAt: null,
+    });
+    // Nothing live → no section at all.
+    expect(app.realtime.assistantDispatch.briefFor(sid)).toBe('');
+
+    const channelId = await dispatchMidTurn(d, sid, 'brief me');
+    const brief = app.realtime.assistantDispatch.briefFor(sid);
+    expect(brief).toContain(channelId);
+    expect(brief).toContain(agentId);
+    expect(brief).toContain('running');
+    expect(brief).toContain('mid-turn');
+    // A different session's brief stays empty.
+    expect(app.realtime.assistantDispatch.briefFor('as-69-other')).toBe('');
+
+    // Terminal → the section goes quiet again.
+    void d.emit('chat:event', {
+      sessionId: channelId,
+      event: { kind: 'turn_result', stopReason: 'end_turn' },
+    });
+    const done = await app.realtime.assistantDispatch.poll(userId, channelId, 5000);
+    expect(done.ok === true && done.status === 'done').toBe(true);
+    expect(app.realtime.assistantDispatch.briefFor(sid)).toBe('');
+  }, 15000);
 });

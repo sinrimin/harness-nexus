@@ -19,3 +19,4 @@ export * from './diff-inventory.js';
 export * from './utils/errors.js';
 export * from './utils/placeholders.js';
 export * from './utils/safe-path.js';
+export * from './assistant-prompt.js';

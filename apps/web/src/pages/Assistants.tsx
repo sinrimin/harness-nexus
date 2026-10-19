@@ -1,10 +1,18 @@
 import { useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
-import { MoreHorizontalIcon, PencilIcon, PlusIcon, TrashIcon, Wand2Icon } from 'lucide-react';
+import {
+  ChevronDownIcon,
+  MoreHorizontalIcon,
+  PencilIcon,
+  PlusIcon,
+  TrashIcon,
+  Wand2Icon,
+} from 'lucide-react';
+import { DEFAULT_ASSISTANT_SYSTEM_PROMPT } from '@harness-nexus/sdk';
 import { api } from '@/api';
 import { useAuth, withAuthGuard } from '@/auth';
 import { useI18n } from '@/i18n';
-import { DataTable, Note, PageIntro } from '@/components/kit';
+import { DataTable, Note, PageIntro, Well } from '@/components/kit';
 import { tableState } from '@/components/kit/table.js';
 import { Field } from '@/components/kit/field.js';
 import { ConfirmDialog } from '@/components/kit/confirm-dialog.js';
@@ -85,6 +93,40 @@ const EMPTY_DRAFT: Draft = {
   skillResourceIds: [],
   dailyTokenBudget: '',
 };
+
+/**
+ * #69 — the platform default the override replaces, on demand. The field's
+ * hint says "empty = the platform default"; an informed override (or a
+ * deliberate choice to keep the default) needs to see what that default
+ * says — same constant the server builds turns from.
+ */
+function DefaultPromptDisclosure() {
+  const { t } = useI18n();
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="mt-1">
+      <button
+        type="button"
+        aria-expanded={open}
+        onClick={() => setOpen((v) => !v)}
+        className="text-muted-foreground hover:text-foreground inline-flex items-center gap-1 text-xs"
+      >
+        <ChevronDownIcon
+          className={`size-3 transition-transform${open ? ' rotate-180' : ''}`}
+          aria-hidden
+        />
+        {t(open ? 'assistants.defaultPromptHide' : 'assistants.defaultPromptShow')}
+      </button>
+      {open ? (
+        <Well variant="text" truncate={false} className="mt-1 max-h-64 overflow-auto">
+          <pre className="text-muted-foreground whitespace-pre-wrap font-mono text-xs">
+            {DEFAULT_ASSISTANT_SYSTEM_PROMPT}
+          </pre>
+        </Well>
+      ) : null}
+    </div>
+  );
+}
 
 export function AssistantsPage() {
   const { logout } = useAuth();
@@ -558,6 +600,7 @@ export function AssistantsPage() {
               onChange={(e) => setDraft((d) => ({ ...d, systemPromptOverride: e.target.value }))}
               className="font-mono text-xs"
             />
+            <DefaultPromptDisclosure />
           </Field>
           <div className="flex justify-end gap-2">
             <Button type="button" variant="outline" onClick={() => setCreating(false)}>
