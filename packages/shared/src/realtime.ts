@@ -699,6 +699,14 @@ export const chatSessionOpenRequestSchema = z.object({
       cwd: z.string().min(1).max(1024),
     })
     .optional(),
+  /**
+   * #70 — the `directory` may NOT EXIST yet on the machine: true = the
+   * daemon creates it (recursively) before spawning the adapter. Absent or
+   * false = an existing-directory-only contract — a missing cwd fails
+   * honestly (`chat:session.failed`), never as a spawn-ENOENT masquerade.
+   * The assistant dispatch always sends true.
+   */
+  createDirectory: z.boolean().optional(),
 });
 
 /** server → daemon: spawn the agent subprocess for this channel. `cwd` defaults to the agent home. */
@@ -709,6 +717,8 @@ export const chatSessionStartEventSchema = z.object({
   cwd: z.string().min(1).max(1024),
   /** 9 W7 — present when this channel resumes a native session (`session/load` / `session/resume`). */
   resume: chatSessionOpenRequestSchema.shape.resume,
+  /** #70 — mirror of the open request's flag (mkdir -p the cwd before spawn). */
+  createDirectory: z.boolean().optional(),
   /**
    * 9 W13 — the machine's configured model set for this target,
    * `unique([spec.model, ...spec.models])` from the stored RuntimeConfig.

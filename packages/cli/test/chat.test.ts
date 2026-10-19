@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -524,6 +524,91 @@ describe('session round-trip vs the fixture agent', () => {
       tick();
     });
   }
+
+  it('#70: a missing cwd refuses honestly; the create flag mkdir-paths it', async () => {
+    const socket = new FakeSocket();
+    attachChatHandlers(socket as never, {
+      env: { HN_ACP_COMMAND_HERMES: `node ${FIXTURE}`, PATH: process.env.PATH ?? '' },
+      homeDir: LEDGER_HOME,
+    });
+
+    // No flag + a directory that does not exist: the honest refusal, NOT a
+    // spawn-ENOENT blaming the adapter binary.
+    socket.receive('chat:session.start', {
+      sessionId: 'sess-70a',
+      agentInstanceId: 'ag-1',
+      target: 'hermes',
+      cwd: '/tmp/hnx-70-definitely-missing/sub',
+    });
+    const refused = await waitFor(
+      () =>
+        socket.emitted.find((e) => e.event === 'chat:session.ready')?.payload as
+          { error?: string } | undefined,
+    );
+    expect(refused.error).toContain('does not exist');
+    expect(refused.error).toContain('/tmp/hnx-70-definitely-missing/sub');
+
+    // With the flag: the directory is created and the agent boots in it.
+    const made = `/tmp/hnx-70-created-${String(process.pid)}`;
+    rmSync(made, { recursive: true, force: true });
+    socket.receive('chat:session.start', {
+      sessionId: 'sess-70b',
+      agentInstanceId: 'ag-1',
+      target: 'hermes',
+      cwd: join(made, 'project'),
+      createDirectory: true,
+    });
+    const ready = await waitFor(
+      () =>
+        socket.emitted.find(
+          (e) =>
+            e.event === 'chat:session.ready' &&
+            (e.payload as { sessionId?: string }).sessionId === 'sess-70b',
+        )?.payload as { agentName?: string; error?: string } | undefined,
+    );
+    expect(ready.error).toBeUndefined();
+    expect(existsSync(join(made, 'project'))).toBe(true);
+    socket.receive('chat:session.close', { sessionId: 'sess-70b', reason: 'test' });
+    await waitFor(() =>
+      socket.emitted.some(
+        (e) =>
+          e.event === 'chat:session.closed' &&
+          (e.payload as { sessionId?: string }).sessionId === 'sess-70b',
+      )
+        ? true
+        : undefined,
+    );
+    rmSync(made, { recursive: true, force: true });
+  }, 15000);
+
+  it('#70: the adapter spawn carries the daemon env base (PATH et al.)', async () => {
+    const socket = new FakeSocket();
+    // A var on the DAEMON's own process.env — pre-#70 the spawn env was ONLY
+    // cmd.env + spawnEnv, so this never reached the adapter (and a PATH-less
+    // `#!/usr/bin/env node` shim died as spawn-ENOENT).
+    process.env.FIXTURE_AGENT_NAME = 'env-base-probe';
+    try {
+      attachChatHandlers(socket as never, {
+        env: { HN_ACP_COMMAND_HERMES: `node ${FIXTURE}` },
+        homeDir: LEDGER_HOME,
+      });
+      socket.receive('chat:session.start', {
+        sessionId: 'sess-70c',
+        agentInstanceId: 'ag-1',
+        target: 'hermes',
+        cwd: '/tmp',
+      });
+      const ready = await waitFor(
+        () =>
+          socket.emitted.find((e) => e.event === 'chat:session.ready')?.payload as
+            { agentName?: string; error?: string } | undefined,
+      );
+      expect(ready.error).toBeUndefined();
+      expect(ready.agentName).toBe('env-base-probe');
+    } finally {
+      delete process.env.FIXTURE_AGENT_NAME;
+    }
+  }, 15000);
 
   it('start → ready → prompt → echo turn → permission turn → close', async () => {
     const socket = new FakeSocket();

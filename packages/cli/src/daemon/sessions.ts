@@ -265,6 +265,8 @@ async function deleteAdapterSession(
   if (cmd === null) throw new Error(`no ACP adapter for target '${target}'`);
   const { conn, sessionCaps } = await AcpAgentConnection.start(cmd.command, cmd.args, {
     cwd: homedir(),
+    // #70 — daemon env as the base, target env layered on top.
+    env: { ...process.env, ...(cmd.env ?? {}) },
   });
   try {
     if (!sessionCaps.delete) {
@@ -422,6 +424,9 @@ async function listViaAdapter(
   if (cmd === null) throw new Error(`no ACP adapter for target '${target}'`);
   const { conn, sessionCaps } = await AcpAgentConnection.start(cmd.command, cmd.args, {
     cwd: homedir(),
+    // #70 — daemon env as the base, target env layered on top (the pinned
+    // shims need a PATH for `#!/usr/bin/env node`).
+    env: { ...process.env, ...(cmd.env ?? {}) },
   });
   try {
     if (!sessionCaps.list) throw new Error(`adapter for '${target}' does not support session/list`);

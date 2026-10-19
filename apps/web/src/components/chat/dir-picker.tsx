@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { ChevronDownIcon, ChevronRightIcon, FolderIcon, LoaderIcon } from 'lucide-react';
 import { api } from '@/api';
 import { useAuth, withAuthGuard } from '@/auth';
 import { useI18n } from '@/i18n';
 import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { FormDialog } from '@/components/ui/form-dialog';
@@ -32,7 +33,8 @@ interface DirPickerProps {
   machineId: string;
   baseWorkspace: string | null;
   onBaseWorkspaceSaved: (base: string) => void;
-  onPick: (directory: string) => void;
+  /** #70 — `createDirectory`: the path may not exist yet; the daemon mkdir -p's it. */
+  onPick: (directory: string, createDirectory: boolean) => void;
 }
 
 export function DirPicker({
@@ -50,12 +52,24 @@ export function DirPicker({
   const [loadingPath, setLoadingPath] = useState<string | null>(null);
   const [draftBase, setDraftBase] = useState('');
   const [savingBase, setSavingBase] = useState(false);
+  // #70 — tree picks set `treePicked`; a MANUAL edit away from it is the
+  // user inventing a (probably new) path, which auto-arms auto-create.
+  // Focus and tree re-selection never touch the checkbox.
+  const [autoCreate, setAutoCreate] = useState(false);
+  const treePicked = useRef('');
+
+  const pickFromTree = useCallback((path: string): void => {
+    treePicked.current = path;
+    setSelected(path);
+  }, []);
 
   useEffect(() => {
     if (!open) {
       setRoot(null);
       setSelected('');
       setDraftBase('');
+      setAutoCreate(false);
+      treePicked.current = '';
     }
   }, [open]);
 
@@ -167,7 +181,7 @@ export function DirPicker({
           <Button
             disabled={selected === ''}
             onClick={() => {
-              onPick(selected);
+              onPick(selected, autoCreate);
               onClose();
             }}
           >
@@ -204,7 +218,7 @@ export function DirPicker({
           <div className="bg-muted/50 max-h-80 overflow-y-auto rounded-md border p-2 font-mono text-xs">
             <button
               type="button"
-              onClick={() => setSelected(baseWorkspace)}
+              onClick={() => pickFromTree(baseWorkspace)}
               className={cn(
                 'hover:bg-accent flex w-full items-center gap-1.5 rounded px-1.5 py-1 text-left',
                 selected === baseWorkspace && 'bg-accent',
@@ -226,7 +240,7 @@ export function DirPicker({
                 node={root}
                 depth={1}
                 selected={selected}
-                onSelect={setSelected}
+                onSelect={pickFromTree}
                 onExpand={expand}
                 loadingPath={loadingPath}
               />
@@ -237,12 +251,27 @@ export function DirPicker({
             <Input
               id="chat-selected-dir"
               value={selected}
-              onChange={(e) => setSelected(e.target.value)}
+              onChange={(e) => {
+                const value = e.target.value;
+                setSelected(value);
+                // #70 — a manual edit away from the tree-picked path is the
+                // user inventing one: arm auto-create for them.
+                if (value !== treePicked.current) setAutoCreate(true);
+              }}
               placeholder={baseWorkspace}
               autoComplete="off"
               spellCheck={false}
               className="font-mono text-xs"
             />
+            <label className="flex items-center gap-2 text-sm">
+              <Checkbox
+                checked={autoCreate}
+                onCheckedChange={(checked) => setAutoCreate(checked === true)}
+                aria-label={t('chat.autoCreateDir')}
+              />
+              <span className="text-xs">{t('chat.autoCreateDir')}</span>
+            </label>
+            <p className="text-muted-foreground text-xs">{t('chat.autoCreateDirHint')}</p>
           </div>
         </div>
       )}

@@ -47,6 +47,10 @@ const en = {
     'Pick the project directory for this session — a subdirectory of the machine base workspace. The agent works inside it.',
   useDirectory: 'Use directory',
   selectedDirectory: 'Selected directory (absolute path)',
+  // #70 — may type a not-yet-existing path; the daemon creates it at open.
+  autoCreateDir: 'Auto-create directory',
+  autoCreateDirHint:
+    'Typed paths that do not exist yet are created on the machine at open (must stay under the base workspace). Editing the path arms this automatically; tree picks leave it off.',
   needsBaseWorkspace:
     'This machine has no base workspace yet. Set one — an absolute path on the machine; chat sessions pick their project directory under it.',
   baseWorkspaceLabel: 'Base workspace',
@@ -207,6 +211,9 @@ const zh: typeof en = {
   pickDirectoryDesc: '为会话选择项目目录——机器基础工作区的子目录，代理将在其中工作。',
   useDirectory: '使用该目录',
   selectedDirectory: '选中目录（绝对路径）',
+  autoCreateDir: '自动创建目录',
+  autoCreateDirHint:
+    '手入的新路径若尚不存在，开聊时会在机器上创建（须位于基础工作区内）。手动编辑路径会自动勾选；从目录树选择则不影响。',
   needsBaseWorkspace:
     '此机器尚未设置基础工作区。请设置一个机器上的绝对路径；聊天会话将在其子目录中选择项目目录。',
   baseWorkspaceLabel: '基础工作区',

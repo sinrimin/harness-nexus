@@ -690,6 +690,7 @@ export async function registerRealtime(
           socket.id,
           parsed.data.directory,
           parsed.data.resume,
+          parsed.data.createDirectory,
         );
         if (!result.ok) {
           ack?.({ error: result.code });

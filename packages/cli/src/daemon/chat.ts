@@ -1,7 +1,9 @@
 import { randomUUID } from 'node:crypto';
 import {
   closeSync,
+  existsSync,
   fstatSync,
+  mkdirSync,
   openSync,
   readSync,
   readdirSync,
@@ -621,9 +623,11 @@ export function attachChatHandlers(
       const gate = await versionGate(key as AgentTarget, env);
       if (!gate.ok) return null;
       const tapArmed = await armTap(key);
-      // Same env layering as the channel spawn (target env + test spawnEnv),
-      // minus the cwd — a prewarm has no session yet, so it boots in `home`.
-      const baseEnv = { ...(cmd.env ?? {}), ...(opts.spawnEnv ?? {}) };
+      // Same env layering as the channel spawn: the daemon's own env is the
+      // BASE (#70 — a bare target env left the shim's `#!/usr/bin/env node`
+      // without a PATH, and Node's spawn-ENOENT blamed the adapter binary),
+      // with the target env and test spawnEnv layered on top.
+      const baseEnv = { ...process.env, ...(cmd.env ?? {}), ...(opts.spawnEnv ?? {}) };
       const ledgerPrewarm = (pgid: number): void => {
         writeAdapterLedgerEntry(home, {
           pgid,
@@ -705,9 +709,35 @@ export function attachChatHandlers(
       return;
     }
     ack?.({ accepted: true });
-    const { sessionId, target, cwd, resume, modelOptions, defaultMode, prewarm } = parsed.data;
+    const { sessionId, target, cwd, resume, modelOptions, defaultMode, prewarm, createDirectory } =
+      parsed.data;
     void (async () => {
       inFlightStarts.add(sessionId);
+      // #70 — the cwd may be a brand-new project directory (the assistant
+      // dispatch, or the picker's 自动创建目录): create it when asked, refuse
+      // HONESTLY when not — a missing cwd used to die as a spawn-ENOENT that
+      // blamed the adapter binary for a directory problem.
+      if (!existsSync(cwd)) {
+        if (createDirectory === true) {
+          try {
+            mkdirSync(cwd, { recursive: true });
+          } catch (e) {
+            socket.emit('chat:session.ready', {
+              sessionId,
+              error: `cannot create session directory '${cwd}': ${
+                e instanceof Error ? e.message : String(e)
+              }`,
+            });
+            return;
+          }
+        } else {
+          socket.emit('chat:session.ready', {
+            sessionId,
+            error: `session directory '${cwd}' does not exist on this machine — enable directory auto-create or pick an existing directory`,
+          });
+          return;
+        }
+      }
       // 9 W16 — pi rides the in-daemon ACP façade (PiRpcConnection), not an
       // ACP adapter subprocess; everything downstream is shared verbatim.
       const isPi = target === 'pi';
@@ -787,20 +817,21 @@ export function attachChatHandlers(
             });
           };
           // 9 W14.1 — target-scoped adapter env (claude-code's todo-tool
-          // opt-in) layers UNDER the daemon spawn env and the tap vars.
-          const baseEnv = { ...(cmd.env ?? {}), ...(opts.spawnEnv ?? {}) };
+          // opt-in) layers ON TOP of the daemon's own env (#70 — the base
+          // used to be dropped, leaving the pinned shim's
+          // `#!/usr/bin/env node` without a PATH: spawn-ENOENT blaming the
+          // adapter binary) and the tap vars.
+          const baseEnv = { ...process.env, ...(cmd.env ?? {}), ...(opts.spawnEnv ?? {}) };
           const spawnOpts = {
             cwd,
             onSpawned,
             ...(tapArmed === null
-              ? Object.keys(baseEnv).length > 0
-                ? { env: baseEnv }
-                : {}
+              ? { env: baseEnv }
               : {
                   env: {
                     ...baseEnv,
                     HNX_TAP_PORT: String(tapArmed.listener.port),
-                    HNX_TAP_TOKEN: tapArmed.listener.token,
+                    HNX_TAP_TOKEN: String(tapArmed.listener.token),
                   },
                 }),
           };
