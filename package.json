@@ -23,6 +23,8 @@
     "lint": "pnpm -r run lint",
     "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md,yml,yaml}\"",
     "format:check": "prettier --check \"**/*.{ts,tsx,js,jsx,json,md,yml,yaml}\"",
+    "headers": "node scripts/headers.mjs --check",
+    "headers:fix": "node scripts/headers.mjs --fix",
     "typecheck": "pnpm -r run typecheck",
     "clean": "pnpm -r exec rimraf dist node_modules .turbo"
   },

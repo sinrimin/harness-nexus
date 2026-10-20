@@ -11,6 +11,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # SPDX header gate (#74) — zero-dep, runs before install for fast feedback.
+      - run: node scripts/headers.mjs --check
+
       - uses: pnpm/action-setup@v4 # reads packageManager from package.json
 
       - uses: actions/setup-node@v4
