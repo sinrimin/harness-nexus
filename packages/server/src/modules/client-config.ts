@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 sinrimin
+//
+// SPDX-License-Identifier: MIT
+
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { AppError } from '@harness-nexus/shared';
 import { hashToken, PAT_PREFIX } from '../infra/crypto.js';

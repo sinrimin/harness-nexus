@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 sinrimin
+//
+// SPDX-License-Identifier: MIT
+
 import type { Socket } from 'socket.io-client';
 import { spawn } from '../proc.js';
 import { readFileSync } from 'node:fs';

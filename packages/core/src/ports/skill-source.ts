@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 sinrimin
+//
+// SPDX-License-Identifier: MIT
+
 /**
  * Skill-sourcing port — a uniform interface for fetching skill metadata and
  * bytes from heterogeneous sources (a marketplace, a GitHub repo, a direct

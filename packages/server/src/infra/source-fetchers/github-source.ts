@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 sinrimin
+//
+// SPDX-License-Identifier: MIT
+
 import type { FastifyBaseLogger } from 'fastify';
 import type { SkillBundle, SkillMeta, SkillSource } from '@harness-nexus/core';
 import { resolveTrustTier, type PluginResourceSource } from '@harness-nexus/shared';

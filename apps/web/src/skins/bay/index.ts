@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 sinrimin
+//
+// SPDX-License-Identifier: MIT
+
 /**
  * BAY — the instrument-rack skin. Light aluminium chassis, dark LCD wells,
  * LEDs for status, safety-orange for the one energised thing per screen.

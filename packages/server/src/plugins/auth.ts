@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 sinrimin
+//
+// SPDX-License-Identifier: MIT
+
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import type { JwtService } from '../infra/jwt.js';
 import { hashToken, PAT_PREFIX } from '../infra/crypto.js';

@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 sinrimin
+//
+// SPDX-License-Identifier: MIT
+
 import { useCallback, useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { ChevronDownIcon, ChevronRightIcon, FileIcon, FolderIcon, LoaderIcon } from 'lucide-react';

@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 sinrimin
+//
+// SPDX-License-Identifier: MIT
+
 import { useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import { useI18n } from '@/i18n';

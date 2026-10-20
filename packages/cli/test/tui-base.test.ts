@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 sinrimin
+//
+// SPDX-License-Identifier: MIT
+
 import { describe, expect, it } from 'vitest';
 import { computeLayout } from '../src/tui/layout.js';
 import { fmtBytes, fmtCount, fmtDuration } from '../src/tui/metrics.js';

@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 sinrimin
+//
+// SPDX-License-Identifier: MIT
+
 import { useEffect, useState } from 'react';
 import { appSocket, type ChatChannelView, type ChatChannelsPush } from '@/realtime.js';
 

@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 sinrimin
+//
+// SPDX-License-Identifier: MIT
+
 import { arch, homedir, hostname, platform } from 'node:os';
 import { io, type Socket } from 'socket.io-client';
 import {

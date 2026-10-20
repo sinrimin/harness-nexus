@@ -66,6 +66,9 @@ Every unit of work is anchored to an issue (`#N`):
 
 - Keep PRs small and single-purpose; reference the issue (`Fixes #123`).
 - Don't reformat code you didn't otherwise touch.
+- Every first-party source file (`.ts`, `.tsx`, `.js`, `.mjs`, `.css`, …) carries
+  the repo's SPDX header — run `pnpm headers:fix` when you add files; CI rejects
+  a missing header.
 - New behavior needs tests; new endpoints need a smoke entry.
 
 ## Where things are documented

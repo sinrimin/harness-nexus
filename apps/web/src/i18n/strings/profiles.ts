@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 sinrimin
+//
+// SPDX-License-Identifier: MIT
+
 /** Profiles page. */
 const en = {
   // Two-stage delete: badge shown next to a soft-deleted entry target.

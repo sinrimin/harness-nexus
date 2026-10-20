@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 sinrimin
+//
+// SPDX-License-Identifier: MIT
+
 import type { ServerConfig } from '../../config.js';
 import type { UnitOfWork } from '@harness-nexus/core';
 

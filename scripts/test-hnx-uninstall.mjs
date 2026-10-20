@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 sinrimin
+//
+// SPDX-License-Identifier: MIT
+
 // End-to-end test of `hnx uninstall` ledger reversal (no server needed):
 // install a hermes profile into a temp dir that ALREADY has a user config.yaml,
 // verify the merge, then uninstall and verify the pre-install state is fully

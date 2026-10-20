@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 sinrimin
+//
+// SPDX-License-Identifier: MIT
+
 /**
  * BAY font loader — only pulled (and only paid for) when the skin is active.
  * Explicit .css paths keep TS happy via vite/client's module declarations.

@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 sinrimin
+//
+// SPDX-License-Identifier: MIT
+
 /**
  * The platform assistant's default system prompt (#52; dispatch discipline
  * #69). A config's `systemPromptOverride` replaces it WHOLESALE — the web

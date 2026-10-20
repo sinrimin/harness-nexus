@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 sinrimin
+//
+// SPDX-License-Identifier: MIT
+
 /**
  * #66 — reconnect-only resubscription gate. A silent socket.io reconnect
  * (weak network, phone lock screen) is a NEW connection: every `chan:<id>`

@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 sinrimin
+//
+// SPDX-License-Identifier: MIT
+
 /**
  * Hook event × target support matrix — the single source of truth for which
  * hook events each Agent tool supports. Used by the hook editor (Phase 4.5) to

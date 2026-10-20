@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 sinrimin
+//
+// SPDX-License-Identifier: MIT
+
 import { describe, expect, it, vi } from 'vitest';
 import type { RuntimeInfo } from '@harness-nexus/shared';
 import { acpMinVersion } from '../src/daemon/acp/adapters.js';

@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 sinrimin
+//
+// SPDX-License-Identifier: MIT
+
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import { platform, arch } from 'node:os';
 import { writeFileSync } from 'node:fs';

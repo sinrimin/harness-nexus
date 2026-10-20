@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 sinrimin
+//
+// SPDX-License-Identifier: MIT
+
 import type { ReactNode } from 'react';
 import { cn } from '@/lib/utils';
 import { DataText } from './text';

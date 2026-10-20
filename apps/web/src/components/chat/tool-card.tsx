@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 sinrimin
+//
+// SPDX-License-Identifier: MIT
+
 import { Component, memo, useState, type ComponentType, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import {

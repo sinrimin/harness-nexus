@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 sinrimin
+//
+// SPDX-License-Identifier: MIT
+
 import { Link } from 'react-router-dom';
 import { useI18n } from '@/i18n';
 import { Lamp } from '@/components/kit';

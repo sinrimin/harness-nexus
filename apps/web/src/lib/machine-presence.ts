@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 sinrimin
+//
+// SPDX-License-Identifier: MIT
+
 import type { MachineView } from '@harness-nexus/sdk';
 import type { MachineStatusEvent } from '@/realtime';
 

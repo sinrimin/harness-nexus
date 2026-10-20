@@ -1,4 +1,8 @@
 #!/usr/bin/env node
+// SPDX-FileCopyrightText: 2026 sinrimin
+//
+// SPDX-License-Identifier: MIT
+
 // Minimal zero-dependency stdio MCP server used by scripts/test-hnx-mcp-serve.mjs.
 // Speaks newline-delimited JSON-RPC (the MCP stdio framing) and exposes ONE
 // tool, `echo`, whose description embeds argv[2] — which the test passes as a

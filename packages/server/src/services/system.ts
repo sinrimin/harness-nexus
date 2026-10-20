@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 sinrimin
+//
+// SPDX-License-Identifier: MIT
+
 import { serverVersion } from '../version.js';
 import type { Principal } from './principal.js';
 

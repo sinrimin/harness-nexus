@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 sinrimin
+//
+// SPDX-License-Identifier: MIT
+
 /**
  * #39 — the machine metrics bar's data source. Zero dependencies beyond
  * node:os / node:fs: loadavg, CPU% (cpu-times delta between samples — the

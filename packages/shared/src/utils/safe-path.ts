@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 sinrimin
+//
+// SPDX-License-Identifier: MIT
+
 /**
  * Path-safety predicate for file keys that get joined onto a target directory
  * (skill bundle entries, plugin-source subpaths, emitted archive entries).

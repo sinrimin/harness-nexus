@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 sinrimin
+//
+// SPDX-License-Identifier: MIT
+
 import { memo, useEffect, useRef, useState } from 'react';
 import { BrainIcon, ChevronDownIcon, FileTextIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';

@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 sinrimin
+//
+// SPDX-License-Identifier: MIT
+
 // @vitest-environment jsdom
 /**
  * `TableSearch` — the one control on the toolbar with timing (§3.5).

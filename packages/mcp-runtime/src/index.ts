@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 sinrimin
+//
+// SPDX-License-Identifier: MIT
+
 /**
  * @harness-nexus/mcp-runtime — the transport-facing MCP upstream pool
  * (Phase 8 C2, extracted from the server's 2.2 `McpRegistry`).

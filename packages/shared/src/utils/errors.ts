@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 sinrimin
+//
+// SPDX-License-Identifier: MIT
+
 /** Small shared helpers usable by every package (no node-only APIs here). */
 
 /** Typed error with an HTTP-ish status code for the server to map. */

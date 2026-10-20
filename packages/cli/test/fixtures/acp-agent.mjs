@@ -1,4 +1,8 @@
 #!/usr/bin/env node
+// SPDX-FileCopyrightText: 2026 sinrimin
+//
+// SPDX-License-Identifier: MIT
+
 /**
  * Fixture ACP agent (Phase 8 C5 tests + smoke; 9 W7 adds sessions). Speaks
  * ACP v1 — JSON-RPC 2.0, newline-delimited — over stdio:

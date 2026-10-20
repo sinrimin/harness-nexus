@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 sinrimin
+//
+// SPDX-License-Identifier: MIT
+
 // @vitest-environment jsdom
 import type { ReactNode } from 'react';
 import { afterEach, describe, expect, it } from 'vitest';

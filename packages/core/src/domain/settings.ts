@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 sinrimin
+//
+// SPDX-License-Identifier: MIT
+
 /**
  * System-wide settings — a single-row aggregate persisted in `system_settings`.
  * Phase 1 uses `allowRegistration`; later fields append here without a new table.

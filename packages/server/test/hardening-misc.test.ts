@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 sinrimin
+//
+// SPDX-License-Identifier: MIT
+
 import { describe, expect, it } from 'vitest';
 import { harnessJobPayloadSchema } from '@harness-nexus/shared';
 import { buildApp } from '../src/app.js';

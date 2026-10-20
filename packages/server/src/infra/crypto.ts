@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 sinrimin
+//
+// SPDX-License-Identifier: MIT
+
 import { hash, verify } from '@node-rs/argon2';
 import { randomBytes, createHash, createCipheriv, createDecipheriv } from 'node:crypto';
 

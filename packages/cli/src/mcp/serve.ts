@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 sinrimin
+//
+// SPDX-License-Identifier: MIT
+
 /**
  * `hnx mcp serve` — the client MCP shim (Phase 8 C2).
  *

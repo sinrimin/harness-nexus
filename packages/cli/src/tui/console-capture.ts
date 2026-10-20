@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 sinrimin
+//
+// SPDX-License-Identifier: MIT
+
 /**
  * #39 — while the TUI owns stdout, NOTHING may print to it: the daemon's
  * own console lines (boot banner, provisioning report, disconnect notices)

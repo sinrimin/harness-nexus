@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 sinrimin
+//
+// SPDX-License-Identifier: MIT
+
 // Throwaway smoke test for the Phase 3.5 marketplace emitter. Self-contained:
 // boots a memory-mode server on :17800, registers a user, creates a PAT,
 // resources + an MCP server + a claude-code profile mixing both entry arms,

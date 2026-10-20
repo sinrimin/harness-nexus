@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 sinrimin
+//
+// SPDX-License-Identifier: MIT
+
 import { useRef, useState, type ReactNode, type TouchEvent } from 'react';
 import { TrashIcon } from 'lucide-react';
 

@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 sinrimin
+//
+// SPDX-License-Identifier: MIT
+
 /**
  * Phase 8 C3 — the latest inventory snapshot for one (machine, target). The
  * daemon's scanners produce it (normalized in `@harness-nexus/shared`

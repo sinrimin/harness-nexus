@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 sinrimin
+//
+// SPDX-License-Identifier: MIT
+
 /**
  * Phase 8 — a user's machine enrolled with this instance via the Harness
  * Nexus client (`hnx enroll`). The daemon on the machine authenticates to the

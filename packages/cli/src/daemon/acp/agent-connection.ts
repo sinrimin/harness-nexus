@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 sinrimin
+//
+// SPDX-License-Identifier: MIT
+
 import { type ChildProcess } from 'node:child_process';
 import { spawn } from '../../proc.js';
 import { createInterface } from 'node:readline';

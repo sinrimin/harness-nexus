@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 sinrimin
+//
+// SPDX-License-Identifier: MIT
+
 /**
  * Image attachment preparation (9 W9 B) — browser-side downscale BEFORE the
  * wire: a long-edge ≤1568px WebP/JPEG re-encode keeps turns at hundreds of KB

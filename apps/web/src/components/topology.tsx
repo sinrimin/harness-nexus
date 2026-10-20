@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 sinrimin
+//
+// SPDX-License-Identifier: MIT
+
 import type { ComponentType } from 'react';
 import type { TopologyStyle } from '@/skins/registry.js';
 import { MeshTopology } from './mesh-topology.js';

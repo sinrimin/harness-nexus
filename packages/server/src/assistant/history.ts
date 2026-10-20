@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 sinrimin
+//
+// SPDX-License-Identifier: MIT
+
 import type { AgentMessage } from '@earendil-works/pi-agent-core';
 import type { Api, JsonObject } from '@earendil-works/pi-ai';
 import type {

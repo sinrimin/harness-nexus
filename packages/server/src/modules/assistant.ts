@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 sinrimin
+//
+// SPDX-License-Identifier: MIT
+
 import type { FastifyInstance } from 'fastify';
 import type { AssistantConfig, AssistantSession } from '@harness-nexus/core';
 import {

@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 sinrimin
+//
+// SPDX-License-Identifier: MIT
+
 import { Navigate } from 'react-router-dom';
 import { readDefaultEnd } from '@/components/chat/end-switcher.js';
 

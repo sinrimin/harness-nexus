@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 sinrimin
+//
+// SPDX-License-Identifier: MIT
+
 import { useEffect, useRef } from 'react';
 import { appSocket, type MachineStatusEvent } from '@/realtime';
 

@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 sinrimin
+//
+// SPDX-License-Identifier: MIT
+
 /**
  * install-state ledger — a JSON record written on every `--apply`, enabling
  * future `doctor` (drift detection) / `repair` / `uninstall` (remove only

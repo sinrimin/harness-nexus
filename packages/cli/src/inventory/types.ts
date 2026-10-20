@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 sinrimin
+//
+// SPDX-License-Identifier: MIT
+
 import type { AgentTarget, InventoryArtifact, InventoryItemKind } from '@harness-nexus/shared';
 import type { DiscoveredItem } from './common.js';
 

@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 sinrimin
+//
+// SPDX-License-Identifier: MIT
+
 import type { LucideIcon } from 'lucide-react';
 import { PlusIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';

@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 sinrimin
+//
+// SPDX-License-Identifier: MIT
+
 import type { ComponentProps } from 'react';
 import { cn } from '@/lib/utils';
 import { SIGNAL_TONE, type SignalState, type SignalTone } from '@/components/state-signal';

@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 sinrimin
+//
+// SPDX-License-Identifier: MIT
+
 /**
  * Stub adapter — a placeholder for `target: 'generic'`. It uses the factory's
  * default `planOperations`, which writes a minimal `harness-nexus-profile.json`

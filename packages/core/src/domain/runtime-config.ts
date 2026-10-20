@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 sinrimin
+//
+// SPDX-License-Identifier: MIT
+
 /**
  * Phase 9 W3 — the provider/model route ONE harness runtime on ONE machine
  * should use. Pure spec: the API key itself never lives here; the spec names

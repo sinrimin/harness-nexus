@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 sinrimin
+//
+// SPDX-License-Identifier: MIT
+
 /**
  * Phase 9 W10 — a reusable LLM route (cc-switch-style provider catalog).
  * The provider is the ROUTE, never the secret: the API key lives in the

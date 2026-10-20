@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 sinrimin
+//
+// SPDX-License-Identifier: MIT
+
 // @vitest-environment jsdom
 /**
  * `TagCombobox` (#56) — the creatable multi-select behind the registry's

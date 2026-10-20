@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 sinrimin
+//
+// SPDX-License-Identifier: MIT
+
 /**
  * McpRegistry — the server-side aggregation layer (Phase 2.2, reshaped in
  * Phase 8 C2).

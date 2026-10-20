@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 sinrimin
+//
+// SPDX-License-Identifier: MIT
+
 /**
  * The skill bundle's tree view (09-p4-resource-kinds.md §4).
  *

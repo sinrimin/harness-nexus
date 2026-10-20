@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 sinrimin
+//
+// SPDX-License-Identifier: MIT
+
 /**
  * Target adapter registry. Each target adapter registers itself here; the
  * planner looks one up by `AgentTarget`. Mirrors ECC's

@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 sinrimin
+//
+// SPDX-License-Identifier: MIT
+
 /**
  * Aggregate locale dictionaries. Every leaf in `strings/` owns its English and
  * Chinese copy side by side (the leaf types `zh` as `typeof en`, so key parity

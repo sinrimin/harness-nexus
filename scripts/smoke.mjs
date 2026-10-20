@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 sinrimin
+//
+// SPDX-License-Identifier: MIT
+
 // Throwaway smoke test for the Phase 1 auth flow. Run against a freshly booted
 // memory-mode server. Not part of the automated test suite (yet).
 const B = process.env.BASE_URL ?? 'http://127.0.0.1:7780';

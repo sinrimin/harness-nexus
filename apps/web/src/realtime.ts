@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 sinrimin
+//
+// SPDX-License-Identifier: MIT
+
 import { io, type Socket } from 'socket.io-client';
 import { createResubscribeGate } from '@/lib/resubscribe';
 import { TOKEN_KEY } from './api.js';

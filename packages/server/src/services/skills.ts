@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 sinrimin
+//
+// SPDX-License-Identifier: MIT
+
 import { AppError, type MarketplacePlugin } from '@harness-nexus/shared';
 import { resolveAllowlistId, type MarketplaceEntry } from '../infra/source-fetchers/allowlist.js';
 import type { SkillCatalogService } from '../infra/source-fetchers/catalog-service.js';

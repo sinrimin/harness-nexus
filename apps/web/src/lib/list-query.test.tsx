@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 sinrimin
+//
+// SPDX-License-Identifier: MIT
+
 // @vitest-environment jsdom
 /**
  * The URL contract, asserted (07-p3-list-pages.md §3).

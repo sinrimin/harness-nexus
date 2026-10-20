@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 sinrimin
+//
+// SPDX-License-Identifier: MIT
+
 import type { Machine, RuntimeInfoData, UnitOfWork } from '@harness-nexus/core';
 import { generateId } from '../infra/crypto.js';
 

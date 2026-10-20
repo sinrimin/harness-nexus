@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 sinrimin
+//
+// SPDX-License-Identifier: MIT
+
 import { useCallback, useEffect, useRef, useState, type RefCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { PlusIcon, ServerIcon } from 'lucide-react';

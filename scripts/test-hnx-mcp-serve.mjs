@@ -1,4 +1,8 @@
 #!/usr/bin/env node
+// SPDX-FileCopyrightText: 2026 sinrimin
+//
+// SPDX-License-Identifier: MIT
+
 // Throwaway E2E for the `hnx mcp serve` stdio shim (Phase 8 C2):
 //   memory-mode server → personal cred + stdio upstream (placeholder arg) →
 //   profile → spawn the shim → connect as a (hand-rolled NDJSON) MCP client →

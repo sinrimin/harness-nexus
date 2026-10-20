@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 sinrimin
+//
+// SPDX-License-Identifier: MIT
+
 /**
  * Strings shared across pages: table chrome, action buttons, scope/role
  * vocabulary, and the generic toast fallbacks. Pages import these via

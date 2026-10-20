@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 sinrimin
+//
+// SPDX-License-Identifier: MIT
+
 import { useEffect, useState } from 'react';
 import { ChevronDownIcon, CircleXIcon, EraserIcon, Loader2Icon } from 'lucide-react';
 import { Button } from '@/components/ui/button.js';

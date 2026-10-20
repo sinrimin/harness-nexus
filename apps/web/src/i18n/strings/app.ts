@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 sinrimin
+//
+// SPDX-License-Identifier: MIT
+
 /** App chrome: spine/plate nav, topbar, readout strip, guards, and the toggles. */
 const en = {
   skipToContent: 'Skip to content',

@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 sinrimin
+//
+// SPDX-License-Identifier: MIT
+
 import { describe, expect, it } from 'vitest';
 import type { MachineView } from '@harness-nexus/sdk';
 import { patchMachine, patchMachineList } from './machine-presence.js';

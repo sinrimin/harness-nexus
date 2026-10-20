@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 sinrimin
+//
+// SPDX-License-Identifier: MIT
+
 import { useCallback, useRef, useState } from 'react';
 
 /** Copy a string to the clipboard with a short "copied" settle. */

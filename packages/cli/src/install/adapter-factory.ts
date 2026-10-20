@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 sinrimin
+//
+// SPDX-License-Identifier: MIT
+
 /**
  * Target adapter factory — mirrors ECC's `createInstallTargetAdapter`
  * (`scripts/lib/install-targets/helpers.js`). A small config object yields a

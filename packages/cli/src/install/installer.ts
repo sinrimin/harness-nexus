@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 sinrimin
+//
+// SPDX-License-Identifier: MIT
+
 /**
  * Installer — materializes an `InstallPlan` to disk and writes the install-state
  * ledger. Mirrors ECC's `applyInstallPlan`

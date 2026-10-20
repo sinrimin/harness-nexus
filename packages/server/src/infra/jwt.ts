@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 sinrimin
+//
+// SPDX-License-Identifier: MIT
+
 import { SignJWT, jwtVerify, type JWTPayload } from 'jose';
 import type { Role } from '@harness-nexus/core';
 

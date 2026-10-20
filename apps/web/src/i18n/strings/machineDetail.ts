@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 sinrimin
+//
+// SPDX-License-Identifier: MIT
+
 /** Machine detail page (inventory, diff & import, deployments, remote chat). */
 const en = {
   back: 'Machines',

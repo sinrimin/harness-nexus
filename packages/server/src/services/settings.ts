@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 sinrimin
+//
+// SPDX-License-Identifier: MIT
+
 import type { SystemSettings } from '@harness-nexus/core';
 import { IMAGE_RETENTION_MAX, IMAGE_RETENTION_MIN } from '@harness-nexus/core';
 import {

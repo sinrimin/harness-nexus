@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 sinrimin
+//
+// SPDX-License-Identifier: MIT
+
 import type { Machine } from '@harness-nexus/core';
 import type { CreateMachineInput, UpdateMachineInput } from '@harness-nexus/shared';
 import { AppError } from '@harness-nexus/shared';

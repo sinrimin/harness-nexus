@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 sinrimin
+//
+// SPDX-License-Identifier: MIT
+
 /**
  * @harness-nexus/sdk — thin HTTP client for the Harness Nexus REST API.
  *

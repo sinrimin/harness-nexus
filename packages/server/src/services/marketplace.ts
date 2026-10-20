@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 sinrimin
+//
+// SPDX-License-Identifier: MIT
+
 import type { Profile } from '@harness-nexus/core';
 import { AppError } from '@harness-nexus/shared';
 import { hashToken, PAT_PREFIX } from '../infra/crypto.js';
