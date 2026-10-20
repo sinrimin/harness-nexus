@@ -56,7 +56,9 @@ export const SubagentRow = memo(function SubagentRow({
             pulse={running}
             className="size-1.5"
           />
-          <ChevronDownIcon className="size-3 shrink-0" />
+          <ChevronDownIcon
+            className={cn('size-3 shrink-0 transition-transform', expanded && 'rotate-180')}
+          />
           <span className="text-muted-foreground shrink-0 font-medium">{name}</span>
           <span className="text-muted-foreground/40" aria-hidden>
             ·
