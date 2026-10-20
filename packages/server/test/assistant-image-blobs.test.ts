@@ -77,6 +77,7 @@ async function setup() {
     },
     toUser: () => undefined,
     joinChannel: () => undefined,
+    userSockets: async () => [],
   };
   const svc = new AssistantRealtimeService(
     {

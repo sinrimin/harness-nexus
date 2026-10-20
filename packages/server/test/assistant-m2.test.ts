@@ -167,6 +167,7 @@ async function setup(): Promise<Harness> {
     },
     toUser: () => undefined,
     joinChannel: () => undefined,
+    userSockets: async () => [],
   };
 
   const svc = new AssistantRealtimeService(

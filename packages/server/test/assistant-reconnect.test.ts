@@ -90,6 +90,7 @@ async function setup() {
       calls.push({ event, payload: payload as IoCall['payload'] }),
     toUser: () => undefined,
     joinChannel: () => undefined,
+    userSockets: async () => [],
   };
   const svc = new AssistantRealtimeService(
     {
