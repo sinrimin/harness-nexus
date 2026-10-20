@@ -2,6 +2,7 @@
 // SPDX-FileCopyrightText: 2026 sinrimin
 //
 // SPDX-License-Identifier: MIT
+
 //
 // scripts/headers.mjs — add or check the SPDX file header on every first-party
 // source file (#74). `--check` (default) lists files whose header is missing or
