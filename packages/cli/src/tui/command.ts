@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 sinrimin
+//
+// SPDX-License-Identifier: MIT
+
 /**
  * #39 — the `hnx tui` command: interactive dashboard by default, one-shot
  * text snapshot with --dump (or automatically when stdout is not a TTY —

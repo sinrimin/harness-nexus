@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 sinrimin
+//
+// SPDX-License-Identifier: MIT
+
 import type { LlmProvider, Machine, RuntimeConfig } from '@harness-nexus/core';
 import {
   AppError,

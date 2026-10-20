@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 sinrimin
+//
+// SPDX-License-Identifier: MIT
+
 /**
  * Install-pipeline errors. Carry a stable `code` so the CLI can map them to
  * the right exit status / message. See `wiki design-phase-3-install.md` Part 6.

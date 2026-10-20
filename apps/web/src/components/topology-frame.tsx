@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 sinrimin
+//
+// SPDX-License-Identifier: MIT
+
 import type { ReactNode } from 'react';
 import type { McpServerStatus } from '@harness-nexus/sdk';
 import { StateSignal, SIGNAL_FILL_CLASS, type SignalState } from '@/components/state-signal';

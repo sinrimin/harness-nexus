@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 sinrimin
+//
+// SPDX-License-Identifier: MIT
+
 import type { SkillBundle, SkillMeta, SkillSource } from '@harness-nexus/core';
 import {
   marketplacePluginToResourceSource,

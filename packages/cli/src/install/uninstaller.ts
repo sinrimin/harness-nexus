@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 sinrimin
+//
+// SPDX-License-Identifier: MIT
+
 /**
  * Uninstaller — reverses an `hnx install --apply` using the install-state
  * ledger (Phase 3.5 loose ends; the ledger's "enabling uninstall" promise from

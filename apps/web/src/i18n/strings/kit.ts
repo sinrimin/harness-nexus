@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 sinrimin
+//
+// SPDX-License-Identifier: MIT
+
 /**
  * Copy owned by the kit primitives (panel/table/well/confirm…). Page copy lives
  * in its page's namespace; these strings are rendered *inside* a primitive, so

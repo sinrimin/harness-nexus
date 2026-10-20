@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 sinrimin
+//
+// SPDX-License-Identifier: MIT
+
 // Skin pre-paint — sets <html data-skin> before first paint so a saved skin
 // never flashes the baseline. Loaded as an external same-origin script from
 // index.html (CSP keeps script-src strict — no inline exceptions). Keep the

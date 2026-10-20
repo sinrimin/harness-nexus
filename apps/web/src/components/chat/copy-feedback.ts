@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 sinrimin
+//
+// SPDX-License-Identifier: MIT
+
 /**
  * The hook moved to `@/lib/clipboard` when the kit primitives started copying
  * too (chat must not be the only owner of the behaviour). Kept as a one-line

@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 sinrimin
+//
+// SPDX-License-Identifier: MIT
+
 import { Agent, type AgentMessage, type AgentToolResult } from '@earendil-works/pi-agent-core';
 import type { LlmProvider } from '@harness-nexus/core';
 import type {

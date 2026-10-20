@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 sinrimin
+//
+// SPDX-License-Identifier: MIT
+
 import { randomUUID } from 'node:crypto';
 import type { MachineInventorySnapshot } from '@harness-nexus/core';
 import type { InventoryPayloadEvent } from '@harness-nexus/shared';

@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 sinrimin
+//
+// SPDX-License-Identifier: MIT
+
 /**
  * Issue #52 — the platform assistant: a server-embedded agent (pi-agent-core
  * + pi-ai) that operates Harness Nexus as its owning user. All rows are

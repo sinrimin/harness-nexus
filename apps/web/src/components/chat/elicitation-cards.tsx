@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 sinrimin
+//
+// SPDX-License-Identifier: MIT
+
 import { useMemo, useState } from 'react';
 
 import { Button } from '@/components/ui/button';

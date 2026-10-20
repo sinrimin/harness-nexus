@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 sinrimin
+//
+// SPDX-License-Identifier: MIT
+
 /**
  * #39 — the TUI's terminal surface: alternate screen, hidden cursor, raw
  * keys, resize handling, and diff-less full-frame repaint.

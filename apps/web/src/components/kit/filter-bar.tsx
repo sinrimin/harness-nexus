@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 sinrimin
+//
+// SPDX-License-Identifier: MIT
+
 /**
  * The list toolbar — search, filters, sort (07-p3-list-pages.md §4).
  *

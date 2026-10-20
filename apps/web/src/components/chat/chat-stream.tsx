@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 sinrimin
+//
+// SPDX-License-Identifier: MIT
+
 import { memo, useCallback, useEffect, useRef, useState } from 'react';
 import { ArrowDownIcon } from 'lucide-react';
 import { useI18n } from '@/i18n';

@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 sinrimin
+//
+// SPDX-License-Identifier: MIT
+
 import { BrowserRouter, Routes, Route, Navigate, Outlet } from 'react-router-dom';
 import type { ReactNode } from 'react';
 import { AuthProvider } from '@/auth';

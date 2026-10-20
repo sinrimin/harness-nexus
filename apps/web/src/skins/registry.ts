@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 sinrimin
+//
+// SPDX-License-Identifier: MIT
+
 /**
  * Skin registry — the contract every skin declares itself against.
  * Design source: wiki `design-skin-system.md` (and the local exploration under

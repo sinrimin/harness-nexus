@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 sinrimin
+//
+// SPDX-License-Identifier: MIT
+
 import { useId, type ReactNode } from 'react';
 import { PlusIcon, Wand2Icon, XIcon } from 'lucide-react';
 import { useI18n, type TranslationKey } from '@/i18n';

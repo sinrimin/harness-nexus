@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 sinrimin
+//
+// SPDX-License-Identifier: MIT
+
 import type { FastifyInstance } from 'fastify';
 import socketIOPlugin from 'fastify-socket.io';
 import type { Server, Socket } from 'socket.io';

@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 sinrimin
+//
+// SPDX-License-Identifier: MIT
+
 import type { EventEmitter } from 'node:events';
 import type { ServerConfig } from '../src/config.js';
 

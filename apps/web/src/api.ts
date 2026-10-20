@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 sinrimin
+//
+// SPDX-License-Identifier: MIT
+
 import { HarnessNexusClient } from '@harness-nexus/sdk';
 
 // Vite dev server proxies /api to the Fastify backend (see vite.config.ts),

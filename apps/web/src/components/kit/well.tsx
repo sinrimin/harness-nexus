@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 sinrimin
+//
+// SPDX-License-Identifier: MIT
+
 import type { HTMLAttributes, ReactNode } from 'react';
 import { CheckIcon, CopyIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';

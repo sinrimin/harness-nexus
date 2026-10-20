@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 sinrimin
+//
+// SPDX-License-Identifier: MIT
+
 // Harness Nexus dsh event tap (Phase 9 W7.1; #46 tap v2 for dsh ≥0.1.3).
 // wiki design-phase-9-w7.1-dsh-event-tap.md
 //

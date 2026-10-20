@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 sinrimin
+//
+// SPDX-License-Identifier: MIT
+
 import { CRED_PLACEHOLDER_RE } from './utils/placeholders.js';
 
 /**

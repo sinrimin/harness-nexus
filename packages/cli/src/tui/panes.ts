@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 sinrimin
+//
+// SPDX-License-Identifier: MIT
+
 /**
  * #39 — the TUI pane renderers: pure functions from snapshots to display
  * lines (unit-tested; the app owns polling and subscriptions). Rendering

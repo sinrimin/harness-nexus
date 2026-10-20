@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 sinrimin
+//
+// SPDX-License-Identifier: MIT
+
 import type { ReactNode } from 'react';
 import { Navigate, useLocation, Link } from 'react-router-dom';
 import { useAuth } from './auth.js';

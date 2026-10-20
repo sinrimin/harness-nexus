@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 sinrimin
+//
+// SPDX-License-Identifier: MIT
+
 import { homedir } from 'node:os';
 import { spawn } from 'node:child_process';
 import { readdirSync, readFileSync, rmSync, statSync } from 'node:fs';

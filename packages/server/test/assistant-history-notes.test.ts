@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 sinrimin
+//
+// SPDX-License-Identifier: MIT
+
 import { describe, expect, it } from 'vitest';
 import type { AssistantMessageRow } from '@harness-nexus/core';
 import { rowsToHistoryItems, rowsToPiMessages } from '../src/assistant/history.js';

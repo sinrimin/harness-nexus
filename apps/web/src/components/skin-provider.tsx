@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 sinrimin
+//
+// SPDX-License-Identifier: MIT
+
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react';
 import { useTheme } from 'next-themes';
 import { DEFAULT_SKIN, getSkin, isSkinId, type SkinId, type SkinManifest } from '@/skins/registry';

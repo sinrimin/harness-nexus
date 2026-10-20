@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 sinrimin
+//
+// SPDX-License-Identifier: MIT
+
 import assert from 'node:assert/strict';
 import { describe, it } from 'vitest';
 import { PrewarmPool } from '../src/daemon/prewarm.js';

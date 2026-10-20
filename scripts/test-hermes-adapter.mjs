@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 sinrimin
+//
+// SPDX-License-Identifier: MIT
+
 // Unit-test the hermes adapter's plugin-bundle path directly (no server needed).
 // Run from repo root: node scripts/test-hermes-adapter.mjs
 import fs from 'node:fs';

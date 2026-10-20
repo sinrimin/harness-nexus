@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 sinrimin
+//
+// SPDX-License-Identifier: MIT
+
 // @vitest-environment node
 import { existsSync } from 'node:fs';
 import { createRequire } from 'node:module';

@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 sinrimin
+//
+// SPDX-License-Identifier: MIT
+
 /**
  * #39 — `hnx tui`: the daemon's console. One process runs BOTH the daemon
  * (in-process via startDaemon) and an nmon-style stacked-band dashboard:

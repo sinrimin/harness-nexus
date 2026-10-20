@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 sinrimin
+//
+// SPDX-License-Identifier: MIT
+
 /**
  * Marketplace emitter (Phase 3.5) — turns a user's visible claude-code-target
  * profiles into a Claude Code plugin marketplace served over plain HTTP:

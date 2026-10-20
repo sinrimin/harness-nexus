@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 sinrimin
+//
+// SPDX-License-Identifier: MIT
+
 export * from './schemas/profile.js';
 export * from './schemas/auth.js';
 export * from './schemas/mcp.js';

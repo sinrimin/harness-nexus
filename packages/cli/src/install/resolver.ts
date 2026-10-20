@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 sinrimin
+//
+// SPDX-License-Identifier: MIT
+
 /**
  * ProfileResolver — fetches a profile and resolves every entry's `resourceId`
  * into its concrete artifact via the SDK against a running Harness Nexus server.

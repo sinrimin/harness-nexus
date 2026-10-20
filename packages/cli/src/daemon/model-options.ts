@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 sinrimin
+//
+// SPDX-License-Identifier: MIT
+
 import { DSH_PROVIDER_ID, OPENCODE_PROVIDER_ID, PI_PROVIDER_ID } from '@harness-nexus/shared';
 import type { HistoryItem, SessionConfigOption } from '@harness-nexus/shared';
 

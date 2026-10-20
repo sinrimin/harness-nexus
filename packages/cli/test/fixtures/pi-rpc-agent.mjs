@@ -1,4 +1,8 @@
 #!/usr/bin/env node
+// SPDX-FileCopyrightText: 2026 sinrimin
+//
+// SPDX-License-Identifier: MIT
+
 // Fake pi coding agent speaking the `--mode rpc` JSONL dialect (Phase 9 W16).
 //
 // The contract mirrors the REAL pi surface the daemon's PiRpcConnection

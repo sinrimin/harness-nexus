@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 sinrimin
+//
+// SPDX-License-Identifier: MIT
+
 import { describe, expect, it } from 'vitest';
 import type { PrewarmView, SessionView } from '../src/daemon/chat.js';
 import type { UsageRow } from '../src/daemon/usage.js';

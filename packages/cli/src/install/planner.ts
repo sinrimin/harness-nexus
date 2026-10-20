@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 sinrimin
+//
+// SPDX-License-Identifier: MIT
+
 /**
  * Planner — resolves a target adapter, validates input, and asks the adapter to
  * plan file operations. Produces an `InstallPlan` with NO filesystem writes

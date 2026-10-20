@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 sinrimin
+//
+// SPDX-License-Identifier: MIT
+
 import type { User } from '@harness-nexus/core';
 import { AppError, type LoginInput, type RegisterInput } from '@harness-nexus/shared';
 import { hashPassword, verifyPassword, generateId } from '../infra/crypto.js';

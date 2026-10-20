@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 sinrimin
+//
+// SPDX-License-Identifier: MIT
+
 import type { Posture } from '@harness-nexus/sdk';
 import { useI18n } from '@/i18n';
 import { Lamp } from '@/components/kit';

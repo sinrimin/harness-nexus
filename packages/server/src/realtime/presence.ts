@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 sinrimin
+//
+// SPDX-License-Identifier: MIT
+
 /**
  * Pure machine-presence state (Phase 8 C1) — no socket.io types, no I/O.
  *

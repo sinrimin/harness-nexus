@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 sinrimin
+//
+// SPDX-License-Identifier: MIT
+
 import { describe, expect, it } from 'vitest';
 import type { Profile } from '@harness-nexus/core';
 import { createMemoryUnitOfWork } from '../src/infra/storage/memory/index.js';

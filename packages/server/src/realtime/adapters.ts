@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 sinrimin
+//
+// SPDX-License-Identifier: MIT
+
 import { randomUUID } from 'node:crypto';
 import type { AdaptersReportResultEvent } from '@harness-nexus/shared';
 

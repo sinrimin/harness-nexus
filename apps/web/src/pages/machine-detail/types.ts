@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 sinrimin
+//
+// SPDX-License-Identifier: MIT
+
 /**
  * Shared view shapes for the machine detail tabs — the server view of
  * `GET /api/machines/:id/inventory` (loaded once by the page shell in

@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 sinrimin
+//
+// SPDX-License-Identifier: MIT
+
 /**
  * DeepSeek Harness (dsh) target adapter (Phase 8 T1).
  *

@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 sinrimin
+//
+// SPDX-License-Identifier: MIT
+
 import type { FastifyInstance } from 'fastify';
 import type { Machine, MachineInventorySnapshot } from '@harness-nexus/core';
 import {

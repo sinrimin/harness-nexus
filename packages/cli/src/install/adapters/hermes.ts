@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 sinrimin
+//
+// SPDX-License-Identifier: MIT
+
 /**
  * Hermes target adapter (Phase 3.4 — first real adapter, priority 1).
  *

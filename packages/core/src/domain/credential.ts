@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 sinrimin
+//
+// SPDX-License-Identifier: MIT
+
 /**
  * A Credential is a reusable named secret that Harness Nexus injects into an MCP
  * transport at resolve time. It is referenced by name via a `${cred:NAME}`

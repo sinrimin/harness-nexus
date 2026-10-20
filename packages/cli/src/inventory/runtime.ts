@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 sinrimin
+//
+// SPDX-License-Identifier: MIT
+
 import { access, realpath } from 'node:fs/promises';
 import { constants } from 'node:fs';
 import { spawn } from '../proc.js';

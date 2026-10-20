@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 sinrimin
+//
+// SPDX-License-Identifier: MIT
+
 import type { User, Credential, Resource, Machine } from '@harness-nexus/core';
 
 /**

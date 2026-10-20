@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 sinrimin
+//
+// SPDX-License-Identifier: MIT
+
 export { createStorage } from './factory.js';
 
 declare module 'fastify' {

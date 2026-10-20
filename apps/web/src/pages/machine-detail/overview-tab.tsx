@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 sinrimin
+//
+// SPDX-License-Identifier: MIT
+
 import { useEffect, useState, type ReactNode } from 'react';
 import { toast } from 'sonner';
 import { api } from '@/api';

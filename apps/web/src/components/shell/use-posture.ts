@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 sinrimin
+//
+// SPDX-License-Identifier: MIT
+
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Posture } from '@harness-nexus/sdk';
 import { api } from '@/api';

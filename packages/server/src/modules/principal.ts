@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 sinrimin
+//
+// SPDX-License-Identifier: MIT
+
 import type { FastifyRequest } from 'fastify';
 import type { Principal } from '../services/principal.js';
 

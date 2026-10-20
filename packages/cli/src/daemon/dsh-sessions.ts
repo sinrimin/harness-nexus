@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 sinrimin
+//
+// SPDX-License-Identifier: MIT
+
 import * as zlib from 'node:zlib';
 import type { ChatStreamEvent, HistoryItem } from '@harness-nexus/shared';
 import { hasTokenCounts, normalizeUsage } from './usage.js';

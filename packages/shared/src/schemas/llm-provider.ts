@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 sinrimin
+//
+// SPDX-License-Identifier: MIT
+
 import { z } from 'zod';
 import type { RuntimeTarget } from './inventory.js';
 import type { ProviderApi } from './runtime-config.js';

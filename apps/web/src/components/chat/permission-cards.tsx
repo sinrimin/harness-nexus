@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 sinrimin
+//
+// SPDX-License-Identifier: MIT
+
 import { Button } from '@/components/ui/button';
 import { useI18n } from '@/i18n';
 import type { PermissionCardState } from './fold.js';

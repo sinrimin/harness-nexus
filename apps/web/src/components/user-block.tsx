@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 sinrimin
+//
+// SPDX-License-Identifier: MIT
+
 import { LogOutIcon } from 'lucide-react';
 import { useAuth } from '@/auth';
 import { useI18n } from '@/i18n';

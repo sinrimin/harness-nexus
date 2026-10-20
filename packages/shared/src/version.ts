@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 sinrimin
+//
+// SPDX-License-Identifier: MIT
+
 /**
  * Version comparison (#37) — zero-dependency, semver-shaped:
  * `MAJOR.MINOR.PATCH` with an optional `-prerelease` tail. Tolerant of the

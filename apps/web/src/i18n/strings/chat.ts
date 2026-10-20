@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 sinrimin
+//
+// SPDX-License-Identifier: MIT
+
 /** Chat pages (Phase 9 W6: agent cards + portal-style session page). */
 const en = {
   title: 'Chat',

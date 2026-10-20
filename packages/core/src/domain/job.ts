@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 sinrimin
+//
+// SPDX-License-Identifier: MIT
+
 /**
  * Phase 8 C4 — a unit of replayable work executed by a machine's daemon over
  * `/ctl` (`job:dispatch` → `job:progress` → `job:result`). C4 ships the

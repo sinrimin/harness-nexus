@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 sinrimin
+//
+// SPDX-License-Identifier: MIT
+
 import { useEffect, useState, type HTMLAttributes } from 'react';
 import { cn } from '@/lib/utils';
 import { TableCell, TableRow } from '@/components/ui/table';

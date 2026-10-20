@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 sinrimin
+//
+// SPDX-License-Identifier: MIT
+
 import type { AgentTool } from '@earendil-works/pi-agent-core';
 import { Type, type TSchema } from '@earendil-works/pi-ai';
 import type { AggregatedTool } from '@harness-nexus/mcp-runtime';

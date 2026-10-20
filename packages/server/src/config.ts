@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 sinrimin
+//
+// SPDX-License-Identifier: MIT
+
 /** Runtime configuration, resolved from environment with sane defaults. */
 
 export interface ServerConfig {

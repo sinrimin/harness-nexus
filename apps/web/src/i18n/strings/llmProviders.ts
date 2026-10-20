@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 sinrimin
+//
+// SPDX-License-Identifier: MIT
+
 /** LLM providers page (Phase 9 W10; #51 model registry). */
 const en = {
   title: 'LLM providers',

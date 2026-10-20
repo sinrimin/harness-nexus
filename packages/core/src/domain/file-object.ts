@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 sinrimin
+//
+// SPDX-License-Identifier: MIT
+
 /**
  * #59 — one stored image blob. The bytes live OUTSIDE the database (the sqlite
  * driver writes them to a local files directory); this row is the registry the

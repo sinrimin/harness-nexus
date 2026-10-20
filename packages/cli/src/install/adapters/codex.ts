@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 sinrimin
+//
+// SPDX-License-Identifier: MIT
+
 /**
  * Codex target adapter (Phase 8 C2 — lands here as the "trivial case" of the
  * stdio shim unification; absorbs roadmap 3.6).

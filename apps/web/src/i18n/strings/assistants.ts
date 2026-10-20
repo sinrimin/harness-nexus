@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 sinrimin
+//
+// SPDX-License-Identifier: MIT
+
 /** Platform assistant config page + chat 端 strings (#52). */
 const en = {
   title: 'Assistants',
