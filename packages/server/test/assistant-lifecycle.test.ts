@@ -22,7 +22,7 @@ const KEY = 'test-secret-0123456789abcdef';
 const owner: Principal = { userId: 'u-owner', role: 'user' };
 const now = '2026-01-01T00:00:00.000Z';
 
-async function setup() {
+async function setup(opts: { viewerGraceMs?: number } = {}) {
   const uow = createMemoryUnitOfWork();
   await uow.users.save({
     id: owner.userId,
@@ -65,6 +65,8 @@ async function setup() {
   models.setProvider(faux.provider);
 
   const events: { sessionId: string; event: ChatStreamEvent }[] = [];
+  /** #57 — the owner's live /app sockets, driven per test. */
+  const sockets: string[] = [];
   const io: AssistantIO = {
     toChannel: (_sid, event, payload) => {
       if (event === 'assistant:event') {
@@ -73,6 +75,7 @@ async function setup() {
     },
     toUser: () => undefined,
     joinChannel: () => undefined,
+    userSockets: async () => [...sockets],
   };
   const svc = new AssistantRealtimeService(
     {
@@ -89,8 +92,13 @@ async function setup() {
       }),
     },
     io,
+    undefined,
+    {
+      permissionTimeoutMs: 120_000,
+      viewerGraceMs: opts.viewerGraceMs ?? 0,
+    },
   );
-  return { svc, uow, faux, events };
+  return { svc, uow, faux, events, sockets };
 }
 
 async function makeConfig(uow: ReturnType<typeof createMemoryUnitOfWork>): Promise<string> {
@@ -181,5 +189,89 @@ describe("#68 — mid-turn notes survive the turn's settle batch", () => {
     expect(rows.some((r) => r.type === 'assistant')).toBe(true);
     const seqs = rows.map((r) => r.seq);
     expect(new Set(seqs).size).toBe(seqs.length);
+  });
+});
+
+describe('#57 — abrupt viewer loss reaps the live channel under grace', () => {
+  it('grace 0 (legacy semantics): last socket gone closes an idle channel — the flag no longer leaks', async () => {
+    const h = await setup();
+    const id = await makeConfig(h.uow);
+    h.faux.setResponses([piAi.fauxAssistantMessage([piAi.fauxText('hello there')])]);
+    const res = await h.svc.open(owner.userId, id, undefined, 'sock-1');
+    const sessionId = res.ok ? res.sessionId : '';
+    await h.svc.onMessageSend(owner.userId, sessionId, 'hi');
+    await settle(h.svc, h.uow, sessionId);
+    expect(h.svc.isLive(sessionId)).toBe(true);
+
+    // The tab dies without assistant:session.close — with no other socket
+    // of the owner, the channel closes immediately (grace 0).
+    await h.svc.onViewerGone(owner.userId);
+    expect(h.svc.isLive(sessionId)).toBe(false);
+    // The rail unpaints with it.
+    expect(
+      (await h.svc.snapshotFor(owner.userId)).sessions.find((x) => x.id === sessionId)?.busy,
+    ).toBe(false);
+  });
+
+  it('a live sibling socket keeps the channel (liveness is user-scoped)', async () => {
+    const h = await setup();
+    const id = await makeConfig(h.uow);
+    h.faux.setResponses([piAi.fauxAssistantMessage([piAi.fauxText('hello there')])]);
+    const res = await h.svc.open(owner.userId, id, undefined, 'sock-1');
+    const sessionId = res.ok ? res.sessionId : '';
+    await h.svc.onMessageSend(owner.userId, sessionId, 'hi');
+    await settle(h.svc, h.uow, sessionId);
+
+    h.sockets.push('sock-2'); // another window of the same user
+    await h.svc.onViewerGone(owner.userId);
+    expect(h.svc.isLive(sessionId)).toBe(true);
+  });
+
+  it('grace > 0: a reconnect within the window cancels the reap', async () => {
+    const h = await setup({ viewerGraceMs: 10_000 });
+    const id = await makeConfig(h.uow);
+    const res = await h.svc.open(owner.userId, id, undefined, 'sock-1');
+    const sessionId = res.ok ? res.sessionId : '';
+
+    await h.svc.onViewerGone(owner.userId); // arms the timer
+    h.svc.onViewerBack(owner.userId); // the browser came back in time
+    await new Promise((r) => setTimeout(r, 30));
+    expect(h.svc.isLive(sessionId)).toBe(true);
+  });
+
+  it('grace > 0: the reap fires after the window', async () => {
+    const h = await setup({ viewerGraceMs: 25 });
+    const id = await makeConfig(h.uow);
+    h.faux.setResponses([piAi.fauxAssistantMessage([piAi.fauxText('hello there')])]);
+    const res = await h.svc.open(owner.userId, id, undefined, 'sock-1');
+    const sessionId = res.ok ? res.sessionId : '';
+    await h.svc.onMessageSend(owner.userId, sessionId, 'hi');
+    await settle(h.svc, h.uow, sessionId);
+
+    await h.svc.onViewerGone(owner.userId);
+    await new Promise((r) => setTimeout(r, 80));
+    expect(h.svc.isLive(sessionId)).toBe(false);
+  });
+
+  it('a mid-turn loss never aborts the run: the channel closes at settle', async () => {
+    const h = await setup({ viewerGraceMs: 0 });
+    const id = await makeConfig(h.uow);
+    // A slow provider: the turn is still streaming when the viewer dies.
+    h.faux.setResponses([
+      piAi.fauxAssistantMessage([piAi.fauxText('still working…')], { partial: true }),
+      piAi.fauxAssistantMessage([piAi.fauxText('all done')]),
+    ]);
+    const res = await h.svc.open(owner.userId, id, undefined, 'sock-1');
+    const sessionId = res.ok ? res.sessionId : '';
+    const sent = h.svc.onMessageSend(owner.userId, sessionId, 'go');
+
+    await h.svc.onViewerGone(owner.userId); // mid-turn: flips closeWhenIdle
+    expect(h.svc.isLive(sessionId)).toBe(true); // the run is protected
+    await sent;
+    await settle(h.svc, h.uow, sessionId);
+    // Settle closed the channel; the transcript still persisted.
+    expect(h.svc.isLive(sessionId)).toBe(false);
+    const rows = await h.uow.assistants.listMessages(sessionId);
+    expect(rows.some((r) => r.type === 'assistant')).toBe(true);
   });
 });

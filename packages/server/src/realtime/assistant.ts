@@ -37,6 +37,8 @@ export interface AssistantIO {
   toChannel(sessionId: string, event: string, payload: unknown): void;
   toUser(userId: string, event: string, payload: unknown): void;
   joinChannel(socketId: string, sessionId: string): void;
+  /** #57 — the owner's live /app socket ids (the viewer-grace re-check). */
+  userSockets(userId: string): Promise<string[]>;
 }
 
 interface LiveChannel {
@@ -73,6 +75,12 @@ interface LiveChannel {
    * open-then-abandon conversation leaves no trace behind a refresh.
    */
   pending?: AssistantSession | undefined;
+  /**
+   * #57 — the viewer grace expired while a turn was running: never abort the
+   * generation (its cost is committed and its rows persist at settle) — close
+   * the channel when the turn ends instead.
+   */
+  closeWhenIdle?: boolean;
 }
 
 function isRecord(v: unknown): v is Record<string, unknown> {
@@ -97,13 +105,18 @@ export class AssistantRealtimeService {
   private running = new Map<string, string>();
   /** M3 — write-tool approvals awaiting the browser's answer (or the timeout). */
   private pendingApprovals = new Map<string, PendingApproval>();
+  /** #57 — armed per-user viewer-grace reaps (cancelled by onViewerBack). */
+  private viewerGrace = new Map<string, NodeJS.Timeout>();
 
   constructor(
     private readonly deps: AssistantRunnerDeps,
     private readonly io: AssistantIO,
     /** M2 — the registry seam, resolved LAZILY (mountMcpProxy decorates after registerRealtime). */
     private readonly mcp?: AssistantMcpDeps,
-    private readonly opts: { permissionTimeoutMs: number } = { permissionTimeoutMs: 120_000 },
+    private readonly opts: { permissionTimeoutMs: number; viewerGraceMs: number } = {
+      permissionTimeoutMs: 120_000,
+      viewerGraceMs: 0,
+    },
   ) {}
 
   // ---- helpers ----
@@ -316,8 +329,62 @@ export class AssistantRealtimeService {
     return { ok: true };
   }
 
+  /**
+   * #57 — a /app socket of the owner died. Mirrors the #66 chat-axis rule:
+   * liveness is USER-scoped, the reap is GRACE-DELAYED (viewerGraceMs, 0 =
+   * immediate), and any reconnect within the window cancels it. Without this,
+   * an abruptly closed tab leaked the live flag forever — the session row
+   * stayed busy in the rail and undeletable (409) until a server restart.
+   */
+  async onViewerGone(userId: string): Promise<void> {
+    if ((await this.io.userSockets(userId)).length > 0) return;
+    if (this.opts.viewerGraceMs <= 0) {
+      await this.reapViewer(userId);
+      return;
+    }
+    this.armViewerGrace(userId);
+  }
+
+  /** A /app socket of this user (re)connected — cancel any armed reap. */
+  onViewerBack(userId: string): void {
+    const timer = this.viewerGrace.get(userId);
+    if (timer === undefined) return;
+    clearTimeout(timer);
+    this.viewerGrace.delete(userId);
+  }
+
+  /** #57 — arm the per-user reap timer (idempotent within a grace cycle). */
+  private armViewerGrace(userId: string): void {
+    if (this.viewerGrace.has(userId)) return;
+    const timer = setTimeout(() => {
+      this.viewerGrace.delete(userId);
+      void this.reapViewer(userId);
+    }, this.opts.viewerGraceMs);
+    timer.unref();
+    this.viewerGrace.set(userId, timer);
+  }
+
+  /** #57 — the grace-expired (or grace-disabled) viewer reap. */
+  private async reapViewer(userId: string): Promise<void> {
+    // Re-check: a socket may have reconnected without firing onViewerBack
+    // (the connect handler raced this timer's tick).
+    if ((await this.io.userSockets(userId)).length > 0) return;
+    for (const ch of [...this.live.values()]) {
+      if (ch.ownerId !== userId) continue;
+      if (this.running.get(userId) === ch.sessionId) {
+        // Never abort a running turn: it finishes and persists; the channel
+        // closes at settle (see startTurn's finally).
+        ch.closeWhenIdle = true;
+        continue;
+      }
+      await this.close(userId, ch.sessionId, 'connection-lost');
+    }
+  }
+
   /** Server shutdown — abort what is running (persisted as aborted) and notify. */
   stop(): void {
+    for (const timer of this.viewerGrace.values()) clearTimeout(timer);
+    this.viewerGrace.clear();
     for (const [, pending] of [...this.pendingApprovals.entries()]) {
       clearTimeout(pending.timer);
       pending.resolve(false);
@@ -617,6 +684,13 @@ export class AssistantRealtimeService {
       // The gate ALWAYS releases — a thrown turn must not wedge the user.
       if (this.running.get(ch.ownerId) === ch.sessionId) this.running.delete(ch.ownerId);
       ch.run = null;
+      // #57 — the viewer grace expired mid-turn: the generation was allowed
+      // to finish (closeWhenIdle), the channel ends now. Guarded against a
+      // channel the user closed explicitly mid-turn (close() already ran);
+      // the unconditional pushSessions below unpaints the rail either way.
+      if (ch.closeWhenIdle === true && this.live.get(ch.sessionId) === ch) {
+        await this.close(ch.ownerId, ch.sessionId, 'connection-lost');
+      }
       void this.pushSessions(ch.ownerId);
       await this.flushQueue(ch.ownerId);
     }

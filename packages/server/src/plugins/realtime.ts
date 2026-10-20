@@ -209,6 +209,10 @@ export async function registerRealtime(
         const socket = appNs.sockets.get(socketId);
         if (socket) void socket.join(`chan:${sessionId}`);
       },
+      // #57 — the assistant axis's viewer-grace re-check (same source as the
+      // chat axis's).
+      userSockets: async (userId) =>
+        (await appNs.in(`user:${userId}`).fetchSockets()).map((s) => s.id),
     },
     // M2 — the MCP registry seam. LAZY on purpose: mountMcpProxy decorates
     // `app.mcpRegistry` AFTER registerRealtime runs, so the closures resolve
@@ -217,8 +221,9 @@ export async function registerRealtime(
       listTools: (serverIds) => app.mcpRegistry.listTools(serverIds),
       callTool: (namespacedName, args) => app.mcpRegistry.callTool(namespacedName, args),
     },
-    // M3 — write-gate watchdog; same latency budget as machine-chat permissions.
-    { permissionTimeoutMs: opts.chatPermissionTimeoutMs },
+    // M3 — write-gate watchdog; #57 — the SAME viewer grace the chat axis
+    // uses (CHAT_VIEWER_GRACE_MS): one knob, one "browser comes back" budget.
+    { permissionTimeoutMs: opts.chatPermissionTimeoutMs, viewerGraceMs: opts.chatViewerGraceMs },
   );
   // #68 — the dispatch backflow sink: user operations / completions on driven
   // channels land as model-visible notes in the owning assistant session, and
@@ -672,6 +677,9 @@ export async function registerRealtime(
     // #66 — a reconnecting viewer cancels any armed viewer-grace reap FIRST
     // (before the snapshot below can race the reap's close pushes).
     realtime.chat.onViewerBack(socket.data.userId as string);
+    // #57 — the assistant axis arms the same reap (abrupt tab deaths leaked
+    // the live flag until a server restart).
+    realtime.assistant.onViewerBack(socket.data.userId as string);
     // 9 W11 B — fresh /app sockets get the live-channel snapshot immediately
     // (the tab bar's initial paint; later changes arrive as pushes).
     realtime.chat.sendSnapshot(socket.data.userId as string);
@@ -1078,6 +1086,8 @@ export async function registerRealtime(
     // waits out the turn (ChatService.onViewerGone).
     socket.on('disconnect', () => {
       void realtime.chat.onViewerGone(socket.data.userId as string);
+      // #57 — assistant channels reap under the same user-scoped grace.
+      void realtime.assistant.onViewerGone(socket.data.userId as string);
     });
   });
 }
