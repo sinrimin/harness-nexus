@@ -182,7 +182,11 @@ function ReasoningRow({ text, running }: { text: string; running: boolean }) {
       >
         <BrainIcon className="size-3.5 shrink-0" />
         <span className="shrink-0 text-[11px] font-medium">{t('chat.thought')}</span>
-        {!empty ? <ChevronDownIcon className="size-3 shrink-0" /> : null}
+        {!empty ? (
+          <ChevronDownIcon
+            className={cn('size-3 shrink-0 transition-transform', expanded && 'rotate-180')}
+          />
+        ) : null}
         <span className="min-w-0 flex-1" />
         <span
           ref={summaryRef}

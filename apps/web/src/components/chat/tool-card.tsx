@@ -478,7 +478,11 @@ function ToolCardShell({
           <span className="flex shrink-0 items-center">
             {node.status === 'running' || node.status === 'failed' ? statusMark : icon}
           </span>
-          {expandable ? <ChevronDownIcon className="size-3 shrink-0" /> : null}
+          {expandable ? (
+            <ChevronDownIcon
+              className={cn('size-3 shrink-0 transition-transform', open && 'rotate-180')}
+            />
+          ) : null}
           <span className="text-muted-foreground shrink-0 font-medium">{title}</span>
           <span className="text-muted-foreground/40" aria-hidden>
             ·
