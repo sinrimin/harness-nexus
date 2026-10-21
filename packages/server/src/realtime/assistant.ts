@@ -229,6 +229,17 @@ export class AssistantRealtimeService {
     return this.live.has(sessionId);
   }
 
+  /**
+   * #75 — is a turn RUNNING on this session (the per-user busy gate's
+   * session view)? The delete route closes an idle live channel first;
+   * only a running turn still refuses (it would keep writing into deleted
+   * rows).
+   */
+  isBusy(sessionId: string): boolean {
+    const ch = this.live.get(sessionId);
+    return ch !== undefined && this.running.get(ch.ownerId) === sessionId;
+  }
+
   // ---- open / close ----
 
   /**

@@ -285,7 +285,10 @@ export function AssistantSessionPage() {
     };
     const onClosed = (push: AssistantClosedPush): void => {
       if (push.sessionId !== sessionId) return;
-      if (push.reason === 'user') {
+      // 'session-deleted' (#75): the server closed the idle channel as part
+      // of a delete — reset the pane like an explicit disconnect; the rail
+      // refreshes via the sessions push.
+      if (push.reason === 'user' || push.reason === 'session-deleted') {
         setSessionId('');
         return;
       }

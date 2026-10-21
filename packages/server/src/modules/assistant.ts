@@ -103,12 +103,16 @@ export async function assistantRoutes(app: FastifyInstance): Promise<void> {
 
   app.delete<{ Params: { id: string } }>('/api/assistant-sessions/:id', guard, async (req) => {
     // Ownership FIRST (the service 404-hides foreign ids for every role),
-    // then the #55 live guard — a live channel would keep writing into
-    // deleted rows. Realtime state, so the check lives here, not in the
-    // service (#53).
+    // then the #55/#75 live guard — a RUNNING turn would keep writing into
+    // deleted rows (still refused); an idle live channel is closed first
+    // instead: the delete IS the user's close intent (#75). Realtime state,
+    // so the check lives here, not in the service (#53).
     const session = await getAssistantSession(deps(), principalOf(req), req.params.id);
     if (app.realtime.assistant.isLive(session.id)) {
-      throw new AppError('Session is open — close it first', 409, 'ASSISTANT_SESSION_LIVE');
+      if (app.realtime.assistant.isBusy(session.id)) {
+        throw new AppError('A turn is running — stop it first', 409, 'ASSISTANT_SESSION_BUSY');
+      }
+      await app.realtime.assistant.close(principalOf(req).userId, session.id, 'session-deleted');
     }
     await deleteAssistantSession(deps(), principalOf(req), session.id);
     // The rail's snapshot would otherwise keep the deleted row until the
