@@ -52,6 +52,19 @@ export function appSocket(): Socket {
   return socket;
 }
 
+/**
+ * #77 — the auth identity changed (logout, or a login as a different
+ * user): the singleton's EXISTING connection still speaks for the old
+ * identity — the auth callback only runs at connect time, so a live
+ * socket never re-authenticates. Freshly mounted pages would sync the
+ * PREVIOUS user's rooms over it. Drop it; the next `appSocket()` builds
+ * a fresh connection with the then-stored token.
+ */
+export function dropAppSocket(): void {
+  socket?.disconnect();
+  socket = null;
+}
+
 // ---- chat (Phase 8 C5) — mirrors shared/realtime.ts ----
 
 /** One semantic chat event (`chat:event` → `{ sessionId, event }`). */

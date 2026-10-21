@@ -12,6 +12,7 @@ import {
   type ReactNode,
 } from 'react';
 import { api, TOKEN_KEY, isUnauthorized } from './api.js';
+import { dropAppSocket } from './realtime.js';
 import type { PublicUser } from '@harness-nexus/sdk';
 
 interface AuthState {
@@ -48,18 +49,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const login = useCallback(async (username: string, password: string) => {
     const { user } = await api.login(username, password);
     localStorage.setItem(TOKEN_KEY, api.getToken()!);
+    // #77 — never inherit a connection that still speaks for the previous
+    // user; the next appSocket() connects with the fresh token.
+    dropAppSocket();
     setUser(user);
   }, []);
 
   const register = useCallback(async (username: string, password: string, email?: string) => {
     const { user } = await api.register(username, password, email);
     localStorage.setItem(TOKEN_KEY, api.getToken()!);
+    dropAppSocket(); // #77 — same as login
     setUser(user);
   }, []);
 
   const logout = useCallback(() => {
     localStorage.removeItem(TOKEN_KEY);
     api.setToken(undefined);
+    // #77 — the connection speaks for THIS user; it must not outlive the
+    // session (a following login would sync the old identity's rooms).
+    dropAppSocket();
     setUser(null);
   }, []);
 
