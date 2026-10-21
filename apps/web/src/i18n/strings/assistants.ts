@@ -27,6 +27,7 @@ const en = {
   promptLabel: 'Override',
   promptHint: 'Leave empty to use the platform default prompt. An override replaces it wholesale.',
   groupsLabel: 'Tool groups',
+  groupsHint: 'Leave all unchecked for a chat-only assistant (no platform tools).',
   budgetLabel: 'Daily token budget',
   budgetHint:
     "Input+output tokens per UTC day across this assistant's sessions. Empty = unlimited.",
@@ -95,6 +96,7 @@ const zh: typeof en = {
   promptLabel: '覆盖',
   promptHint: '留空使用平台默认提示词；覆盖会整体替换默认值。',
   groupsLabel: '工具组',
+  groupsHint: '全部不勾选 = 纯聊天助手（不启用任何平台工具）。',
   budgetLabel: '每日 token 预算',
   budgetHint: '该助理全部会话每个 UTC 日的输入+输出 token 总量；留空不限。',
   budgetPlaceholder: '不限',

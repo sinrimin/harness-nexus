@@ -274,11 +274,7 @@ export function AssistantsPage() {
     }
   }
 
-  const canSave =
-    draft.name.trim() !== '' &&
-    draft.providerId !== '' &&
-    draft.defaultModel !== '' &&
-    draft.enabledToolGroups.length > 0;
+  const canSave = draft.name.trim() !== '' && draft.providerId !== '' && draft.defaultModel !== '';
 
   return (
     <>
@@ -474,7 +470,7 @@ export function AssistantsPage() {
               </Select>
             </div>
           </Field>
-          <Field label={t('assistants.groupsLabel')}>
+          <Field label={t('assistants.groupsLabel')} hint={t('assistants.groupsHint')}>
             <div className="grid grid-cols-2 gap-1.5">
               {ASSISTANT_TOOL_GROUPS.map((g) => (
                 <label key={g} className="flex items-center gap-2 text-sm">
