@@ -22,7 +22,7 @@ const KEY = 'test-secret-0123456789abcdef';
 const owner: Principal = { userId: 'u-owner', role: 'user' };
 const now = '2026-01-01T00:00:00.000Z';
 
-async function setup(opts: { viewerGraceMs?: number } = {}) {
+async function setup(opts: { viewerGraceMs?: number; tokensPerSecond?: number } = {}) {
   const uow = createMemoryUnitOfWork();
   await uow.users.save({
     id: owner.userId,
@@ -59,7 +59,7 @@ async function setup(opts: { viewerGraceMs?: number } = {}) {
 
   const faux = piAi.fauxProvider({
     models: [{ id: 'gw-large', name: 'Gateway Large', contextWindow: 64_000 }],
-    tokensPerSecond: 1_000_000,
+    tokensPerSecond: opts.tokensPerSecond ?? 1_000_000,
   });
   const models = piAi.createModels();
   models.setProvider(faux.provider);
@@ -251,6 +251,25 @@ describe('#57 — abrupt viewer loss reaps the live channel under grace', () => 
     await h.svc.onViewerGone(owner.userId);
     await new Promise((r) => setTimeout(r, 80));
     expect(h.svc.isLive(sessionId)).toBe(false);
+  });
+
+  it('isBusy tracks the running turn — the #75 delete branch', async () => {
+    // A slow stream (not the 1M-tokens/s default) keeps the turn running
+    // across the assertions.
+    const h = await setup({ tokensPerSecond: 40 });
+    const id = await makeConfig(h.uow);
+    h.faux.setResponses([piAi.fauxAssistantMessage([piAi.fauxText('still working on it')])]);
+    const res = await h.svc.open(owner.userId, id, undefined, 'sock-1');
+    const sessionId = res.ok ? res.sessionId : '';
+    // Idle live channel: live, not busy — deletable via close-then-delete.
+    expect(h.svc.isLive(sessionId)).toBe(true);
+    expect(h.svc.isBusy(sessionId)).toBe(false);
+    const sent = h.svc.onMessageSend(owner.userId, sessionId, 'go');
+    await new Promise((r) => setTimeout(r, 30)); // the turn starts
+    expect(h.svc.isBusy(sessionId)).toBe(true); // running: delete must refuse
+    await sent;
+    await settle(h.svc, h.uow, sessionId);
+    expect(h.svc.isBusy(sessionId)).toBe(false); // back to idle
   });
 
   it('a mid-turn loss never aborts the run: the channel closes at settle', async () => {

@@ -9,9 +9,10 @@ import { buildApp } from '../src/app.js';
 import { testConfig } from './helpers.js';
 
 /**
- * #55 — assistant session deletion over REST: the route guards LIVE rows
- * (an open channel would keep writing into deleted storage — close first)
- * and pushes the fresh snapshot to the owner once a delete lands.
+ * #55/#75 — assistant session deletion over REST: a RUNNING turn refuses
+ * (it would keep writing into deleted storage); an idle live channel is
+ * CLOSED first (the delete is the user's close intent) and the fresh
+ * snapshot is pushed to the owner once a delete lands.
  */
 
 let app: FastifyInstance;
@@ -94,7 +95,7 @@ describe('DELETE /api/assistant-sessions/:id (#55)', () => {
     expect(await app.uow.assistants.findSessionById('sess-del-1')).not.toBeNull();
   });
 
-  it('refuses a LIVE session (409 ASSISTANT_SESSION_LIVE), deletes once closed', async () => {
+  it('deletes a LIVE-but-idle session — the route closes the channel first (#75)', async () => {
     browser = io(`${baseUrl}/app`, { auth: { token: ownerJwt }, transports: ['websocket'] });
     await new Promise<void>((resolve) => browser.on('connect', () => resolve()));
 
@@ -106,23 +107,20 @@ describe('DELETE /api/assistant-sessions/:id (#55)', () => {
     expect(ack.error).toBeUndefined();
     expect(ack.sessionId).toBe('sess-del-2');
 
-    const refused = await app.inject({
-      method: 'DELETE',
-      url: '/api/assistant-sessions/sess-del-2',
-      headers: auth(ownerJwt),
+    // #75: an idle live channel no longer blocks — the delete closes it
+    // (reason 'session-deleted' tells the pane to reset) and removes the
+    // row in one go.
+    const closedPush = new Promise<{ sessionId: string; reason: string }>((resolve) => {
+      browser.on('assistant:session.closed', (payload: { sessionId: string; reason: string }) => {
+        resolve(payload);
+      });
     });
-    expect(refused.statusCode).toBe(409);
-    expect(refused.json().error).toBe('ASSISTANT_SESSION_LIVE');
-
-    await new Promise((resolve) => {
-      browser.emit('assistant:session.close', { sessionId: 'sess-del-2', reason: 'user' }, resolve);
-    });
-
-    // Now deletable — and the fresh snapshot is PUSHED to the owner.
     const pushed = new Promise<{ sessions: { id: string }[] }>((resolve) => {
-      browser.on('assistant:sessions', (payload: { sessions: { id: string }[] }) =>
-        resolve(payload),
-      );
+      browser.on('assistant:sessions', (payload: { sessions: { id: string }[] }) => {
+        // The open itself pushed a snapshot (still containing the row) —
+        // the one we want is the first WITHOUT it.
+        if (!payload.sessions.some((s) => s.id === 'sess-del-2')) resolve(payload);
+      });
     });
     const res = await app.inject({
       method: 'DELETE',
@@ -131,6 +129,8 @@ describe('DELETE /api/assistant-sessions/:id (#55)', () => {
     });
     expect(res.statusCode).toBe(200);
     expect(await app.uow.assistants.findSessionById('sess-del-2')).toBeNull();
+    const closed = await closedPush;
+    expect(closed).toEqual({ sessionId: 'sess-del-2', reason: 'session-deleted' });
     const snapshot = await pushed;
     expect(snapshot.sessions.map((s) => s.id)).not.toContain('sess-del-2');
     expect(snapshot.sessions.map((s) => s.id)).toContain('sess-del-1');
