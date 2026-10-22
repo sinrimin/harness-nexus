@@ -4,7 +4,15 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
-import { BracesIcon, PlugZapIcon } from 'lucide-react';
+import {
+  ArrowDownToLineIcon,
+  BracesIcon,
+  EyeIcon,
+  FileUpIcon,
+  MoreHorizontalIcon,
+  PlugZapIcon,
+  TrashIcon,
+} from 'lucide-react';
 import { api } from '@/api';
 import { useAuth, withAuthGuard } from '@/auth';
 import { useI18n } from '@/i18n';
@@ -22,16 +30,33 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { Badge } from '@/components/ui/badge.js';
 import { Button } from '@/components/ui/button.js';
-import { TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Checkbox } from '@/components/ui/checkbox.js';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
 import type { ApiToolServiceView } from '@harness-nexus/sdk';
 import { HarnessNexusError } from '@harness-nexus/sdk';
 
 /**
  * #80 — API tools: LLM-authored JSON bundles; the page is upload/download/
- * probe/display, deliberately NO per-field forms. Validation errors surface
- * verbatim — they are the authoring loop's feedback.
+ * probe/display, deliberately NO per-field forms for AUTHORING. Reading is a
+ * different matter: the detail dialog and the probe's parameter form render
+ * the bundle human-readable — `in`/`type`/`required` are protocol vocabulary
+ * (OpenAPI-style parameter locations), shown as a table instead of raw JSON.
  */
 
 function downloadBundle(service: ApiToolServiceView): void {
@@ -57,15 +82,11 @@ export function ApiToolsPage(): React.ReactNode {
   const [error, setError] = useState<string | null>(null);
   const [uploadOpen, setUploadOpen] = useState(false);
   const [replaceOf, setReplaceOf] = useState<ApiToolServiceView | null>(null);
+  const [detailOf, setDetailOf] = useState<ApiToolServiceView | null>(null);
   const [pendingDelete, setPendingDelete] = useState<{ id: string; name: string } | null>(null);
   const [busy, setBusy] = useState(false);
   const [probe, setProbe] = useState<ApiToolServiceView | null>(null);
-  const [probeTool, setProbeTool] = useState('');
-  const [probeArgs, setProbeArgs] = useState('{}');
-  const [probeResult, setProbeResult] = useState<string | null>(null);
   const [allowlist, setAllowlist] = useState<{ host: string; internal?: boolean }[] | null>(null);
-  const [allowHost, setAllowHost] = useState('');
-  const [allowInternal, setAllowInternal] = useState(false);
 
   usePageTitle(t('apiTools.title'));
 
@@ -99,27 +120,6 @@ export function ApiToolsPage(): React.ReactNode {
     setBusy(false);
     setPendingDelete(null);
     refresh();
-  };
-
-  const runProbe = async (): Promise<void> => {
-    if (probe === null) return;
-    let args: Record<string, unknown> = {};
-    try {
-      args = probeArgs.trim() === '' ? {} : (JSON.parse(probeArgs) as Record<string, unknown>);
-    } catch {
-      toast.error(t('apiTools.probeArgsInvalid'));
-      return;
-    }
-    setProbeResult(t('apiTools.probeRunning'));
-    try {
-      const res = await withAuthGuard(
-        () => api.probeApiToolService(probe.id, probeTool, args),
-        logout,
-      );
-      setProbeResult(res.result.output);
-    } catch (e) {
-      setProbeResult(errText(e));
-    }
   };
 
   const saveAllowlist = (): void => {
@@ -164,7 +164,14 @@ export function ApiToolsPage(): React.ReactNode {
           {rows.map((s) => (
             <TableRow key={s.id}>
               <TableCell>
-                <span className="font-medium">{s.bundle.name}</span>
+                <button
+                  type="button"
+                  className="text-left"
+                  onClick={() => setDetailOf(s)}
+                  title={t('apiTools.detailAction')}
+                >
+                  <span className="text-signal font-medium">{s.bundle.name}</span>
+                </button>
                 {s.bundle.description !== undefined ? (
                   <span className="text-muted-foreground block truncate text-xs">
                     {s.bundle.description}
@@ -191,34 +198,39 @@ export function ApiToolsPage(): React.ReactNode {
                 </span>
               </TableCell>
               <TableCell className="text-right">
-                <div className="flex justify-end gap-1">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => {
-                      setProbe(s);
-                      setProbeTool(s.bundle.tools[0]?.name ?? '');
-                      setProbeArgs('{}');
-                      setProbeResult(null);
-                    }}
-                  >
-                    <PlugZapIcon className="size-3.5" />
-                    {t('apiTools.probeAction')}
-                  </Button>
-                  <Button variant="ghost" size="sm" onClick={() => downloadBundle(s)}>
-                    {t('apiTools.downloadAction')}
-                  </Button>
-                  <Button variant="ghost" size="sm" onClick={() => setReplaceOf(s)}>
-                    {t('apiTools.replaceAction')}
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setPendingDelete({ id: s.id, name: s.bundle.name })}
-                  >
-                    {t('common.delete')}
-                  </Button>
-                </div>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="ghost" size="icon" className="size-(--row-ctl-h)">
+                      <MoreHorizontalIcon className="size-4" />
+                      <span className="sr-only">{t('common.openMenu')}</span>
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem onClick={() => setDetailOf(s)}>
+                      <EyeIcon /> {t('apiTools.detailAction')}
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      onClick={() => {
+                        setProbe(s);
+                      }}
+                    >
+                      <PlugZapIcon /> {t('apiTools.probeAction')}
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => downloadBundle(s)}>
+                      <ArrowDownToLineIcon /> {t('apiTools.downloadAction')}
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => setReplaceOf(s)}>
+                      <FileUpIcon /> {t('apiTools.replaceAction')}
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem
+                      variant="destructive"
+                      onClick={() => setPendingDelete({ id: s.id, name: s.bundle.name })}
+                    >
+                      <TrashIcon /> {t('common.delete')}
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
               </TableCell>
             </TableRow>
           ))}
@@ -226,63 +238,7 @@ export function ApiToolsPage(): React.ReactNode {
       </DataTable>
 
       {user?.role === 'admin' && allowlist !== null ? (
-        <Panel>
-          <PanelHeader title={t('apiTools.allowlistTitle')} />
-          <div className="space-y-2 p-4 text-sm">
-            <p className="text-muted-foreground text-xs">{t('apiTools.allowlistHint')}</p>
-            <div className="flex flex-wrap gap-1">
-              {allowlist.length === 0 ? (
-                <span className="text-muted-foreground text-xs">
-                  {t('apiTools.allowlistEmpty')}
-                </span>
-              ) : (
-                allowlist.map((e) => (
-                  <Badge key={e.host} variant="secondary" className="font-mono text-[10px]">
-                    {e.host}
-                    {e.internal === true ? ' · internal' : ''}
-                  </Badge>
-                ))
-              )}
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <input
-                value={allowHost}
-                onChange={(e) => setAllowHost(e.target.value)}
-                placeholder="api.example.com"
-                spellCheck={false}
-                autoComplete="off"
-                className="border-input bg-background rounded-md px-2 py-1 font-mono text-xs"
-                size={24}
-              />
-              <label className="flex items-center gap-1 text-xs">
-                <input
-                  type="checkbox"
-                  checked={allowInternal}
-                  onChange={(e) => setAllowInternal(e.target.checked)}
-                />
-                {t('apiTools.allowlistInternal')}
-              </label>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => {
-                  if (allowHost.trim() === '') return;
-                  setAllowlist([
-                    ...allowlist.filter((x) => x.host !== allowHost.trim()),
-                    { host: allowHost.trim(), ...(allowInternal ? { internal: true } : {}) },
-                  ]);
-                  setAllowHost('');
-                  setAllowInternal(false);
-                }}
-              >
-                {t('apiTools.allowlistAdd')}
-              </Button>
-              <Button size="sm" onClick={() => saveAllowlist()}>
-                {t('common.save')}
-              </Button>
-            </div>
-          </div>
-        </Panel>
+        <AllowlistPanel entries={allowlist} onChange={setAllowlist} onSave={saveAllowlist} />
       ) : null}
 
       {uploadOpen || replaceOf !== null ? (
@@ -300,51 +256,11 @@ export function ApiToolsPage(): React.ReactNode {
         />
       ) : null}
 
-      {probe !== null ? (
-        <FormDialog
-          open
-          onClose={() => setProbe(null)}
-          title={t('apiTools.probeTitle', { name: probe.bundle.name })}
-        >
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              void runProbe();
-            }}
-            className="flex flex-col gap-4"
-          >
-            <Field label={t('apiTools.probeTool')}>
-              <Select value={probeTool} onValueChange={setProbeTool}>
-                <SelectTrigger className="w-full" aria-label={t('apiTools.probeTool')}>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {probe.bundle.tools.map((tool) => (
-                    <SelectItem key={tool.name} value={tool.name}>
-                      {tool.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </Field>
-            <Field label={t('apiTools.probeArgs')} hint={t('apiTools.probeArgsHint')}>
-              <textarea
-                value={probeArgs}
-                onChange={(e) => setProbeArgs(e.target.value)}
-                rows={3}
-                spellCheck={false}
-                className="font-mono text-xs"
-              />
-            </Field>
-            {probeResult !== null ? (
-              <pre className="bg-muted/50 max-h-72 overflow-auto rounded-md border p-3 font-mono text-xs whitespace-pre-wrap">
-                {probeResult}
-              </pre>
-            ) : null}
-            <Button type="submit">{t('apiTools.probeRun')}</Button>
-          </form>
-        </FormDialog>
+      {detailOf !== null ? (
+        <ServiceDetailDialog service={detailOf} onClose={() => setDetailOf(null)} />
       ) : null}
+
+      {probe !== null ? <ProbeDialog service={probe} onClose={() => setProbe(null)} /> : null}
 
       {pendingDelete !== null ? (
         <ConfirmDialog
@@ -363,6 +279,368 @@ export function ApiToolsPage(): React.ReactNode {
         />
       ) : null}
     </>
+  );
+}
+
+// ---- allowlist (admin) ----
+
+function AllowlistPanel({
+  entries,
+  onChange,
+  onSave,
+}: {
+  entries: { host: string; internal?: boolean }[];
+  onChange: (next: { host: string; internal?: boolean }[]) => void;
+  onSave: () => void;
+}): React.ReactNode {
+  const { t } = useI18n();
+  const [host, setHost] = useState('');
+  const [internal, setInternal] = useState(false);
+
+  return (
+    <Panel>
+      <PanelHeader title={t('apiTools.allowlistTitle')} />
+      <div className="space-y-2 p-4 text-sm">
+        <p className="text-muted-foreground text-xs">{t('apiTools.allowlistHint')}</p>
+        <div className="flex flex-wrap gap-1">
+          {entries.length === 0 ? (
+            <span className="text-muted-foreground text-xs">{t('apiTools.allowlistEmpty')}</span>
+          ) : (
+            entries.map((e) => (
+              <Badge key={e.host} variant="secondary" className="font-mono text-[10px]">
+                {e.host}
+                {e.internal === true ? ' · internal' : ''}
+              </Badge>
+            ))
+          )}
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <input
+            value={host}
+            onChange={(e) => setHost(e.target.value)}
+            placeholder="api.example.com"
+            spellCheck={false}
+            autoComplete="off"
+            className="border-input bg-background rounded-md px-2 py-1 font-mono text-xs"
+            size={24}
+          />
+          <label className="flex items-center gap-1 text-xs">
+            <Checkbox checked={internal} onCheckedChange={(v) => setInternal(v === true)} />
+            {t('apiTools.allowlistInternal')}
+          </label>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => {
+              if (host.trim() === '') return;
+              onChange([
+                ...entries.filter((x) => x.host !== host.trim()),
+                { host: host.trim(), ...(internal ? { internal: true } : {}) },
+              ]);
+              setHost('');
+              setInternal(false);
+            }}
+          >
+            {t('apiTools.allowlistAdd')}
+          </Button>
+          <Button size="sm" onClick={onSave}>
+            {t('common.save')}
+          </Button>
+        </div>
+      </div>
+    </Panel>
+  );
+}
+
+// ---- detail (read-only, human-readable) ----
+
+function ServiceDetailDialog({
+  service,
+  onClose,
+}: {
+  service: ApiToolServiceView;
+  onClose: () => void;
+}): React.ReactNode {
+  const { t } = useI18n();
+  const b = service.bundle;
+  const headerNames = Object.keys(b.headers ?? {});
+  return (
+    <FormDialog
+      open
+      onClose={onClose}
+      size="xl"
+      title={t('apiTools.detailTitle', { name: b.name })}
+    >
+      <div className="flex flex-col gap-4">
+        <div className="grid gap-x-6 gap-y-1 text-sm sm:grid-cols-2">
+          <DetailLine label={t('apiTools.colBaseUrl')}>
+            <span className="font-mono text-xs">{b.baseUrl}</span>
+          </DetailLine>
+          <DetailLine label={t('common.scope')}>
+            <span className="font-mono text-xs">
+              {service.scope === 'global' ? t('common.scopeGlobal') : t('common.scopePersonal')}
+            </span>
+          </DetailLine>
+          <DetailLine label={t('apiTools.authLabel')}>
+            {b.auth === undefined ? (
+              <span className="text-muted-foreground text-xs">{t('apiTools.authNone')}</span>
+            ) : (
+              <span className="font-mono text-xs">
+                {b.auth.style === 'bearer'
+                  ? `Bearer · ${b.auth.credentialName}`
+                  : `${b.auth.header} · ${b.auth.credentialName}`}
+              </span>
+            )}
+          </DetailLine>
+          {headerNames.length > 0 ? (
+            <DetailLine label={t('apiTools.headersLabel')}>
+              <span className="font-mono text-xs">{headerNames.join(', ')}</span>
+            </DetailLine>
+          ) : null}
+        </div>
+
+        {b.tools.map((tool) => (
+          <div key={tool.name} className="rounded-lg border p-3">
+            <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+              <span className="font-mono text-xs font-medium">
+                <Badge variant="secondary" className="mr-2 font-mono text-[10px]">
+                  {tool.method}
+                </Badge>
+                {tool.path}
+              </span>
+              <span className="text-muted-foreground font-mono text-xs">{tool.name}</span>
+            </div>
+            <p className="text-muted-foreground mt-1 text-xs">
+              {tool.description ?? t('apiTools.toolNoDesc')}
+            </p>
+            {tool.params.length > 0 ? (
+              <Table className="mt-2">
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>{t('apiTools.paramColumn')}</TableHead>
+                    <TableHead>{t('apiTools.inColumn')}</TableHead>
+                    <TableHead>{t('apiTools.typeColumn')}</TableHead>
+                    <TableHead>{t('apiTools.requiredColumn')}</TableHead>
+                    <TableHead>{t('apiTools.descColumn')}</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {tool.params.map((p) => (
+                    <TableRow key={p.name}>
+                      <TableCell className="font-mono text-xs">{p.name}</TableCell>
+                      <TableCell className="font-mono text-xs">{p.in}</TableCell>
+                      <TableCell className="font-mono text-xs">{p.type}</TableCell>
+                      <TableCell className="text-xs">
+                        {p.required ? t('apiTools.requiredYes') : t('apiTools.requiredNo')}
+                      </TableCell>
+                      <TableCell className="text-muted-foreground text-xs">
+                        {p.description ?? '—'}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            ) : null}
+            <div className="text-muted-foreground mt-2 flex flex-wrap gap-x-4 gap-y-1 font-mono text-[10px]">
+              {tool.bodyType !== undefined ? <span>bodyType: {tool.bodyType}</span> : null}
+              {tool.timeoutMs !== undefined ? <span>timeoutMs: {tool.timeoutMs}</span> : null}
+              {tool.maxResultChars !== undefined ? (
+                <span>maxResultChars: {tool.maxResultChars}</span>
+              ) : null}
+              {tool.treatBodyOnNon2xx === true ? <span>treatBodyOnNon2xx</span> : null}
+            </div>
+            <p className="text-muted-foreground mt-1 text-xs">
+              <span className="font-medium">{t('apiTools.envelopeLabel')}: </span>
+              {tool.envelope === undefined ? (
+                t('apiTools.envelopeNone')
+              ) : (
+                <span className="font-mono text-xs">
+                  {[
+                    tool.envelope.codeField !== undefined
+                      ? `code=${tool.envelope.codeField}`
+                      : null,
+                    `success=${tool.envelope.success.join(' | ')}`,
+                    tool.envelope.payloadField !== undefined
+                      ? `payload=${tool.envelope.payloadField}`
+                      : null,
+                    tool.envelope.errorFields !== undefined
+                      ? `errors=${tool.envelope.errorFields.join(' | ')}`
+                      : null,
+                  ]
+                    .filter((x) => x !== null)
+                    .join(' · ')}
+                </span>
+              )}
+            </p>
+          </div>
+        ))}
+      </div>
+    </FormDialog>
+  );
+}
+
+function DetailLine({
+  label,
+  children,
+}: {
+  label: string;
+  children: React.ReactNode;
+}): React.ReactNode {
+  return (
+    <div className="flex items-baseline gap-2">
+      <span className="text-muted-foreground shrink-0 text-xs">{label}</span>
+      <span className="min-w-0 truncate">{children}</span>
+    </div>
+  );
+}
+
+// ---- probe (parameter form generated from the tool definition) ----
+
+function ProbeDialog({
+  service,
+  onClose,
+}: {
+  service: ApiToolServiceView;
+  onClose: () => void;
+}): React.ReactNode {
+  const { t } = useI18n();
+  const { logout } = useAuth();
+  const [toolName, setToolName] = useState(service.bundle.tools[0]?.name ?? '');
+  const tool = useMemo(
+    () => service.bundle.tools.find((x) => x.name === toolName),
+    [service.bundle.tools, toolName],
+  );
+  // string params ride text inputs, booleans ride checkboxes.
+  const [values, setValues] = useState<Record<string, string | boolean>>({});
+  const [result, setResult] = useState<string | null>(null);
+  const [running, setRunning] = useState(false);
+
+  useEffect(() => {
+    setValues({});
+    setResult(null);
+  }, [toolName]);
+
+  const run = async (): Promise<void> => {
+    if (tool === undefined) return;
+    const args: Record<string, unknown> = {};
+    const missing: string[] = [];
+    for (const p of tool.params) {
+      const raw = values[p.name];
+      if (p.type === 'boolean') {
+        args[p.name] = raw === true;
+        continue;
+      }
+      const s = typeof raw === 'string' ? raw.trim() : '';
+      if (s === '') {
+        if (p.required) missing.push(p.name);
+        continue;
+      }
+      if (p.type === 'number') {
+        const n = Number(s);
+        if (Number.isNaN(n)) {
+          toast.error(t('apiTools.probeNotNumber', { name: p.name }));
+          return;
+        }
+        args[p.name] = n;
+      } else {
+        args[p.name] = s;
+      }
+    }
+    if (missing.length > 0) {
+      toast.error(t('apiTools.probeMissing', { names: missing.join(', ') }));
+      return;
+    }
+    setRunning(true);
+    setResult(t('apiTools.probeRunning'));
+    try {
+      const res = await withAuthGuard(
+        () => api.probeApiToolService(service.id, toolName, args),
+        logout,
+      );
+      setResult(res.result.output);
+    } catch (e) {
+      setResult(errText(e));
+    } finally {
+      setRunning(false);
+    }
+  };
+
+  return (
+    <FormDialog
+      open
+      onClose={onClose}
+      title={t('apiTools.probeTitle', { name: service.bundle.name })}
+    >
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          void run();
+        }}
+        className="flex flex-col gap-4"
+      >
+        <Field label={t('apiTools.probeTool')}>
+          <Select value={toolName} onValueChange={setToolName}>
+            <SelectTrigger className="w-full" aria-label={t('apiTools.probeTool')}>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {service.bundle.tools.map((x) => (
+                <SelectItem key={x.name} value={x.name}>
+                  {x.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </Field>
+        {tool !== undefined && tool.description !== undefined ? (
+          <p className="text-muted-foreground text-xs">{tool.description}</p>
+        ) : null}
+        {tool === undefined || tool.params.length === 0 ? (
+          <p className="text-muted-foreground text-xs">{t('apiTools.probeNoParams')}</p>
+        ) : (
+          tool.params.map((p) => (
+            <Field
+              key={p.name}
+              label={`${p.name}${p.required ? ' *' : ''}`}
+              hint={
+                p.description ??
+                `${p.in} · ${p.type}${p.required ? '' : ` · ${t('apiTools.requiredNo')}`}`
+              }
+            >
+              {p.type === 'boolean' ? (
+                <label className="flex items-center gap-2 text-sm">
+                  <Checkbox
+                    checked={values[p.name] === true}
+                    onCheckedChange={(v) =>
+                      setValues((prev) => ({ ...prev, [p.name]: v === true }))
+                    }
+                  />
+                  {p.name}
+                </label>
+              ) : (
+                <input
+                  type={p.type === 'number' ? 'number' : 'text'}
+                  value={typeof values[p.name] === 'string' ? (values[p.name] as string) : ''}
+                  onChange={(e) => setValues((prev) => ({ ...prev, [p.name]: e.target.value }))}
+                  inputMode={p.type === 'number' ? 'decimal' : 'text'}
+                  spellCheck={false}
+                  autoComplete="off"
+                  className="font-mono text-xs"
+                />
+              )}
+            </Field>
+          ))
+        )}
+        {result !== null ? (
+          <pre className="bg-muted/50 max-h-72 overflow-auto rounded-md border p-3 font-mono text-xs whitespace-pre-wrap">
+            {result}
+          </pre>
+        ) : null}
+        <Button type="submit" disabled={running}>
+          {t('apiTools.probeRun')}
+        </Button>
+      </form>
+    </FormDialog>
   );
 }
 
