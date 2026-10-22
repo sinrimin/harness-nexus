@@ -327,14 +327,14 @@ describe('#67 assistant dispatch', () => {
 
 describe('#67 dispatch tool surface', () => {
   it('the agent-dispatch group builds both tools against the dispatch dep, and dispatch is write-gated', async () => {
-    const { buildAssistantTools, WRITE_TOOLS } = await import('../src/assistant/tools.js');
+    const { buildAssistantTools } = await import('../src/assistant/tools.js');
     const { createMemoryUnitOfWork } = await import('../src/infra/storage/memory/index.js');
     const uow = createMemoryUnitOfWork();
     const stub = {
       dispatch: async () => ({ ok: false as const, code: 'TEST' }),
       poll: async () => ({ ok: false as const, code: 'DISPATCH_NOT_FOUND' }),
     };
-    const tools = buildAssistantTools(
+    const { tools, classOf } = buildAssistantTools(
       {
         uow,
         skills: { search: null as never, catalog: null as never, allowlist: [] },
@@ -344,8 +344,8 @@ describe('#67 dispatch tool surface', () => {
       ['agent-dispatch'],
     );
     expect(tools.map((t) => t.name).sort()).toEqual(['agent_dispatch', 'agent_dispatch_poll']);
-    expect(WRITE_TOOLS.has('agent_dispatch')).toBe(true);
-    expect(WRITE_TOOLS.has('agent_dispatch_poll')).toBe(false);
+    expect(classOf.get('agent_dispatch')).toBe('write');
+    expect(classOf.get('agent_dispatch_poll')).toBe('read');
   });
 });
 

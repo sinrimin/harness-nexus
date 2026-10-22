@@ -22,7 +22,7 @@ import {
   IMAGE_CONTEXT_TURNS,
   type ImageContextPolicy,
 } from './history.js';
-import { buildAssistantTools, WRITE_TOOLS, type AssistantToolDeps } from './tools.js';
+import { buildAssistantTools, toolNeedsApproval, type AssistantToolDeps } from './tools.js';
 import { buildTurnExtras, type AssistantMcpDeps } from './context.js';
 import { DEFAULT_ASSISTANT_SYSTEM_PROMPT } from './prompt.js';
 
@@ -235,7 +235,7 @@ export function startAssistantTurn(
 
     // #68 — the dispatch tools carry the session id so the backflow (user-op
     // notes, completion pushes) routes to THIS assistant session.
-    const tools = buildAssistantTools(deps, principal, config.enabledToolGroups, {
+    const { tools, classOf } = buildAssistantTools(deps, principal, config.enabledToolGroups, {
       sessionId: session.id,
     });
 
@@ -259,6 +259,11 @@ export function startAssistantTurn(
       ...(deps.mcp !== undefined ? { mcp: deps.mcp } : {}),
     });
     tools.push(...extras.tools);
+    // #79 — extras carry their own declarations; anything unclassified (none
+    // today) defaults to write — the conservative class for foreign tools.
+    for (const t of extras.tools) {
+      if (!classOf.has(t.name)) classOf.set(t.name, 'write');
+    }
     // The gate is the turn's ACTUAL toolset (static groups + dynamic MCP
     // names + read_skill) — belt-and-braces against rebind races.
     const allowed = new Set(tools.map((t) => t.name));
@@ -295,9 +300,14 @@ export function startAssistantTurn(
             reason: `tool "${toolCall.name}" is not enabled on this assistant`,
           };
         }
-        // M3 — mutating tools need the user's explicit approval mid-turn; a
+        // #79 — the graduated gate: read runs; write prompts per call unless
+        // the config pre-authorized writes (`permissionMode:'autoWrite'`);
+        // meta ALWAYS prompts (boundary-changing ops, no silent tier). A
         // denied or timed-out call blocks with a reason the model can read.
-        if (WRITE_TOOLS.has(toolCall.name) && input.requestApproval !== undefined) {
+        if (
+          toolNeedsApproval(classOf.get(toolCall.name) ?? 'write', config.permissionMode) &&
+          input.requestApproval !== undefined
+        ) {
           const okToRun = await input.requestApproval({
             toolCallId: toolCall.id,
             toolName: toolCall.name,

@@ -142,6 +142,7 @@ function toConfigView(c: AssistantConfig): AssistantConfigView {
     ...(c.systemPromptOverride !== undefined
       ? { systemPromptOverride: c.systemPromptOverride }
       : {}),
+    permissionMode: c.permissionMode ?? 'prompt',
     enabledToolGroups: c.enabledToolGroups,
     mcpServerIds: c.mcpServerIds ?? [],
     skillResourceIds: c.skillResourceIds ?? [],

@@ -24,6 +24,14 @@
 export type AssistantToolGroup =
   'resources' | 'profiles' | 'mcp' | 'skills-hub' | 'machines' | 'agent-dispatch' | 'system';
 
+/**
+ * #79 — how the config treats WRITE-class tool calls: `'prompt'` (default)
+ * surfaces the approval card per call; `'autoWrite'` runs them silently.
+ * READ tools are silent in every mode; META tools prompt in every mode (no
+ * silent tier exists for boundary-changing operations).
+ */
+export type AssistantPermissionMode = 'prompt' | 'autoWrite';
+
 /** One named assistant configuration — many per user, name unique per owner. */
 export interface AssistantConfig {
   id: string;
@@ -37,6 +45,8 @@ export interface AssistantConfig {
   defaultModel: string;
   /** Replaces the platform's default assistant prompt when set. */
   systemPromptOverride?: string | undefined;
+  /** #79 — write-tool policy; absent = `'prompt'`. See `AssistantPermissionMode`. */
+  permissionMode?: AssistantPermissionMode | undefined;
   enabledToolGroups: AssistantToolGroup[];
   /**
    * M2 — server-dialed MCP servers the assistant may call (visibility is

@@ -52,6 +52,8 @@ export const assistantConfigCreateSchema = z.object({
   /** Must be a `type:'chat'` entry on that provider's registry (service-validated). */
   defaultModel: z.string().min(1).max(128),
   systemPromptOverride: z.string().max(32_000).optional(),
+  /** #79 — write-tool policy (read is always silent, meta always prompts). */
+  permissionMode: z.enum(['prompt', 'autoWrite']).default('prompt'),
   enabledToolGroups: z
     .array(assistantToolGroupSchema)
     .max(16)
@@ -72,6 +74,7 @@ export const assistantConfigUpdateSchema = z
     providerId: z.string().min(1).max(64).optional(),
     defaultModel: z.string().min(1).max(128).optional(),
     systemPromptOverride: z.string().max(32_000).nullable().optional(),
+    permissionMode: z.enum(['prompt', 'autoWrite']).optional(),
     enabledToolGroups: z.array(assistantToolGroupSchema).max(16).optional(),
     mcpServerIds: z.array(z.string().min(1).max(64)).max(32).optional(),
     skillResourceIds: z.array(z.string().min(1).max(64)).max(64).optional(),
@@ -89,6 +92,7 @@ export const assistantConfigViewSchema = z.object({
   providerId: z.string().min(1),
   defaultModel: z.string().min(1).max(128),
   systemPromptOverride: z.string().max(32_000).optional(),
+  permissionMode: z.enum(['prompt', 'autoWrite']),
   enabledToolGroups: z.array(assistantToolGroupSchema),
   mcpServerIds: z.array(z.string()),
   skillResourceIds: z.array(z.string()),

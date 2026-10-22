@@ -80,6 +80,7 @@ interface Draft {
   providerId: string;
   defaultModel: string;
   systemPromptOverride: string;
+  permissionMode: 'prompt' | 'autoWrite';
   enabledToolGroups: string[];
   mcpServerIds: string[];
   skillResourceIds: string[];
@@ -93,6 +94,7 @@ const EMPTY_DRAFT: Draft = {
   providerId: '',
   defaultModel: '',
   systemPromptOverride: '',
+  permissionMode: 'prompt',
   enabledToolGroups: [...ASSISTANT_TOOL_GROUPS],
   mcpServerIds: [],
   skillResourceIds: [],
@@ -203,6 +205,7 @@ export function AssistantsPage() {
       providerId: a.providerId,
       defaultModel: a.defaultModel,
       systemPromptOverride: a.systemPromptOverride ?? '',
+      permissionMode: a.permissionMode ?? 'prompt',
       enabledToolGroups: [...a.enabledToolGroups],
       mcpServerIds: [...(a.mcpServerIds ?? [])],
       skillResourceIds: [...(a.skillResourceIds ?? [])],
@@ -224,6 +227,7 @@ export function AssistantsPage() {
         ...(draft.systemPromptOverride.trim() !== ''
           ? { systemPromptOverride: draft.systemPromptOverride }
           : {}),
+        permissionMode: draft.permissionMode,
         enabledToolGroups: draft.enabledToolGroups as (typeof ASSISTANT_TOOL_GROUPS)[number][],
         mcpServerIds: draft.mcpServerIds,
         skillResourceIds: draft.skillResourceIds,
@@ -290,7 +294,7 @@ export function AssistantsPage() {
       <PageIntro sub={t('assistants.subtitle')} />
 
       <DataTable
-        columns={4}
+        columns={5}
         label={t('assistants.listTitle')}
         icon={<Wand2Icon />}
         state={tableState({
@@ -331,6 +335,7 @@ export function AssistantsPage() {
             <TableHead>{t('common.name')}</TableHead>
             <TableHead>{t('assistants.colModel')}</TableHead>
             <TableHead>{t('assistants.colGroups')}</TableHead>
+            <TableHead>{t('assistants.colMode')}</TableHead>
             <TableHead className="text-right">{t('common.actions')}</TableHead>
           </TableRow>
         </TableHeader>
@@ -361,6 +366,9 @@ export function AssistantsPage() {
                       </Badge>
                     ))}
                   </div>
+                </TableCell>
+                <TableCell>
+                  <span className="font-mono text-xs">{a.permissionMode ?? 'prompt'}</span>
                 </TableCell>
                 <TableCell className="text-right">
                   <DropdownMenu>
@@ -501,6 +509,25 @@ export function AssistantsPage() {
                 </label>
               ))}
             </div>
+          </Field>
+          <Field label={t('assistants.permLabel')} hint={t('assistants.permHint')}>
+            <Select
+              value={draft.permissionMode}
+              onValueChange={(v) =>
+                setDraft((d) => ({
+                  ...d,
+                  permissionMode: v === 'autoWrite' ? 'autoWrite' : 'prompt',
+                }))
+              }
+            >
+              <SelectTrigger aria-label={t('assistants.permLabel')} className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="prompt">{t('assistants.permPrompt')}</SelectItem>
+                <SelectItem value="autoWrite">{t('assistants.permAutoWrite')}</SelectItem>
+              </SelectContent>
+            </Select>
           </Field>
           <Field label={t('assistants.mcpLabel')} hint={t('assistants.mcpHint')}>
             {mcpServers.length === 0 ? (

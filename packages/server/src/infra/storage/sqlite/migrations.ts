@@ -479,6 +479,13 @@ CREATE INDEX IF NOT EXISTS idx_file_objects_expires ON file_objects (expires_at)
 ALTER TABLE system_settings ADD COLUMN image_retention_days INTEGER NOT NULL DEFAULT 30;
     `,
   },
+  {
+    version: 24,
+    description: 'issue #79 — assistant write-tool policy (prompt | autoWrite)',
+    sql: `
+ALTER TABLE assistant_configs ADD COLUMN permission_mode TEXT NOT NULL DEFAULT 'prompt';
+    `,
+  },
 ] as const;
 
 /**
