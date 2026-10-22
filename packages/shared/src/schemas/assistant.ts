@@ -27,6 +27,8 @@ export const ASSISTANT_TOOL_GROUPS = [
   'machines',
   // #67 — client-agent dispatch; deliberately NOT in the defaults (opt-in).
   'agent-dispatch',
+  // #80 — the user's configured API tool services (opt-in, like dispatch).
+  'api-tools',
   'system',
 ] as const;
 
@@ -61,6 +63,8 @@ export const assistantConfigCreateSchema = z.object({
   /** M2 — full replace; visibility validated in the service. */
   mcpServerIds: z.array(z.string().min(1).max(64)).max(32).default([]),
   skillResourceIds: z.array(z.string().min(1).max(64)).max(64).default([]),
+  /** #80 — visible ApiToolService ids whose tools join the turn (validated in the service). */
+  apiToolServiceIds: z.array(z.string().min(1).max(64)).max(16).default([]),
   /** M3 — null/unset = unlimited. */
   dailyTokenBudget: z.number().int().positive().max(2_000_000_000).nullable().optional(),
 });
@@ -78,6 +82,7 @@ export const assistantConfigUpdateSchema = z
     enabledToolGroups: z.array(assistantToolGroupSchema).max(16).optional(),
     mcpServerIds: z.array(z.string().min(1).max(64)).max(32).optional(),
     skillResourceIds: z.array(z.string().min(1).max(64)).max(64).optional(),
+    apiToolServiceIds: z.array(z.string().min(1).max(64)).max(16).optional(),
     /** M3 — `null` clears back to unlimited. */
     dailyTokenBudget: z.number().int().positive().max(2_000_000_000).nullable().optional(),
   })
@@ -96,6 +101,7 @@ export const assistantConfigViewSchema = z.object({
   enabledToolGroups: z.array(assistantToolGroupSchema),
   mcpServerIds: z.array(z.string()),
   skillResourceIds: z.array(z.string()),
+  apiToolServiceIds: z.array(z.string()),
   dailyTokenBudget: z.number().int().positive().nullable(),
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),

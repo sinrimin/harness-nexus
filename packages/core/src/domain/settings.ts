@@ -2,6 +2,8 @@
 //
 // SPDX-License-Identifier: MIT
 
+import type { ApiToolAllowlistEntry } from './api-tool.js';
+
 /**
  * System-wide settings — a single-row aggregate persisted in `system_settings`.
  * Phase 1 uses `allowRegistration`; later fields append here without a new table.
@@ -15,15 +17,21 @@ export interface SystemSettings {
    * never already-stamped objects.
    */
   imageRetentionDays: number;
+  /**
+   * #80 — the API tool runtime's default-DENY host allowlist. Empty (the
+   * default) = no outbound API tool traffic at all.
+   */
+  apiToolAllowlist: ApiToolAllowlistEntry[];
   updatedAt: string;
 }
 
 export const DEFAULT_SYSTEM_SETTINGS: Pick<
   SystemSettings,
-  'allowRegistration' | 'imageRetentionDays'
+  'allowRegistration' | 'imageRetentionDays' | 'apiToolAllowlist'
 > = {
   allowRegistration: true,
   imageRetentionDays: 30,
+  apiToolAllowlist: [],
 };
 
 /** Bounds for the retention setting (days). */

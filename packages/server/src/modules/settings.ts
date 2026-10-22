@@ -4,14 +4,17 @@
 
 import type { FastifyInstance } from 'fastify';
 import {
+  updateApiToolAllowlistSchema,
   updateImageRetentionSchema,
   updateRegistrationSchema,
+  type UpdateApiToolAllowlistInput,
   type UpdateImageRetentionInput,
   type UpdateRegistrationInput,
 } from '@harness-nexus/shared';
 import { principalOf } from './principal.js';
 import {
   getSystemSettings,
+  updateApiToolAllowlist,
   updateImageRetentionSettings,
   updateRegistrationSettings,
 } from '../services/settings.js';
@@ -40,5 +43,18 @@ export async function settingsRoutes(app: FastifyInstance): Promise<void> {
     const input = updateImageRetentionSchema.parse(req.body) as UpdateImageRetentionInput;
     const settings = await updateImageRetentionSettings({ uow: app.uow }, principalOf(req), input);
     return { imageRetentionDays: settings.imageRetentionDays };
+  });
+
+  // #80 — the API tool runtime's default-deny host allowlist (admin-managed;
+  // empty = no outbound API tool traffic).
+  app.get('/api/settings/api-tool-allowlist', { preHandler: [app.requireAdmin] }, async () => {
+    const settings = await getSystemSettings({ uow: app.uow });
+    return { entries: settings.apiToolAllowlist };
+  });
+
+  app.put('/api/settings/api-tool-allowlist', { preHandler: [app.requireAdmin] }, async (req) => {
+    const input = updateApiToolAllowlistSchema.parse(req.body) as UpdateApiToolAllowlistInput;
+    const settings = await updateApiToolAllowlist({ uow: app.uow }, principalOf(req), input);
+    return { entries: settings.apiToolAllowlist };
   });
 }

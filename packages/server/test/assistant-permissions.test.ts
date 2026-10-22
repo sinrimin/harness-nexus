@@ -206,4 +206,73 @@ describe('#79 — write policy through a live turn', () => {
     });
     expect((await h.uow.assistants.findById(legacy.id))?.permissionMode).toBeUndefined();
   });
+
+  it('#80 — a configured API tool joins the turn as api__<service>__<tool>, class from method', async () => {
+    const h = await setup();
+    // A REAL loopback upstream (internal-flagged allowlist entry) — the full
+    // runtime path, no fetch stubs.
+    const { createServer } = await import('node:http');
+    const server = createServer((_req, res) => {
+      res.setHeader('content-type', 'application/json');
+      res.end('{"code":0,"body":{"temp":21}}');
+    });
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', () => resolve()));
+    const port = (server.address() as { port: number }).port;
+    try {
+      await h.uow.settings.save({
+        ...(await h.uow.settings.get()),
+        apiToolAllowlist: [{ host: '127.0.0.1', internal: true }],
+        updatedAt: now,
+      });
+      await h.uow.apiTools.save({
+        id: 's-wx',
+        scope: 'personal',
+        ownerId: owner.userId,
+        name: 'weather',
+        baseUrl: `http://127.0.0.1:${port}`,
+        headers: {},
+        tools: [
+          {
+            name: 'get_forecast',
+            method: 'GET',
+            path: '/v1/forecast',
+            params: [{ name: 'city', in: 'query', type: 'string', required: true }],
+            envelope: {
+              codeField: 'code',
+              success: [0],
+              payloadField: 'body',
+              errorFields: ['message'],
+            },
+          },
+        ],
+        createdAt: now,
+        updatedAt: now,
+      });
+      const a = await createAssistant({ uow: h.uow }, owner, {
+        name: 'Tooled',
+        providerId: 'prov-1',
+        defaultModel: 'gw-large',
+        enabledToolGroups: ['api-tools'],
+        apiToolServiceIds: ['s-wx'],
+      });
+      h.faux.setResponses([
+        writeCall('api__weather__get_forecast', { city: 'Oslo' }),
+        piAi.fauxAssistantMessage([piAi.fauxText('done')]),
+      ]);
+      const res = await h.svc.open(owner.userId, a.id, undefined, 'sock-1');
+      const sessionId = res.ok ? res.sessionId : '';
+      await h.svc.onMessageSend(owner.userId, sessionId, 'weather in Oslo?');
+      await settle(h, sessionId);
+
+      // GET → read: no card in EITHER mode.
+      expect(h.events.some((e) => e.event.kind === 'permission_request')).toBe(false);
+      const rows = await h.uow.assistants.listMessages(sessionId);
+      const results = rows.flatMap((r) => (r.type === 'toolResult' ? r.results : []));
+      const call = results.find((r) => r.tool === 'api__weather__get_forecast');
+      expect(call?.isError).toBe(false);
+      expect(call?.output).toContain('"temp": 21');
+    } finally {
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+  });
 });

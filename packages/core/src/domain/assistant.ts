@@ -22,7 +22,14 @@
  * config and approval-gated per call.
  */
 export type AssistantToolGroup =
-  'resources' | 'profiles' | 'mcp' | 'skills-hub' | 'machines' | 'agent-dispatch' | 'system';
+  | 'resources'
+  | 'profiles'
+  | 'mcp'
+  | 'skills-hub'
+  | 'machines'
+  | 'agent-dispatch'
+  | 'api-tools'
+  | 'system';
 
 /**
  * #79 — how the config treats WRITE-class tool calls: `'prompt'` (default)
@@ -59,6 +66,8 @@ export interface AssistantConfig {
    * prompt index + the `read_skill` tool (progressive disclosure).
    */
   skillResourceIds: string[];
+  /** #80 — visible API tool service ids whose tools join the turn. */
+  apiToolServiceIds: string[];
   /**
    * M3 — the config's sessions may spend this many tokens (input+output,
    * summed over assistant turns) per UTC day before further turns refuse

@@ -74,6 +74,7 @@ export function createMemoryUnitOfWork(): UnitOfWork {
   let settings: SystemSettings = {
     allowRegistration: DEFAULT_SYSTEM_SETTINGS.allowRegistration,
     imageRetentionDays: DEFAULT_SYSTEM_SETTINGS.imageRetentionDays,
+    apiToolAllowlist: [...DEFAULT_SYSTEM_SETTINGS.apiToolAllowlist],
     updatedAt: new Date(0).toISOString(),
   };
 

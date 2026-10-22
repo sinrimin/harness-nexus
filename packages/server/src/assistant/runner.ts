@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: MIT
 
 import { Agent, type AgentMessage, type AgentToolResult } from '@earendil-works/pi-agent-core';
+import { Type, type TSchema } from '@earendil-works/pi-ai';
 import type { LlmProvider } from '@harness-nexus/core';
 import type {
   AssistantConfig,
@@ -22,7 +23,8 @@ import {
   IMAGE_CONTEXT_TURNS,
   type ImageContextPolicy,
 } from './history.js';
-import { buildAssistantTools, toolNeedsApproval, type AssistantToolDeps } from './tools.js';
+import { buildAssistantTools, tool, toolNeedsApproval, type AssistantToolDeps } from './tools.js';
+import { executeApiTool } from '../api-tools/runtime.js';
 import { buildTurnExtras, type AssistantMcpDeps } from './context.js';
 import { DEFAULT_ASSISTANT_SYSTEM_PROMPT } from './prompt.js';
 
@@ -263,6 +265,66 @@ export function startAssistantTurn(
     // today) defaults to write — the conservative class for foreign tools.
     for (const t of extras.tools) {
       if (!classOf.has(t.name)) classOf.set(t.name, 'write');
+    }
+
+    // #80 — the config's API tool services join as DYNAMIC tools
+    // (`api__<service>__<tool>`), class derived from the HTTP method (GET →
+    // read, others → write) per #79. Visibility re-checked at turn start —
+    // a deleted/unshared row simply doesn't join.
+    if (config.enabledToolGroups.includes('api-tools')) {
+      for (const id of config.apiToolServiceIds ?? []) {
+        const service = await deps.uow.apiTools.findById(id);
+        if (
+          service === null ||
+          service.deletedAt !== undefined ||
+          (service.scope === 'personal' && service.ownerId !== session.ownerId)
+        ) {
+          continue;
+        }
+        for (const def of service.tools) {
+          const name = `api__${service.name.replace(/[^a-zA-Z0-9]+/g, '_').toLowerCase()}__${def.name}`;
+          const properties: Record<string, TSchema> = {};
+          for (const p of def.params) {
+            const described =
+              p.description !== undefined ? { description: p.description } : undefined;
+            const typed =
+              p.type === 'number'
+                ? Type.Number(described)
+                : p.type === 'boolean'
+                  ? Type.Boolean(described)
+                  : Type.String(described);
+            properties[p.name] = p.required ? typed : Type.Optional(typed);
+          }
+          const cls = def.method === 'GET' ? 'read' : 'write';
+          tools.push(
+            tool({
+              name,
+              label: def.name,
+              description:
+                def.description ??
+                `${def.method} ${service.name}${def.path} (API tool; params: ${def.params
+                  .map((p) => `${p.name}(${p.in}:${p.type}${p.required ? '' : '?'})`)
+                  .join(', ')})`,
+              parameters: Type.Object(properties),
+              execute: async (_callId, args) => {
+                const result = await executeApiTool(
+                  deps,
+                  service,
+                  def.name,
+                  args as Record<string, unknown>,
+                );
+                return {
+                  content: [{ type: 'text', text: result.output }],
+                  details: {},
+                  ...(result.isError ? { isError: true } : {}),
+                };
+              },
+              class: cls,
+            }),
+          );
+          classOf.set(name, cls);
+        }
+      }
     }
     // The gate is the turn's ACTUAL toolset (static groups + dynamic MCP
     // names + read_skill) — belt-and-braces against rebind races.
