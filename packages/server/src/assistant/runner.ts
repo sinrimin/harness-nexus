@@ -243,9 +243,12 @@ export function startAssistantTurn(
     );
 
     // #68 — the dispatch tools carry the session id so the backflow (user-op
-    // notes, completion pushes) routes to THIS assistant session.
+    // notes, completion pushes) routes to THIS assistant session; #81 — the
+    // config id lets api_tools_save auto-attach new services to the calling
+    // config.
     const { tools, classOf } = buildAssistantTools(deps, principal, config.enabledToolGroups, {
       sessionId: session.id,
+      configId: config.id,
     });
 
     // M2 — configured skills (prompt index + read_skill) and MCP servers

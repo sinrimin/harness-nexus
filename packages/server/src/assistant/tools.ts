@@ -7,6 +7,7 @@ import { Type, type TSchema } from '@earendil-works/pi-ai';
 import type { AssistantPermissionMode, AssistantToolGroup } from '@harness-nexus/core';
 import {
   AppError,
+  apiToolServiceBundleSchema,
   createResourceSchema,
   updateResourceSchema,
   createProfileSchema,
@@ -25,6 +26,13 @@ import { listMachineAgents } from '../services/agent-instances.js';
 import { listMachineJobs } from '../services/jobs.js';
 import { getSystemInfo } from '../services/system.js';
 import { searchSkills, type SkillsDeps } from '../services/skills.js';
+import {
+  createApiToolService,
+  deleteApiToolService,
+  getApiToolService,
+  listApiToolServices,
+  updateApiToolService,
+} from '../services/api-tools.js';
 import type { Principal, ServiceDeps } from '../services/principal.js';
 import type { AssistantDispatchService } from '../realtime/assistant-dispatch.js';
 
@@ -117,8 +125,7 @@ function profileSummary(p: { id: string; name: string; scope: string; version: s
  *   read  — silent in every mode.
  *   write — approval card per call; silent under `permissionMode:'autoWrite'`.
  *   meta  — ALWAYS prompts; no silent tier exists (boundary-changing ops —
- *           API-tool create/modify once #80 lands; none today, the gate is
- *           ready and tested synthetically).
+ *           the #81 API-tool config tools are the first real members).
  */
 export type AssistantToolClass = 'read' | 'write' | 'meta';
 
@@ -147,7 +154,7 @@ export function buildAssistantTools(
   deps: AssistantToolDeps,
   principal: Principal,
   groups: readonly AssistantToolGroup[],
-  session?: { sessionId: string },
+  session?: { sessionId: string; configId?: string },
 ): { tools: AgentTool<TSchema>[]; classOf: Map<string, AssistantToolClass> } {
   const enabled = new Set<AssistantToolGroup>(groups);
   const tools: AgentTool<TSchema>[] = [];
@@ -386,6 +393,164 @@ export function buildAssistantTools(
     );
   }
 
+  if (enabled.has('api-tools')) {
+    // #81 — the config-management half of the group. The dynamic `api__*`
+    // execution tools are built per turn by the runner from the config's
+    // attached services; THESE are the static authoring tools that make the
+    // loop close inside a conversation: the assistant reads API docs, writes
+    // a bundle, and every save/delete rides the META class (#79) — opening or
+    // changing an outbound surface never goes silent, in any permission mode.
+    const apiToolSummary = (s: {
+      id: string;
+      name: string;
+      scope: string;
+      baseUrl: string;
+      tools: unknown[];
+    }) => ({
+      id: s.id,
+      name: s.name,
+      scope: s.scope,
+      baseUrl: s.baseUrl,
+      toolCount: s.tools.length,
+    });
+    const resolveApiToolRef = async (ref: { id?: string; name?: string }) => {
+      if (ref.id !== undefined) return getApiToolService(deps, principal, ref.id);
+      if (ref.name === undefined) {
+        throw new AppError('Pass either id or name', 422, 'API_TOOL_REF_REQUIRED');
+      }
+      const matches = (await listApiToolServices(deps, principal)).filter(
+        (s) => s.name === ref.name,
+      );
+      if (matches.length === 0) {
+        throw new AppError(
+          `No visible API tool service named "${ref.name}"`,
+          404,
+          'API_TOOL_NOT_FOUND',
+        );
+      }
+      if (matches.length > 1) {
+        // global + the owner's personal may share a name — disambiguate by id.
+        throw new AppError(
+          `"${ref.name}" is ambiguous (global and personal rows share it) — pass the id: ${matches
+            .map((s) => `${s.id} (${s.scope})`)
+            .join(', ')}`,
+          409,
+          'API_TOOL_NAME_AMBIGUOUS',
+        );
+      }
+      return matches[0]!;
+    };
+    tools.push(
+      tool({
+        name: 'api_tools_list',
+        class: 'read',
+        label: 'List API tool services',
+        description:
+          'List API tool services visible to the user (global + personal): id, name, scope, baseUrl, tool count.',
+        parameters: Type.Object({}),
+        execute: async () =>
+          call(() => listApiToolServices(deps, principal).then((rows) => rows.map(apiToolSummary))),
+      }),
+      tool({
+        name: 'api_tools_get',
+        class: 'read',
+        label: 'Get API tool service',
+        description:
+          'Fetch one service bundle by id or name — the FULL definition (baseUrl, headers, auth, every tool with params and envelope). This is the editing base: modify it and save it back with api_tools_save.',
+        parameters: Type.Object({
+          id: Type.Optional(Type.String()),
+          name: Type.Optional(Type.String({ description: 'Resolved against visible services.' })),
+        }),
+        execute: async (_id, params) => call(() => resolveApiToolRef(params)),
+      }),
+      tool({
+        name: 'api_tools_save',
+        class: 'meta',
+        label: 'Create or replace an API tool service',
+        description:
+          'Create a service from a v1 bundle (no id) or fully replace an existing one (with id). Bundle: {version:1, name, baseUrl (http/https), headers?, auth?:{type:"bearer"|"header",credentialName,...}, tools:[{name, method, path, params?, bodyType?, envelope?}]}. Validation errors come back verbatim — fix the named fields and retry. Saved services attach to the CURRENT assistant config automatically; their tools join the next turn.',
+        parameters: Type.Object({
+          bundle: Type.Any({ description: 'The full v1 service bundle JSON.' }),
+          id: Type.Optional(
+            Type.String({
+              description: 'Existing service id → full replace (scope/owner immutable).',
+            }),
+          ),
+          scope: Type.Optional(
+            Type.String({ description: 'global (admin-only) | personal (default).' }),
+          ),
+        }),
+        execute: async (_id, params) =>
+          call(async () => {
+            // Pre-validate so zod issues reach the authoring loop as compact,
+            // field-named errors instead of a raw ZodError blob.
+            const parsed = apiToolServiceBundleSchema.safeParse(params.bundle);
+            if (!parsed.success) {
+              throw new AppError(
+                parsed.error.issues
+                  .map((i) => `${i.path.join('.') || '(root)'}: ${i.message}`)
+                  .join('; '),
+                422,
+                'API_TOOL_BUNDLE_INVALID',
+              );
+            }
+            const saved =
+              params.id !== undefined
+                ? await updateApiToolService(deps, principal, params.id, { bundle: params.bundle })
+                : await createApiToolService(deps, principal, {
+                    ...(params.scope !== undefined
+                      ? { scope: params.scope as 'global' | 'personal' }
+                      : {}),
+                    bundle: params.bundle,
+                  });
+            // Auto-attach to the calling config so the new tools join the NEXT
+            // turn — an already-approved meta action; per-call class gating
+            // (GET read / others write) still applies to every execution.
+            let attached: 'attached' | 'already-attached' | 'not-attached' = 'not-attached';
+            if (session?.configId !== undefined) {
+              const config = await deps.uow.assistants.findById(session.configId);
+              if (
+                config !== null &&
+                config.enabledToolGroups.includes('api-tools') &&
+                !config.apiToolServiceIds.includes(saved.id)
+              ) {
+                await deps.uow.assistants.save({
+                  ...config,
+                  apiToolServiceIds: [...config.apiToolServiceIds, saved.id],
+                  updatedAt: new Date().toISOString(),
+                });
+                attached = 'attached';
+              } else if (config !== null && config.apiToolServiceIds.includes(saved.id)) {
+                attached = 'already-attached';
+              }
+            }
+            return {
+              service: apiToolSummary(saved),
+              configAttachment: attached,
+              note: 'Tools join the turn AFTER this one (per-call permission classes still apply).',
+            };
+          }),
+      }),
+      tool({
+        name: 'api_tools_delete',
+        class: 'meta',
+        label: 'Delete an API tool service',
+        description:
+          'Soft-delete a service by id or name. Configs referencing it simply stop seeing its tools; dangling references are harmless.',
+        parameters: Type.Object({
+          id: Type.Optional(Type.String()),
+          name: Type.Optional(Type.String()),
+        }),
+        execute: async (_id, params) =>
+          call(async () => {
+            const service = await resolveApiToolRef(params);
+            await deleteApiToolService(deps, principal, service.id);
+            return { deleted: service.id, name: service.name };
+          }),
+      }),
+    );
+  }
+
   if (enabled.has('system')) {
     tools.push(
       tool({
@@ -414,14 +579,15 @@ export function buildAssistantTools(
  * #79 — the MUTATING tools are now the `class: 'write'` declarations above
  * (plus dynamic extras the runner classifies); `buildAssistantTools`
  * returns the class map and the runner resolves `class × permissionMode`.
- * `meta` (always prompts, no silent tier) has no member yet — API-tool
- * create/modify (#80) is its first.
+ * `meta` (always prompts, no silent tier) members: the #81 API-tool config
+ * tools (`api_tools_save` / `api_tools_delete`).
  */
 
 /**
  * Tool names per group — STATIC (the runner's `beforeToolCall` allowlist and
  * the audit trail key off it; `buildAssistantTools` is the single builder,
- * this index is its name shadow).
+ * this index is its name shadow). The api-tools group ALSO carries dynamic
+ * `api__<service>__<tool>` execution tools built per turn by the runner.
  */
 export const TOOL_NAMES_BY_GROUP: Record<AssistantToolGroup, readonly string[]> = {
   resources: ['resources_list', 'resources_get', 'resources_create', 'resources_update'],
@@ -430,8 +596,6 @@ export const TOOL_NAMES_BY_GROUP: Record<AssistantToolGroup, readonly string[]> 
   'skills-hub': ['skills_search'],
   machines: ['machines_list', 'machine_agents_list', 'machine_jobs_list'],
   'agent-dispatch': ['agent_dispatch', 'agent_dispatch_poll'],
-  // #80 — DYNAMIC (built per turn from the config's API tool services);
-  // no static names.
-  'api-tools': [],
+  'api-tools': ['api_tools_list', 'api_tools_get', 'api_tools_save', 'api_tools_delete'],
   system: ['system_info'],
 };

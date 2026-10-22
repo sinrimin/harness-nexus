@@ -522,3 +522,167 @@ describe('#79 — sqlite assistant_sessions.permission_mode round-trip (v27)', (
     expect((await uow.assistants.findSessionById('s1'))?.permissionMode).toBeUndefined();
   });
 });
+
+describe('#81 — API tool config tools (the first meta members)', () => {
+  const wxBundle = {
+    version: 1,
+    name: 'weather',
+    baseUrl: 'https://api.weather.example.com',
+    headers: {},
+    tools: [
+      {
+        name: 'get_forecast',
+        method: 'GET',
+        path: '/v1/forecast',
+        params: [{ name: 'city', in: 'query', type: 'string', required: true }],
+      },
+    ],
+  };
+
+  /** Grant the first pending card (mirrors the browser's allow_once). */
+  async function grantNext(h: Awaited<ReturnType<typeof setup>>, sessionId: string): Promise<void> {
+    for (let i = 0; i < 500; i += 1) {
+      const card = h.events.find((e) => e.event.kind === 'permission_request');
+      if (card !== undefined && card.event.kind === 'permission_request') {
+        h.svc.onPermissionRespond(owner.userId, sessionId, card.event.requestId, 'allow_once');
+        return;
+      }
+      await new Promise((r) => setTimeout(r, 4));
+    }
+    throw new Error('no permission card arrived');
+  }
+
+  it('api_tools_save is meta: prompts even under autoWrite; a denial blocks it', async () => {
+    const h = await setup();
+    const a = await createAssistant({ uow: h.uow }, owner, {
+      name: 'MetaGate',
+      providerId: 'prov-1',
+      defaultModel: 'gw-large',
+      enabledToolGroups: ['api-tools'],
+      permissionMode: 'autoWrite',
+    });
+    h.faux.setResponses([
+      writeCall('api_tools_save', { bundle: wxBundle }),
+      piAi.fauxAssistantMessage([piAi.fauxText('declined')]),
+    ]);
+    const res = await h.svc.open(owner.userId, a.id, undefined, 'sock-1');
+    const sessionId = res.ok ? res.sessionId : '';
+    await h.svc.onMessageSend(owner.userId, sessionId, 'wire up the weather API');
+    await settle(h, sessionId, 4);
+
+    expect(h.events.filter((e) => e.event.kind === 'permission_request').length).toBe(1);
+    expect((await h.uow.apiTools.list({ scope: 'personal', ownerId: owner.userId })).length).toBe(
+      0,
+    );
+  });
+
+  it('a GRANTED save creates the service and auto-attaches it to the calling config', async () => {
+    const h = await setup();
+    const a = await createAssistant({ uow: h.uow }, owner, {
+      name: 'Bootstrap',
+      providerId: 'prov-1',
+      defaultModel: 'gw-large',
+      enabledToolGroups: ['api-tools'],
+    });
+    h.faux.setResponses([
+      writeCall('api_tools_save', { bundle: wxBundle }),
+      piAi.fauxAssistantMessage([piAi.fauxText('saved')]),
+    ]);
+    const res = await h.svc.open(owner.userId, a.id, undefined, 'sock-1');
+    const sessionId = res.ok ? res.sessionId : '';
+    const sent = h.svc.onMessageSend(owner.userId, sessionId, 'wire up the weather API');
+    await grantNext(h, sessionId);
+    await sent;
+    await settle(h, sessionId, 4);
+
+    const rows = await h.uow.apiTools.list({ scope: 'personal', ownerId: owner.userId });
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.name).toBe('weather');
+    const config = await h.uow.assistants.findById(a.id);
+    expect(config?.apiToolServiceIds).toContain(rows[0]!.id);
+    const results = (await h.uow.assistants.listMessages(sessionId)).flatMap((r) =>
+      r.type === 'toolResult' ? r.results : [],
+    );
+    expect(results.find((r) => r.tool === 'api_tools_save')?.isError).toBe(false);
+    expect(results.find((r) => r.tool === 'api_tools_save')?.output).toContain('"attached"');
+  });
+
+  it('an invalid bundle surfaces field-named zod errors verbatim', async () => {
+    const h = await setup();
+    const a = await createAssistant({ uow: h.uow }, owner, {
+      name: 'ZodLoop',
+      providerId: 'prov-1',
+      defaultModel: 'gw-large',
+      enabledToolGroups: ['api-tools'],
+      permissionMode: 'autoWrite',
+    });
+    h.faux.setResponses([
+      writeCall('api_tools_save', { bundle: { ...wxBundle, baseUrl: 'ftp://nope.example.com' } }),
+      piAi.fauxAssistantMessage([piAi.fauxText('fixing it')]),
+    ]);
+    const res = await h.svc.open(owner.userId, a.id, undefined, 'sock-1');
+    const sessionId = res.ok ? res.sessionId : '';
+    const sent = h.svc.onMessageSend(owner.userId, sessionId, 'wire it up');
+    await grantNext(h, sessionId);
+    await sent;
+    await settle(h, sessionId, 4);
+
+    const results = (await h.uow.assistants.listMessages(sessionId)).flatMap((r) =>
+      r.type === 'toolResult' ? r.results : [],
+    );
+    const save = results.find((r) => r.tool === 'api_tools_save');
+    expect(save?.isError).toBe(true);
+    expect(save?.output).toContain('API_TOOL_BUNDLE_INVALID');
+    expect(save?.output).toContain('baseUrl');
+    expect((await h.uow.apiTools.list({ scope: 'personal', ownerId: owner.userId })).length).toBe(
+      0,
+    );
+  });
+
+  it('list is silent read; delete by name is meta and soft-deletes', async () => {
+    const h = await setup();
+    const a = await createAssistant({ uow: h.uow }, owner, {
+      name: 'Curator',
+      providerId: 'prov-1',
+      defaultModel: 'gw-large',
+      enabledToolGroups: ['api-tools'],
+      permissionMode: 'autoWrite',
+    });
+    await h.uow.apiTools.save({
+      id: 'at-wx',
+      scope: 'personal',
+      ownerId: owner.userId,
+      name: 'weather',
+      baseUrl: 'https://api.weather.example.com',
+      headers: {},
+      tools: wxBundle.tools,
+      createdAt: now,
+      updatedAt: now,
+    });
+    h.faux.setResponses([
+      writeCall('api_tools_list', {}),
+      piAi.fauxAssistantMessage([piAi.fauxText('listed')]),
+      writeCall('api_tools_delete', { name: 'weather' }),
+      piAi.fauxAssistantMessage([piAi.fauxText('deleted')]),
+    ]);
+    const res = await h.svc.open(owner.userId, a.id, undefined, 'sock-1');
+    const sessionId = res.ok ? res.sessionId : '';
+    // Turn 1: the read lists silently under autoWrite (and would under prompt).
+    await h.svc.onMessageSend(owner.userId, sessionId, 'what do I have');
+    await settle(h, sessionId, 4);
+    expect(h.events.filter((e) => e.event.kind === 'permission_request').length).toBe(0);
+
+    // Turn 2: delete by name cards (meta), grant, and the row soft-deletes.
+    const rowsBefore = (await h.uow.assistants.listMessages(sessionId)).length;
+    const sent = h.svc.onMessageSend(owner.userId, sessionId, 'remove weather');
+    await grantNext(h, sessionId);
+    await sent;
+    await settle(h, sessionId, rowsBefore + 3);
+    expect(h.events.filter((e) => e.event.kind === 'permission_request').length).toBe(1);
+    expect(
+      (await h.uow.apiTools.list({ scope: 'personal', ownerId: owner.userId })).filter(
+        (s) => s.deletedAt === undefined,
+      ),
+    ).toHaveLength(0);
+  });
+});
