@@ -155,11 +155,14 @@ const en = {
   imagePreview: 'Attached image',
   removeAttachment: 'Remove {name}',
   modeLabel: 'Permission mode',
+  permModeLabel: 'Write policy',
   modelLabel: 'Model',
   effortLabel: 'Reasoning effort',
   modeSwitchAction: 'Switch permission mode',
   modeConsequence:
     'The session runs under "{name}" from the next turn on, which weakens the permission gate — tool calls that would have been refused can run without asking.',
+  permConsequence:
+    'From the next turn on, this conversation runs under "{name}" — write-class tool calls run without asking. Reads stay silent; boundary-changing operations still prompt.',
   configSetFailed: 'Switch failed: {error}',
   pickFile: 'Reference a file',
   pickFileDesc:
@@ -313,11 +316,14 @@ const zh: typeof en = {
   imagePreview: '附件图片',
   removeAttachment: '移除 {name}',
   modeLabel: '权限模式',
+  permModeLabel: '写操作策略',
   modelLabel: '模型',
   effortLabel: '思考级别',
   modeSwitchAction: '切换权限模式',
   modeConsequence:
     '本会话从下一轮起以“{name}”运行，权限门禁随之放宽——原本会被拒绝的工具调用可能不再询问就执行。',
+  permConsequence:
+    '本会话从下一轮起以“{name}”运行——写类工具调用将不再逐次询问。读操作保持静默；改变信任边界的操作仍会询问。',
   configSetFailed: '切换失败：{error}',
   pickFile: '引用文件',
   pickFileDesc: '从工作区选择一个文件作为引用——Agent 会用自己的工具读取它。',

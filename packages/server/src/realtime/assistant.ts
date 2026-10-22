@@ -5,6 +5,7 @@
 import type {
   AssistantConfig,
   AssistantMessageRow,
+  AssistantPermissionMode,
   AssistantPromptBlock,
   AssistantSession,
   LlmProvider,
@@ -54,6 +55,14 @@ interface LiveChannel {
   providerId: string;
   /** Current model id on that provider. */
   modelId: string;
+  /**
+   * #79 — the conversation's OWN write-policy (the sender switch). Stamped at
+   * open from the session row (legacy rows: the config default), moved only by
+   * `assistant:config.set permissionMode`. Unlike provider/model, a rebind to
+   * another config does NOT reset it: the policy is a property of the
+   * conversation, not of the config's model surface.
+   */
+  permissionMode: AssistantPermissionMode;
   /** #10 semantics — depth-1 send slot, parked while the user is busy. */
   queuedPrompt: AssistantPromptBlock[] | null;
   run: RunningTurn | null;
@@ -197,6 +206,18 @@ export class AssistantRealtimeService {
           currentValue: `${ch.providerId}/${ch.modelId}`,
           options: models,
         },
+        // #79 — the sender's write-policy switch. The names are protocol-side
+        // labels; the web renders this option by its `id` with localized
+        // strings, values stay the two declared modes.
+        {
+          id: 'permissionMode',
+          name: 'Write policy',
+          currentValue: ch.permissionMode,
+          options: [
+            { value: 'prompt', name: 'Prompt per write' },
+            { value: 'autoWrite', name: 'Auto-approve writes' },
+          ],
+        },
       ],
     };
   }
@@ -275,8 +296,14 @@ export class AssistantRealtimeService {
         createdAt: now,
         updatedAt: now,
         lastMessageAt: null,
+        // #79 — a FRESH conversation starts from the config's default policy.
+        permissionMode: config.permissionMode ?? 'prompt',
       };
     }
+    // #79 — the channel's policy: the row's own choice, with the config
+    // default standing in for legacy (pre-v27) rows.
+    const permissionMode: AssistantPermissionMode =
+      session.permissionMode ?? config.permissionMode ?? 'prompt';
 
     this.io.joinChannel(socketId, session.id);
     let ch = this.live.get(session.id);
@@ -287,6 +314,7 @@ export class AssistantRealtimeService {
         assistantId: config.id,
         providerId: config.providerId,
         modelId: config.defaultModel,
+        permissionMode,
         queuedPrompt: null,
         run: null,
         openedAt: Date.now(),
@@ -543,19 +571,40 @@ export class AssistantRealtimeService {
   }
 
   /**
-   * `assistant:config.set` — switch the session's assistant config or model.
-   * NEXT-TURN effect: the runner reads the channel state at turn start. An
-   * `agent` switch persists a note row (the transcript records the rebind).
+   * `assistant:config.set` — switch the session's assistant config, model, or
+   * (#79) write-policy. NEXT-TURN effect: the runner reads the channel state
+   * at turn start. An `agent` switch persists a note row (the transcript
+   * records the rebind); a `permissionMode` switch persists onto the session
+   * row — when a turn is RUNNING the write is deferred to its settle, so the
+   * in-flight turn's stamp can never revert the user's fresh choice.
    */
   async onConfigSet(
     userId: string,
     sessionId: string,
-    set: { configId: 'agent' | 'model'; value: string },
+    set: { configId: 'agent' | 'model' | 'permissionMode'; value: string },
   ): Promise<AssistantSendResult> {
     const ch = this.channelOf(userId, sessionId);
     if (ch === null) return { ok: false, code: 'SESSION_NOT_FOUND' };
 
-    if (set.configId === 'agent') {
+    if (set.configId === 'permissionMode') {
+      if (set.value !== 'prompt' && set.value !== 'autoWrite') {
+        return { ok: false, code: 'ASSISTANT_BAD_PERMISSION_MODE' };
+      }
+      if (ch.permissionMode !== set.value) {
+        ch.permissionMode = set.value;
+        if (ch.pending !== undefined) {
+          ch.pending = { ...ch.pending, permissionMode: set.value };
+        } else if (ch.run === null) {
+          const row = await this.deps.uow.assistants.findSessionById(sessionId);
+          if (row !== null) {
+            await this.deps.uow.assistants.saveSession({ ...row, permissionMode: set.value });
+          }
+        }
+        // ch.run !== null: settle() persists ch.permissionMode when the turn
+        // ends — writing the row NOW would be reverted by the turn's own
+        // {...session} stamp a moment later.
+      }
+    } else if (set.configId === 'agent') {
       const config = await this.configOf(userId, set.value);
       if (config === null || config.deletedAt !== undefined) {
         return { ok: false, code: 'ASSISTANT_NOT_FOUND' };
@@ -637,6 +686,9 @@ export class AssistantRealtimeService {
         config,
         providerId: ch.providerId,
         modelId: ch.modelId,
+        // #79 — the conversation's policy (the sender switch), not the
+        // config's default; pinned for the turn like the model binding.
+        permissionMode: ch.permissionMode,
         prompt,
         rows: rowsBefore,
         emit: (event) => this.emit(ch.sessionId, event),
@@ -654,6 +706,10 @@ export class AssistantRealtimeService {
           const now = new Date().toISOString();
           await this.deps.uow.assistants.saveSession({
             ...session,
+            // #79 — persist the channel's CURRENT policy: a mid-turn sender
+            // switch updated ch after this turn captured `session`, and the
+            // row must keep the user's latest choice, not the stale snapshot.
+            permissionMode: ch.permissionMode,
             ...(summary.title !== undefined && session.title === ''
               ? { title: summary.title }
               : {}),

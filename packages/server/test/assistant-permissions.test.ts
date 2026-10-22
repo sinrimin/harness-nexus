@@ -5,6 +5,7 @@
 import { describe, expect, it } from 'vitest';
 import * as piAi from '@earendil-works/pi-ai';
 import { createMemoryUnitOfWork } from '../src/infra/storage/memory/index.js';
+import { createSqliteUnitOfWork } from '../src/infra/storage/sqlite/index.js';
 import { encryptSecret } from '../src/infra/crypto.js';
 import { createAssistant } from '../src/services/assistant.js';
 import type { Principal } from '../src/services/principal.js';
@@ -25,7 +26,7 @@ const KEY = 'test-secret-0123456789abcdef';
 const owner: Principal = { userId: 'u-owner', role: 'user' };
 const now = '2026-01-01T00:00:00.000Z';
 
-async function setup() {
+async function setup(opts: { tokensPerSecond?: number } = {}) {
   const uow = createMemoryUnitOfWork();
   await uow.users.save({
     id: owner.userId,
@@ -62,7 +63,7 @@ async function setup() {
 
   const faux = piAi.fauxProvider({
     models: [{ id: 'gw-large', name: 'Gateway Large', contextWindow: 64_000 }],
-    tokensPerSecond: 1_000_000,
+    tokensPerSecond: opts.tokensPerSecond ?? 1_000_000,
   });
   const models = piAi.createModels();
   models.setProvider(faux.provider);
@@ -99,10 +100,14 @@ async function setup() {
   return { svc, uow, faux, events };
 }
 
-async function settle(h: Awaited<ReturnType<typeof setup>>, sessionId: string): Promise<void> {
+async function settle(
+  h: Awaited<ReturnType<typeof setup>>,
+  sessionId: string,
+  minRows = 1,
+): Promise<void> {
   for (let i = 0; i < 500; i += 1) {
     const rows = await h.uow.assistants.listMessages(sessionId);
-    const settled = rows.length > 0 && rows[rows.length - 1]!.type === 'assistant';
+    const settled = rows.length >= minRows && rows[rows.length - 1]!.type === 'assistant';
     if (settled) return;
     await new Promise((r) => setTimeout(r, 10));
   }
@@ -274,5 +279,246 @@ describe('#79 — write policy through a live turn', () => {
     } finally {
       await new Promise<void>((resolve) => server.close(() => resolve()));
     }
+  });
+});
+
+describe('#79 — the sender-level write-policy switch (session overrides config)', () => {
+  /** The last session_config push's value for one option id. */
+  const lastOption = (h: Awaited<ReturnType<typeof setup>>, id: string): string | undefined => {
+    const configs = h.events.filter((e) => e.event.kind === 'session_config');
+    const last = configs[configs.length - 1];
+    if (last === undefined || last.event.kind !== 'session_config') return undefined;
+    return last.event.configOptions?.find((o) => o.id === id)?.currentValue;
+  };
+
+  it('a fresh session stamps the config default into the composer option', async () => {
+    const h = await setup();
+    const a = await createAssistant({ uow: h.uow }, owner, {
+      name: 'Default',
+      providerId: 'prov-1',
+      defaultModel: 'gw-large',
+      enabledToolGroups: [],
+      permissionMode: 'autoWrite',
+    });
+    await h.svc.open(owner.userId, a.id, undefined, 'sock-1');
+    expect(lastOption(h, 'permissionMode')).toBe('autoWrite');
+  });
+
+  it('a legacy row (no stored mode) falls back to the config default at open', async () => {
+    const h = await setup();
+    const a = await createAssistant({ uow: h.uow }, owner, {
+      name: 'LegacyRow',
+      providerId: 'prov-1',
+      defaultModel: 'gw-large',
+      enabledToolGroups: [],
+      permissionMode: 'autoWrite',
+    });
+    // A pre-v27 shape: the session row simply has no permissionMode field.
+    await h.uow.assistants.saveSession({
+      id: 'sess-legacy',
+      ownerId: owner.userId,
+      assistantId: a.id,
+      title: 'old',
+      createdAt: now,
+      updatedAt: now,
+      lastMessageAt: now,
+    });
+    await h.svc.open(owner.userId, a.id, 'sess-legacy', 'sock-1');
+    expect(lastOption(h, 'permissionMode')).toBe('autoWrite');
+  });
+
+  it('the switch moves the gate for the NEXT turn (card, then silent)', async () => {
+    const h = await setup();
+    const a = await createAssistant({ uow: h.uow }, owner, {
+      name: 'Switchy',
+      providerId: 'prov-1',
+      defaultModel: 'gw-large',
+      enabledToolGroups: ['resources'],
+      permissionMode: 'prompt',
+    });
+    h.faux.setResponses([
+      writeCall('resources_create', {
+        resource: {
+          key: 'skill:before',
+          kind: 'skill',
+          name: 'Before',
+          source: { type: 'inline', content: 'x' },
+          scope: 'personal',
+        },
+      }),
+      piAi.fauxAssistantMessage([piAi.fauxText('denied, fine')]),
+      writeCall('resources_create', {
+        resource: {
+          key: 'skill:after',
+          kind: 'skill',
+          name: 'After',
+          source: { type: 'inline', content: 'x' },
+          scope: 'personal',
+        },
+      }),
+      piAi.fauxAssistantMessage([piAi.fauxText('created')]),
+    ]);
+    const res = await h.svc.open(owner.userId, a.id, undefined, 'sock-1');
+    const sessionId = res.ok ? res.sessionId : '';
+
+    // Turn 1 under prompt: the write cards, times out (150ms), and is denied.
+    await h.svc.onMessageSend(owner.userId, sessionId, 'make one');
+    await settle(h, sessionId);
+    expect(h.events.filter((e) => e.event.kind === 'permission_request').length).toBe(1);
+    expect(
+      (await h.uow.resources.list({ scope: 'personal', ownerId: owner.userId })).some(
+        (r) => r.key === 'skill:before',
+      ),
+    ).toBe(false);
+
+    // Flip the sender switch → turn 2's identical write runs silently.
+    const flip = await h.svc.onConfigSet(owner.userId, sessionId, {
+      configId: 'permissionMode',
+      value: 'autoWrite',
+    });
+    expect(flip.ok).toBe(true);
+    expect(lastOption(h, 'permissionMode')).toBe('autoWrite');
+    await h.svc.onMessageSend(owner.userId, sessionId, 'make another');
+    // `settle` keys on the LAST assistant row — turn 1 already ended with one,
+    // so wait for turn 2's rows (its user row + its closing row) first.
+    const rowsAfterTurn1 = (await h.uow.assistants.listMessages(sessionId)).length;
+    await settle(h, sessionId, rowsAfterTurn1 + 2);
+    expect(h.events.filter((e) => e.event.kind === 'permission_request').length).toBe(1);
+    expect(
+      (await h.uow.resources.list({ scope: 'personal', ownerId: owner.userId })).some(
+        (r) => r.key === 'skill:after',
+      ),
+    ).toBe(true);
+  });
+
+  it('an idle switch persists on the row and survives close/reopen', async () => {
+    const h = await setup();
+    const a = await createAssistant({ uow: h.uow }, owner, {
+      name: 'Sticky',
+      providerId: 'prov-1',
+      defaultModel: 'gw-large',
+      enabledToolGroups: [],
+      permissionMode: 'prompt',
+    });
+    h.faux.setResponses([piAi.fauxAssistantMessage([piAi.fauxText('hello there')])]);
+    const res = await h.svc.open(owner.userId, a.id, undefined, 'sock-1');
+    const sessionId = res.ok ? res.sessionId : '';
+    await h.svc.onMessageSend(owner.userId, sessionId, 'hi');
+    await settle(h, sessionId);
+
+    await h.svc.onConfigSet(owner.userId, sessionId, {
+      configId: 'permissionMode',
+      value: 'autoWrite',
+    });
+    expect((await h.uow.assistants.findSessionById(sessionId))?.permissionMode).toBe('autoWrite');
+
+    await h.svc.close(owner.userId, sessionId, 'user');
+    h.events.length = 0;
+    await h.svc.open(owner.userId, a.id, sessionId, 'sock-2');
+    expect(lastOption(h, 'permissionMode')).toBe('autoWrite');
+  });
+
+  it('a mid-turn switch persists via settle — the turn snapshot cannot revert it', async () => {
+    const h = await setup({ tokensPerSecond: 40 });
+    const a = await createAssistant({ uow: h.uow }, owner, {
+      name: 'Midturn',
+      providerId: 'prov-1',
+      defaultModel: 'gw-large',
+      enabledToolGroups: [],
+      permissionMode: 'prompt',
+    });
+    h.faux.setResponses([
+      piAi.fauxAssistantMessage([piAi.fauxText(`slow ${'stream '.repeat(60)}`)]),
+    ]);
+    const res = await h.svc.open(owner.userId, a.id, undefined, 'sock-1');
+    const sessionId = res.ok ? res.sessionId : '';
+    const sent = h.svc.onMessageSend(owner.userId, sessionId, 'go');
+
+    // Wait until the turn is provably streaming, then flip mid-turn.
+    for (let i = 0; i < 500; i += 1) {
+      if (
+        h.events.some((e) => e.event.kind === 'message_delta' || e.event.kind === 'thought_delta')
+      ) {
+        break;
+      }
+      await new Promise((r) => setTimeout(r, 4));
+    }
+    const flip = await h.svc.onConfigSet(owner.userId, sessionId, {
+      configId: 'permissionMode',
+      value: 'autoWrite',
+    });
+    expect(flip.ok).toBe(true);
+    // Deferred while the turn runs: the row still holds the open-time policy.
+    expect((await h.uow.assistants.findSessionById(sessionId))?.permissionMode).toBe('prompt');
+
+    await sent;
+    await settle(h, sessionId);
+    expect((await h.uow.assistants.findSessionById(sessionId))?.permissionMode).toBe('autoWrite');
+  });
+
+  it('an invalid mode value is refused', async () => {
+    const h = await setup();
+    const a = await createAssistant({ uow: h.uow }, owner, {
+      name: 'Strict',
+      providerId: 'prov-1',
+      defaultModel: 'gw-large',
+      enabledToolGroups: [],
+    });
+    const res = await h.svc.open(owner.userId, a.id, undefined, 'sock-1');
+    const sessionId = res.ok ? res.sessionId : '';
+    const bad = await h.svc.onConfigSet(owner.userId, sessionId, {
+      configId: 'permissionMode',
+      value: 'yolo',
+    });
+    expect(bad).toEqual({ ok: false, code: 'ASSISTANT_BAD_PERMISSION_MODE' });
+    expect(lastOption(h, 'permissionMode')).toBe('prompt');
+  });
+});
+
+describe('#79 — sqlite assistant_sessions.permission_mode round-trip (v27)', () => {
+  it('stores and clears the conversation policy; legacy NULL reads as undefined', async (ctx) => {
+    let uow: ReturnType<typeof createSqliteUnitOfWork>;
+    try {
+      uow = createSqliteUnitOfWork(':memory:');
+    } catch {
+      return ctx.skip('better-sqlite3 native binding unavailable for this Node major');
+    }
+    // assistant_sessions carries FKs (owner + config) — seed both.
+    await uow.users.save({
+      id: owner.userId,
+      username: 'owner',
+      email: null,
+      passwordHash: null,
+      role: 'user',
+      status: 'active',
+      createdAt: now,
+      updatedAt: now,
+    });
+    await uow.assistants.save({
+      id: 'asst-1',
+      ownerId: owner.userId,
+      name: 'S',
+      providerId: 'prov-1',
+      defaultModel: 'm',
+      enabledToolGroups: [],
+      mcpServerIds: [],
+      skillResourceIds: [],
+      apiToolServiceIds: [],
+      createdAt: now,
+      updatedAt: now,
+    });
+    const base = {
+      ownerId: owner.userId,
+      assistantId: 'asst-1',
+      title: '',
+      createdAt: now,
+      updatedAt: now,
+      lastMessageAt: null,
+    };
+    await uow.assistants.saveSession({ id: 's1', ...base, permissionMode: 'autoWrite' });
+    expect((await uow.assistants.findSessionById('s1'))?.permissionMode).toBe('autoWrite');
+    // Clearing (undefined) writes NULL back — the legacy shape reads as such.
+    await uow.assistants.saveSession({ id: 's1', ...base });
+    expect((await uow.assistants.findSessionById('s1'))?.permissionMode).toBeUndefined();
   });
 });

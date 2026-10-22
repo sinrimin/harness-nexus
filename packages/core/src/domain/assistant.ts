@@ -91,6 +91,13 @@ export interface AssistantSession {
   createdAt: string;
   updatedAt: string;
   lastMessageAt: string | null;
+  /**
+   * #79 — the conversation's OWN write-policy, switchable from the chat
+   * sender (`assistant:config.set` `permissionMode`); the config's
+   * `permissionMode` is only the DEFAULT stamped at open. Undefined = a
+   * legacy row (pre-v27), which falls back to the config default at open.
+   */
+  permissionMode?: AssistantPermissionMode | undefined;
 }
 
 /**

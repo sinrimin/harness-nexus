@@ -512,6 +512,14 @@ ALTER TABLE system_settings ADD COLUMN api_tool_allowlist TEXT;
 ALTER TABLE assistant_configs ADD COLUMN api_tool_service_ids TEXT NOT NULL DEFAULT '[]';
     `,
   },
+  {
+    version: 27,
+    description:
+      'issue #79 — per-session write policy (sender switch): assistant_sessions.permission_mode',
+    sql: `
+ALTER TABLE assistant_sessions ADD COLUMN permission_mode TEXT;
+    `,
+  },
 ] as const;
 
 /**

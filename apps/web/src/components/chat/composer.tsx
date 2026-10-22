@@ -561,9 +561,27 @@ export function Composer({
   // #52 — the assistant 端 rides the same option surface with OPAQUE extra
   // selects (e.g. configId 'agent'): every option in no known category
   // renders as a generic labeled select, values compared by equality only.
+  // #79's permissionMode is special-cased below (localized labels + a
+  // designed confirm on the weakening pick), so it leaves this pool.
   const extraOptions = (config.configOptions ?? []).filter(
-    (o) => o.category === undefined && o.id !== 'model',
+    (o) => o.category === undefined && o.id !== 'model' && o.id !== 'permissionMode',
   );
+  // #79 — the assistant session's write-policy switch (the config's value is
+  // only the default). Choice names localize by VALUE — the two declared
+  // modes — while the wire stays opaque.
+  const permOption = config.configOptions?.find((o) => o.id === 'permissionMode');
+  const permName = (value: string, wire: string): string =>
+    value === 'prompt'
+      ? t('assistants.permPrompt')
+      : value === 'autoWrite'
+        ? t('assistants.permAutoWrite')
+        : wire;
+  const permChoices: SelectChoice[] =
+    permOption?.options?.map((o) => ({
+      value: o.value,
+      name: permName(o.value, o.name),
+      description: o.description,
+    })) ?? [];
   const modeChoices: SelectChoice[] =
     modeFromOptions?.options?.map((o) => ({
       value: o.value,
@@ -580,21 +598,38 @@ export function Composer({
 
   // P6 — a mode that weakens the permission gate is confirmed in a designed
   // dialog instead of a native prompt: the pick is held here, and only
-  // `confirmMode` writes it through.
-  const [pendingMode, setPendingMode] = useState<{ id: string; name: string } | null>(null);
+  // `confirmMode` writes it through. #79 — the assistant's `autoWrite` policy
+  // weakens the same gate, so it rides the same held-pick confirm.
+  const [pendingMode, setPendingMode] = useState<{
+    kind: 'mode' | 'permission';
+    value: string;
+    name: string;
+  } | null>(null);
   const pickMode = (modeId: string): void => {
     const name = modeChoices.find((c) => c.value === modeId)?.name ?? modeId;
     if (DANGEROUS_MODES.has(modeId)) {
-      setPendingMode({ id: modeId, name });
+      setPendingMode({ kind: 'mode', value: modeId, name });
       return;
     }
     onConfigSet({ kind: 'mode', modeId });
+  };
+  const pickPermission = (value: string): void => {
+    if (permOption === undefined) return;
+    if (value === 'autoWrite' && permOption.currentValue !== 'autoWrite') {
+      setPendingMode({ kind: 'permission', value, name: permName(value, value) });
+      return;
+    }
+    onConfigSet({ kind: 'option', configId: permOption.id, value });
   };
   const confirmMode = (): void => {
     const next = pendingMode;
     if (next === null) return;
     setPendingMode(null);
-    onConfigSet({ kind: 'mode', modeId: next.id });
+    if (next.kind === 'mode') {
+      onConfigSet({ kind: 'mode', modeId: next.value });
+    } else {
+      onConfigSet({ kind: 'option', configId: 'permissionMode', value: next.value });
+    }
   };
 
   return (
@@ -809,6 +844,17 @@ export function Composer({
           hint={turnActive ? t('chat.appliesNextTurn') : undefined}
           onPick={pickMode}
         />
+        {permOption === undefined ? null : (
+          <ConfigSelect
+            label={t('chat.permModeLabel')}
+            icon={<ShieldCheckIcon className="size-4" />}
+            value={permOption.currentValue}
+            choices={permChoices}
+            disabled={controlsDisabled}
+            hint={turnActive ? t('chat.appliesNextTurn') : undefined}
+            onPick={pickPermission}
+          />
+        )}
         {modelOption === undefined ? null : (
           <ConfigSelect
             label={t('chat.modelLabel')}
@@ -923,8 +969,17 @@ export function Composer({
             if (!o) setPendingMode(null);
           }}
           title={t('chat.modeSwitchAction')}
-          consequence={t('chat.modeConsequence', { name: pendingMode.name })}
-          impact={[{ label: 'mode', value: pendingMode.id }]}
+          consequence={
+            pendingMode.kind === 'mode'
+              ? t('chat.modeConsequence', { name: pendingMode.name })
+              : t('chat.permConsequence', { name: pendingMode.name })
+          }
+          impact={[
+            {
+              label: pendingMode.kind === 'mode' ? 'mode' : 'write policy',
+              value: pendingMode.value,
+            },
+          ]}
           actionLabel={t('chat.modeSwitchAction')}
           // Danger edge without the irreversible line: flipping the mode back
           // restores the gate, so claiming "cannot be undone" would be false.
