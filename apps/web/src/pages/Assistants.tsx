@@ -83,6 +83,7 @@ interface Draft {
   permissionMode: 'prompt' | 'autoWrite';
   enabledToolGroups: string[];
   mcpServerIds: string[];
+  apiToolServiceIds: string[];
   skillResourceIds: string[];
   /** '' = unlimited (null on the wire). */
   dailyTokenBudget: string;
@@ -97,6 +98,7 @@ const EMPTY_DRAFT: Draft = {
   permissionMode: 'prompt',
   enabledToolGroups: [...ASSISTANT_TOOL_GROUPS],
   mcpServerIds: [],
+  apiToolServiceIds: [],
   skillResourceIds: [],
   dailyTokenBudget: '',
 };
@@ -143,6 +145,7 @@ export function AssistantsPage() {
   const { t } = useI18n();
   const [items, setItems] = useState<AssistantConfigView[] | null>(null);
   const [providers, setProviders] = useState<LlmProviderView[]>([]);
+  const [apiServices, setApiServices] = useState<{ id: string; bundle: { name: string } }[]>([]);
   const [mcpServers, setMcpServers] = useState<{ id: string; name: string; dialSite: string }[]>(
     [],
   );
@@ -158,17 +161,19 @@ export function AssistantsPage() {
 
   async function refresh() {
     try {
-      const [list, provs, servers, skills] = await Promise.all([
+      const [list, provs, servers, apiTools, skills] = await Promise.all([
         withAuthGuard(() => api.listAssistants(), logout),
         withAuthGuard(() => api.listLlmProviders(), logout),
         // Picker sources — failures degrade to empty lists (the dialog stays
         // usable; the sections say 暂无可用项).
         withAuthGuard(() => api.listMcpServers(), logout).catch(() => []),
+        withAuthGuard(() => api.listApiToolServices(), logout).catch(() => ({ services: [] })),
         withAuthGuard(() => api.listResources({ kind: 'skill' }), logout).catch(() => []),
       ]);
       setItems(list);
       setProviders(provs);
       setMcpServers(servers);
+      setApiServices(apiTools.services);
       setSkillResources(skills);
       setError(null);
     } catch (e) {
@@ -208,6 +213,7 @@ export function AssistantsPage() {
       permissionMode: a.permissionMode ?? 'prompt',
       enabledToolGroups: [...a.enabledToolGroups],
       mcpServerIds: [...(a.mcpServerIds ?? [])],
+      apiToolServiceIds: [...(a.apiToolServiceIds ?? [])],
       skillResourceIds: [...(a.skillResourceIds ?? [])],
       dailyTokenBudget: a.dailyTokenBudget !== null ? String(a.dailyTokenBudget) : '',
     });
@@ -230,6 +236,7 @@ export function AssistantsPage() {
         permissionMode: draft.permissionMode,
         enabledToolGroups: draft.enabledToolGroups as (typeof ASSISTANT_TOOL_GROUPS)[number][],
         mcpServerIds: draft.mcpServerIds,
+        apiToolServiceIds: draft.apiToolServiceIds,
         skillResourceIds: draft.skillResourceIds,
         ...(draft.dailyTokenBudget.trim() !== ''
           ? { dailyTokenBudget: Number(draft.dailyTokenBudget) }
@@ -566,6 +573,31 @@ export function AssistantsPage() {
                     </label>
                   );
                 })}
+              </div>
+            )}
+          </Field>
+          <Field label={t('apiTools.servicesLabel')} hint={t('apiTools.servicesHint')}>
+            {apiServices.length === 0 ? (
+              <span className="text-muted-foreground text-xs">{t('assistants.noneAvailable')}</span>
+            ) : (
+              <div className="grid grid-cols-2 gap-1.5">
+                {apiServices.map((svc) => (
+                  <label key={svc.id} className="flex items-center gap-2 text-sm">
+                    <Checkbox
+                      checked={draft.apiToolServiceIds.includes(svc.id)}
+                      onCheckedChange={(checked) =>
+                        setDraft((d) => ({
+                          ...d,
+                          apiToolServiceIds:
+                            checked === true
+                              ? [...d.apiToolServiceIds, svc.id]
+                              : d.apiToolServiceIds.filter((x) => x !== svc.id),
+                        }))
+                      }
+                    />
+                    <span className="truncate font-mono text-xs">{svc.bundle.name}</span>
+                  </label>
+                ))}
               </div>
             )}
           </Field>

@@ -12,6 +12,7 @@ import {
   ScaleIcon,
   SquareTerminalIcon,
   WebhookIcon,
+  BracesIcon,
   LayersIcon,
   ServerIcon,
   KeyRoundIcon,
@@ -85,6 +86,7 @@ export type RouteId =
   | 'chatSession'
   | 'assistantSession'
   | 'assistants'
+  | 'apiTools'
   | 'machines'
   | 'machineDetail'
   | 'skills'
@@ -244,6 +246,14 @@ export const ROUTES: RouteDef[] = [
     group: 'access',
     titleKey: 'assistants.title',
     nav: { icon: Wand2Icon },
+  },
+  {
+    // #80 — API tools: LLM-authored JSON bundles, upload/download/probe.
+    id: 'apiTools',
+    path: '/api-tools',
+    group: 'access',
+    titleKey: 'apiTools.title',
+    nav: { icon: BracesIcon },
   },
   {
     id: 'tokens',
