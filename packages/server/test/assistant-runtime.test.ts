@@ -261,13 +261,16 @@ describe('#52 assistant runtime (faux provider)', () => {
     const res = await h.svc.open(owner.userId, await opsId(h), undefined, 'sock-1');
     const sessionId = res.ok ? res.sessionId : '';
 
+    // #82 — this session is still LAZY (no row until the first message): the
+    // rebind succeeds WITHOUT a transcript note (sqlite would reject the
+    // append via the assistant_messages FK) and re-stamps the pending row.
     const set = await h.svc.onConfigSet(owner.userId, sessionId, {
       configId: 'agent',
       value: await secondId(h),
     });
     expect(set.ok).toBe(true);
     const rows = await h.uow.assistants.listMessages(sessionId);
-    expect(rows.some((r) => r.type === 'note' && r.text.includes('"Second"'))).toBe(true);
+    expect(rows.some((r) => r.type === 'note')).toBe(false);
 
     // The LAST session_config snapshot is the post-rebind truth (open also
     // pushed one before the switch).
