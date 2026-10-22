@@ -82,6 +82,7 @@ export async function createAssistant(
     ...(input.systemPromptOverride !== undefined && input.systemPromptOverride !== ''
       ? { systemPromptOverride: input.systemPromptOverride }
       : {}),
+    permissionMode: input.permissionMode ?? 'prompt',
     // Route-parsed input always carries the zod default; direct callers
     // (tests, future in-process doors) may omit it — same default applies.
     enabledToolGroups: (input.enabledToolGroups as AssistantToolGroup[] | undefined) ?? [
@@ -162,6 +163,7 @@ export async function updateAssistant(
             input.systemPromptOverride === null ? undefined : input.systemPromptOverride,
         }
       : {}),
+    ...(input.permissionMode !== undefined ? { permissionMode: input.permissionMode } : {}),
     ...(input.enabledToolGroups !== undefined
       ? { enabledToolGroups: input.enabledToolGroups as AssistantToolGroup[] }
       : {}),

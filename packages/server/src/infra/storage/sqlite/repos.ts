@@ -1231,6 +1231,7 @@ interface AssistantConfigRow {
   provider_id: string;
   default_model: string;
   system_prompt_override: string | null;
+  permission_mode: string;
   enabled_tool_groups: string;
   mcp_server_ids: string | null;
   skill_resource_ids: string | null;
@@ -1278,6 +1279,7 @@ function mapAssistantConfig(r: AssistantConfigRow): AssistantConfig {
     ...(r.system_prompt_override !== null
       ? { systemPromptOverride: r.system_prompt_override }
       : {}),
+    permissionMode: r.permission_mode === 'autoWrite' ? 'autoWrite' : 'prompt',
     enabledToolGroups: JSON.parse(r.enabled_tool_groups) as AssistantConfig['enabledToolGroups'],
     mcpServerIds: r.mcp_server_ids === null ? [] : (JSON.parse(r.mcp_server_ids) as string[]),
     skillResourceIds:
@@ -1328,10 +1330,10 @@ export function sqliteAssistantRepository(db: Database): AssistantRepository {
       db.prepare(
         `INSERT INTO assistant_configs
            (id, owner_id, name, description, provider_id, default_model,
-            system_prompt_override, enabled_tool_groups, mcp_server_ids, skill_resource_ids,
+            system_prompt_override, permission_mode, enabled_tool_groups, mcp_server_ids, skill_resource_ids,
             daily_token_budget, deleted_at, created_at, updated_at)
          VALUES (@id, @owner_id, @name, @description, @provider_id, @default_model,
-                 @system_prompt_override, @enabled_tool_groups, @mcp_server_ids, @skill_resource_ids,
+                 @system_prompt_override, @permission_mode, @enabled_tool_groups, @mcp_server_ids, @skill_resource_ids,
                  @daily_token_budget, @deleted_at, @created_at, @updated_at)
          ON CONFLICT(id) DO UPDATE SET
            name                   = excluded.name,
@@ -1339,6 +1341,7 @@ export function sqliteAssistantRepository(db: Database): AssistantRepository {
            provider_id            = excluded.provider_id,
            default_model          = excluded.default_model,
            system_prompt_override = excluded.system_prompt_override,
+           permission_mode        = excluded.permission_mode,
            enabled_tool_groups    = excluded.enabled_tool_groups,
            mcp_server_ids         = excluded.mcp_server_ids,
            skill_resource_ids     = excluded.skill_resource_ids,
@@ -1353,6 +1356,7 @@ export function sqliteAssistantRepository(db: Database): AssistantRepository {
         provider_id: config.providerId,
         default_model: config.defaultModel,
         system_prompt_override: config.systemPromptOverride ?? null,
+        permission_mode: config.permissionMode ?? 'prompt',
         enabled_tool_groups: JSON.stringify(config.enabledToolGroups),
         mcp_server_ids: JSON.stringify(config.mcpServerIds ?? []),
         skill_resource_ids: JSON.stringify(config.skillResourceIds ?? []),

@@ -4,7 +4,7 @@
 
 import type { AgentTool } from '@earendil-works/pi-agent-core';
 import { Type, type TSchema } from '@earendil-works/pi-ai';
-import type { AssistantToolGroup } from '@harness-nexus/core';
+import type { AssistantPermissionMode, AssistantToolGroup } from '@harness-nexus/core';
 import {
   AppError,
   createResourceSchema,
@@ -89,7 +89,9 @@ async function call(fn: () => Promise<unknown>): Promise<ToolOut> {
 }
 
 /** Inference helper — keeps `execute` params typed from each tool's schema. */
-export function tool<T extends TSchema>(t: AgentTool<T>): AgentTool<T> {
+export function tool<T extends TSchema>(
+  t: AgentTool<T> & { class: AssistantToolClass },
+): AgentTool<T> {
   return t;
 }
 
@@ -110,18 +112,43 @@ function profileSummary(p: { id: string; name: string; scope: string; version: s
 }
 
 /**
+ * #79 — an assistant tool's operation class, DECLARED where the tool is
+ * built (never inferred from model behavior):
+ *   read  — silent in every mode.
+ *   write — approval card per call; silent under `permissionMode:'autoWrite'`.
+ *   meta  — ALWAYS prompts; no silent tier exists (boundary-changing ops —
+ *           API-tool create/modify once #80 lands; none today, the gate is
+ *           ready and tested synthetically).
+ */
+export type AssistantToolClass = 'read' | 'write' | 'meta';
+
+/**
+ * #79 — the approval gate's decision table: reads never prompt; writes
+ * prompt unless the config pre-authorized them; meta ALWAYS prompts.
+ */
+export function toolNeedsApproval(
+  cls: AssistantToolClass,
+  mode: AssistantPermissionMode | undefined,
+): boolean {
+  return cls === 'meta' || (cls === 'write' && (mode ?? 'prompt') !== 'autoWrite');
+}
+
+/**
  * Build the enabled groups' tools for one turn. The principal is captured at
  * TURN START (the runner re-reads the owner's role from the DB there), so a
  * disable/demote takes effect on the next turn. `session` (#68) routes the
  * dispatch backflow (user-op notes, completion pushes) to the assistant
  * session the tools run for.
+ *
+ * Returns the tools AND their class map (#79) — the runner's approval gate
+ * resolves `class × permissionMode` from it.
  */
 export function buildAssistantTools(
   deps: AssistantToolDeps,
   principal: Principal,
   groups: readonly AssistantToolGroup[],
   session?: { sessionId: string },
-): AgentTool<TSchema>[] {
+): { tools: AgentTool<TSchema>[]; classOf: Map<string, AssistantToolClass> } {
   const enabled = new Set<AssistantToolGroup>(groups);
   const tools: AgentTool<TSchema>[] = [];
 
@@ -129,6 +156,7 @@ export function buildAssistantTools(
     tools.push(
       tool({
         name: 'resources_list',
+        class: 'read',
         label: 'List resources',
         description:
           'List Harness Nexus resources (skills, hooks, sub-agents, rules, commands). Returns compact rows; use resources_get for full bodies.',
@@ -149,6 +177,7 @@ export function buildAssistantTools(
       }),
       tool({
         name: 'resources_get',
+        class: 'read',
         label: 'Get resource',
         description: 'Fetch one resource by id, including its full source body.',
         parameters: Type.Object({ id: Type.String() }),
@@ -156,6 +185,7 @@ export function buildAssistantTools(
       }),
       tool({
         name: 'resources_create',
+        class: 'write',
         label: 'Create resource',
         description:
           'Create a resource. `resource` must match the create schema: { key, kind, name, description?, version?, source: {type:"inline",content}|{type:"inline-bundle",files}|…, scope, targets?, labels? }. Skills must use inline or inline-bundle sources.',
@@ -165,6 +195,7 @@ export function buildAssistantTools(
       }),
       tool({
         name: 'resources_update',
+        class: 'write',
         label: 'Update resource',
         description:
           'Update a resource by id. `patch` may carry key/name/description/version/source/targets/labels (kind and scope are immutable).',
@@ -181,6 +212,7 @@ export function buildAssistantTools(
     tools.push(
       tool({
         name: 'profiles_list',
+        class: 'read',
         label: 'List profiles',
         description: 'List installable profiles (reference bundles of resources).',
         parameters: Type.Object({}),
@@ -189,6 +221,7 @@ export function buildAssistantTools(
       }),
       tool({
         name: 'profiles_get',
+        class: 'read',
         label: 'Get profile',
         description: 'Fetch one profile by id with its entries.',
         parameters: Type.Object({ id: Type.String() }),
@@ -196,6 +229,7 @@ export function buildAssistantTools(
       }),
       tool({
         name: 'profiles_create',
+        class: 'write',
         label: 'Create profile',
         description:
           'Create a profile. `profile` must match: { name, description?, target, entries, scope } — entries reference resources by id.',
@@ -205,6 +239,7 @@ export function buildAssistantTools(
       }),
       tool({
         name: 'profiles_update',
+        class: 'write',
         label: 'Update profile',
         description: 'Update a profile by id (name/description/entries; a new version is derived).',
         parameters: Type.Object({ id: Type.String(), patch: Type.Any() }),
@@ -220,6 +255,7 @@ export function buildAssistantTools(
     tools.push(
       tool({
         name: 'mcp_servers_list',
+        class: 'read',
         label: 'List MCP servers',
         description:
           'List the registered MCP servers visible to the user (transport, dial site, scope).',
@@ -233,6 +269,7 @@ export function buildAssistantTools(
     tools.push(
       tool({
         name: 'skills_search',
+        class: 'read',
         label: 'Search skill hub',
         description:
           'Search the multi-source skill hub (marketplaces, GitHub, well-known catalogs) for installable skills.',
@@ -255,6 +292,7 @@ export function buildAssistantTools(
     tools.push(
       tool({
         name: 'machines_list',
+        class: 'read',
         label: 'List machines',
         description:
           "List the user's enrolled machines (online state, capabilities, daemon version).",
@@ -263,6 +301,7 @@ export function buildAssistantTools(
       }),
       tool({
         name: 'machine_agents_list',
+        class: 'read',
         label: 'List machine agents',
         description: 'List the agent instances deployed/detected on one machine.',
         parameters: Type.Object({ machineId: Type.String() }),
@@ -271,6 +310,7 @@ export function buildAssistantTools(
       }),
       tool({
         name: 'machine_jobs_list',
+        class: 'read',
         label: 'List machine jobs',
         description: 'List the deploy/harness jobs of one machine (status history).',
         parameters: Type.Object({ machineId: Type.String() }),
@@ -285,6 +325,7 @@ export function buildAssistantTools(
     tools.push(
       tool({
         name: 'agent_dispatch',
+        class: 'write',
         label: 'Dispatch client agent',
         description:
           "Send a prompt to a client agent (AgentInstance) on one of the user's machines and return a handle immediately — the agent runs ASYNC; poll the outcome with agent_dispatch_poll. To CONTINUE a previous dispatch's native session, pass resume = { sessionId, cwd } exactly as that dispatch's poll result reported them. The channel shows in the user's web chat tabs; permission prompts the driven agent raises are answerable there, and anything the USER does on it (stopping it, interjecting, closing it) comes back via poll notices.",
@@ -321,6 +362,7 @@ export function buildAssistantTools(
       }),
       tool({
         name: 'agent_dispatch_poll',
+        class: 'read',
         label: 'Poll dispatched agent',
         description:
           "Fetch a dispatch's outcome. status running/starting = still working (optionally waitMs to block for a change, max 60000); done carries the turn's final text, stopReason, usage, and the nativeSessionId+cwd continuation handle; closed/failed are terminal and explain themselves. pendingPermission=true means the driven agent waits on a permission card the user must answer in the web chat tab. notices[] lists USER operations on the driven channel since your last poll (the user stopped/interjected/reconfigured it) — they carry the user's intent, not failures.",
@@ -348,6 +390,7 @@ export function buildAssistantTools(
     tools.push(
       tool({
         name: 'system_info',
+        class: 'read',
         label: 'System info',
         description: 'The platform version.',
         parameters: Type.Object({}),
@@ -356,24 +399,24 @@ export function buildAssistantTools(
     );
   }
 
-  return tools;
+  // #79 — collect the declared classes (the `class` prop rides each tool
+  // literal; see the helper). The runner's approval gate resolves
+  // `class × permissionMode` from this map.
+  const classOf = new Map<string, AssistantToolClass>();
+  for (const t of tools) {
+    classOf.set(t.name, (t as AgentTool<TSchema> & { class: AssistantToolClass }).class);
+  }
+
+  return { tools, classOf };
 }
 
 /**
- * The MUTATING tools — every call requires explicit user approval mid-turn
- * (M3): the runner routes these through the approval seam, which surfaces an
- * ACP-shaped `permission_request` card and waits for the browser's answer or
- * the timeout (both deny). Reads never gate.
+ * #79 — the MUTATING tools are now the `class: 'write'` declarations above
+ * (plus dynamic extras the runner classifies); `buildAssistantTools`
+ * returns the class map and the runner resolves `class × permissionMode`.
+ * `meta` (always prompts, no silent tier) has no member yet — API-tool
+ * create/modify (#80) is its first.
  */
-export const WRITE_TOOLS: ReadonlySet<string> = new Set([
-  'resources_create',
-  'resources_update',
-  'profiles_create',
-  'profiles_update',
-  // #67 — dispatching drives an agent on the user's machine: the highest
-  // blast radius in the platform, gated per call like the other writes.
-  'agent_dispatch',
-]);
 
 /**
  * Tool names per group — STATIC (the runner's `beforeToolCall` allowlist and

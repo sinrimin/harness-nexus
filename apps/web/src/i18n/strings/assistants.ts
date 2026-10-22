@@ -31,6 +31,12 @@ const en = {
   promptLabel: 'Override',
   promptHint: 'Leave empty to use the platform default prompt. An override replaces it wholesale.',
   groupsLabel: 'Tool groups',
+  permLabel: 'Write policy',
+  permHint:
+    'How WRITE-class tool calls run: prompt per call, or silently (reads never prompt; boundary-changing operations always do).',
+  permPrompt: 'Prompt per write',
+  permAutoWrite: 'Auto-approve writes',
+  colMode: 'Mode',
   groupsHint: 'Leave all unchecked for a chat-only assistant (no platform tools).',
   budgetLabel: 'Daily token budget',
   budgetHint:
@@ -103,6 +109,12 @@ const zh: typeof en = {
   promptLabel: '覆盖',
   promptHint: '留空使用平台默认提示词；覆盖会整体替换默认值。',
   groupsLabel: '工具组',
+  permLabel: '写操作策略',
+  permHint:
+    '写类工具的执行方式：每次确认，或静默放行（读操作从不确认；改变信任边界的操作永远需要确认）。',
+  permPrompt: '每次写操作确认',
+  permAutoWrite: '静默放行写操作',
+  colMode: '模式',
   groupsHint: '全部不勾选 = 纯聊天助手（不启用任何平台工具）。',
   budgetLabel: '每日 token 预算',
   budgetHint: '该助理全部会话每个 UTC 日的输入+输出 token 总量；留空不限。',

@@ -124,6 +124,7 @@ export async function buildTurnExtras(input: {
     tools.push(
       tool({
         name: 'read_skill',
+        class: 'read',
         label: 'Read skill',
         description:
           'Read the full body of a configured platform skill. `skill` is the skill id or its name; `file` picks one file of a bundle (omit for SKILL.md / the single body).',
@@ -188,6 +189,7 @@ export async function buildTurnExtras(input: {
       tools.push(
         tool({
           name: agg.name,
+          class: 'write',
           label: agg.name,
           description:
             agg.description ?? `MCP tool ${agg.name} (exposed by a configured MCP server)`,
