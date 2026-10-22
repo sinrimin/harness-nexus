@@ -8,8 +8,6 @@ import {
   ServerIcon,
   PlusIcon,
   TrashIcon,
-  GlobeIcon,
-  UserIcon,
   MoreHorizontalIcon,
   FileJsonIcon,
   ChevronRightIcon,
@@ -27,7 +25,9 @@ import {
   DataTable,
   FilterBar,
   FilterSelect,
+  Lamp,
   PageIntro,
+  ScopeBadge,
   TableSearch,
   Well,
   tableState,
@@ -120,13 +120,6 @@ const TRANSPORT_TYPES: TransportType[] = ['stdio', 'sse', 'streamable-http'];
  * (cyan) is deliberately NOT used here — it is reserved for liveness/links.
  * Hoisted to module scope (static config, per the React perf rule in AGENTS.md).
  */
-const STATUS_DOT_CLASS: Record<McpServerStatus['status'], string> = {
-  connected: 'bg-ok',
-  error: 'bg-danger',
-  connecting: 'bg-warn',
-  disconnected: 'bg-muted-foreground/50',
-};
-
 /** Location/launch info shown for a row, per transport shape. */
 function endpointOf(s: McpServer): string {
   if (s.transport.type === 'stdio') return s.transport.command;
@@ -469,7 +462,7 @@ function ServerRow({
 
   // Common cells shared by server-dialed and client-dialed rows.
   const dialSiteCell = (
-    <Badge variant={isServerDialed ? 'default' : 'secondary'} className="font-mono text-[10px]">
+    <Badge variant={isServerDialed ? 'default' : 'secondary'}>
       {server.dialSite === 'auto'
         ? t('mcp.dialAutoDerived', {
             site: site === 'client' ? t('mcp.dialClient') : t('mcp.dialServer'),
@@ -478,20 +471,11 @@ function ServerRow({
     </Badge>
   );
   const transportCell = (
-    <Badge variant="secondary" className="font-mono text-[10px]">
+    <Badge variant="secondary" className="role-data-sm">
       {server.transport.type}
     </Badge>
   );
-  const scopeCell = (
-    <Badge variant={server.scope === 'global' ? 'default' : 'secondary'} className="gap-1">
-      {server.scope === 'global' ? (
-        <GlobeIcon className="size-3" />
-      ) : (
-        <UserIcon className="size-3" />
-      )}
-      {server.scope === 'global' ? t('common.scopeGlobal') : t('common.scopePersonal')}
-    </Badge>
-  );
+  const scopeCell = <ScopeBadge scope={server.scope} />;
   const actionsCell = (
     <TableCell className="pr-6 text-right">
       <div className="flex items-center justify-end gap-1">
@@ -540,7 +524,7 @@ function ServerRow({
           <TableCell className="pl-6 font-medium">{server.name}</TableCell>
           <TableCell>{dialSiteCell}</TableCell>
           <TableCell>
-            <Badge variant="outline" className="font-mono text-[10px]">
+            <Badge variant="secondary" className="role-data-sm">
               {t('mcp.dialedByShim')}
             </Badge>
           </TableCell>
@@ -659,9 +643,9 @@ function ServerRow({
 }
 
 /**
- * Live connection status badge — a colored dot (state-encoded, see
- * STATUS_DOT_CLASS) + a label, plus a tool-count badge when connected. Uses
- * neutral Badge variants; color comes from the dot only (Signal system).
+ * Live connection status — the two-channel status device (`Lamp`: the lamp
+ * carries the tone, the word the state) plus a tool-count badge when
+ * connected and the error detail when present.
  */
 function StatusBadge({
   status,
@@ -674,17 +658,16 @@ function StatusBadge({
 }) {
   const { t } = useI18n();
   const resolved: McpServerStatus['status'] = status ?? 'disconnected';
-  const dotClass = STATUS_DOT_CLASS[resolved];
-  const label = resolved;
   return (
     <>
       <div className="flex items-center gap-2">
-        <Badge variant="secondary" className="gap-1.5 font-mono text-[10px]">
-          <span className={`inline-block size-2 rounded-full ${dotClass}`} aria-hidden="true" />
-          {label}
-        </Badge>
+        <Lamp
+          state={resolved === 'disconnected' ? 'offline' : resolved}
+          word={resolved}
+          pulse={resolved === 'connecting'}
+        />
         {resolved === 'connected' ? (
-          <Badge variant="outline" className="nums font-mono text-[10px]">
+          <Badge variant="secondary" className="nums">
             {toolCount === 1
               ? t('mcp.toolOne', { count: toolCount })
               : t('mcp.toolMany', { count: toolCount })}

@@ -18,11 +18,12 @@ import { useAuth, withAuthGuard } from '@/auth';
 import { useI18n } from '@/i18n';
 import { PageSlot, usePageTitle } from '@/components/shell/page-slots.js';
 import { PageAction } from '@/components/shell/page-action.js';
-import { DataTable, Note, PageIntro, Panel, PanelHeader } from '@/components/kit';
+import { DataTable, Note, PageIntro, Panel, PanelHeader, ScopeBadge, Well } from '@/components/kit';
 import { tableState } from '@/components/kit/table.js';
 import { Field } from '@/components/kit/field.js';
 import { ConfirmDialog } from '@/components/kit/confirm-dialog.js';
 import { FormDialog } from '@/components/ui/form-dialog.js';
+import { Input } from '@/components/ui/input';
 import {
   Select,
   SelectContent,
@@ -164,14 +165,7 @@ export function ApiToolsPage(): React.ReactNode {
           {rows.map((s) => (
             <TableRow key={s.id}>
               <TableCell>
-                <button
-                  type="button"
-                  className="text-left"
-                  onClick={() => setDetailOf(s)}
-                  title={t('apiTools.detailAction')}
-                >
-                  <span className="text-signal font-medium">{s.bundle.name}</span>
-                </button>
+                <span className="font-medium">{s.bundle.name}</span>
                 {s.bundle.description !== undefined ? (
                   <span className="text-muted-foreground block truncate text-xs">
                     {s.bundle.description}
@@ -179,23 +173,21 @@ export function ApiToolsPage(): React.ReactNode {
                 ) : null}
               </TableCell>
               <TableCell>
-                <span className="block max-w-64 truncate font-mono text-xs">
+                <Well variant="chip" copy={s.bundle.baseUrl}>
                   {s.bundle.baseUrl}
-                </span>
+                </Well>
               </TableCell>
               <TableCell>
                 <div className="flex flex-wrap gap-1">
                   {s.bundle.tools.map((tool) => (
-                    <Badge key={tool.name} variant="secondary" className="font-mono text-[10px]">
+                    <Well key={tool.name} variant="chip" copy={tool.name}>
                       {tool.name}
-                    </Badge>
+                    </Well>
                   ))}
                 </div>
               </TableCell>
               <TableCell>
-                <span className="font-mono text-xs">
-                  {s.scope === 'global' ? t('common.scopeGlobal') : t('common.scopePersonal')}
-                </span>
+                <ScopeBadge scope={s.scope} />
               </TableCell>
               <TableCell className="text-right">
                 <DropdownMenu>
@@ -307,22 +299,21 @@ function AllowlistPanel({
             <span className="text-muted-foreground text-xs">{t('apiTools.allowlistEmpty')}</span>
           ) : (
             entries.map((e) => (
-              <Badge key={e.host} variant="secondary" className="font-mono text-[10px]">
+              <Well key={e.host} variant="chip" copy={e.host}>
                 {e.host}
                 {e.internal === true ? ' · internal' : ''}
-              </Badge>
+              </Well>
             ))
           )}
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <input
+          <Input
             value={host}
             onChange={(e) => setHost(e.target.value)}
             placeholder="api.example.com"
             spellCheck={false}
             autoComplete="off"
-            className="border-input bg-background rounded-md px-2 py-1 font-mono text-xs"
-            size={24}
+            className="w-56 font-mono text-xs"
           />
           <label className="flex items-center gap-1 text-xs">
             <Checkbox checked={internal} onCheckedChange={(v) => setInternal(v === true)} />
@@ -374,12 +365,12 @@ function ServiceDetailDialog({
       <div className="flex flex-col gap-4">
         <div className="grid gap-x-6 gap-y-1 text-sm sm:grid-cols-2">
           <DetailLine label={t('apiTools.colBaseUrl')}>
-            <span className="font-mono text-xs">{b.baseUrl}</span>
+            <Well variant="chip" copy={b.baseUrl}>
+              {b.baseUrl}
+            </Well>
           </DetailLine>
           <DetailLine label={t('common.scope')}>
-            <span className="font-mono text-xs">
-              {service.scope === 'global' ? t('common.scopeGlobal') : t('common.scopePersonal')}
-            </span>
+            <ScopeBadge scope={service.scope} />
           </DetailLine>
           <DetailLine label={t('apiTools.authLabel')}>
             {b.auth === undefined ? (
@@ -403,7 +394,7 @@ function ServiceDetailDialog({
           <div key={tool.name} className="rounded-lg border p-3">
             <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
               <span className="font-mono text-xs font-medium">
-                <Badge variant="secondary" className="mr-2 font-mono text-[10px]">
+                <Badge variant="secondary" className="role-data-sm mr-2">
                   {tool.method}
                 </Badge>
                 {tool.path}
@@ -441,7 +432,7 @@ function ServiceDetailDialog({
                 </TableBody>
               </Table>
             ) : null}
-            <div className="text-muted-foreground mt-2 flex flex-wrap gap-x-4 gap-y-1 font-mono text-[10px]">
+            <div className="text-muted-foreground role-data-sm mt-2 flex flex-wrap gap-x-4 gap-y-1">
               {tool.bodyType !== undefined ? <span>bodyType: {tool.bodyType}</span> : null}
               {tool.timeoutMs !== undefined ? <span>timeoutMs: {tool.timeoutMs}</span> : null}
               {tool.maxResultChars !== undefined ? (
@@ -601,7 +592,8 @@ function ProbeDialog({
           tool.params.map((p) => (
             <Field
               key={p.name}
-              label={`${p.name}${p.required ? ' *' : ''}`}
+              label={p.name}
+              required={p.required}
               hint={
                 p.description ??
                 `${p.in} · ${p.type}${p.required ? '' : ` · ${t('apiTools.requiredNo')}`}`
@@ -618,7 +610,7 @@ function ProbeDialog({
                   {p.name}
                 </label>
               ) : (
-                <input
+                <Input
                   type={p.type === 'number' ? 'number' : 'text'}
                   value={typeof values[p.name] === 'string' ? (values[p.name] as string) : ''}
                   onChange={(e) => setValues((prev) => ({ ...prev, [p.name]: e.target.value }))}
