@@ -24,6 +24,7 @@ import type {
   Machine,
   MachineInventorySnapshot,
   McpServer,
+  ApiToolService,
   PersonalAccessToken,
   Profile,
   Resource,
@@ -121,6 +122,18 @@ export interface McpServerRepository {
     includeDeleted?: boolean;
   }): Promise<McpServer[]>;
   save(server: McpServer): Promise<McpServer>;
+  delete(id: string): Promise<void>;
+}
+
+export interface ApiToolRepository {
+  findById(id: string): Promise<ApiToolService | null>;
+  /** Soft-deleted rows excluded unless includeDeleted (the 404-hiding mirror). */
+  list(filter?: {
+    scope?: 'global' | 'personal';
+    ownerId?: string;
+    includeDeleted?: boolean;
+  }): Promise<ApiToolService[]>;
+  save(service: ApiToolService): Promise<ApiToolService>;
   delete(id: string): Promise<void>;
 }
 
@@ -260,4 +273,5 @@ export interface UnitOfWork {
   llmProviders: LlmProviderRepository;
   assistants: AssistantRepository;
   fileBlobs: FileBlobRepository;
+  apiTools: ApiToolRepository;
 }

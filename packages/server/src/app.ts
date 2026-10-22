@@ -23,6 +23,7 @@ import { patsRoutes } from './modules/pats.js';
 import { settingsRoutes } from './modules/settings.js';
 import { credentialsRoutes } from './modules/credentials.js';
 import { mcpServersRoutes } from './modules/mcp-servers.js';
+import { apiToolsRoutes } from './modules/api-tools.js';
 import { profilesRoutes } from './modules/profiles.js';
 import { resourcesRoutes } from './modules/resources.js';
 import { skillsRoutes } from './modules/skills.js';
@@ -271,6 +272,7 @@ export async function buildApp(config: ServerConfig): Promise<FastifyInstance> {
     await patsRoutes(api);
     await credentialsRoutes(api);
     await mcpServersRoutes(api);
+    await apiToolsRoutes(api);
     await profilesRoutes(api);
     await resourcesRoutes(api);
     await skillsRoutes(api);

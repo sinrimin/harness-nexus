@@ -12,6 +12,7 @@ export * from './schemas/inventory.js';
 export * from './schemas/runtime-config.js';
 export * from './schemas/llm-provider.js';
 export * from './schemas/assistant.js';
+export * from './schemas/api-tools.js';
 export * from './schemas/settings.js';
 export * from './hooks.js';
 export * from './trust.js';
