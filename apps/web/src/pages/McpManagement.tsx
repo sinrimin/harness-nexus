@@ -484,6 +484,7 @@ function ServerRow({
             variant="ghost"
             size="sm"
             className="text-muted-foreground h-(--row-ctl-h)"
+            disabled={server.scope === 'global' && !isAdmin}
             onClick={() => onAsk('disconnect', server)}
           >
             <PlugZapIcon className="size-4" />
@@ -544,12 +545,14 @@ function ServerRow({
           <TableRow data-state={open ? 'open' : 'closed'}>
             <TableCell className="pl-6 font-medium">
               <div className="flex items-center gap-2">
-                {/* The trigger is the chevron + name; only meaningful when connected. */}
+                {/* The trigger is the chevron + name; only meaningful when
+                 * connected AND operable (tool inspection on a global row is
+                 * admin-only — the service 404-hides it for everyone else). */}
                 <CollapsibleTrigger asChild>
                   <button
                     type="button"
                     className="text-muted-foreground hover:text-foreground flex items-center gap-1 disabled:opacity-30"
-                    disabled={!isConnected}
+                    disabled={!isConnected || (server.scope === 'global' && !isAdmin)}
                     aria-label={open ? t('mcp.collapseTools') : t('mcp.expandTools')}
                   >
                     <ChevronRightIcon
@@ -573,6 +576,7 @@ function ServerRow({
                     variant="ghost"
                     size="sm"
                     className="text-muted-foreground h-(--row-ctl-h)"
+                    disabled={server.scope === 'global' && !isAdmin}
                     onClick={() => onAsk('disconnect', server)}
                   >
                     <PlugZapIcon className="size-4" />
@@ -583,7 +587,7 @@ function ServerRow({
                     variant="outline"
                     size="sm"
                     className="h-(--row-ctl-h)"
-                    disabled={isConnecting}
+                    disabled={isConnecting || (server.scope === 'global' && !isAdmin)}
                     onClick={connect}
                   >
                     {isConnecting ? (
@@ -607,7 +611,10 @@ function ServerRow({
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end">
                     {isConnected ? (
-                      <DropdownMenuItem onClick={() => onAsk('disconnect', server)}>
+                      <DropdownMenuItem
+                        disabled={server.scope === 'global' && !isAdmin}
+                        onClick={() => onAsk('disconnect', server)}
+                      >
                         <PlugZapIcon /> {t('mcp.disconnect')}
                       </DropdownMenuItem>
                     ) : null}
@@ -632,7 +639,11 @@ function ServerRow({
           <CollapsibleContent asChild>
             <TableRow className="hover:bg-transparent">
               <TableCell colSpan={6} className="bg-muted/30 px-6 py-4">
-                <ToolList serverId={server.id} serverName={server.name} logout={logout} />
+                {server.scope === 'global' && !isAdmin ? (
+                  <p className="text-muted-foreground text-xs">{t('mcp.toolsAdminOnly')}</p>
+                ) : (
+                  <ToolList serverId={server.id} serverName={server.name} logout={logout} />
+                )}
               </TableCell>
             </TableRow>
           </CollapsibleContent>

@@ -73,6 +73,16 @@ beforeAll(async () => {
   adminJwt = await register('atadmin', 'admin');
   credJwt = ownerJwt;
 
+  // Save-time host validation needs the demo host allowlisted up front (the
+  // admin-allowlist test below REPLACES this list, so entries there must be
+  // self-sufficient).
+  await app.inject({
+    method: 'PUT',
+    url: '/api/settings/api-tool-allowlist',
+    headers: auth(adminJwt),
+    payload: { entries: [{ host: 'api.weather.example.com' }] },
+  });
+
   // A visible credential for the auth-block checks.
   await app.inject({
     method: 'POST',
@@ -157,6 +167,70 @@ describe('API tool services (#80 slice 1)', () => {
       await app.inject({ method: 'GET', url: '/api/api-tools', headers: auth(strangerJwt) })
     ).json().services as { id: string }[];
     expect(strangerSees.some((s) => s.id === global.json().service.id)).toBe(true);
+
+    // Reading a global row does not confer management: a plain user cannot
+    // rewrite or delete it (#36 — same rule as create).
+    const globalId = global.json().service.id as string;
+    expect(
+      (
+        await app.inject({
+          method: 'PUT',
+          url: `/api/api-tools/${globalId}`,
+          headers: auth(strangerJwt),
+          payload: { bundle: { ...BUNDLE, name: 'hijacked' } },
+        })
+      ).statusCode,
+    ).toBe(403);
+    expect(
+      (
+        await app.inject({
+          method: 'DELETE',
+          url: `/api/api-tools/${globalId}`,
+          headers: auth(strangerJwt),
+        })
+      ).statusCode,
+    ).toBe(403);
+  });
+
+  it('credential names resolve by ROW scope at save time (global = global credentials only)', async () => {
+    // The admin's PERSONAL credential — visible to the saver, but a global
+    // service runs for everyone and the runtime resolves global scope only.
+    await app.inject({
+      method: 'POST',
+      url: '/api/credentials',
+      headers: auth(adminJwt),
+      payload: { name: 'admin-key', secret: 'sk-admin', scope: 'personal' },
+    });
+    const authed = (credentialName: string): unknown => ({
+      ...BUNDLE,
+      name: `shared-${credentialName}`,
+      auth: { style: 'bearer', credentialName },
+    });
+
+    const refused = await app.inject({
+      method: 'POST',
+      url: '/api/api-tools',
+      headers: auth(adminJwt),
+      payload: { scope: 'global', bundle: authed('admin-key') },
+    });
+    expect(refused.statusCode).toBe(409);
+    expect(refused.json().error).toBe('API_TOOL_CREDENTIAL_SCOPE');
+    expect(refused.json().message).toContain('global');
+
+    // Same name as a GLOBAL credential → fine for a global service.
+    await app.inject({
+      method: 'POST',
+      url: '/api/credentials',
+      headers: auth(adminJwt),
+      payload: { name: 'shared-key', secret: 'sk-shared', scope: 'global' },
+    });
+    const ok = await app.inject({
+      method: 'POST',
+      url: '/api/api-tools',
+      headers: auth(adminJwt),
+      payload: { scope: 'global', bundle: authed('shared-key') },
+    });
+    expect(ok.statusCode).toBe(201);
   });
 
   it('the zod gate feeds the LLM loop: shape errors are readable 400s', async () => {
@@ -392,25 +466,20 @@ describe('API tool services (#80 slice 1)', () => {
       await new Promise<void>((resolve) => server.close(() => resolve()));
     }
 
-    // Deny arm: a host NOT on the allowlist surfaces as a tool error.
-    const deniedService = (
-      await app.inject({
-        method: 'POST',
-        url: '/api/api-tools',
-        headers: auth(ownerJwt),
-        payload: {
-          bundle: { ...BUNDLE, name: 'unlisted', baseUrl: 'https://api.other.example.com' },
-        },
-      })
-    ).json().service;
+    // Deny arm moved to SAVE time: a host not on the allowlist can no longer
+    // become a service at all (runtime denial itself is covered by
+    // api-tools-runtime.test.ts).
     const denied = await app.inject({
       method: 'POST',
-      url: `/api/api-tools/${deniedService.id}/probe`,
+      url: '/api/api-tools',
       headers: auth(ownerJwt),
-      payload: { tool: 'get_forecast', args: { city: 'Oslo' } },
+      payload: {
+        bundle: { ...BUNDLE, name: 'unlisted', baseUrl: 'https://api.other.example.com' },
+      },
     });
-    expect(denied.json().result.isError).toBe(true);
-    expect(denied.json().result.output).toContain('not on the API tool allowlist');
+    expect(denied.statusCode).toBe(409);
+    expect(denied.json().error).toBe('API_TOOL_HOST_NOT_ALLOWLISTED');
+    expect(denied.json().message).toContain('api.other.example.com');
   });
 });
 
