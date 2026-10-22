@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: MIT
 
 import { useEffect, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
 import {
   ChevronDownIcon,
@@ -16,7 +17,7 @@ import { DEFAULT_ASSISTANT_SYSTEM_PROMPT } from '@harness-nexus/sdk';
 import { api } from '@/api';
 import { useAuth, withAuthGuard } from '@/auth';
 import { useI18n } from '@/i18n';
-import { DataTable, Note, PageIntro, Well } from '@/components/kit';
+import { DataTable, PageIntro, Well } from '@/components/kit';
 import { tableState } from '@/components/kit/table.js';
 import { Field } from '@/components/kit/field.js';
 import { ConfirmDialog } from '@/components/kit/confirm-dialog.js';
@@ -288,10 +289,6 @@ export function AssistantsPage() {
 
       <PageIntro sub={t('assistants.subtitle')} />
 
-      {providers.length === 0 && items !== null ? (
-        <Note tone="warn">{t('llmProviders.empty')}</Note>
-      ) : null}
-
       <DataTable
         columns={4}
         label={t('assistants.listTitle')}
@@ -303,17 +300,31 @@ export function AssistantsPage() {
         })}
         error={error}
         onRetry={() => void refresh()}
-        empty={{
-          title: t('assistants.empty'),
-          hint: t('assistants.emptyHint'),
-          action:
-            providers.length > 0 ? (
-              <Button onClick={openCreate} className="gap-1.5">
-                <PlusIcon className="size-4" />
-                {t('assistants.createButton')}
-              </Button>
-            ) : undefined,
-        }}
+        empty={
+          providers.length === 0
+            ? {
+                // #78 — no providers means the create button is a dead end;
+                // the empty state itself carries the way out (the 403
+                // pattern) instead of a warn strip above it.
+                title: t('assistants.emptyNoProviderTitle'),
+                hint: t('assistants.emptyNoProviderHint'),
+                action: (
+                  <Button asChild variant="outline" size="sm">
+                    <Link to="/llm-providers">{t('assistants.goProviders')}</Link>
+                  </Button>
+                ),
+              }
+            : {
+                title: t('assistants.empty'),
+                hint: t('assistants.emptyHint'),
+                action: (
+                  <Button onClick={openCreate} className="gap-1.5">
+                    <PlusIcon className="size-4" />
+                    {t('assistants.createButton')}
+                  </Button>
+                ),
+              }
+        }
       >
         <TableHeader>
           <TableRow>

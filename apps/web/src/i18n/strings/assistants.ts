@@ -9,6 +9,10 @@ const en = {
   createButton: 'New assistant',
   empty: 'No assistants yet',
   emptyHint: 'Create one, then chat with it on the Chat page.',
+  emptyNoProviderTitle: 'Create an LLM provider first',
+  emptyNoProviderHint:
+    'Assistants run on a provider\u2019s model \u2014 configure one, then create an assistant here.',
+  goProviders: 'Go to LLM providers',
   listTitle: 'Your assistants',
   // Columns.
   colModel: 'Model',
@@ -80,6 +84,9 @@ const zh: typeof en = {
   createButton: '新建助理',
   empty: '还没有助理',
   emptyHint: '创建一个，然后到聊天页与它对话。',
+  emptyNoProviderTitle: '请先创建 LLM 供应商',
+  emptyNoProviderHint: '助手运行在供应商的模型上——先配置一个，再回来创建助手。',
+  goProviders: '前往 LLM 供应商',
   listTitle: '你的助理',
   colModel: '模型',
   colGroups: '工具组',
