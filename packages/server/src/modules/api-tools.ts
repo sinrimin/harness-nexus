@@ -6,6 +6,7 @@ import type { FastifyInstance } from 'fastify';
 import type { ApiToolService } from '@harness-nexus/core';
 import type { ApiToolServiceBundle, ApiToolServiceView } from '@harness-nexus/shared';
 import { principalOf } from './principal.js';
+import { executeApiTool } from '../api-tools/runtime.js';
 import {
   createApiToolService,
   deleteApiToolService,
@@ -77,5 +78,31 @@ export async function apiToolsRoutes(app: FastifyInstance): Promise<void> {
   app.delete<{ Params: { id: string } }>('/api/api-tools/:id', guard, async (req) => {
     await deleteApiToolService(deps(), principalOf(req), req.params.id);
     return { ok: true };
+  });
+
+  /**
+   * #80 — the probe: run one tool call against the REAL target and show
+   * exactly what the model would see. This is the LLM config loop's
+   * behavioral gate (upload → probe → fix). Outbound side effect, so the
+   * call stays at the route (#53 residue).
+   */
+  app.post<{ Params: { id: string } }>('/api/api-tools/:id/probe', guard, async (req) => {
+    const service = await getApiToolService(deps(), principalOf(req), req.params.id);
+    const body = (req.body ?? {}) as { tool?: unknown; args?: unknown };
+    const toolName = typeof body.tool === 'string' ? body.tool : '';
+    const args =
+      typeof body.args === 'object' && body.args !== null
+        ? (body.args as Record<string, unknown>)
+        : {};
+    const result = await executeApiTool(
+      { uow: app.uow, credentialEncryptionKey: app.credentialEncryptionKey },
+      service,
+      toolName,
+      args,
+    );
+    return {
+      result: { output: result.output, isError: result.isError },
+      ...(result.debug !== undefined ? { debug: result.debug } : {}),
+    };
   });
 }

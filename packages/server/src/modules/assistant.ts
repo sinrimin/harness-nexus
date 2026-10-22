@@ -145,6 +145,7 @@ function toConfigView(c: AssistantConfig): AssistantConfigView {
     permissionMode: c.permissionMode ?? 'prompt',
     enabledToolGroups: c.enabledToolGroups,
     mcpServerIds: c.mcpServerIds ?? [],
+    apiToolServiceIds: c.apiToolServiceIds ?? [],
     skillResourceIds: c.skillResourceIds ?? [],
     dailyTokenBudget: c.dailyTokenBudget ?? null,
     createdAt: c.createdAt,

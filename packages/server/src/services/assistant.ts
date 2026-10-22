@@ -90,6 +90,11 @@ export async function createAssistant(
     ],
     mcpServerIds: await visibleMcpServerIds(deps, principal, input.mcpServerIds ?? []),
     skillResourceIds: await readableSkillResourceIds(deps, principal, input.skillResourceIds ?? []),
+    apiToolServiceIds: await visibleApiToolServiceIds(
+      deps,
+      principal,
+      input.apiToolServiceIds ?? [],
+    ),
     ...(input.dailyTokenBudget !== undefined && input.dailyTokenBudget !== null
       ? { dailyTokenBudget: input.dailyTokenBudget }
       : {}),
@@ -175,6 +180,15 @@ export async function updateAssistant(
           skillResourceIds: await readableSkillResourceIds(deps, principal, input.skillResourceIds),
         }
       : {}),
+    ...(input.apiToolServiceIds !== undefined
+      ? {
+          apiToolServiceIds: await visibleApiToolServiceIds(
+            deps,
+            principal,
+            input.apiToolServiceIds,
+          ),
+        }
+      : {}),
     ...(input.dailyTokenBudget !== undefined
       ? {
           dailyTokenBudget: input.dailyTokenBudget === null ? undefined : input.dailyTokenBudget,
@@ -193,6 +207,27 @@ export async function updateAssistant(
  * row notes honestly in the prompt (the picker greys stored-dialSite 'client'
  * rows, 'auto' resolves per its credentials).
  */
+/** #80 — every configured id must exist and be visible (global or own). */
+async function visibleApiToolServiceIds(
+  deps: ServiceDeps,
+  principal: Principal,
+  ids: string[],
+): Promise<string[]> {
+  const out: string[] = [];
+  for (const id of ids) {
+    const service = await deps.uow.apiTools.findById(id);
+    if (
+      !service ||
+      service.deletedAt !== undefined ||
+      (service.scope === 'personal' && service.ownerId !== principal.userId)
+    ) {
+      throw new AppError(`API tool service ${id} not found`, 404, 'API_TOOL_NOT_FOUND');
+    }
+    if (!out.includes(id)) out.push(id);
+  }
+  return out;
+}
+
 async function visibleMcpServerIds(
   deps: ServiceDeps,
   principal: Principal,

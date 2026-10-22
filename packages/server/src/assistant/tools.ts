@@ -430,5 +430,8 @@ export const TOOL_NAMES_BY_GROUP: Record<AssistantToolGroup, readonly string[]> 
   'skills-hub': ['skills_search'],
   machines: ['machines_list', 'machine_agents_list', 'machine_jobs_list'],
   'agent-dispatch': ['agent_dispatch', 'agent_dispatch_poll'],
+  // #80 — DYNAMIC (built per turn from the config's API tool services);
+  // no static names.
+  'api-tools': [],
   system: ['system_info'],
 };

@@ -36,6 +36,7 @@ import type {
   LlmProviderRepository,
   UserRepository,
   PersonalAccessTokenRepository,
+  SystemSettings,
   SystemSettingsRepository,
   McpServerRepository,
   CredentialRepository,
@@ -71,6 +72,7 @@ interface SettingsRow {
   id: number;
   allow_registration: number;
   image_retention_days: number;
+  api_tool_allowlist: string | null;
   updated_at: string;
 }
 interface CredentialRow {
@@ -335,9 +337,14 @@ export function sqliteSettingsRepository(db: Database): SystemSettingsRepository
     if (existing) return existing;
     const now = new Date().toISOString();
     db.prepare(
-      `INSERT INTO system_settings (id, allow_registration, image_retention_days, updated_at)
-       VALUES (1, ?, ?, ?)`,
-    ).run(DEFAULTS.allowRegistration ? 1 : 0, DEFAULTS.imageRetentionDays, now);
+      `INSERT INTO system_settings (id, allow_registration, image_retention_days, api_tool_allowlist, updated_at)
+       VALUES (1, ?, ?, ?, ?)`,
+    ).run(
+      DEFAULTS.allowRegistration ? 1 : 0,
+      DEFAULTS.imageRetentionDays,
+      JSON.stringify(DEFAULTS.apiToolAllowlist),
+      now,
+    );
     return db.prepare('SELECT * FROM system_settings WHERE id = 1').get() as SettingsRow;
   };
 
@@ -347,6 +354,10 @@ export function sqliteSettingsRepository(db: Database): SystemSettingsRepository
       return {
         allowRegistration: row.allow_registration === 1,
         imageRetentionDays: row.image_retention_days,
+        apiToolAllowlist:
+          row.api_tool_allowlist === null
+            ? []
+            : (JSON.parse(row.api_tool_allowlist) as SystemSettings['apiToolAllowlist']),
         updatedAt: row.updated_at,
       };
     },
@@ -355,12 +366,18 @@ export function sqliteSettingsRepository(db: Database): SystemSettingsRepository
       const now = settings.updatedAt;
       db.prepare(
         `UPDATE system_settings
-         SET allow_registration = ?, image_retention_days = ?, updated_at = ?
+         SET allow_registration = ?, image_retention_days = ?, api_tool_allowlist = ?, updated_at = ?
          WHERE id = 1`,
-      ).run(settings.allowRegistration ? 1 : 0, settings.imageRetentionDays, now);
+      ).run(
+        settings.allowRegistration ? 1 : 0,
+        settings.imageRetentionDays,
+        JSON.stringify(settings.apiToolAllowlist ?? []),
+        now,
+      );
       return {
         allowRegistration: settings.allowRegistration,
         imageRetentionDays: settings.imageRetentionDays,
+        apiToolAllowlist: settings.apiToolAllowlist ?? [],
         updatedAt: now,
       };
     },
@@ -1234,6 +1251,7 @@ interface AssistantConfigRow {
   default_model: string;
   system_prompt_override: string | null;
   permission_mode: string;
+  api_tool_service_ids: string | null;
   enabled_tool_groups: string;
   mcp_server_ids: string | null;
   skill_resource_ids: string | null;
@@ -1282,6 +1300,8 @@ function mapAssistantConfig(r: AssistantConfigRow): AssistantConfig {
       ? { systemPromptOverride: r.system_prompt_override }
       : {}),
     permissionMode: r.permission_mode === 'autoWrite' ? 'autoWrite' : 'prompt',
+    apiToolServiceIds:
+      r.api_tool_service_ids === null ? [] : (JSON.parse(r.api_tool_service_ids) as string[]),
     enabledToolGroups: JSON.parse(r.enabled_tool_groups) as AssistantConfig['enabledToolGroups'],
     mcpServerIds: r.mcp_server_ids === null ? [] : (JSON.parse(r.mcp_server_ids) as string[]),
     skillResourceIds:
@@ -1423,10 +1443,10 @@ export function sqliteAssistantRepository(db: Database): AssistantRepository {
       db.prepare(
         `INSERT INTO assistant_configs
            (id, owner_id, name, description, provider_id, default_model,
-            system_prompt_override, permission_mode, enabled_tool_groups, mcp_server_ids, skill_resource_ids,
+            system_prompt_override, permission_mode, api_tool_service_ids, enabled_tool_groups, mcp_server_ids, skill_resource_ids,
             daily_token_budget, deleted_at, created_at, updated_at)
          VALUES (@id, @owner_id, @name, @description, @provider_id, @default_model,
-                 @system_prompt_override, @permission_mode, @enabled_tool_groups, @mcp_server_ids, @skill_resource_ids,
+                 @system_prompt_override, @permission_mode, @api_tool_service_ids, @enabled_tool_groups, @mcp_server_ids, @skill_resource_ids,
                  @daily_token_budget, @deleted_at, @created_at, @updated_at)
          ON CONFLICT(id) DO UPDATE SET
            name                   = excluded.name,
@@ -1435,6 +1455,7 @@ export function sqliteAssistantRepository(db: Database): AssistantRepository {
            default_model          = excluded.default_model,
            system_prompt_override = excluded.system_prompt_override,
            permission_mode        = excluded.permission_mode,
+           api_tool_service_ids   = excluded.api_tool_service_ids,
            enabled_tool_groups    = excluded.enabled_tool_groups,
            mcp_server_ids         = excluded.mcp_server_ids,
            skill_resource_ids     = excluded.skill_resource_ids,
@@ -1450,6 +1471,7 @@ export function sqliteAssistantRepository(db: Database): AssistantRepository {
         default_model: config.defaultModel,
         system_prompt_override: config.systemPromptOverride ?? null,
         permission_mode: config.permissionMode ?? 'prompt',
+        api_tool_service_ids: JSON.stringify(config.apiToolServiceIds ?? []),
         enabled_tool_groups: JSON.stringify(config.enabledToolGroups),
         mcp_server_ids: JSON.stringify(config.mcpServerIds ?? []),
         skill_resource_ids: JSON.stringify(config.skillResourceIds ?? []),

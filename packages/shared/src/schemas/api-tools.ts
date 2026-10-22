@@ -128,7 +128,13 @@ export const apiToolServiceBundleSchema = z
     version: z.literal(API_TOOL_SCHEMA_VERSION),
     name: z.string().min(1).max(64),
     description: z.string().max(2000).optional(),
-    baseUrl: z.string().url().max(2048),
+    baseUrl: z
+      .string()
+      .url()
+      .max(2048)
+      .refine((u) => u.startsWith('http://') || u.startsWith('https://'), {
+        message: 'baseUrl must be http(s)',
+      }),
     /** Static headers (no secrets here — the auth block is the only door). */
     headers: z.record(z.string().min(1).max(64), z.string().max(2048)).default({}),
     auth: authSchema.optional(),

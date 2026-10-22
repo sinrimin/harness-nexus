@@ -2,7 +2,7 @@
 //
 // SPDX-License-Identifier: MIT
 
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import type { FastifyInstance } from 'fastify';
 import { buildApp } from '../src/app.js';
 import { testConfig } from './helpers.js';
@@ -291,4 +291,129 @@ describe('API tool services (#80 slice 1)', () => {
     ).json().services as { id: string }[];
     expect(listed.some((s) => s.id === created.id)).toBe(false);
   });
+
+  it('the allowlist is admin-managed (default-deny: empty until set)', async () => {
+    expect(
+      (
+        await app.inject({
+          method: 'PUT',
+          url: '/api/settings/api-tool-allowlist',
+          headers: auth(ownerJwt),
+          payload: { entries: [{ host: 'api.weather.example.com' }] },
+        })
+      ).statusCode,
+    ).toBe(403);
+    expect(
+      (
+        await app.inject({
+          method: 'PUT',
+          url: '/api/settings/api-tool-allowlist',
+          headers: auth(adminJwt),
+          payload: { entries: [{ host: 'bad host name' }] },
+        })
+      ).statusCode,
+    ).toBe(400);
+
+    const put = await app.inject({
+      method: 'PUT',
+      url: '/api/settings/api-tool-allowlist',
+      headers: auth(adminJwt),
+      payload: {
+        entries: [{ host: 'api.weather.example.com' }, { host: '*.internal.corp', internal: true }],
+      },
+    });
+    expect(put.statusCode).toBe(200);
+    const got = (
+      await app.inject({
+        method: 'GET',
+        url: '/api/settings/api-tool-allowlist',
+        headers: auth(adminJwt),
+      })
+    ).json().entries as { host: string; internal?: boolean }[];
+    expect(got).toHaveLength(2);
+    expect(got[1]).toEqual({ host: '*.internal.corp', internal: true });
+  });
+
+  it('probe: what the model would see — success, and the deny arm', async () => {
+    // A REAL loopback server (internal-flagged allowlist entry reaches it);
+    // no fetch stubs — this exercises the full runtime path.
+    const { createServer } = await import('node:http');
+    const server = createServer((req, res) => {
+      res.setHeader('content-type', 'application/json');
+      res.end(
+        req.url !== null && req.url.includes('city=Oslo')
+          ? '{"code":0,"body":{"temp":21}}'
+          : '{"code":0,"body":{"temp":15}}',
+      );
+    });
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', () => resolve()));
+    const port = (server.address() as { port: number }).port;
+    try {
+      await app.inject({
+        method: 'PUT',
+        url: '/api/settings/api-tool-allowlist',
+        headers: auth(adminJwt),
+        payload: { entries: [{ host: '127.0.0.1', internal: true }] },
+      });
+      const created = (
+        await app.inject({
+          method: 'POST',
+          url: '/api/api-tools',
+          headers: auth(ownerJwt),
+          payload: {
+            bundle: {
+              ...BUNDLE,
+              baseUrl: `http://127.0.0.1:${port}`,
+              tools: [
+                {
+                  ...BUNDLE.tools[0],
+                  path: '/v1/forecast',
+                  params: [{ name: 'city', in: 'query', type: 'string', required: true }],
+                },
+              ],
+            },
+          },
+        })
+      ).json().service;
+
+      const probe = await app.inject({
+        method: 'POST',
+        url: `/api/api-tools/${created.id}/probe`,
+        headers: auth(ownerJwt),
+        payload: { tool: 'get_forecast', args: { city: 'Oslo' } },
+      });
+      expect(probe.statusCode).toBe(200);
+      const body = probe.json();
+      expect(body.result.isError).toBe(false);
+      expect(body.result.output).toContain('"temp": 21');
+      expect(body.debug.method).toBe('GET');
+      expect(body.debug.status).toBe(200);
+    } finally {
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+
+    // Deny arm: a host NOT on the allowlist surfaces as a tool error.
+    const deniedService = (
+      await app.inject({
+        method: 'POST',
+        url: '/api/api-tools',
+        headers: auth(ownerJwt),
+        payload: {
+          bundle: { ...BUNDLE, name: 'unlisted', baseUrl: 'https://api.other.example.com' },
+        },
+      })
+    ).json().service;
+    const denied = await app.inject({
+      method: 'POST',
+      url: `/api/api-tools/${deniedService.id}/probe`,
+      headers: auth(ownerJwt),
+      payload: { tool: 'get_forecast', args: { city: 'Oslo' } },
+    });
+    expect(denied.json().result.isError).toBe(true);
+    expect(denied.json().result.output).toContain('not on the API tool allowlist');
+  });
+});
+
+afterEach(() => {
+  vi.unstubAllGlobals();
 });

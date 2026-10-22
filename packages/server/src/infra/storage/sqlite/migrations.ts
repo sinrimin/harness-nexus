@@ -503,6 +503,15 @@ CREATE TABLE IF NOT EXISTS api_tool_services (
 CREATE INDEX IF NOT EXISTS idx_api_tools_owner ON api_tool_services(owner_id);
     `,
   },
+  {
+    version: 26,
+    description:
+      'issue #80 — API tool runtime: allowlist setting + assistant config apiToolServiceIds',
+    sql: `
+ALTER TABLE system_settings ADD COLUMN api_tool_allowlist TEXT;
+ALTER TABLE assistant_configs ADD COLUMN api_tool_service_ids TEXT NOT NULL DEFAULT '[]';
+    `,
+  },
 ] as const;
 
 /**

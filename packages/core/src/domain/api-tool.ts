@@ -52,6 +52,17 @@ export interface ApiToolDef {
   treatBodyOnNon2xx?: boolean | undefined;
 }
 
+/**
+ * One admin-managed allowlist entry (default-DENY, see the runtime): `host`
+ * matches exactly or via a `*.domain` wildcard; `internal` permits
+ * private/loopback resolutions for named intranet hosts (link-local and
+ * cloud-metadata ranges stay hard-denied regardless).
+ */
+export interface ApiToolAllowlistEntry {
+  host: string;
+  internal?: boolean | undefined;
+}
+
 /** One stored API tool service. The bundle mirrors the shared wire schema. */
 export interface ApiToolService {
   id: string;
