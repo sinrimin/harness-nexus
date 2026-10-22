@@ -63,6 +63,7 @@ const ASSISTANT_TOOL_GROUPS = [
   'skills-hub',
   'machines',
   'agent-dispatch',
+  'api-tools',
   'system',
 ] as const;
 import { Checkbox } from '@/components/ui/checkbox';

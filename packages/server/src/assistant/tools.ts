@@ -468,7 +468,7 @@ export function buildAssistantTools(
         class: 'meta',
         label: 'Create or replace an API tool service',
         description:
-          'Create a service from a v1 bundle (no id) or fully replace an existing one (with id). Bundle: {version:1, name, baseUrl (http/https), headers?, auth?:{type:"bearer"|"header",credentialName,...}, tools:[{name, method, path, params?, bodyType?, envelope?}]}. Validation errors come back verbatim — fix the named fields and retry. Saved services attach to the CURRENT assistant config automatically; their tools join the next turn.',
+          'Create a service from a v1 bundle (no id) or fully replace an existing one (with id). Bundle: {version:1, name, baseUrl (http/https), headers?, auth? ({style:"bearer",credentialName} or {style:"header",header,credentialName}), tools:[{name, method GET|POST|PUT|PATCH|DELETE, path ("/x/{slot}" for path params), params?:[{name, in path|query|header|body, type string|number|boolean, required, description?}], bodyType?:"json"|"form" (required when a body param exists), envelope?:{codeField?, success:[values that mean OK], payloadField?, errorFields?}, timeoutMs?, maxResultChars?}]}. Validation errors come back verbatim — fix the named fields and retry. Saved services attach to the CURRENT assistant config automatically; their tools join the next turn.',
         parameters: Type.Object({
           bundle: Type.Any({ description: 'The full v1 service bundle JSON.' }),
           id: Type.Optional(
