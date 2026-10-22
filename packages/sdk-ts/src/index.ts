@@ -28,7 +28,6 @@ import type {
   ChatDefaultModeSettings,
 } from '@harness-nexus/core';
 import type {
-  ApiToolServiceView,
   JobView,
   MarketplaceCatalog,
   MarketplacePlugin,
@@ -63,6 +62,9 @@ import type {
   AssistantConfigView,
   AssistantSessionView,
   AssistantToolGroup,
+  ApiToolServiceView,
+  ApiToolServiceBundle,
+  ApiToolDefInput,
 } from '@harness-nexus/shared';
 export {
   SCANNABLE_TARGETS,
@@ -95,6 +97,9 @@ export {
   type HookEvent,
 } from '@harness-nexus/shared';
 export type {
+  ApiToolServiceView,
+  ApiToolServiceBundle,
+  ApiToolDefInput,
   ChatPrewarmSettings,
   ChatDefaultModeSettings,
   JobView,
@@ -833,6 +838,27 @@ export class HarnessNexusClient {
     return this.request('PUT', `/api/api-tools/${id}`, { bundle });
   }
 
+  /** #80 — run one tool call against the real target (the probe panel). */
+  async probeApiToolService(
+    id: string,
+    tool: string,
+    args: Record<string, unknown>,
+  ): Promise<{
+    result: { output: string; isError: boolean };
+    debug?: { method: string; url: string; status: number; contentType: string };
+  }> {
+    return this.request('POST', `/api/api-tools/${id}/probe`, { tool, args });
+  }
+
+  async getApiToolAllowlist(): Promise<{ entries: { host: string; internal?: boolean }[] }> {
+    return this.request('GET', '/api/settings/api-tool-allowlist');
+  }
+
+  async updateApiToolAllowlist(
+    entries: { host: string; internal?: boolean }[],
+  ): Promise<{ entries: { host: string; internal?: boolean }[] }> {
+    return this.request('PUT', '/api/settings/api-tool-allowlist', { entries });
+  }
   async deleteApiToolService(id: string): Promise<void> {
     await this.request('DELETE', `/api/api-tools/${id}`);
   }
