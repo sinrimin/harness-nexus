@@ -323,6 +323,7 @@ export function AssistantSessionPage() {
     if (searchParams.get('a') !== null) setSearchParams({}, { replace: true });
     const ack = await emitWithAck<{
       sessionId?: string;
+      assistantId?: string;
       assistantName?: string;
       error?: string;
     }>('assistant:session.open', {
@@ -331,13 +332,24 @@ export function AssistantSessionPage() {
     });
     if (ack.error !== undefined || ack.sessionId === undefined) {
       setError(
-        ack.error === 'ASSISTANT_NOT_FOUND' || ack.error === 'ASSISTANT_DELETED'
+        ack.error === 'ASSISTANT_NOT_FOUND' || ack.error === 'ASSISTANTS_DELETED'
           ? t('assistants.errNoAssistant')
           : (ack.error ?? t('assistants.errUnknown')),
       );
       return;
     }
     setSessionId(ack.sessionId);
+    // An EXISTING session always belongs to its own assistant (the server
+    // resolves it from the row); a ?s= hand-off may have opened it under a
+    // stale selection — follow the row so the composer, rail filter, and
+    // config snapshot all read the right config.
+    if (
+      rejoinId !== undefined &&
+      ack.assistantId !== undefined &&
+      ack.assistantId !== assistantId
+    ) {
+      setSearchParams({ a: ack.assistantId }, { replace: true });
+    }
   }
 
   /**

@@ -957,7 +957,11 @@ export async function registerRealtime(
         }
         // #68 — the stop-choice UI needs this session's live dispatches.
         realtime.assistantDispatch.pushFor(socket.data.userId as string, result.sessionId);
-        ack?.({ sessionId: result.sessionId, assistantName: result.assistantName });
+        ack?.({
+          sessionId: result.sessionId,
+          assistantId: result.assistantId,
+          assistantName: result.assistantName,
+        });
       })();
     });
 

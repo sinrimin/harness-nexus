@@ -9,6 +9,7 @@ import {
   apiToolServiceBundleSchema,
   type ApiToolServiceBundle,
 } from '@harness-nexus/shared';
+import { matchAllowlist } from '../api-tools/runtime.js';
 import type { Principal, ServiceDeps } from './principal.js';
 
 /**
@@ -35,34 +36,65 @@ export interface UpdateApiToolServiceInput {
   bundle: unknown;
 }
 
-async function requireVisibleCredential(
+/**
+ * Credential names must resolve the way the RUNTIME will resolve them — the
+ * ROW's scope, not the saver's visibility (#21 discipline, same as MCP rows):
+ * a global service runs for every user and can reference GLOBAL credentials
+ * only (a personal secret would dangle for everyone else at call time); a
+ * personal service resolves global first, then its owner's. Checked at save
+ * time so the author learns here, not at first call.
+ */
+async function assertCredentialResolvable(
   deps: ServiceDeps,
-  principal: Principal,
+  scope: 'global' | 'personal',
+  ownerId: string | null,
   name: string,
 ): Promise<void> {
-  // Same resolution order as `${cred:NAME}`: global first, then the owner's.
   const global = await deps.uow.credentials.findByName(name, 'global');
   if (global !== null) return;
-  const personal =
-    principal.userId !== ''
-      ? await deps.uow.credentials.findByName(name, 'personal', principal.userId)
-      : null;
-  if (personal === null) {
+  if (scope === 'personal') {
+    const personal =
+      ownerId !== null ? await deps.uow.credentials.findByName(name, 'personal', ownerId) : null;
+    if (personal !== null) return;
     throw new AppError(
       `Credential "${name}" does not exist or is not visible to you`,
       422,
       'API_TOOL_CREDENTIAL_NOT_VISIBLE',
     );
   }
+  throw new AppError(
+    `Credential "${name}" is not a GLOBAL credential — a global API tool service runs for every user, so it can only reference global credentials (move the credential to global scope, or the service to personal)`,
+    409,
+    'API_TOOL_CREDENTIAL_SCOPE',
+  );
 }
 
 function validateBundleAuth(
   deps: ServiceDeps,
-  principal: Principal,
+  scope: 'global' | 'personal',
+  ownerId: string | null,
   bundle: ApiToolServiceBundle,
 ): Promise<void> {
   if (bundle.auth === undefined) return Promise.resolve();
-  return requireVisibleCredential(deps, principal, bundle.auth.credentialName);
+  return assertCredentialResolvable(deps, scope, ownerId, bundle.auth.credentialName);
+}
+
+/**
+ * The allowlist is default-deny — a saved service whose baseUrl host is not
+ * on it could never dial out, so the author (human, dialog, or the #81 meta
+ * tool) learns at SAVE time, not at first probe. Same match the runtime
+ * applies at call time (outbound surface #3).
+ */
+async function assertHostAllowlisted(deps: ServiceDeps, baseUrl: string): Promise<void> {
+  const settings = await deps.uow.settings.get();
+  const host = new URL(baseUrl).hostname;
+  if (matchAllowlist(host, settings.apiToolAllowlist ?? []) === null) {
+    throw new AppError(
+      `host ${host} is not on the API tool allowlist — an admin must add it (API tools → outbound allowlist) before this service can dial out`,
+      409,
+      'API_TOOL_HOST_NOT_ALLOWLISTED',
+    );
+  }
 }
 
 async function assertNameFree(
@@ -113,7 +145,8 @@ export async function createApiToolService(
     throw new AppError('Only admins create global API tool services', 403, 'FORBIDDEN');
   }
   const bundle = apiToolServiceBundleSchema.parse(input.bundle) as ApiToolServiceBundle;
-  await validateBundleAuth(deps, principal, bundle);
+  await assertHostAllowlisted(deps, bundle.baseUrl);
+  await validateBundleAuth(deps, scope, scope === 'global' ? null : principal.userId, bundle);
   await assertNameFree(deps, scope, scope === 'global' ? null : principal.userId, bundle.name);
   const now = new Date().toISOString();
   const service = toDomain(
@@ -155,7 +188,11 @@ export async function getApiToolService(
   return service;
 }
 
-/** Full-bundle replace; identity (scope/owner) is immutable. */
+/**
+ * Full-bundle replace; identity (scope/owner) is immutable. Global rows are
+ * admin-managed (#36 — same rule as create): a plain user who can READ a
+ * global service cannot rewrite or delete it.
+ */
 export async function updateApiToolService(
   deps: ServiceDeps,
   principal: Principal,
@@ -163,8 +200,10 @@ export async function updateApiToolService(
   input: UpdateApiToolServiceInput,
 ): Promise<ApiToolService> {
   const existing = await getApiToolService(deps, principal, id);
+  assertCanManage(existing, principal);
   const bundle = apiToolServiceBundleSchema.parse(input.bundle);
-  await validateBundleAuth(deps, principal, bundle);
+  await assertHostAllowlisted(deps, bundle.baseUrl);
+  await validateBundleAuth(deps, existing.scope, existing.ownerId, bundle);
   if (bundle.name !== existing.name) {
     await assertNameFree(
       deps,
@@ -198,9 +237,17 @@ export async function deleteApiToolService(
   id: string,
 ): Promise<void> {
   const existing = await getApiToolService(deps, principal, id);
+  assertCanManage(existing, principal);
   await deps.uow.apiTools.save({
     ...existing,
     deletedAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   });
+}
+
+/** #36: admins curate the global namespace; personal rows are owner-only. */
+function assertCanManage(service: ApiToolService, principal: Principal): void {
+  if (service.scope === 'global' && principal.role !== 'admin') {
+    throw new AppError('Only admins manage global API tool services', 403, 'FORBIDDEN');
+  }
 }

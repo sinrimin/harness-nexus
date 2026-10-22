@@ -97,7 +97,7 @@ function isRecord(v: unknown): v is Record<string, unknown> {
 }
 
 export type AssistantOpenResult =
-  | { ok: true; sessionId: string; assistantName: string }
+  | { ok: true; sessionId: string; assistantId: string; assistantName: string }
   | { ok: false; code: 'ASSISTANT_NOT_FOUND' | 'ASSISTANT_DELETED' | 'SESSION_NOT_FOUND' };
 
 export type AssistantSendResult = { ok: true; queued?: boolean } | { ok: false; code: string };
@@ -276,17 +276,25 @@ export class AssistantRealtimeService {
     sessionId: string | undefined,
     socketId: string,
   ): Promise<AssistantOpenResult> {
-    const config = await this.configOf(userId, assistantId);
-    if (config === null) return { ok: false, code: 'ASSISTANT_NOT_FOUND' };
-    if (config.deletedAt !== undefined) return { ok: false, code: 'ASSISTANT_DELETED' };
-
+    // An EXISTING conversation belongs to its own assistant row — the passed
+    // assistantId (the caller's current selection) only picks the config for a
+    // NEW session. Resolving the config from the row keeps hand-offs (?s=
+    // deep links, busy-tab jumps) working when the caller's selection is
+    // stale; the mismatch used to surface as a misleading SESSION_NOT_FOUND.
     let session: AssistantSession | null = null;
     if (sessionId !== undefined) {
       const row = await this.deps.uow.assistants.findSessionById(sessionId);
       if (row === null || row.ownerId !== userId) return { ok: false, code: 'SESSION_NOT_FOUND' };
-      if (row.assistantId !== assistantId) return { ok: false, code: 'SESSION_NOT_FOUND' };
       session = row;
-    } else {
+    }
+    const config = await this.configOf(
+      userId,
+      session !== null ? session.assistantId : assistantId,
+    );
+    if (config === null) return { ok: false, code: 'ASSISTANT_NOT_FOUND' };
+    if (config.deletedAt !== undefined) return { ok: false, code: 'ASSISTANT_DELETED' };
+
+    if (session === null) {
       const now = new Date().toISOString();
       session = {
         id: generateId(),
@@ -348,7 +356,12 @@ export class AssistantRealtimeService {
       });
     }
     void this.pushSessions(userId);
-    return { ok: true, sessionId: session.id, assistantName: config.name };
+    return {
+      ok: true,
+      sessionId: session.id,
+      assistantId: ch.assistantId,
+      assistantName: config.name,
+    };
   }
 
   /** `assistant:session.close` — end the live channel; the row persists. */

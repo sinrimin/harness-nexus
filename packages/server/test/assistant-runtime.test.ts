@@ -246,9 +246,12 @@ describe('#52 assistant runtime (faux provider)', () => {
     expect(res.ok).toBe(true);
     const sessionId = res.ok ? res.sessionId : '';
 
+    // An existing session is gated by SESSION OWNERSHIP first (the caller's
+    // assistant selection is irrelevant to it — ?s= hand-offs), so another
+    // user gets the session-shaped 404-hide, not the assistant-shaped one.
     expect(await h.svc.open(other.userId, id, sessionId, 'sock-2')).toEqual({
       ok: false,
-      code: 'ASSISTANT_NOT_FOUND',
+      code: 'SESSION_NOT_FOUND',
     });
     expect(await h.svc.onMessageSend(other.userId, sessionId, 'hi')).toEqual({
       ok: false,
@@ -288,6 +291,28 @@ describe('#52 assistant runtime (faux provider)', () => {
     expect(
       await h.svc.onConfigSet(owner.userId, sessionId, { configId: 'model', value: 'nope' }),
     ).toEqual({ ok: false, code: 'ASSISTANT_MODEL_NOT_ON_PROVIDER' });
+  });
+
+  it('opening an existing session resolves its OWN assistant (stale selection, ?s= hand-off)', async () => {
+    const h = await setup();
+    const ops = await opsId(h);
+    const res = await h.svc.open(owner.userId, ops, undefined, 'sock-1');
+    const sessionId = res.ok ? res.sessionId : '';
+    h.faux.setResponses([piAi.fauxAssistantMessage([piAi.fauxText('one')])]);
+    await h.svc.onMessageSend(owner.userId, sessionId, 'one');
+    await busySettled(h, sessionId);
+
+    // The caller's selection is stale (a busy-tab hand-off landed with a
+    // different assistant pinned): the ROW's assistant wins, and the ack
+    // names it so the page can sync its selection.
+    const reopened = await h.svc.open(owner.userId, await secondId(h), sessionId, 'sock-2');
+    expect(reopened.ok).toBe(true);
+    if (reopened.ok) {
+      expect(reopened.assistantId).toBe(ops);
+      expect(reopened.sessionId).toBe(sessionId);
+    }
+    const row = await h.uow.assistants.findSessionById(sessionId);
+    expect(row?.assistantId).toBe(ops);
   });
 
   it('#58-4 model select spans visible providers (grouped) and re-points the turn', async () => {

@@ -578,6 +578,12 @@ describe('#81 — API tool config tools (the first meta members)', () => {
 
   it('a GRANTED save creates the service and auto-attaches it to the calling config', async () => {
     const h = await setup();
+    // Save-time host validation (outbound surface #3): the bundle's host must
+    // be admin-allowlisted before the service can exist at all.
+    await h.uow.settings.save({
+      ...(await h.uow.settings.get()),
+      apiToolAllowlist: [{ host: 'api.weather.example.com' }],
+    });
     const a = await createAssistant({ uow: h.uow }, owner, {
       name: 'Bootstrap',
       providerId: 'prov-1',
