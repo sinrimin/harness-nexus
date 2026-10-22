@@ -142,7 +142,7 @@ export function SettingsPage() {
                 {allow === null ? (
                   <span className="text-muted-foreground text-xs">…</span>
                 ) : (
-                  <Badge variant={allow ? 'default' : 'secondary'} className="text-[10px]">
+                  <Badge variant={allow ? 'default' : 'secondary'}>
                     {allow ? t('settings.open') : t('settings.closed')}
                   </Badge>
                 )}

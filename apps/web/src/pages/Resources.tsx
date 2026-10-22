@@ -10,8 +10,6 @@ import {
   PlusIcon,
   TrashIcon,
   PencilIcon,
-  GlobeIcon,
-  UserIcon,
   MoreHorizontalIcon,
   ChevronDownIcon,
   ChevronRightIcon,
@@ -29,6 +27,7 @@ import {
   LabelText,
   PageIntro,
   Readout,
+  ScopeBadge,
   SortSelect,
   TableSearch,
   Well,
@@ -299,7 +298,7 @@ export function ResourcesPage({
       <TableCell>
         <div className="flex flex-wrap gap-1">
           {r.targets.map((target) => (
-            <Badge key={target} variant="outline" className="font-mono text-[10px]">
+            <Badge key={target} variant="secondary" className="role-data-sm">
               {target}
             </Badge>
           ))}
@@ -319,9 +318,7 @@ export function ResourcesPage({
       return (
         <TableCell>
           <div className="flex flex-wrap items-center gap-1">
-            <Badge variant="secondary" className="text-[10px]">
-              {t(sourceLabelKey(r))}
-            </Badge>
+            <Badge variant="secondary">{t(sourceLabelKey(r))}</Badge>
             {plugin !== null ? (
               <Well variant="chip" copy={plugin}>
                 {plugin}
@@ -338,9 +335,9 @@ export function ResourcesPage({
           {key === null ? (
             <span className="text-muted-foreground">—</span>
           ) : (
-            <Badge variant="outline" className="text-[10px]">
-              {t(key)}
-            </Badge>
+            /* Same encoding as the hub's trust badges (SkillHub): a filled
+             * neutral Badge — trust is a fact, never a colour rating. */
+            <Badge variant="secondary">{t(key)}</Badge>
           )}
         </TableCell>
       );
@@ -354,7 +351,7 @@ export function ResourcesPage({
           ) : (
             <div className="flex flex-wrap gap-1">
               {events.map((event) => (
-                <Badge key={event} variant="outline" className="font-mono text-[10px]">
+                <Badge key={event} variant="secondary" className="role-data-sm">
                   {event}
                 </Badge>
               ))}
@@ -365,14 +362,7 @@ export function ResourcesPage({
     };
     const scopeCell = (r: Resource) => (
       <TableCell>
-        <Badge variant={r.scope === 'global' ? 'default' : 'secondary'} className="gap-1">
-          {r.scope === 'global' ? (
-            <GlobeIcon className="size-3" />
-          ) : (
-            <UserIcon className="size-3" />
-          )}
-          {r.scope === 'global' ? t('common.scopeGlobal') : t('common.scopePersonal')}
-        </Badge>
+        <ScopeBadge scope={r.scope} />
       </TableCell>
     );
     const updatedCell = (r: Resource) => (

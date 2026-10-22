@@ -189,9 +189,7 @@ function AgentRuntimeCard({
         >
           <span className="role-data text-foreground truncate">{entry.target}</span>
           {agent?.profileApplied ? (
-            <Badge variant="secondary" className="text-[10px]">
-              {t('machineDetail.profileApplied')}
-            </Badge>
+            <Badge variant="secondary">{t('machineDetail.profileApplied')}</Badge>
           ) : null}
         </PanelHeader>
         <PanelBody variant="flush">
@@ -386,7 +384,7 @@ function RuntimeStatus({ runtime }: { runtime: RuntimeInfoView | null }) {
           <span className="font-mono text-xs tabular-nums">{runtime.version}</span>
         ) : null}
         {runtime.installMethod ? (
-          <Badge variant="outline" className="font-mono text-[10px]">
+          <Badge variant="secondary" className="role-data-sm">
             {runtime.installMethod}
           </Badge>
         ) : null}

@@ -1246,7 +1246,7 @@ export function AgentSessionPage() {
               <BotIcon className="text-muted-foreground size-4 shrink-0" />
               <span className="truncate text-sm font-medium">{agent?.name ?? t('chat.title')}</span>
               {agent !== null ? (
-                <Badge variant="secondary" className="font-mono text-[10px]">
+                <Badge variant="secondary" className="role-data-sm">
                   {agent.target}
                 </Badge>
               ) : null}

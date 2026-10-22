@@ -369,7 +369,7 @@ export function AssistantsPage() {
                 <TableCell>
                   <div className="flex flex-wrap gap-1">
                     {a.enabledToolGroups.map((g) => (
-                      <Badge key={g} variant="secondary" className="font-mono text-[10px]">
+                      <Badge key={g} variant="secondary" className="role-data-sm">
                         {g}
                       </Badge>
                     ))}

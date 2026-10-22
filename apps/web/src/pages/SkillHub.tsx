@@ -351,7 +351,7 @@ function HubRowView({ row, onSave }: { row: HubRow; onSave: () => void }) {
         </TableCell>
         <TableCell>
           {row.category ? (
-            <Badge variant="outline" className="font-mono text-[10px]">
+            <Badge variant="secondary" className="role-data-sm">
               {row.category}
             </Badge>
           ) : (
@@ -390,7 +390,7 @@ function TrustBadge({ tier }: { tier: TrustTier }) {
   if (tier === 'trusted') {
     return (
       <>
-        <Badge variant="default" className="gap-1 text-[10px]">
+        <Badge variant="default" className="gap-1">
           <ShieldCheckIcon className="size-3" />
           {t('skillHub.trusted')}
         </Badge>
@@ -399,7 +399,7 @@ function TrustBadge({ tier }: { tier: TrustTier }) {
   }
   return (
     <>
-      <Badge variant="secondary" className="gap-1 text-[10px]">
+      <Badge variant="secondary" className="gap-1">
         <StateSignal state="neutral" aria-hidden className="size-1.5" />
         {t('skillHub.community')}
       </Badge>

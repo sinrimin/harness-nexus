@@ -117,9 +117,7 @@ function TargetItemsCard({ entry, machineId }: { entry: InventoryEntry; machineI
         >
           <span className="role-data text-foreground truncate">{entry.target}</span>
           {agent?.profileApplied ? (
-            <Badge variant="secondary" className="text-[10px]">
-              {t('machineDetail.profileApplied')}
-            </Badge>
+            <Badge variant="secondary">{t('machineDetail.profileApplied')}</Badge>
           ) : null}
         </PanelHeader>
         <PanelBody variant="flush" className="flex flex-col gap-0 pb-4">
@@ -188,7 +186,7 @@ function TargetItemsCard({ entry, machineId }: { entry: InventoryEntry; machineI
 function KindBadge({ kind }: { kind: string }) {
   return (
     <>
-      <Badge variant="outline" className="font-mono text-[10px]">
+      <Badge variant="secondary" className="role-data-sm">
         {kind}
       </Badge>
     </>
@@ -199,7 +197,7 @@ function OriginBadge({ origin }: { origin: 'platform' | 'local' }) {
   const { t } = useI18n();
   return (
     <>
-      <Badge variant={origin === 'platform' ? 'secondary' : 'default'} className="text-[10px]">
+      <Badge variant={origin === 'platform' ? 'secondary' : 'default'}>
         {origin === 'platform' ? 'hnx' : t('machineDetail.originLocal')}
       </Badge>
     </>

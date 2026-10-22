@@ -6,14 +6,12 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import {
   ChevronDownIcon,
-  GlobeIcon,
   MoreHorizontalIcon,
   PencilIcon,
   PlugZapIcon,
   PlusIcon,
   RefreshCwIcon,
   TrashIcon,
-  UserIcon,
   XIcon,
 } from 'lucide-react';
 import { api } from '@/api';
@@ -28,6 +26,7 @@ import {
   FilterSelect,
   Note,
   PageIntro,
+  ScopeBadge,
   SortSelect,
   TableSearch,
   TagCombobox,
@@ -525,7 +524,7 @@ export function LlmProvidersPage() {
                 </span>
               </TableCell>
               <TableCell>
-                <Badge variant="outline" className="font-mono text-[10px]">
+                <Badge variant="secondary" className="role-data-sm">
                   {p.api}
                 </Badge>
               </TableCell>
@@ -549,14 +548,7 @@ export function LlmProvidersPage() {
                 <Well variant="chip">{p.credentialName}</Well>
               </TableCell>
               <TableCell>
-                <Badge variant={p.scope === 'global' ? 'default' : 'secondary'} className="gap-1">
-                  {p.scope === 'global' ? (
-                    <GlobeIcon className="size-3" />
-                  ) : (
-                    <UserIcon className="size-3" />
-                  )}
-                  {p.scope === 'global' ? t('common.scopeGlobal') : t('common.scopePersonal')}
-                </Badge>
+                <ScopeBadge scope={p.scope} />
               </TableCell>
               <TableCell className="text-right">
                 <DropdownMenu>

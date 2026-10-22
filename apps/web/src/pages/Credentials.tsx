@@ -4,14 +4,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
-import {
-  GlobeIcon,
-  KeyRoundIcon,
-  MoreHorizontalIcon,
-  PlusIcon,
-  TrashIcon,
-  UserIcon,
-} from 'lucide-react';
+import { KeyRoundIcon, MoreHorizontalIcon, PlusIcon, TrashIcon } from 'lucide-react';
 import { api } from '@/api';
 import { useAuth, withAuthGuard } from '@/auth';
 import { useI18n } from '@/i18n';
@@ -44,6 +37,7 @@ import {
   FilterSelect,
   PageIntro,
   Readout,
+  ScopeBadge,
   TableSearch,
   Well,
   tableState,
@@ -224,14 +218,7 @@ export function CredentialsPage() {
                   </DataText>
                 </TableCell>
                 <TableCell>
-                  <Badge variant={c.scope === 'global' ? 'default' : 'secondary'} className="gap-1">
-                    {c.scope === 'global' ? (
-                      <GlobeIcon className="size-3" />
-                    ) : (
-                      <UserIcon className="size-3" />
-                    )}
-                    {c.scope === 'global' ? t('common.scopeGlobal') : t('common.scopePersonal')}
-                  </Badge>
+                  <ScopeBadge scope={c.scope} />
                 </TableCell>
                 <TableCell className="text-right">
                   <DropdownMenu>

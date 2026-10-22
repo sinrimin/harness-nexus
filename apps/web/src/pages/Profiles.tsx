@@ -4,15 +4,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
-import {
-  LayersIcon,
-  PlusIcon,
-  TrashIcon,
-  GlobeIcon,
-  UserIcon,
-  TerminalIcon,
-  PencilIcon,
-} from 'lucide-react';
+import { LayersIcon, PlusIcon, TrashIcon, TerminalIcon, PencilIcon } from 'lucide-react';
 import { api } from '@/api';
 import { PageSlot } from '@/components/shell/page-slots';
 import { PageAction } from '@/components/shell/page-action';
@@ -53,6 +45,7 @@ import {
   PageIntro,
   Panel,
   PanelBody,
+  ScopeBadge,
   SortSelect,
   TableSearch,
   Well,
@@ -475,7 +468,7 @@ claude plugin install <profile-name>@harness-nexus-${user.username.toLowerCase()
               <TableCell>
                 {/* Neutral Badge: target encodes intent, not connection state
                     (Signal system reserves --signal for liveness). */}
-                <Badge variant="secondary" className="font-mono text-[11px]">
+                <Badge variant="secondary" className="role-data-sm">
                   {p.target}
                 </Badge>
               </TableCell>
@@ -483,14 +476,7 @@ claude plugin install <profile-name>@harness-nexus-${user.username.toLowerCase()
                 {p.entries.length}
               </TableCell>
               <TableCell>
-                <Badge variant={p.scope === 'global' ? 'default' : 'secondary'} className="gap-1">
-                  {p.scope === 'global' ? (
-                    <GlobeIcon className="size-3" />
-                  ) : (
-                    <UserIcon className="size-3" />
-                  )}
-                  {p.scope === 'global' ? t('common.scopeGlobal') : t('common.scopePersonal')}
-                </Badge>
+                <ScopeBadge scope={p.scope} />
               </TableCell>
               <TableCell className="text-right">
                 <DropdownMenu>

@@ -224,7 +224,7 @@ export function TokensPage() {
                 ) : (
                   <div className="flex flex-wrap gap-1">
                     {p.scopes.map((s) => (
-                      <Badge key={s} variant="secondary" className="font-mono text-[10px]">
+                      <Badge key={s} variant="secondary" className="role-data-sm">
                         {s}
                       </Badge>
                     ))}
