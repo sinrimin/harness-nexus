@@ -30,8 +30,54 @@ import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/
 import { SSEServerTransport } from '@modelcontextprotocol/sdk/server/sse.js';
 import { randomUUID } from 'node:crypto';
 import { AppError } from '@harness-nexus/shared';
+import type { ApiToolDef, ApiToolService } from '@harness-nexus/core';
 import { McpRegistry } from './registry.js';
 import { hashToken, PAT_PREFIX } from '../infra/crypto.js';
+import { listApiToolServices } from '../services/api-tools.js';
+import { executeApiTool } from '../api-tools/runtime.js';
+
+/** #80 — one API-tool entry flattened for the /mcp session surface. */
+interface ApiToolEntry {
+  name: string;
+  description: string | undefined;
+  inputSchema: Record<string, unknown>;
+  service: ApiToolService;
+  def: ApiToolDef;
+}
+
+/** The `api__<service>__<tool>` prefix — the outlet's virtual namespace. */
+export const API_TOOL_PREFIX = 'api__';
+
+function apiToolsForUser(
+  uow: Parameters<typeof listApiToolServices>[0]['uow'],
+  userId: string,
+): Promise<ApiToolEntry[]> {
+  return listApiToolServices({ uow }, { userId, role: 'user' }).then((services) => {
+    const entries: ApiToolEntry[] = [];
+    for (const service of services) {
+      const slug = service.name.replace(/[^a-zA-Z0-9]+/g, '_').toLowerCase();
+      for (const def of service.tools) {
+        const properties: Record<string, unknown> = {};
+        const required: string[] = [];
+        for (const p of def.params) {
+          properties[p.name] = {
+            type: p.type,
+            ...(p.description !== undefined ? { description: p.description } : {}),
+          };
+          if (p.required) required.push(p.name);
+        }
+        entries.push({
+          name: `${API_TOOL_PREFIX}${slug}__${def.name}`,
+          description: def.description,
+          inputSchema: { type: 'object', properties, ...(required.length > 0 ? { required } : {}) },
+          service,
+          def,
+        });
+      }
+    }
+    return entries;
+  });
+}
 
 /** Session entry: one low-level server + its transport, per Agent-tool connection. */
 interface Session {
@@ -174,6 +220,8 @@ export async function mountMcpProxy(app: FastifyInstance): Promise<void> {
           transport,
           (req as FastifyRequest & ResolvedProfileRequest).resolvedServerIds,
           req.user!.id,
+          await apiToolsForUser(app.uow, req.user!.id),
+          { uow: app.uow, credentialEncryptionKey: app.credentialEncryptionKey },
         );
         streamableSessions.set(sessionId, session);
         transport.onclose = () => {
@@ -206,6 +254,8 @@ export async function mountMcpProxy(app: FastifyInstance): Promise<void> {
         transport,
         (req as FastifyRequest & ResolvedProfileRequest).resolvedServerIds,
         req.user!.id,
+        await apiToolsForUser(app.uow, req.user!.id),
+        { uow: app.uow, credentialEncryptionKey: app.credentialEncryptionKey },
       );
       sseSessions.set(sessionId, session);
       await transport.start();
@@ -247,16 +297,19 @@ export async function mountMcpProxy(app: FastifyInstance): Promise<void> {
 /**
  * Build a per-session SDK server wired to a transport, registering every
  * aggregated tool (filtered to the profile's MCP entries) with a forwarding
- * callback. Returns once the server has connected to the transport.
+ * callback — plus the user's visible API tools (#80) under the `api__`
+ * virtual namespace. Returns once the server has connected to the transport.
  */
 async function buildSession(
   registry: McpRegistry,
   transport: StreamableHTTPServerTransport | SSEServerTransport,
   serverIds: string[],
   userId: string,
+  apiTools: ApiToolEntry[],
+  execDeps: { uow: Parameters<typeof executeApiTool>[0]['uow']; credentialEncryptionKey: string },
 ): Promise<Session> {
   // Low-level `Server` (not `McpServer`): `registerTool`'s config takes a
-  // ZOD shape, and mapping the upstream's raw JSON schema through zod drops
+  // Zod shape, and mapping the upstream's raw JSON schema through zod drops
   // it — tools went out with `properties: {}`, so callers passed no
   // arguments and every call failed upstream validation (#7, rig-found).
   // The request handlers pass the aggregated tools through verbatim, the
@@ -267,17 +320,46 @@ async function buildSession(
   );
   const filter = serverIds.length ? serverIds : undefined;
   server.setRequestHandler(ListToolsRequestSchema, async () => ({
-    tools: registry.listTools(filter).map((t) => ({
-      name: t.name,
-      ...(t.description !== undefined ? { description: t.description } : {}),
-      inputSchema: t.inputSchema,
-    })),
+    tools: [
+      ...registry.listTools(filter).map((t) => ({
+        name: t.name,
+        ...(t.description !== undefined ? { description: t.description } : {}),
+        inputSchema: t.inputSchema,
+      })),
+      // #80 — the caller's visible API tools ride every profile session
+      // (visibility is the user's own read set, like the assistant's).
+      ...apiTools.map((t) => ({
+        name: t.name,
+        ...(t.description !== undefined ? { description: t.description } : {}),
+        inputSchema: t.inputSchema,
+      })),
+    ],
   }));
   server.setRequestHandler(CallToolRequestSchema, async (req) => {
-    const result = await registry.callTool(
-      req.params.name,
-      (req.params.arguments ?? undefined) as Record<string, unknown> | undefined,
-    );
+    const args = (req.params.arguments ?? undefined) as Record<string, unknown> | undefined;
+    // #80 — the virtual api__ namespace routes to the runtime (same
+    // allowlist/envelope/caps path the assistant uses); everything else
+    // stays a pooled upstream call.
+    if (req.params.name.startsWith(API_TOOL_PREFIX)) {
+      const entry = apiTools.find((t) => t.name === req.params.name);
+      if (entry === undefined) {
+        return {
+          content: [{ type: 'text', text: `error: unknown tool ${req.params.name}` }],
+          isError: true,
+        } as CallToolResult;
+      }
+      const result = await executeApiTool(
+        { uow: execDeps.uow, credentialEncryptionKey: execDeps.credentialEncryptionKey },
+        entry.service,
+        entry.def.name,
+        args ?? {},
+      );
+      return {
+        content: [{ type: 'text', text: result.output }],
+        ...(result.isError ? { isError: true } : {}),
+      } as CallToolResult;
+    }
+    const result = await registry.callTool(req.params.name, args);
     // The registry returns the upstream's raw CallToolResult; pass it through.
     return result as CallToolResult;
   });
