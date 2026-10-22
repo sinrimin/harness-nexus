@@ -686,3 +686,35 @@ describe('#81 — API tool config tools (the first meta members)', () => {
     ).toHaveLength(0);
   });
 });
+
+describe('#82 — agent rebind on a lazy (un-persisted) session', () => {
+  it('re-stamps the pending row instead of dying on the messages FK', async () => {
+    const h = await setup();
+    const a1 = await createAssistant({ uow: h.uow }, owner, {
+      name: 'One',
+      providerId: 'prov-1',
+      defaultModel: 'gw-large',
+      enabledToolGroups: [],
+    });
+    const a2 = await createAssistant({ uow: h.uow }, owner, {
+      name: 'Two',
+      providerId: 'prov-1',
+      defaultModel: 'gw-large',
+      enabledToolGroups: [],
+    });
+    h.faux.setResponses([piAi.fauxAssistantMessage([piAi.fauxText('hi there')])]);
+    const res = await h.svc.open(owner.userId, a1.id, undefined, 'sock-1');
+    const sessionId = res.ok ? res.sessionId : '';
+    // Pre-#82 this threw (assistant_messages FK — no session row exists yet)
+    // and the ack never reached the browser.
+    const rebind = await h.svc.onConfigSet(owner.userId, sessionId, {
+      configId: 'agent',
+      value: a2.id,
+    });
+    expect(rebind.ok).toBe(true);
+    await h.svc.onMessageSend(owner.userId, sessionId, 'hello');
+    await settle(h, sessionId, 2);
+    // The row persists under the assistant the channel was REBOUND to.
+    expect((await h.uow.assistants.findSessionById(sessionId))?.assistantId).toBe(a2.id);
+  });
+});

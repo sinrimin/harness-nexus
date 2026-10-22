@@ -615,7 +615,15 @@ export class AssistantRealtimeService {
         // previous provider override belonged to the old config's session.
         ch.providerId = config.providerId;
         ch.modelId = config.defaultModel;
-        await this.appendNote(sessionId, `rebound to assistant "${config.name}"`);
+        // #82 — a LAZY (un-persisted) session has no row to note into (the
+        // append would die on the assistant_messages FK); the rebind just
+        // re-stamps the pending row, so the first message persists under the
+        // NEW assistant instead of the one the session was opened with.
+        if (ch.pending !== undefined) {
+          ch.pending = { ...ch.pending, assistantId: config.id };
+        } else {
+          await this.appendNote(sessionId, `rebound to assistant "${config.name}"`);
+        }
       }
     } else {
       // #58-4 — the value is the compound `providerId/modelId` (or a bare
