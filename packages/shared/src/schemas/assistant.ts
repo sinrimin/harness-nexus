@@ -216,15 +216,18 @@ export const assistantQueueCancelRequestSchema = z.object({
 });
 
 /**
- * browser → server: switch the assistant config (`agent`) or the model
- * (`model`) for the NEXT turn. OPAQUE values — `agent` is an assistant config
- * id, `model` a registry model id on the session's provider; the server
- * validates both at apply time, never trusts the browser's labels.
+ * browser → server: switch the assistant config (`agent`), the model
+ * (`model`), or the conversation's write-policy (`permissionMode`, #79 — the
+ * sender-level switch; the config's value is only the default stamped at
+ * open) for the NEXT turn. OPAQUE values — `agent` is an assistant config id,
+ * `model` a registry model id on the session's provider; the server validates
+ * both at apply time, never trusts the browser's labels. `permissionMode` is
+ * one of the two declared #79 modes.
  */
 export const assistantConfigSetRequestSchema = z.object({
   sessionId: z.string().min(1).max(64),
   kind: z.literal('option'),
-  configId: z.enum(['agent', 'model']),
+  configId: z.enum(['agent', 'model', 'permissionMode']),
   value: z.string().min(1).max(128),
 });
 

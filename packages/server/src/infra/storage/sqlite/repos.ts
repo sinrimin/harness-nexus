@@ -1269,6 +1269,8 @@ interface AssistantSessionRow {
   created_at: string;
   updated_at: string;
   last_message_at: string | null;
+  /** #79 — NULL on pre-v27 rows (the config default applies at open). */
+  permission_mode: string | null;
 }
 
 interface AssistantMessageRow_ {
@@ -1413,6 +1415,10 @@ function mapAssistantSession(r: AssistantSessionRow): AssistantSession {
     createdAt: r.created_at,
     updatedAt: r.updated_at,
     lastMessageAt: r.last_message_at,
+    permissionMode:
+      r.permission_mode === 'prompt' || r.permission_mode === 'autoWrite'
+        ? r.permission_mode
+        : undefined,
   };
 }
 
@@ -1512,12 +1518,15 @@ export function sqliteAssistantRepository(db: Database): AssistantRepository {
     async saveSession(session) {
       db.prepare(
         `INSERT INTO assistant_sessions
-           (id, owner_id, assistant_id, title, created_at, updated_at, last_message_at)
-         VALUES (@id, @owner_id, @assistant_id, @title, @created_at, @updated_at, @last_message_at)
+           (id, owner_id, assistant_id, title, created_at, updated_at, last_message_at,
+            permission_mode)
+         VALUES (@id, @owner_id, @assistant_id, @title, @created_at, @updated_at,
+                 @last_message_at, @permission_mode)
          ON CONFLICT(id) DO UPDATE SET
            title           = excluded.title,
            updated_at      = excluded.updated_at,
-           last_message_at = excluded.last_message_at`,
+           last_message_at = excluded.last_message_at,
+           permission_mode = excluded.permission_mode`,
       ).run({
         id: session.id,
         owner_id: session.ownerId,
@@ -1526,6 +1535,7 @@ export function sqliteAssistantRepository(db: Database): AssistantRepository {
         created_at: session.createdAt,
         updated_at: session.updatedAt,
         last_message_at: session.lastMessageAt,
+        permission_mode: session.permissionMode ?? null,
       });
       return session;
     },

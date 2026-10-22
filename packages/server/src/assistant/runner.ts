@@ -8,6 +8,7 @@ import type { LlmProvider } from '@harness-nexus/core';
 import type {
   AssistantConfig,
   AssistantMessageRow,
+  AssistantPermissionMode,
   AssistantPromptBlock,
   AssistantSession,
 } from '@harness-nexus/core';
@@ -137,6 +138,12 @@ export function startAssistantTurn(
      */
     providerId?: string;
     modelId: string;
+    /**
+     * #79 — the conversation's write-policy (the sender switch). The config's
+     * `permissionMode` is only the default stamped at open; absent (tests
+     * calling the runner directly) falls back to it.
+     */
+    permissionMode?: AssistantPermissionMode;
     /** #59 — this turn's prompt blocks (image blocks are refs, already split at send). */
     prompt: readonly AssistantPromptBlock[];
     /** The transcript BEFORE this turn (rebuild context — prompt rides separately). */
@@ -363,11 +370,15 @@ export function startAssistantTurn(
           };
         }
         // #79 — the graduated gate: read runs; write prompts per call unless
-        // the config pre-authorized writes (`permissionMode:'autoWrite'`);
-        // meta ALWAYS prompts (boundary-changing ops, no silent tier). A
-        // denied or timed-out call blocks with a reason the model can read.
+        // the session's sender switch (falling back to the config default)
+        // pre-authorized writes; meta ALWAYS prompts (boundary-changing ops,
+        // no silent tier). A denied or timed-out call blocks with a reason
+        // the model can read.
         if (
-          toolNeedsApproval(classOf.get(toolCall.name) ?? 'write', config.permissionMode) &&
+          toolNeedsApproval(
+            classOf.get(toolCall.name) ?? 'write',
+            input.permissionMode ?? config.permissionMode,
+          ) &&
           input.requestApproval !== undefined
         ) {
           const okToRun = await input.requestApproval({
