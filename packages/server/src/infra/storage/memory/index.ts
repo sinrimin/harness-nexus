@@ -10,11 +10,13 @@ import type {
   SystemSettings,
   Credential,
   McpServer,
+  ApiToolService,
   Profile,
   Resource,
   AssistantConfig,
   AssistantMessageRow,
   AssistantRepository,
+  ApiToolRepository,
   AssistantSession,
   AssistantToolCallAudit,
   Machine,
@@ -53,6 +55,7 @@ export function createMemoryUnitOfWork(): UnitOfWork {
   const tokensByHash = new Map<string, string>(); // hash -> id
   const credentials = new Map<string, Credential>();
   const mcpServers = new Map<string, McpServer>();
+  const apiTools = new Map<string, ApiToolService>();
   const profiles = new Map<string, Profile>();
   const resources = new Map<string, Resource>();
   const machines = new Map<string, Machine>();
@@ -509,6 +512,29 @@ export function createMemoryUnitOfWork(): UnitOfWork {
     },
   };
 
+  const apiToolRepo: ApiToolRepository = {
+    async findById(id) {
+      return apiTools.get(id) ?? null;
+    },
+    async list(filter) {
+      return [...apiTools.values()]
+        .filter(
+          (s) =>
+            (filter?.includeDeleted !== true ? s.deletedAt === undefined : true) &&
+            (filter?.scope === undefined || s.scope === filter.scope) &&
+            (filter?.ownerId === undefined || s.ownerId === filter.ownerId),
+        )
+        .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+    },
+    async save(service) {
+      apiTools.set(service.id, service);
+      return service;
+    },
+    async delete(id) {
+      apiTools.delete(id);
+    },
+  };
+
   return {
     users: userRepo,
     tokens: tokenRepo,
@@ -525,5 +551,6 @@ export function createMemoryUnitOfWork(): UnitOfWork {
     llmProviders: llmProviderRepo,
     assistants: assistantRepo,
     fileBlobs: fileBlobRepo,
+    apiTools: apiToolRepo,
   };
 }

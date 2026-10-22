@@ -486,6 +486,23 @@ ALTER TABLE system_settings ADD COLUMN image_retention_days INTEGER NOT NULL DEF
 ALTER TABLE assistant_configs ADD COLUMN permission_mode TEXT NOT NULL DEFAULT 'prompt';
     `,
   },
+  {
+    version: 25,
+    description: 'issue #80 — API tool services (JSON bundle rows)',
+    sql: `
+CREATE TABLE IF NOT EXISTS api_tool_services (
+  id         TEXT PRIMARY KEY,
+  scope      TEXT NOT NULL,
+  owner_id   TEXT,
+  name       TEXT NOT NULL,
+  bundle     TEXT NOT NULL,
+  deleted_at TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_api_tools_owner ON api_tool_services(owner_id);
+    `,
+  },
 ] as const;
 
 /**

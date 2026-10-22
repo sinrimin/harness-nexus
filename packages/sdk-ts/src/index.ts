@@ -28,6 +28,7 @@ import type {
   ChatDefaultModeSettings,
 } from '@harness-nexus/core';
 import type {
+  ApiToolServiceView,
   JobView,
   MarketplaceCatalog,
   MarketplacePlugin,
@@ -805,6 +806,36 @@ export class HarnessNexusClient {
     return res.models;
   }
 
+  // ---- API tools (#80) ----
+
+  async listApiToolServices(): Promise<{ services: ApiToolServiceView[] }> {
+    return this.request('GET', '/api/api-tools');
+  }
+
+  async getApiToolService(id: string): Promise<{ service: ApiToolServiceView }> {
+    return this.request('GET', `/api/api-tools/${id}`);
+  }
+
+  async createApiToolService(
+    bundle: unknown,
+    scope?: 'global' | 'personal',
+  ): Promise<{ service: ApiToolServiceView }> {
+    return this.request('POST', '/api/api-tools', {
+      bundle,
+      ...(scope !== undefined ? { scope } : {}),
+    });
+  }
+
+  async updateApiToolService(
+    id: string,
+    bundle: unknown,
+  ): Promise<{ service: ApiToolServiceView }> {
+    return this.request('PUT', `/api/api-tools/${id}`, { bundle });
+  }
+
+  async deleteApiToolService(id: string): Promise<void> {
+    await this.request('DELETE', `/api/api-tools/${id}`);
+  }
   // ---- settings ----
   async getRegistration(): Promise<{ allowRegistration: boolean }> {
     return this.request('GET', '/api/settings/registration', undefined, true);

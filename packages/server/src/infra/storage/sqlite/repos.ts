@@ -19,6 +19,8 @@ import type {
   AssistantConfig,
   AssistantMessageRow,
   AssistantRepository,
+  ApiToolRepository,
+  ApiToolService,
   AssistantSession,
   Machine,
   MachineInventorySnapshot,
@@ -1289,6 +1291,97 @@ function mapAssistantConfig(r: AssistantConfigRow): AssistantConfig {
     createdAt: r.created_at,
     updatedAt: r.updated_at,
   };
+}
+
+interface ApiToolRow {
+  id: string;
+  scope: string;
+  owner_id: string | null;
+  name: string;
+  bundle: string;
+  deleted_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+function mapApiToolService(r: ApiToolRow): ApiToolService {
+  const bundle = JSON.parse(r.bundle) as Omit<
+    ApiToolService,
+    'id' | 'scope' | 'ownerId' | 'createdAt' | 'updatedAt' | 'deletedAt'
+  >;
+  return {
+    id: r.id,
+    scope: r.scope === 'global' ? 'global' : 'personal',
+    ownerId: r.owner_id,
+    ...bundle,
+    ...(r.deleted_at !== null ? { deletedAt: r.deleted_at } : {}),
+    createdAt: r.created_at,
+    updatedAt: r.updated_at,
+  };
+}
+
+export function sqliteApiToolRepository(db: Database): ApiToolRepository {
+  const repo: ApiToolRepository = {
+    async findById(id) {
+      const row = db.prepare('SELECT * FROM api_tool_services WHERE id = ?').get(id) as
+        ApiToolRow | undefined;
+      return row ? mapApiToolService(row) : null;
+    },
+    async list(filter) {
+      const conds: string[] = [];
+      const args: (string | null)[] = [];
+      if (filter?.includeDeleted !== true) conds.push('deleted_at IS NULL');
+      if (filter?.scope !== undefined) {
+        conds.push('scope = ?');
+        args.push(filter.scope);
+      }
+      if (filter?.ownerId !== undefined) {
+        conds.push('owner_id = ?');
+        args.push(filter.ownerId);
+      }
+      const where = conds.length > 0 ? 'WHERE ' + conds.join(' AND ') : '';
+      const rows = db
+        .prepare('SELECT * FROM api_tool_services ' + where + ' ORDER BY created_at')
+        .all(...args) as ApiToolRow[];
+      return rows.map(mapApiToolService);
+    },
+    async save(service) {
+      const bundle = JSON.stringify({
+        name: service.name,
+        ...(service.description !== undefined ? { description: service.description } : {}),
+        baseUrl: service.baseUrl,
+        headers: service.headers,
+        ...(service.auth !== undefined ? { auth: service.auth } : {}),
+        tools: service.tools,
+      });
+      db.prepare(
+        `INSERT INTO api_tool_services
+         (id, scope, owner_id, name, bundle, deleted_at, created_at, updated_at)
+         VALUES (@id, @scope, @owner_id, @name, @bundle, @deleted_at, @created_at, @updated_at)
+         ON CONFLICT(id) DO UPDATE SET
+           scope = excluded.scope,
+           owner_id = excluded.owner_id,
+           name = excluded.name,
+           bundle = excluded.bundle,
+           deleted_at = excluded.deleted_at,
+           updated_at = excluded.updated_at`,
+      ).run({
+        id: service.id,
+        scope: service.scope,
+        owner_id: service.ownerId,
+        name: service.name,
+        bundle,
+        deleted_at: service.deletedAt ?? null,
+        created_at: service.createdAt,
+        updated_at: service.updatedAt,
+      });
+      return service;
+    },
+    async delete(id) {
+      db.prepare('DELETE FROM api_tool_services WHERE id = ?').run(id);
+    },
+  };
+  return repo;
 }
 
 function mapAssistantSession(r: AssistantSessionRow): AssistantSession {
