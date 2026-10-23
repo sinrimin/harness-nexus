@@ -6,7 +6,6 @@ import type { SystemSettings } from '@harness-nexus/core';
 import { IMAGE_RETENTION_MAX, IMAGE_RETENTION_MIN } from '@harness-nexus/core';
 import {
   AppError,
-  type UpdateApiToolAllowlistInput,
   type UpdateApiToolOutboundInput,
   type UpdateImageRetentionInput,
   type UpdateRegistrationInput,
@@ -86,9 +85,9 @@ export function imageExpiryFrom(settings: SystemSettings, now: Date): string {
 }
 
 /**
- * #85 — flip the API tool outbound host policy: `open` (default) dials any
- * http/https host (metadata/link-local stays hard-denied in the runtime);
- * `restricted` restores the #80 default-deny allowlist. Admin-only.
+ * #85 — set the API tool outbound policy atomically: the DEFAULT action
+ * (`allow` = the rule lists are blacklists; `deny` = whitelists) plus the
+ * external/internal rule lists (host / `*.domain` / IP / CIDR). Admin-only.
  */
 export async function updateApiToolOutbound(
   deps: ServiceDeps,
@@ -101,27 +100,11 @@ export async function updateApiToolOutbound(
   const current = await deps.uow.settings.get();
   return deps.uow.settings.save({
     ...current,
-    apiToolOutbound: input.outbound,
-    updatedAt: new Date().toISOString(),
-  });
-}
-
-/** #80 — replace the API tool runtime's host allowlist (enforced in restricted mode). */
-export async function updateApiToolAllowlist(
-  deps: ServiceDeps,
-  principal: Principal,
-  input: UpdateApiToolAllowlistInput,
-): Promise<SystemSettings> {
-  if (principal.role !== 'admin') {
-    throw new AppError('Admin role required', 403, 'FORBIDDEN');
-  }
-  const current = await deps.uow.settings.get();
-  return deps.uow.settings.save({
-    ...current,
-    apiToolAllowlist: input.entries.map((e) => ({
-      host: e.host,
-      ...(e.internal === true ? { internal: true } : {}),
-    })),
+    apiToolOutbound: input.mode,
+    apiToolOutboundRules: {
+      external: [...new Set(input.rules.external)],
+      internal: [...new Set(input.rules.internal)],
+    },
     updatedAt: new Date().toISOString(),
   });
 }

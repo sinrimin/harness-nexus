@@ -9,7 +9,7 @@ import {
   apiToolServiceBundleSchema,
   type ApiToolServiceBundle,
 } from '@harness-nexus/shared';
-import { matchAllowlist } from '../api-tools/runtime.js';
+import { hostMatchesEntry } from '../api-tools/runtime.js';
 import type { Principal, ServiceDeps } from './principal.js';
 
 /**
@@ -80,21 +80,24 @@ function validateBundleAuth(
 }
 
 /**
- * While the outbound policy is `restricted` (#85), a saved service whose
- * baseUrl host is not on the allowlist could never dial out, so the author
- * (human, dialog, or the #81 meta tool) learns at SAVE time, not at first
- * probe — same match the runtime applies at call time. In `open` mode any
- * http/https host saves (the runtime still hard-denies metadata ranges).
+ * While the outbound default action is `deny` (#85), a service whose baseUrl
+ * host matches no NAME rule in either list could never dial out (IP/CIDR
+ * rules are decided at call time, after DNS) — the author (human, dialog, or
+ * the #81 meta tool) learns at SAVE time, not at first probe. In `allow`
+ * mode (blacklists) any http/https host saves.
  */
-async function assertHostAllowlisted(deps: ServiceDeps, baseUrl: string): Promise<void> {
+async function assertHostDialable(deps: ServiceDeps, baseUrl: string): Promise<void> {
   const settings = await deps.uow.settings.get();
-  if ((settings.apiToolOutbound ?? 'open') !== 'restricted') return;
+  if ((settings.apiToolOutbound ?? 'allow') !== 'deny') return;
+  const rules = settings.apiToolOutboundRules ?? { external: [], internal: [] };
+  const nameEntries = [...rules.external, ...rules.internal].filter((e) => !e.includes('/'));
+  // IP-literal name entries (no slash) can still match a literal-IP baseUrl.
   const host = new URL(baseUrl).hostname;
-  if (matchAllowlist(host, settings.apiToolAllowlist ?? []) === null) {
+  if (!nameEntries.some((e) => hostMatchesEntry(e, host))) {
     throw new AppError(
-      `host ${host} is not on the API tool allowlist — an admin must add it (API tools → outbound allowlist) before this service can dial out`,
+      `host ${host} matches no name rule in the outbound whitelist — an admin must add it (system settings → API tool outbound) before this service can dial out`,
       409,
-      'API_TOOL_HOST_NOT_ALLOWLISTED',
+      'API_TOOL_HOST_NOT_ALLOWED',
     );
   }
 }
@@ -147,7 +150,7 @@ export async function createApiToolService(
     throw new AppError('Only admins create global API tool services', 403, 'FORBIDDEN');
   }
   const bundle = apiToolServiceBundleSchema.parse(input.bundle) as ApiToolServiceBundle;
-  await assertHostAllowlisted(deps, bundle.baseUrl);
+  await assertHostDialable(deps, bundle.baseUrl);
   await validateBundleAuth(deps, scope, scope === 'global' ? null : principal.userId, bundle);
   await assertNameFree(deps, scope, scope === 'global' ? null : principal.userId, bundle.name);
   const now = new Date().toISOString();
@@ -204,7 +207,7 @@ export async function updateApiToolService(
   const existing = await getApiToolService(deps, principal, id);
   assertCanManage(existing, principal);
   const bundle = apiToolServiceBundleSchema.parse(input.bundle);
-  await assertHostAllowlisted(deps, bundle.baseUrl);
+  await assertHostDialable(deps, bundle.baseUrl);
   await validateBundleAuth(deps, existing.scope, existing.ownerId, bundle);
   if (bundle.name !== existing.name) {
     await assertNameFree(

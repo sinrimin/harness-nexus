@@ -62,9 +62,9 @@ export interface ApiToolDef {
  * private/loopback resolutions for named intranet hosts (link-local and
  * cloud-metadata ranges stay hard-denied regardless).
  */
-export interface ApiToolAllowlistEntry {
-  host: string;
-  internal?: boolean | undefined;
+export interface ApiToolOutboundRules {
+  external: string[];
+  internal: string[];
 }
 
 /** One stored API tool service. The bundle mirrors the shared wire schema. */

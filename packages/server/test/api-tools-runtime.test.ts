@@ -9,11 +9,13 @@ import {
   applyResponse,
   executeApiTool,
   getByDotPath,
+  hostMatchesEntry,
   ipClassOf,
-  matchAllowlist,
+  ipMatchesEntry,
+  outboundAllowed,
   truncateWithMarker,
 } from '../src/api-tools/runtime.js';
-import type { ApiToolDef, ApiToolService } from '@harness-nexus/core';
+import type { ApiToolDef, ApiToolOutboundRules, ApiToolService } from '@harness-nexus/core';
 
 /**
  * #80 slice 2 — the runtime's pure shaping functions (the fixed response
@@ -27,6 +29,7 @@ const now = '2026-01-01T00:00:00.000Z';
 
 const tool = (over: Partial<ApiToolDef> = {}): ApiToolDef => ({
   name: 'get_forecast',
+  description: 'Forecast for one city',
   method: 'GET',
   path: '/v1/forecast/{city}',
   params: [{ name: 'city', in: 'path', type: 'string', required: true }],
@@ -46,13 +49,48 @@ describe('shaping (pure)', () => {
     expect(getByDotPath([1, 2], '0')).toBe(1);
   });
 
-  it('the allowlist matches exact and *.wildcard hosts', () => {
-    const entries = [{ host: 'api.example.com' }, { host: '*.internal.corp', internal: true }];
-    expect(matchAllowlist('api.example.com', entries)?.host).toBe('api.example.com');
-    expect(matchAllowlist('gateway.internal.corp', entries)?.internal).toBe(true);
-    expect(matchAllowlist('internal.corp', entries)?.internal).toBe(true);
-    expect(matchAllowlist('evil.com', entries)).toBeNull();
-    expect(matchAllowlist('api.example.com.evil.com', entries)).toBeNull();
+  it('name rules match exact and *.wildcard hosts only', () => {
+    expect(hostMatchesEntry('api.example.com', 'api.example.com')).toBe(true);
+    expect(hostMatchesEntry('*.internal.corp', 'gateway.internal.corp')).toBe(true);
+    expect(hostMatchesEntry('*.internal.corp', 'internal.corp')).toBe(true);
+    expect(hostMatchesEntry('api.example.com', 'evil.com')).toBe(false);
+    expect(hostMatchesEntry('api.example.com', 'api.example.com.evil.com')).toBe(false);
+  });
+
+  it('IP rules match literals and CIDR ranges (v4 + v6)', () => {
+    expect(ipMatchesEntry('10.0.0.9', '10.0.0.9')).toBe(true);
+    expect(ipMatchesEntry('10.0.0.0/8', '10.5.1.2')).toBe(true);
+    expect(ipMatchesEntry('10.0.0.0/16', '10.5.0.1')).toBe(false);
+    expect(ipMatchesEntry('203.0.113.0/24', '203.0.113.77')).toBe(true);
+    expect(ipMatchesEntry('fd00::/8', 'fd12::abc')).toBe(true);
+    expect(ipMatchesEntry('fd00::/8', 'fe80::1')).toBe(false);
+  });
+
+  it('outboundAllowed: the list flips the default action, split by network side', () => {
+    const rules: ApiToolOutboundRules = { external: ['api.weather.example.com'], internal: [] };
+    // deny-mode: the list is a whitelist.
+    expect(outboundAllowed('deny', rules, 'api.weather.example.com', ['93.1.1.1'], ipClassOf)).toBe(
+      true,
+    );
+    expect(outboundAllowed('deny', rules, 'evil.com', ['93.1.1.1'], ipClassOf)).toBe(false);
+    // allow-mode: the same list is a blacklist.
+    expect(
+      outboundAllowed('allow', rules, 'api.weather.example.com', ['93.1.1.1'], ipClassOf),
+    ).toBe(false);
+    expect(outboundAllowed('allow', rules, 'other.com', ['93.1.1.1'], ipClassOf)).toBe(true);
+    // A private resolution consults the INTERNAL list, not the external one.
+    expect(outboundAllowed('deny', rules, 'api.weather.example.com', ['10.0.0.9'], ipClassOf)).toBe(
+      false,
+    );
+    expect(
+      outboundAllowed(
+        'deny',
+        { external: [], internal: ['10.0.0.0/8'] },
+        'api.weather.example.com',
+        ['10.0.0.9'],
+        ipClassOf,
+      ),
+    ).toBe(true);
   });
 
   it('IP classes', () => {
@@ -131,12 +169,15 @@ describe('executeApiTool (stubbed fetch + injectable DNS)', () => {
     vi.unstubAllGlobals();
   });
 
-  async function setup(allowlist: { host: string; internal?: boolean }[]) {
+  async function setup(
+    rules: ApiToolOutboundRules = { external: ['api.weather.example.com'], internal: [] },
+    mode: 'allow' | 'deny' = 'deny',
+  ) {
     const uow = createMemoryUnitOfWork();
     await uow.settings.save({
       ...(await uow.settings.get()),
-      apiToolAllowlist: allowlist,
-      apiToolOutbound: 'restricted',
+      apiToolOutbound: mode,
+      apiToolOutboundRules: rules,
       updatedAt: now,
     });
     await uow.credentials.save({
@@ -159,6 +200,7 @@ describe('executeApiTool (stubbed fetch + injectable DNS)', () => {
       tools: [
         {
           name: 'get_forecast',
+          description: 'Forecast for one city',
           method: 'GET',
           path: '/v1/forecast/{city}',
           params: [
@@ -183,7 +225,7 @@ describe('executeApiTool (stubbed fetch + injectable DNS)', () => {
   const okDns = async () => ['93.184.216.34'];
 
   it('happy path: envelope payload, query + path substitution, truncation off', async () => {
-    const { uow, service } = await setup([{ host: 'api.weather.example.com' }]);
+    const { uow, service } = await setup();
     const seen: { url: string; init: RequestInit | undefined }[] = [];
     vi.stubGlobal('fetch', (async (url: unknown, init: RequestInit | undefined) => {
       seen.push({ url: String(url), init });
@@ -205,8 +247,8 @@ describe('executeApiTool (stubbed fetch + injectable DNS)', () => {
     expect(seen[0]!.init?.method).toBe('GET');
   });
 
-  it('default-deny: a host not on the allowlist never fetches', async () => {
-    const { uow, service } = await setup([]);
+  it('deny-mode: an unlisted host never fetches (empty whitelist)', async () => {
+    const { uow, service } = await setup({ external: [], internal: [] });
     const fetchSpy = vi.fn();
     vi.stubGlobal('fetch', fetchSpy);
     const res = await executeApiTool(
@@ -217,12 +259,79 @@ describe('executeApiTool (stubbed fetch + injectable DNS)', () => {
       { resolveDns: okDns },
     );
     expect(res.isError).toBe(true);
-    expect(res.output).toContain('not on the API tool allowlist');
+    expect(res.output).toContain('blocked by the API tool outbound policy');
+    expect(res.output).toContain('whitelist');
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 
-  it('anti-rebinding: a non-internal entry with a private resolution is refused', async () => {
-    const { uow, service } = await setup([{ host: 'api.weather.example.com' }]);
+  it('allow-mode: the external list is a BLACKLIST (listed host denied, others dial)', async () => {
+    const { uow, service } = await setup({ external: [], internal: [] }, 'allow');
+    const fetchSpy = vi.fn(
+      async () =>
+        new Response('{"code":0,"body":"ok"}', {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        }),
+    );
+    vi.stubGlobal('fetch', fetchSpy);
+    const ok = await executeApiTool(
+      { uow, credentialEncryptionKey: KEY },
+      service,
+      'get_forecast',
+      { city: 'x' },
+      { resolveDns: okDns },
+    );
+    expect(ok.isError).toBe(false);
+    expect(fetchSpy).toHaveBeenCalledOnce();
+
+    const { uow: uowB, service: serviceB } = await setup(undefined, 'allow');
+    const blocked = await executeApiTool(
+      { uow: uowB, credentialEncryptionKey: KEY },
+      serviceB,
+      'get_forecast',
+      { city: 'x' },
+      { resolveDns: okDns },
+    );
+    expect(blocked.isError).toBe(true);
+    expect(blocked.output).toContain('blacklist');
+  });
+
+  it('CIDR whitelists bless address ranges (v4 and v6)', async () => {
+    const { uow, service } = await setup({ external: ['93.184.0.0/16'], internal: [] });
+    vi.stubGlobal(
+      'fetch',
+      (async () =>
+        new Response('{"code":0,"body":"in range"}', {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        })) as typeof fetch,
+    );
+    const ok = await executeApiTool(
+      { uow, credentialEncryptionKey: KEY },
+      service,
+      'get_forecast',
+      { city: 'x' },
+      { resolveDns: async () => ['93.184.216.34'] },
+    );
+    expect(ok.isError).toBe(false);
+
+    const { uow: uowB, service: serviceB } = await setup({
+      external: ['93.184.0.0/24'],
+      internal: [],
+    });
+    const out = await executeApiTool(
+      { uow: uowB, credentialEncryptionKey: KEY },
+      serviceB,
+      'get_forecast',
+      { city: 'x' },
+      { resolveDns: async () => ['93.184.216.34'] },
+    );
+    expect(out.isError).toBe(true);
+    expect(out.output).toContain('blocked by the API tool outbound policy');
+  });
+
+  it('anti-rebinding: an external-listed name does not bless a private resolution', async () => {
+    const { uow, service } = await setup();
     vi.stubGlobal('fetch', vi.fn());
     const res = await executeApiTool(
       { uow, credentialEncryptionKey: KEY },
@@ -232,11 +341,12 @@ describe('executeApiTool (stubbed fetch + injectable DNS)', () => {
       { resolveDns: async () => ['10.0.0.9'] },
     );
     expect(res.isError).toBe(true);
-    expect(res.output).toContain('only internal-flagged');
+    expect(res.output).toContain('internal');
+    expect(res.output).toContain('whitelist');
   });
 
-  it('internal entries reach private hosts; link-local is hard-denied even then', async () => {
-    const { uow, service } = await setup([{ host: 'api.weather.example.com', internal: true }]);
+  it('internal-listed names reach private hosts; link-local is hard-denied even then', async () => {
+    const { uow, service } = await setup({ external: [], internal: ['api.weather.example.com'] });
     vi.stubGlobal(
       'fetch',
       (async () =>
@@ -263,7 +373,7 @@ describe('executeApiTool (stubbed fetch + injectable DNS)', () => {
   });
 
   it('auth injects the decrypted secret; timing/IO failures are tool errors', async () => {
-    const { uow } = await setup([{ host: 'api.weather.example.com' }]);
+    const { uow } = await setup();
     const authed: ApiToolService = {
       id: 's2',
       scope: 'personal',
@@ -272,7 +382,7 @@ describe('executeApiTool (stubbed fetch + injectable DNS)', () => {
       baseUrl: 'https://api.weather.example.com',
       headers: {},
       auth: { style: 'header', header: 'X-API-Key', credentialName: 'weather-key' },
-      tools: [{ name: 'ping', method: 'GET', path: '/ping', params: [] }],
+      tools: [{ name: 'ping', description: 'Ping', method: 'GET', path: '/ping', params: [] }],
       createdAt: now,
       updatedAt: now,
     };
@@ -310,7 +420,7 @@ describe('executeApiTool (stubbed fetch + injectable DNS)', () => {
   });
 
   it('args: missing required and bad coercion are model-readable errors', async () => {
-    const { uow, service } = await setup([{ host: 'api.weather.example.com' }]);
+    const { uow, service } = await setup();
     const miss = await executeApiTool(
       { uow, credentialEncryptionKey: KEY },
       service,

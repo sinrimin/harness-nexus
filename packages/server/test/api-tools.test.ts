@@ -73,15 +73,8 @@ beforeAll(async () => {
   adminJwt = await register('atadmin', 'admin');
   credJwt = ownerJwt;
 
-  // Save-time host validation needs the demo host allowlisted up front (the
-  // admin-allowlist test below REPLACES this list, so entries there must be
-  // self-sufficient).
-  await app.inject({
-    method: 'PUT',
-    url: '/api/settings/api-tool-allowlist',
-    headers: auth(adminJwt),
-    payload: { entries: [{ host: 'api.weather.example.com' }] },
-  });
+  // Deny-mode with the demo host whitelisted: later creates expect the guard
+  // to PASS for this host and 409 for others (tests flip the mode as needed).
 
   // A visible credential for the auth-block checks.
   await app.inject({
@@ -97,7 +90,7 @@ afterAll(async () => {
 });
 
 describe('API tool services (#80 slice 1)', () => {
-  it('#85: the default outbound policy is open — an unlisted external host saves fine', async () => {
+  it('#85: the default outbound policy is allow — an unlisted external host saves fine', async () => {
     const res = await app.inject({
       method: 'POST',
       url: '/api/api-tools',
@@ -123,7 +116,8 @@ describe('API tool services (#80 slice 1)', () => {
       headers: auth(adminJwt),
     });
     expect(pol.statusCode).toBe(200);
-    expect(pol.json().outbound).toBe('open');
+    expect(pol.json().mode).toBe('allow');
+    expect(pol.json().rules).toEqual({ external: [], internal: [] });
     await app.inject({
       method: 'DELETE',
       url: `/api/api-tools/${res.json().service.id}`,
@@ -400,14 +394,14 @@ describe('API tool services (#80 slice 1)', () => {
     expect(listed.some((s) => s.id === created.id)).toBe(false);
   });
 
-  it('the allowlist is admin-managed (default-deny: empty until set)', async () => {
+  it('the outbound policy is admin-managed (mode + split rule lists)', async () => {
     expect(
       (
         await app.inject({
           method: 'PUT',
-          url: '/api/settings/api-tool-allowlist',
+          url: '/api/settings/api-tool-outbound',
           headers: auth(ownerJwt),
-          payload: { entries: [{ host: 'api.weather.example.com' }] },
+          payload: { mode: 'deny', rules: { external: [], internal: [] } },
         })
       ).statusCode,
     ).toBe(403);
@@ -415,31 +409,45 @@ describe('API tool services (#80 slice 1)', () => {
       (
         await app.inject({
           method: 'PUT',
-          url: '/api/settings/api-tool-allowlist',
+          url: '/api/settings/api-tool-outbound',
           headers: auth(adminJwt),
-          payload: { entries: [{ host: 'bad host name' }] },
+          payload: { mode: 'deny', rules: { external: ['bad host name!'], internal: [] } },
         })
       ).statusCode,
     ).toBe(400);
 
     const put = await app.inject({
       method: 'PUT',
-      url: '/api/settings/api-tool-allowlist',
+      url: '/api/settings/api-tool-outbound',
       headers: auth(adminJwt),
       payload: {
-        entries: [{ host: 'api.weather.example.com' }, { host: '*.internal.corp', internal: true }],
+        mode: 'deny',
+        rules: {
+          external: ['api.weather.example.com'],
+          internal: ['*.internal.corp', '10.0.0.0/8'],
+        },
       },
     });
     expect(put.statusCode).toBe(200);
     const got = (
       await app.inject({
         method: 'GET',
-        url: '/api/settings/api-tool-allowlist',
+        url: '/api/settings/api-tool-outbound',
         headers: auth(adminJwt),
       })
-    ).json().entries as { host: string; internal?: boolean }[];
-    expect(got).toHaveLength(2);
-    expect(got[1]).toEqual({ host: '*.internal.corp', internal: true });
+    ).json();
+    expect(got.mode).toBe('deny');
+    expect(got.rules).toEqual({
+      external: ['api.weather.example.com'],
+      internal: ['*.internal.corp', '10.0.0.0/8'],
+    });
+    // Back to the allow default so later tests create freely.
+    await app.inject({
+      method: 'PUT',
+      url: '/api/settings/api-tool-outbound',
+      headers: auth(adminJwt),
+      payload: { mode: 'allow', rules: { external: [], internal: [] } },
+    });
   });
 
   it('probe: what the model would see — success, and the deny arm', async () => {
@@ -457,12 +465,6 @@ describe('API tool services (#80 slice 1)', () => {
     await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', () => resolve()));
     const port = (server.address() as { port: number }).port;
     try {
-      await app.inject({
-        method: 'PUT',
-        url: '/api/settings/api-tool-allowlist',
-        headers: auth(adminJwt),
-        payload: { entries: [{ host: '127.0.0.1', internal: true }] },
-      });
       const created = (
         await app.inject({
           method: 'POST',
@@ -500,14 +502,17 @@ describe('API tool services (#80 slice 1)', () => {
       await new Promise<void>((resolve) => server.close(() => resolve()));
     }
 
-    // Deny arm moved to SAVE time: a host not on the allowlist can no longer
-    // become a service at all (runtime denial itself is covered by
-    // api-tools-runtime.test.ts). #85: only in restricted mode.
+    // Deny arm at SAVE time: under deny-mode a host matching no name rule in
+    // either list cannot become a service at all (runtime denial itself is
+    // covered by api-tools-runtime.test.ts).
     const flipped = await app.inject({
       method: 'PUT',
       url: '/api/settings/api-tool-outbound',
       headers: auth(adminJwt),
-      payload: { outbound: 'restricted' },
+      payload: {
+        mode: 'deny',
+        rules: { external: ['api.weather.example.com'], internal: [] },
+      },
     });
     expect(flipped.statusCode).toBe(200);
     const denied = await app.inject({
@@ -519,14 +524,14 @@ describe('API tool services (#80 slice 1)', () => {
       },
     });
     expect(denied.statusCode).toBe(409);
-    expect(denied.json().error).toBe('API_TOOL_HOST_NOT_ALLOWLISTED');
+    expect(denied.json().error).toBe('API_TOOL_HOST_NOT_ALLOWED');
     expect(denied.json().message).toContain('api.other.example.com');
-    // Back to open — later app state stays default-shaped.
+    // Back to allow — later app state stays default-shaped.
     await app.inject({
       method: 'PUT',
       url: '/api/settings/api-tool-outbound',
       headers: auth(adminJwt),
-      payload: { outbound: 'open' },
+      payload: { mode: 'allow', rules: { external: [], internal: [] } },
     });
   });
 });
