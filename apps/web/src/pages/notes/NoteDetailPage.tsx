@@ -15,6 +15,7 @@ import {
   MoreHorizontalIcon,
   PencilIcon,
   RotateCcwIcon,
+  SparklesIcon,
   TrashIcon,
 } from 'lucide-react';
 import type { Note, NoteAnnotation } from '@harness-nexus/sdk';
@@ -69,6 +70,8 @@ export function NoteDetailPage() {
   const [busy, setBusy] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<NoteAnnotation | null>(null);
   const [confirmDeleteNote, setConfirmDeleteNote] = useState(false);
+  const [confirmRevise, setConfirmRevise] = useState(false);
+  const [revising, setRevising] = useState(false);
 
   const paneRef = useRef<HTMLDivElement>(null);
   const bodyRef = useRef<HTMLDivElement>(null);
@@ -215,6 +218,35 @@ export function NoteDetailPage() {
     }
   }
 
+  /**
+   * #88 revision loop — every open annotation + the body go to the model
+   * server-side; the rewritten markdown lands as the next immutable version
+   * and the addressed annotations flip to done. Long-running: the button
+   * holds a busy state through the whole LLM turn.
+   */
+  async function revise(): Promise<void> {
+    if (note === null || id === undefined) return;
+    setRevising(true);
+    try {
+      const res = await withAuthGuard(() => api.reviseNote(id), logout);
+      setNote(res.note);
+      const annRes = await withAuthGuard(() => api.listNoteAnnotations(id), logout);
+      setAnnotations(annRes.annotations);
+      toast.success(t('notes.reviseDone', { version: res.note.contentVersion }));
+    } catch (e) {
+      toast.error(
+        e instanceof HarnessNexusError && e.code === 'NOTE_AI_NO_PROVIDER'
+          ? t('notes.aiNoProvider')
+          : e instanceof HarnessNexusError && e.code === 'NOTE_NO_OPEN_ANNOTATIONS'
+            ? t('notes.reviseNeedOpen')
+            : t('notes.reviseFailed'),
+      );
+    } finally {
+      setRevising(false);
+      setConfirmRevise(false);
+    }
+  }
+
   async function removeNote(): Promise<void> {
     if (note === null) return;
     try {
@@ -260,6 +292,14 @@ export function NoteDetailPage() {
       {isOwner ? (
         <PageSlot slot="actions">
           <div className="flex items-center gap-2">
+            <Button
+              onClick={() => setConfirmRevise(true)}
+              disabled={revising || openCount === 0}
+              title={openCount === 0 ? t('notes.reviseNeedOpen') : undefined}
+            >
+              <SparklesIcon className={revising ? 'size-4 animate-pulse' : 'size-4'} />
+              {revising ? t('notes.reviseBusy') : t('notes.revise')}
+            </Button>
             <Button variant="outline" onClick={() => navigate(`/notes/${note.id}/edit`)}>
               <PencilIcon className="size-4" />
               {t('notes.edit')}
@@ -462,6 +502,23 @@ export function NoteDetailPage() {
           impact={[{ label: 'annotation', value: pendingDelete.comment }]}
           actionLabel={t('notes.delete')}
           onConfirm={() => void removeAnnotation()}
+        />
+      ) : null}
+
+      {confirmRevise ? (
+        <ConfirmDialog
+          open
+          onOpenChange={(o) => {
+            if (!o && !revising) setConfirmRevise(false);
+          }}
+          title={t('notes.revise')}
+          consequence={t('notes.reviseConsequence', {
+            version: (note?.contentVersion ?? 1) + 1,
+          })}
+          impact={[{ label: 'note', value: note?.title ?? '' }]}
+          actionLabel={t('notes.revise')}
+          busy={revising}
+          onConfirm={() => void revise()}
         />
       ) : null}
 

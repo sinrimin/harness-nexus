@@ -65,9 +65,12 @@ export interface RunningTurn {
   done: Promise<void>;
 }
 
+/** What resolveTurnModel actually reads — in-process one-shot callers (#88) pass exactly this. */
+export type TurnModelDeps = Pick<AssistantRunnerDeps, 'uow' | 'credentialEncryptionKey'>;
+
 /** Resolve the provider row + registry entry the (possibly rebound) config points at. */
 export async function resolveTurnModel(
-  deps: AssistantRunnerDeps,
+  deps: TurnModelDeps,
   ownerId: string,
   provider: LlmProvider,
   modelId: string,

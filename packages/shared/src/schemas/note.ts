@@ -109,6 +109,16 @@ export const updateCategorySchema = z.object({
   name: z.string().min(1).max(64).optional(),
 });
 
+/**
+ * #88 AI helpers — one-shot LLM passes over note content (the capture
+ * dialog's summary seed, the editor's 生成 button, the revision loop).
+ * Content cap keeps a single paste from becoming an unbounded prompt.
+ */
+export const summarizeNoteSchema = z.object({
+  title: z.string().min(1).max(200).optional(),
+  contentMd: z.string().min(1).max(200_000),
+});
+
 export type CreateNoteInput = z.infer<typeof createNoteSchema>;
 export type UpdateNoteInput = z.infer<typeof updateNoteSchema>;
 export type ListNotesQuery = z.infer<typeof listNotesQuerySchema>;
@@ -117,3 +127,4 @@ export type CreateAnnotationInput = z.infer<typeof createAnnotationSchema>;
 export type UpdateAnnotationInput = z.infer<typeof updateAnnotationSchema>;
 export type CreateCategoryInput = z.infer<typeof createCategorySchema>;
 export type UpdateCategoryInput = z.infer<typeof updateCategorySchema>;
+export type SummarizeNoteInput = z.infer<typeof summarizeNoteSchema>;

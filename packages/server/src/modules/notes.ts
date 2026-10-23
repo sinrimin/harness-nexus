@@ -10,6 +10,7 @@ import {
   createNoteSchema,
   listNotesQuerySchema,
   listSquareQuerySchema,
+  summarizeNoteSchema,
   updateAnnotationSchema,
   updateCategorySchema,
   updateNoteSchema,
@@ -32,6 +33,7 @@ import {
   updateCategory,
   updateNote,
 } from '../services/notes.js';
+import { reviseNoteByAnnotations, summarizeNoteContent } from '../services/notes-ai.js';
 
 /**
  * Notes routes (#88) — thin HTTP adapters over the notes service. Every
@@ -54,6 +56,27 @@ export async function notesRoutes(app: FastifyInstance): Promise<void> {
     const query = listSquareQuerySchema.parse(req.query);
     const notes = await listSquare(deps(), principalOf(req), query);
     return { notes };
+  });
+
+  // ---- POST /api/notes/summarize — one-shot LLM summary (#88 AI pass) ----
+  app.post('/api/notes/summarize', guard, async (req) => {
+    const input = summarizeNoteSchema.parse(req.body);
+    const result = await summarizeNoteContent(
+      { uow: app.uow, credentialEncryptionKey: app.credentialEncryptionKey },
+      principalOf(req),
+      input,
+    );
+    return result;
+  });
+
+  // ---- POST /api/notes/:id/revise — apply open annotations, mint next version ----
+  app.post<{ Params: { id: string } }>('/api/notes/:id/revise', guard, async (req) => {
+    const result = await reviseNoteByAnnotations(
+      { uow: app.uow, credentialEncryptionKey: app.credentialEncryptionKey },
+      principalOf(req),
+      req.params.id,
+    );
+    return result;
   });
 
   // ---- POST /api/notes ----

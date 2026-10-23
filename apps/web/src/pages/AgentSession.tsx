@@ -42,6 +42,7 @@ import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { Dialog as DialogPrimitive } from 'radix-ui';
 import { ChatStream } from '@/components/chat/chat-stream.js';
+import { CaptureNoteDialog } from '@/pages/notes/CaptureNoteDialog';
 import { WelcomePane, type WelcomeCard } from '@/components/chat/welcome-pane.js';
 import { ChannelTabs } from '@/components/chat/channel-tabs.js';
 import { EndSwitcher } from '@/components/chat/end-switcher.js';
@@ -486,6 +487,8 @@ export function AgentSessionPage() {
   const { logout } = useAuth();
   const { t, lang } = useI18n();
   const [agent, setAgent] = useState<AgentInstanceView | null>(null);
+  // #88 — the step markdown awaiting 保存为笔记 (null = dialog closed).
+  const [capture, setCapture] = useState<string | null>(null);
   const [machine, setMachine] = useState<AgentInstanceMachineView | null>(null);
   // Phone-only drawer holding the same rail (P5) — the rail is `hidden md:flex`
   // and used to have no narrow-screen alternative at all.
@@ -1297,9 +1300,17 @@ export function AgentSessionPage() {
               />
             ) : (
               <>
+                {capture !== null ? (
+                  <CaptureNoteDialog
+                    markdown={capture}
+                    sourceRef={`${agent?.name ?? 'agent'} · ${nativeSessionId?.slice(0, 8) ?? 'session'}`}
+                    onClose={() => setCapture(null)}
+                  />
+                ) : null}
                 <ChatStream
                   state={conversation}
                   cwd={currentCwd}
+                  onCaptureStep={setCapture}
                   onPermissionRespond={(requestId, optionId) =>
                     void respondPermission(requestId, optionId)
                   }

@@ -120,6 +120,20 @@ const en = {
   selectToAnnotate: 'Select text to annotate',
   annotationsHidden: 'Annotations are visible to the owner only',
   summaryLead: 'Summary',
+  // AI passes (#88) — capture, summary seed, revision loop.
+  aiSummarize: 'Generate with AI',
+  aiSummarizing: 'Generating…',
+  aiNoProvider: 'No LLM provider with a chat model is configured for your account.',
+  aiFailed: 'AI generation failed',
+  captureTitle: 'Save as note',
+  captureSaved: 'Saved to notes',
+  revise: 'Revise by annotations',
+  reviseConsequence:
+    'Every open annotation and its quote go to the AI, the rewritten body saves as the next immutable version ({version}), and those annotations are marked done.',
+  reviseBusy: 'Revising…',
+  reviseDone: 'Revised and saved as v{version}',
+  reviseFailed: 'Revision failed',
+  reviseNeedOpen: 'Select text to annotate first',
 };
 
 const zh: typeof en = {
@@ -228,6 +242,19 @@ const zh: typeof en = {
   selectToAnnotate: '划选正文即可添加批注',
   annotationsHidden: '批注仅对作者可见',
   summaryLead: '摘要',
+  aiSummarize: 'AI 生成',
+  aiSummarizing: '生成中…',
+  aiNoProvider: '你的账号还没有配置含聊天模型的 LLM 供应商。',
+  aiFailed: 'AI 生成失败',
+  captureTitle: '保存为笔记',
+  captureSaved: '已保存到笔记',
+  revise: '让 AI 按批注修订',
+  reviseConsequence:
+    '全部未处理批注与引文将交给 AI 重写正文，保存为新的不可变版本（v{version}）；这些批注将标记为已处理。',
+  reviseBusy: '修订中…',
+  reviseDone: '已修订并保存为 v{version}',
+  reviseFailed: '修订失败',
+  reviseNeedOpen: '先划词添加批注',
 };
 
 export const notesStrings = { en, zh };

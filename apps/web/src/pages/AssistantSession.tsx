@@ -31,6 +31,7 @@ import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { Dialog as DialogPrimitive } from 'radix-ui';
 import { ChatStream } from '@/components/chat/chat-stream.js';
+import { CaptureNoteDialog } from '@/pages/notes/CaptureNoteDialog';
 import { WelcomePane, type WelcomeCard } from '@/components/chat/welcome-pane.js';
 import { ChannelTabs } from '@/components/chat/channel-tabs.js';
 import { SessionRow } from '@/components/chat/session-row.js';
@@ -103,6 +104,8 @@ export function AssistantSessionPage() {
   const [phase, setPhase] = useState<Phase>('idle');
   const [error, setError] = useState<string | null>(null);
   const [draft, setDraft] = useState('');
+  // #88 — the step markdown awaiting 保存为笔记 (null = dialog closed).
+  const [capture, setCapture] = useState<string | null>(null);
   const [attachments, setAttachments] = useState<DraftAttachment[]>([]);
   /** #58-3 — the model registry (vision flags gate the composer's images). */
   const [providers, setProviders] = useState<LlmProviderView[] | null>(null);
@@ -723,6 +726,13 @@ export function AssistantSessionPage() {
               />
             ) : (
               <>
+                {capture !== null ? (
+                  <CaptureNoteDialog
+                    markdown={capture}
+                    sourceRef={`${assistant?.name ?? 'assistant'} · ${sessionId.slice(0, 8)}`}
+                    onClose={() => setCapture(null)}
+                  />
+                ) : null}
                 {error !== null && phase !== 'closed' ? (
                   <p className="text-destructive border-destructive/30 bg-destructive/5 border-b px-4 py-2 text-xs">
                     {error}
@@ -732,6 +742,7 @@ export function AssistantSessionPage() {
                 <ChatStream
                   state={conversation}
                   cwd={undefined}
+                  onCaptureStep={setCapture}
                   onPermissionRespond={(requestId, optionId) => {
                     void emitWithAck('assistant:permission.respond', {
                       sessionId,

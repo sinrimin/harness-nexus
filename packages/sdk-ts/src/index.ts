@@ -988,6 +988,26 @@ export class HarnessNexusClient {
     await this.request('DELETE', `/api/notes/categories/${id}`);
   }
 
+  /** #88 AI pass — one-shot LLM summary of (possibly unsaved) note content. */
+  async summarizeNote(input: {
+    title?: string;
+    contentMd: string;
+  }): Promise<{ summary: string }> {
+    return this.request('POST', '/api/notes/summarize', input);
+  }
+
+  /**
+   * #88 revision loop — every open annotation + the current body go to the
+   * model; the rewritten markdown saves as the next immutable version and
+   * the addressed annotations flip to done. Long-running by LLM standards.
+   */
+  async reviseNote(id: string): Promise<{
+    note: Note;
+    resolved: NoteAnnotation[];
+  }> {
+    return this.request('POST', `/api/notes/${id}/revise`);
+  }
+
   // ---- settings ----
   async getRegistration(): Promise<{ allowRegistration: boolean }> {
     return this.request('GET', '/api/settings/registration', undefined, true);

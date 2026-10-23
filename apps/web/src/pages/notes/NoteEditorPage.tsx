@@ -5,7 +5,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { toast } from 'sonner';
-import { CheckIcon, MessageSquareIcon, PencilIcon } from 'lucide-react';
+import { CheckIcon, MessageSquareIcon, PencilIcon, SparklesIcon } from 'lucide-react';
 import type { Note, NoteCategory, NoteStatus, NoteVisibility } from '@harness-nexus/sdk';
 import { HarnessNexusError } from '@harness-nexus/sdk';
 import { api } from '@/api';
@@ -46,6 +46,7 @@ export function NoteEditorPage() {
   const [categories, setCategories] = useState<NoteCategory[] | null>(null);
   const [mode, setMode] = useState<'edit' | 'preview'>('edit');
   const [busy, setBusy] = useState(false);
+  const [seeding, setSeeding] = useState(false);
   const [loaded, setLoaded] = useState(false);
 
   // Form state seeds from the note (or the empty default for a new note).
@@ -146,6 +147,31 @@ export function NoteEditorPage() {
     walk(null, 0);
     return out;
   }, [categories]);
+
+  /** #88 — one-shot AI pass over the current draft (server does the LLM call). */
+  async function seedSummary(): Promise<void> {
+    if (contentMd.trim() === '') return;
+    setSeeding(true);
+    try {
+      const res = await withAuthGuard(
+        () =>
+          api.summarizeNote({
+            ...(title.trim() !== '' ? { title: title.trim() } : {}),
+            contentMd,
+          }),
+        logout,
+      );
+      setSummary(res.summary);
+    } catch (e) {
+      toast.error(
+        e instanceof HarnessNexusError && e.code === 'NOTE_AI_NO_PROVIDER'
+          ? t('notes.aiNoProvider')
+          : t('notes.aiFailed'),
+      );
+    } finally {
+      setSeeding(false);
+    }
+  }
 
   async function save(): Promise<void> {
     if (title.trim() === '' || contentMd.trim() === '') return;
@@ -308,6 +334,17 @@ export function NoteEditorPage() {
                 label={t('notes.summaryLabel')}
                 htmlFor="note-summary"
                 hint={t('notes.summaryHint')}
+                aside={
+                  <button
+                    type="button"
+                    onClick={() => void seedSummary()}
+                    disabled={seeding || contentMd.trim() === ''}
+                    className="text-muted-foreground hover:text-foreground role-data-sm inline-flex items-center gap-1 rounded border px-1.5 py-0.5 transition-colors disabled:opacity-50"
+                  >
+                    <SparklesIcon className="size-3" />
+                    {seeding ? t('notes.aiSummarizing') : t('notes.aiSummarize')}
+                  </button>
+                }
               >
                 <Textarea
                   id="note-summary"
