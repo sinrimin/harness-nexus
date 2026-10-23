@@ -39,6 +39,13 @@ import type {
   SystemSettings,
   SystemSettingsRepository,
   McpServerRepository,
+  Note,
+  NoteAnnotation,
+  NoteAnnotationRepository,
+  NoteCategory,
+  NoteCategoryRepository,
+  NoteRepository,
+  NoteVersion,
   CredentialRepository,
   ProfileRepository,
   ResourceRepository,
@@ -1602,4 +1609,331 @@ export function sqliteAssistantRepository(db: Database): AssistantRepository {
       }));
     },
   };
+}
+
+// ---- #88 — notes -----------------------------------------------------------------
+
+interface NoteRow {
+  id: string;
+  owner_id: string;
+  title: string;
+  summary: string | null;
+  content_md: string;
+  content_version: number;
+  category_id: string | null;
+  tags: string;
+  status: string;
+  visibility: string;
+  source: string;
+  created_at: string;
+  updated_at: string;
+}
+
+function mapNote(r: NoteRow): Note {
+  return {
+    id: r.id,
+    ownerId: r.owner_id,
+    title: r.title,
+    summary: r.summary,
+    contentMd: r.content_md,
+    contentVersion: r.content_version,
+    categoryId: r.category_id,
+    tags: JSON.parse(r.tags) as string[],
+    status: r.status as Note['status'],
+    visibility: r.visibility as Note['visibility'],
+    source: JSON.parse(r.source) as Note['source'],
+    createdAt: r.created_at,
+    updatedAt: r.updated_at,
+  };
+}
+
+export function sqliteNoteRepository(db: Database): NoteRepository {
+  const repo: NoteRepository = {
+    async findById(id) {
+      const row = db.prepare('SELECT * FROM notes WHERE id = ?').get(id) as NoteRow | undefined;
+      return row ? mapNote(row) : null;
+    },
+    async list(filter) {
+      const conds: string[] = [];
+      const args: (string | number | null)[] = [];
+      if (filter?.ownerId !== undefined) {
+        conds.push('owner_id = ?');
+        args.push(filter.ownerId);
+      }
+      if (filter?.categoryId !== undefined) {
+        conds.push('category_id = ?');
+        args.push(filter.categoryId);
+      }
+      if (filter?.status !== undefined) {
+        conds.push('status = ?');
+        args.push(filter.status);
+      }
+      if (filter?.visibility !== undefined) {
+        conds.push('visibility = ?');
+        args.push(filter.visibility);
+      }
+      if (filter?.tag !== undefined) {
+        conds.push('EXISTS (SELECT 1 FROM json_each(notes.tags) je WHERE je.value = ?)');
+        args.push(filter.tag);
+      }
+      if (filter?.search !== undefined) {
+        const like = `%${filter.search.toLowerCase()}%`;
+        conds.push(
+          '(LOWER(title) LIKE ? OR LOWER(COALESCE(summary, \'\')) LIKE ? OR LOWER(content_md) LIKE ?)',
+        );
+        args.push(like, like, like);
+      }
+      const where = conds.length > 0 ? 'WHERE ' + conds.join(' AND ') : '';
+      const limit = filter?.limit ?? -1;
+      const offset = filter?.offset ?? 0;
+      const rows = db
+        .prepare(
+          'SELECT * FROM notes ' + where + ' ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?',
+        )
+        .all(...args, limit, offset) as NoteRow[];
+      return rows.map(mapNote);
+    },
+    async listPublic(filter) {
+      const conds = ['visibility = ?'];
+      const args: (string | number)[] = ['public'];
+      if (filter?.tag !== undefined) {
+        conds.push('EXISTS (SELECT 1 FROM json_each(notes.tags) je WHERE je.value = ?)');
+        args.push(filter.tag);
+      }
+      if (filter?.search !== undefined) {
+        const like = `%${filter.search.toLowerCase()}%`;
+        conds.push(
+          '(LOWER(title) LIKE ? OR LOWER(COALESCE(summary, \'\')) LIKE ? OR LOWER(content_md) LIKE ?)',
+        );
+        args.push(like, like, like);
+      }
+      const limit = filter?.limit ?? -1;
+      const offset = filter?.offset ?? 0;
+      const rows = db
+        .prepare(
+          'SELECT * FROM notes WHERE ' +
+            conds.join(' AND ') +
+            ' ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?',
+        )
+        .all(...args, limit, offset) as NoteRow[];
+      return rows.map(mapNote);
+    },
+    async save(note) {
+      db.prepare(
+        `INSERT INTO notes
+         (id, owner_id, title, summary, content_md, content_version, category_id, tags,
+          status, visibility, source, created_at, updated_at)
+         VALUES (@id, @owner_id, @title, @summary, @content_md, @content_version, @category_id,
+                 @tags, @status, @visibility, @source, @created_at, @updated_at)
+         ON CONFLICT(id) DO UPDATE SET
+           title = excluded.title,
+           summary = excluded.summary,
+           content_md = excluded.content_md,
+           content_version = excluded.content_version,
+           category_id = excluded.category_id,
+           tags = excluded.tags,
+           status = excluded.status,
+           visibility = excluded.visibility,
+           source = excluded.source,
+           updated_at = excluded.updated_at`,
+      ).run({
+        id: note.id,
+        owner_id: note.ownerId,
+        title: note.title,
+        summary: note.summary,
+        content_md: note.contentMd,
+        content_version: note.contentVersion,
+        category_id: note.categoryId,
+        tags: JSON.stringify(note.tags),
+        status: note.status,
+        visibility: note.visibility,
+        source: JSON.stringify(note.source),
+        created_at: note.createdAt,
+        updated_at: note.updatedAt,
+      });
+      return note;
+    },
+    async saveVersion(version: NoteVersion) {
+      db.prepare(
+        `INSERT INTO note_versions (note_id, version, content_md, created_at)
+         VALUES (@note_id, @version, @content_md, @created_at)
+         ON CONFLICT(note_id, version) DO NOTHING`,
+      ).run({
+        note_id: version.noteId,
+        version: version.version,
+        content_md: version.contentMd,
+        created_at: version.createdAt,
+      });
+    },
+    async findVersion(noteId, version) {
+      const row = db
+        .prepare('SELECT * FROM note_versions WHERE note_id = ? AND version = ?')
+        .get(noteId, version) as
+        | { note_id: string; version: number; content_md: string; created_at: string }
+        | undefined;
+      return row
+        ? { noteId: row.note_id, version: row.version, contentMd: row.content_md, createdAt: row.created_at }
+        : null;
+    },
+    async delete(id) {
+      db.prepare('DELETE FROM notes WHERE id = ?').run(id);
+    },
+  };
+  return repo;
+}
+
+interface NoteAnnotationRow {
+  id: string;
+  note_id: string;
+  note_version: number;
+  quote: string;
+  context_prefix: string;
+  context_suffix: string;
+  comment: string;
+  state: string;
+  author_id: string;
+  created_at: string;
+  resolved_at: string | null;
+}
+
+function mapNoteAnnotation(r: NoteAnnotationRow): NoteAnnotation {
+  return {
+    id: r.id,
+    noteId: r.note_id,
+    noteVersion: r.note_version,
+    quote: r.quote,
+    contextPrefix: r.context_prefix,
+    contextSuffix: r.context_suffix,
+    comment: r.comment,
+    state: r.state === 'done' ? 'done' : 'open',
+    authorId: r.author_id,
+    createdAt: r.created_at,
+    resolvedAt: r.resolved_at,
+  };
+}
+
+export function sqliteNoteAnnotationRepository(db: Database): NoteAnnotationRepository {
+  const repo: NoteAnnotationRepository = {
+    async findById(id) {
+      const row = db
+        .prepare('SELECT * FROM note_annotations WHERE id = ?')
+        .get(id) as NoteAnnotationRow | undefined;
+      return row ? mapNoteAnnotation(row) : null;
+    },
+    async listByNote(noteId) {
+      const rows = db
+        .prepare('SELECT * FROM note_annotations WHERE note_id = ? ORDER BY created_at, id')
+        .all(noteId) as NoteAnnotationRow[];
+      return rows.map(mapNoteAnnotation);
+    },
+    async save(annotation) {
+      db.prepare(
+        `INSERT INTO note_annotations
+         (id, note_id, note_version, quote, context_prefix, context_suffix, comment, state,
+          author_id, created_at, resolved_at)
+         VALUES (@id, @note_id, @note_version, @quote, @context_prefix, @context_suffix,
+                 @comment, @state, @author_id, @created_at, @resolved_at)
+         ON CONFLICT(id) DO UPDATE SET
+           quote = excluded.quote,
+           context_prefix = excluded.context_prefix,
+           context_suffix = excluded.context_suffix,
+           comment = excluded.comment,
+           state = excluded.state,
+           resolved_at = excluded.resolved_at`,
+      ).run({
+        id: annotation.id,
+        note_id: annotation.noteId,
+        note_version: annotation.noteVersion,
+        quote: annotation.quote,
+        context_prefix: annotation.contextPrefix,
+        context_suffix: annotation.contextSuffix,
+        comment: annotation.comment,
+        state: annotation.state,
+        author_id: annotation.authorId,
+        created_at: annotation.createdAt,
+        resolved_at: annotation.resolvedAt,
+      });
+      return annotation;
+    },
+    async delete(id) {
+      db.prepare('DELETE FROM note_annotations WHERE id = ?').run(id);
+    },
+  };
+  return repo;
+}
+
+interface NoteCategoryRow {
+  id: string;
+  owner_id: string;
+  parent_id: string | null;
+  name: string;
+  created_at: string;
+}
+
+function mapNoteCategory(r: NoteCategoryRow): NoteCategory {
+  return {
+    id: r.id,
+    ownerId: r.owner_id,
+    parentId: r.parent_id,
+    name: r.name,
+    createdAt: r.created_at,
+  };
+}
+
+export function sqliteNoteCategoryRepository(db: Database): NoteCategoryRepository {
+  const repo: NoteCategoryRepository = {
+    async findById(id) {
+      const row = db
+        .prepare('SELECT * FROM note_categories WHERE id = ?')
+        .get(id) as NoteCategoryRow | undefined;
+      return row ? mapNoteCategory(row) : null;
+    },
+    async listByOwner(ownerId) {
+      const rows = db
+        .prepare('SELECT * FROM note_categories WHERE owner_id = ? ORDER BY created_at, id')
+        .all(ownerId) as NoteCategoryRow[];
+      return rows.map(mapNoteCategory);
+    },
+    async findByParentAndName(ownerId, parentId, name) {
+      const row = db
+        .prepare(
+          'SELECT * FROM note_categories WHERE owner_id = ? AND parent_id IS ? AND name = ?',
+        )
+        .get(ownerId, parentId, name) as NoteCategoryRow | undefined;
+      return row ? mapNoteCategory(row) : null;
+    },
+    async save(category) {
+      db.prepare(
+        `INSERT INTO note_categories (id, owner_id, parent_id, name, created_at)
+         VALUES (@id, @owner_id, @parent_id, @name, @created_at)
+         ON CONFLICT(id) DO UPDATE SET
+           parent_id = excluded.parent_id,
+           name = excluded.name`,
+      ).run({
+        id: category.id,
+        owner_id: category.ownerId,
+        parent_id: category.parentId,
+        name: category.name,
+        created_at: category.createdAt,
+      });
+      return category;
+    },
+    async delete(id) {
+      // Port contract: children fall to the deleted node's parent, its notes
+      // fall to uncategorized — one transaction, no orphans.
+      const node = db
+        .prepare('SELECT * FROM note_categories WHERE id = ?')
+        .get(id) as NoteCategoryRow | undefined;
+      if (!node) return;
+      db.transaction(() => {
+        db.prepare('UPDATE note_categories SET parent_id = ? WHERE parent_id = ?').run(
+          node.parent_id,
+          id,
+        );
+        db.prepare('UPDATE notes SET category_id = NULL WHERE category_id = ?').run(id);
+        db.prepare('DELETE FROM note_categories WHERE id = ?').run(id);
+      })();
+    },
+  };
+  return repo;
 }
