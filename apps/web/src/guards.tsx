@@ -6,7 +6,6 @@ import type { ReactNode } from 'react';
 import { Navigate, useLocation, Link } from 'react-router-dom';
 import { useAuth } from './auth.js';
 import { useI18n } from '@/i18n';
-import { AppShell } from '@/components/app-shell.js';
 import { EmptyState, Panel } from '@/components/kit';
 import { Button } from '@/components/ui/button.js';
 
@@ -18,7 +17,9 @@ import { Button } from '@/components/ui/button.js';
  * renders nothing to avoid a login flash.
  *
  * `<RequireAdmin>` — renders a 403 view when the current user is not an admin.
- * Sits inside <RequireAuth>, so it can assume a user exists.
+ * Sits inside <RequireAuth> AND inside the routes' ShellLayout: the shell is
+ * already around it, so the 403 is CONTENT (a panel) and must never mount a
+ * second AppShell — a nested console was the account-switch bug.
  */
 export function RequireAuth({ children }: { children: ReactNode }) {
   const { user, loading } = useAuth();
@@ -36,21 +37,19 @@ export function RequireAdmin({ children }: { children: ReactNode }) {
   const { t } = useI18n();
   if (user?.role !== 'admin') {
     return (
-      <AppShell>
-        {/* A 403 is a dead end, not a panel: the kit's empty state (the comp's
-            lamp sockets), with the way out as its action. */}
-        <Panel className="mx-auto mt-12 max-w-md">
-          <EmptyState
-            title={t('app.adminsOnlyTitle')}
-            hint={t('app.adminsOnlyBody')}
-            action={
-              <Button asChild variant="outline" size="sm">
-                <Link to="/">{t('app.backToOverview')}</Link>
-              </Button>
-            }
-          />
-        </Panel>
-      </AppShell>
+      // A 403 is a dead end, not a panel: the kit's empty state (the comp's
+      // lamp sockets), with the way out as its action.
+      <Panel className="mx-auto mt-12 max-w-md">
+        <EmptyState
+          title={t('app.adminsOnlyTitle')}
+          hint={t('app.adminsOnlyBody')}
+          action={
+            <Button asChild variant="outline" size="sm">
+              <Link to="/">{t('app.backToOverview')}</Link>
+            </Button>
+          }
+        />
+      </Panel>
     );
   }
   return <>{children}</>;
