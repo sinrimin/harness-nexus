@@ -528,6 +528,22 @@ ALTER TABLE assistant_sessions ADD COLUMN permission_mode TEXT;
 ALTER TABLE system_settings ADD COLUMN api_tool_outbound TEXT NOT NULL DEFAULT 'open';
     `,
   },
+  {
+    version: 29,
+    description:
+      'issue #85 (revision) — outbound policy as default action + split rule lists: api_tool_outbound becomes allow|deny, api_tool_outbound_rules {external,internal} (host/wildcard/IP/CIDR) replaces api_tool_allowlist (entries split by their internal flag)',
+    sql: `
+ALTER TABLE system_settings ADD COLUMN api_tool_outbound_rules TEXT;
+UPDATE system_settings AS t SET api_tool_outbound_rules = COALESCE((
+  SELECT json_object(
+    'external', COALESCE(json_group_array(json_extract(j.value, '$.host')) FILTER (WHERE COALESCE(json_extract(j.value, '$.internal'), 0) = 0), json('[]')),
+    'internal', COALESCE(json_group_array(json_extract(j.value, '$.host')) FILTER (WHERE json_extract(j.value, '$.internal') = 1), json('[]'))
+  ) FROM json_each(COALESCE(t.api_tool_allowlist, '[]')) j
+), '{}');
+UPDATE system_settings SET api_tool_outbound = CASE WHEN api_tool_outbound = 'restricted' THEN 'deny' ELSE 'allow' END;
+ALTER TABLE system_settings DROP COLUMN api_tool_allowlist;
+    `,
+  },
 ] as const;
 
 /**

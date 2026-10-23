@@ -4,11 +4,9 @@
 
 import type { FastifyInstance } from 'fastify';
 import {
-  updateApiToolAllowlistSchema,
   updateApiToolOutboundSchema,
   updateImageRetentionSchema,
   updateRegistrationSchema,
-  type UpdateApiToolAllowlistInput,
   type UpdateApiToolOutboundInput,
   type UpdateImageRetentionInput,
   type UpdateRegistrationInput,
@@ -16,7 +14,6 @@ import {
 import { principalOf } from './principal.js';
 import {
   getSystemSettings,
-  updateApiToolAllowlist,
   updateApiToolOutbound,
   updateImageRetentionSettings,
   updateRegistrationSettings,
@@ -48,28 +45,19 @@ export async function settingsRoutes(app: FastifyInstance): Promise<void> {
     return { imageRetentionDays: settings.imageRetentionDays };
   });
 
-  // #80 — the API tool runtime's default-deny host allowlist (admin-managed;
-  // empty = no outbound API tool traffic).
-  app.get('/api/settings/api-tool-allowlist', { preHandler: [app.requireAdmin] }, async () => {
-    const settings = await getSystemSettings({ uow: app.uow });
-    return { entries: settings.apiToolAllowlist };
-  });
-
-  app.put('/api/settings/api-tool-allowlist', { preHandler: [app.requireAdmin] }, async (req) => {
-    const input = updateApiToolAllowlistSchema.parse(req.body) as UpdateApiToolAllowlistInput;
-    const settings = await updateApiToolAllowlist({ uow: app.uow }, principalOf(req), input);
-    return { entries: settings.apiToolAllowlist };
-  });
-
-  // #85 — the outbound host policy switch (admin-only both ways).
+  // #85 — the API tool outbound policy (default action + split rule lists),
+  // admin-only both ways; one PUT sets mode and lists atomically.
   app.get('/api/settings/api-tool-outbound', { preHandler: [app.requireAdmin] }, async () => {
     const settings = await getSystemSettings({ uow: app.uow });
-    return { outbound: settings.apiToolOutbound ?? 'open' };
+    return {
+      mode: settings.apiToolOutbound ?? 'allow',
+      rules: settings.apiToolOutboundRules ?? { external: [], internal: [] },
+    };
   });
 
   app.put('/api/settings/api-tool-outbound', { preHandler: [app.requireAdmin] }, async (req) => {
     const input = updateApiToolOutboundSchema.parse(req.body) as UpdateApiToolOutboundInput;
     const settings = await updateApiToolOutbound({ uow: app.uow }, principalOf(req), input);
-    return { outbound: settings.apiToolOutbound };
+    return { mode: settings.apiToolOutbound, rules: settings.apiToolOutboundRules };
   });
 }

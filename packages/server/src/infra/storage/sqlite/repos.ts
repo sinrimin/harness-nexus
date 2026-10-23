@@ -72,9 +72,9 @@ interface SettingsRow {
   id: number;
   allow_registration: number;
   image_retention_days: number;
-  api_tool_allowlist: string | null;
-  updated_at: string;
   api_tool_outbound: string | null;
+  api_tool_outbound_rules: string | null;
+  updated_at: string;
 }
 interface CredentialRow {
   id: string;
@@ -338,13 +338,13 @@ export function sqliteSettingsRepository(db: Database): SystemSettingsRepository
     if (existing) return existing;
     const now = new Date().toISOString();
     db.prepare(
-      `INSERT INTO system_settings (id, allow_registration, image_retention_days, api_tool_allowlist, api_tool_outbound, updated_at)
+      `INSERT INTO system_settings (id, allow_registration, image_retention_days, api_tool_outbound, api_tool_outbound_rules, updated_at)
        VALUES (1, ?, ?, ?, ?, ?)`,
     ).run(
       DEFAULTS.allowRegistration ? 1 : 0,
       DEFAULTS.imageRetentionDays,
-      JSON.stringify(DEFAULTS.apiToolAllowlist),
       DEFAULTS.apiToolOutbound,
+      JSON.stringify(DEFAULTS.apiToolOutboundRules),
       now,
     );
     return db.prepare('SELECT * FROM system_settings WHERE id = 1').get() as SettingsRow;
@@ -356,12 +356,12 @@ export function sqliteSettingsRepository(db: Database): SystemSettingsRepository
       return {
         allowRegistration: row.allow_registration === 1,
         imageRetentionDays: row.image_retention_days,
-        apiToolAllowlist:
-          row.api_tool_allowlist === null
-            ? []
-            : (JSON.parse(row.api_tool_allowlist) as SystemSettings['apiToolAllowlist']),
-        // #85 — pre-v28 rows (and any null) read as the open default.
-        apiToolOutbound: row.api_tool_outbound === 'restricted' ? 'restricted' : 'open',
+        // #85 — pre-v28 rows (and any null) read as the allow default.
+        apiToolOutbound: row.api_tool_outbound === 'deny' ? 'deny' : 'allow',
+        apiToolOutboundRules:
+          row.api_tool_outbound_rules === null || row.api_tool_outbound_rules === '{}'
+            ? { external: [], internal: [] }
+            : (JSON.parse(row.api_tool_outbound_rules) as SystemSettings['apiToolOutboundRules']),
         updatedAt: row.updated_at,
       };
     },
@@ -370,20 +370,20 @@ export function sqliteSettingsRepository(db: Database): SystemSettingsRepository
       const now = settings.updatedAt;
       db.prepare(
         `UPDATE system_settings
-         SET allow_registration = ?, image_retention_days = ?, api_tool_allowlist = ?, api_tool_outbound = ?, updated_at = ?
+         SET allow_registration = ?, image_retention_days = ?, api_tool_outbound = ?, api_tool_outbound_rules = ?, updated_at = ?
          WHERE id = 1`,
       ).run(
         settings.allowRegistration ? 1 : 0,
         settings.imageRetentionDays,
-        JSON.stringify(settings.apiToolAllowlist ?? []),
-        settings.apiToolOutbound ?? 'open',
+        settings.apiToolOutbound ?? 'allow',
+        JSON.stringify(settings.apiToolOutboundRules ?? { external: [], internal: [] }),
         now,
       );
       return {
         allowRegistration: settings.allowRegistration,
         imageRetentionDays: settings.imageRetentionDays,
-        apiToolAllowlist: settings.apiToolAllowlist ?? [],
-        apiToolOutbound: settings.apiToolOutbound ?? 'open',
+        apiToolOutbound: settings.apiToolOutbound ?? 'allow',
+        apiToolOutboundRules: settings.apiToolOutboundRules ?? { external: [], internal: [] },
         updatedAt: now,
       };
     },

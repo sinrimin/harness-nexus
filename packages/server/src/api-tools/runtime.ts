@@ -3,7 +3,8 @@
 // SPDX-License-Identifier: MIT
 
 import { lookup } from 'node:dns/promises';
-import type { ApiToolAllowlistEntry, ApiToolDef, ApiToolService } from '@harness-nexus/core';
+
+import type { ApiToolDef, ApiToolOutboundRules, ApiToolService } from '@harness-nexus/core';
 import { decryptSecret } from '../infra/crypto.js';
 import type { ServiceDeps } from '../services/principal.js';
 
@@ -27,21 +28,97 @@ const ERROR_SNIPPET_CHARS = 500;
 
 // ---- allowlist + IP classification (pure) ----
 
-export function matchAllowlist(
-  host: string,
-  entries: readonly ApiToolAllowlistEntry[],
-): ApiToolAllowlistEntry | null {
-  const h = host.toLowerCase();
-  for (const e of entries) {
-    const pattern = e.host.toLowerCase();
-    if (pattern.startsWith('*.')) {
-      const base = pattern.slice(2);
-      if (h.endsWith(`.${base}`) || h === base) return e;
-    } else if (pattern === h) {
-      return e;
-    }
+/**
+ * IPv6 → 128-bit BigInt (`::` expansion + embedded IPv4 tail); null when not
+ * parseable. Node's BlockList was deliberately NOT used here: its IPv6
+ * prefix matching disagrees with itself (fd00::/8 rejecting fd12::…).
+ */
+function v6ToBigInt(ip: string): bigint | null {
+  try {
+    const dual = ip.split('::');
+    if (dual.length > 2) return null;
+    const group = (g: string): bigint | null => {
+      if (g.includes('.')) {
+        const [a, b] = g.split('.');
+        if (a === undefined || b === undefined) return null;
+        return (BigInt(Number(a)) << 8n) | BigInt(Number(b));
+      }
+      if (!/^[0-9a-f]{1,4}$/i.test(g)) return null;
+      const v = BigInt(`0x${g}`);
+      return v <= 0xffffn ? v : null;
+    };
+    const head = dual[0] === '' ? [] : dual[0]!.split(':').map(group);
+    const tail = dual.length === 2 && dual[1] !== '' ? dual[1]!.split(':').map(group) : [];
+    if (head.some((g) => g === null) || tail.some((g) => g === null)) return null;
+    const fill = dual.length === 2 ? 8 - head.length - tail.length : 0;
+    if (fill < 0 || head.length + tail.length + fill !== 8) return null;
+    // The null-check above already narrowed every group.
+    const groups = [...head, ...Array<bigint>(fill).fill(0n), ...tail] as bigint[];
+    return groups.reduce((acc, g) => (acc << 16n) | g, 0n);
+  } catch {
+    return null;
   }
-  return null;
+}
+
+function ipToBigInt(ip: string): bigint | null {
+  if (ip.includes(':')) return v6ToBigInt(ip);
+  const parts = ip.split('.');
+  if (parts.length !== 4 || parts.some((p) => !/^\d{1,3}$/.test(p) || Number(p) > 255)) {
+    return null;
+  }
+  return parts.reduce((acc, p) => (acc << 8n) | BigInt(Number(p)), 0n);
+}
+
+/** Name-stage match: exact hostname/IP-literal or `*.domain` wildcard. */
+export function hostMatchesEntry(entry: string, host: string): boolean {
+  if (entry.includes('/')) return false; // CIDR is address-stage only
+  const h = host.toLowerCase();
+  const pattern = entry.toLowerCase();
+  if (pattern.startsWith('*.')) {
+    const base = pattern.slice(2);
+    return h.endsWith(`.${base}`) || h === base;
+  }
+  return pattern === h;
+}
+
+/** IP-stage match: IP literal or CIDR range against one resolved address. */
+export function ipMatchesEntry(entry: string, ip: string): boolean {
+  if (entry.includes('/')) {
+    const [base, bitsRaw] = entry.split('/');
+    const size = base!.includes(':') ? 128n : 32n;
+    const bits = BigInt(bitsRaw!);
+    if (bits < 0n || bits > size) return false;
+    const b = ipToBigInt(base!);
+    const t = ipToBigInt(ip);
+    if (b === null || t === null) return false;
+    const shift = size - bits;
+    return b >> shift === t >> shift;
+  }
+  const a = ipToBigInt(entry);
+  const c = ipToBigInt(ip);
+  return a !== null && c !== null && a === c;
+}
+
+/**
+ * The outbound verdict (#85): `mode` is the DEFAULT action, the applicable
+ * rule list (external vs internal, by resolved addresses) flips it on a hit.
+ * IP/CIDR entries match at the address stage, names at the host stage.
+ */
+export function outboundAllowed(
+  mode: 'allow' | 'deny',
+  rules: ApiToolOutboundRules,
+  hostname: string,
+  ips: readonly string[],
+  ipClass: (ip: string) => IpClass,
+): boolean {
+  const internal =
+    ips.length > 0 && ips.every((ip) => ipClass(ip) === 'private' || ipClass(ip) === 'loopback');
+  const list = internal ? rules.internal : rules.external;
+  const hit = list.some(
+    (entry) => hostMatchesEntry(entry, hostname) || ips.some((ip) => ipMatchesEntry(entry, ip)),
+  );
+  // allow-mode lists are blacklists: a hit DENIES. deny-mode: a hit ALLOWS.
+  return mode === 'allow' ? !hit : hit;
 }
 
 export type IpClass = 'loopback' | 'link-local' | 'private' | 'public';
@@ -258,19 +335,15 @@ export async function executeApiTool(
     if (v !== undefined) url.searchParams.set(p.name, String(v));
   }
 
-  // ---- network guard (outbound surface #3; #85 policy switch) ----
-  // `open` (the default): any host dials — only the metadata/link-local
-  // ranges stay hard-denied (that guard is not a policy). `restricted`:
-  // the #80 default-deny allowlist, internal-flagged entries included.
+  // ---- network guard (outbound surface #3; #85 default-action policy) ----
+  // The mode is the DEFAULT action; the applicable rule list (external vs
+  // internal by resolution) is a blacklist in allow-mode, a whitelist in
+  // deny-mode. Metadata/link-local is hard-denied in EVERY mode — cloud
+  // metadata is never a legitimate API tool target, that guard is not a
+  // policy.
   const settings = await deps.uow.settings.get();
-  const restricted = (settings.apiToolOutbound ?? 'open') === 'restricted';
-  let entry: ApiToolAllowlistEntry | null = null;
-  if (restricted) {
-    entry = matchAllowlist(url.hostname, settings.apiToolAllowlist ?? []);
-    if (entry === null) {
-      return err(`error: host ${url.hostname} is not on the API tool allowlist`);
-    }
-  }
+  const mode = settings.apiToolOutbound === 'deny' ? 'deny' : 'allow';
+  const rules = settings.apiToolOutboundRules ?? { external: [], internal: [] };
   const resolve = opts.resolveDns ?? defaultResolve;
   let ips: string[];
   try {
@@ -280,16 +353,21 @@ export async function executeApiTool(
   }
   if (ips.length === 0) return err(`error: no addresses for ${url.hostname}`);
   for (const ip of ips) {
-    const cls = ipClassOf(ip);
-    // Metadata/link-local is hard-denied in EVERY policy, even internal
-    // entries — cloud metadata is never a legitimate API tool target.
-    if (cls === 'link-local')
+    if (ipClassOf(ip) === 'link-local') {
       return err(`error: ${url.hostname} resolves to link-local ${ip} — denied`);
-    if (restricted && cls !== 'public' && entry !== null && entry.internal !== true) {
-      return err(
-        `error: ${url.hostname} resolves to ${cls} ${ip}; only internal-flagged allowlist entries may reach it`,
-      );
     }
+  }
+  if (!outboundAllowed(mode, rules, url.hostname, ips, ipClassOf)) {
+    return err(
+      `error: ${url.hostname} is blocked by the API tool outbound policy (default ${mode}; the ${
+        ips.every((ip) => {
+          const c = ipClassOf(ip);
+          return c === 'private' || c === 'loopback';
+        })
+          ? 'internal'
+          : 'external'
+      } rule list is a ${mode === 'allow' ? 'blacklist' : 'whitelist'} — an admin can adjust it in system settings)`,
+    );
   }
 
   // ---- headers (static + header params + auth-injected secret) ----

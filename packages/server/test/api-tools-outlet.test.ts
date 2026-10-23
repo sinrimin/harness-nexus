@@ -103,9 +103,9 @@ beforeAll(async () => {
 
   await app.inject({
     method: 'PUT',
-    url: '/api/settings/api-tool-allowlist',
+    url: '/api/settings/api-tool-outbound',
     headers: authed(adminJwt),
-    payload: { entries: [{ host: '127.0.0.1', internal: true }] },
+    payload: { mode: 'deny', rules: { external: [], internal: ['127.0.0.1'] } },
   });
   await app.inject({
     method: 'POST',

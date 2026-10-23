@@ -2,7 +2,7 @@
 //
 // SPDX-License-Identifier: MIT
 
-import type { ApiToolAllowlistEntry } from './api-tool.js';
+import type { ApiToolOutboundRules } from './api-tool.js';
 
 /**
  * System-wide settings — a single-row aggregate persisted in `system_settings`.
@@ -18,30 +18,25 @@ export interface SystemSettings {
    */
   imageRetentionDays: number;
   /**
-   * #80 — the API tool runtime's host allowlist. Enforced only while
-   * `apiToolOutbound` is `restricted` (#85); kept and editable either way so
-   * tightening later is a flip, not a rebuild.
+   * #85 — the outbound DEFAULT action for API tool dials. `allow` (the
+   * default): everything dials except the rule lists (they are BLACKLISTS).
+   * `deny`: nothing dials except the rule lists (WHITELISTS). The lists are
+   * split by network side; cloud-metadata/link-local ranges stay hard-denied
+   * in every mode (that guard is not a policy).
    */
-  apiToolAllowlist: ApiToolAllowlistEntry[];
-  /**
-   * #85 — the outbound host policy. `open` (the default): any http/https host
-   * may be saved and dialed — the cloud-metadata/link-local ranges stay
-   * hard-denied in EVERY mode (that guard is not a policy). `restricted`:
-   * default-deny, only allowlisted hosts dial (internal-flagged entries may
-   * resolve private/loopback).
-   */
-  apiToolOutbound: 'open' | 'restricted';
+  apiToolOutbound: 'allow' | 'deny';
+  apiToolOutboundRules: ApiToolOutboundRules;
   updatedAt: string;
 }
 
 export const DEFAULT_SYSTEM_SETTINGS: Pick<
   SystemSettings,
-  'allowRegistration' | 'imageRetentionDays' | 'apiToolAllowlist' | 'apiToolOutbound'
+  'allowRegistration' | 'imageRetentionDays' | 'apiToolOutbound' | 'apiToolOutboundRules'
 > = {
   allowRegistration: true,
   imageRetentionDays: 30,
-  apiToolAllowlist: [],
-  apiToolOutbound: 'open',
+  apiToolOutbound: 'allow',
+  apiToolOutboundRules: { external: [], internal: [] },
 };
 
 /** Bounds for the retention setting (days). */

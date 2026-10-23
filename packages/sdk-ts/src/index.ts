@@ -850,25 +850,19 @@ export class HarnessNexusClient {
     return this.request('POST', `/api/api-tools/${id}/probe`, { tool, args });
   }
 
-  async getApiToolAllowlist(): Promise<{ entries: { host: string; internal?: boolean }[] }> {
-    return this.request('GET', '/api/settings/api-tool-allowlist');
-  }
-
-  async updateApiToolAllowlist(
-    entries: { host: string; internal?: boolean }[],
-  ): Promise<{ entries: { host: string; internal?: boolean }[] }> {
-    return this.request('PUT', '/api/settings/api-tool-allowlist', { entries });
-  }
-
-  /** #85 — the outbound host policy (`open` = unrestricted except metadata ranges). */
-  async getApiToolOutbound(): Promise<{ outbound: 'open' | 'restricted' }> {
+  /** #85 — the outbound policy: default action + external/internal rule lists. */
+  async getApiToolOutbound(): Promise<{
+    mode: 'allow' | 'deny';
+    rules: { external: string[]; internal: string[] };
+  }> {
     return this.request('GET', '/api/settings/api-tool-outbound');
   }
 
   async setApiToolOutbound(
-    outbound: 'open' | 'restricted',
-  ): Promise<{ outbound: 'open' | 'restricted' }> {
-    return this.request('PUT', '/api/settings/api-tool-outbound', { outbound });
+    mode: 'allow' | 'deny',
+    rules: { external: string[]; internal: string[] },
+  ): Promise<{ mode: 'allow' | 'deny'; rules: { external: string[]; internal: string[] } }> {
+    return this.request('PUT', '/api/settings/api-tool-outbound', { mode, rules });
   }
   async deleteApiToolService(id: string): Promise<void> {
     await this.request('DELETE', `/api/api-tools/${id}`);

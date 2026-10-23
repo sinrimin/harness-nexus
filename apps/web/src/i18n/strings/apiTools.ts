@@ -49,20 +49,6 @@ const en = {
   probeTool: 'Tool',
   probeRun: 'Run probe',
   probeRunning: 'Running…',
-  outboundTitle: 'Outbound access',
-  policyLabel: 'Host policy',
-  policyOpen: 'Open — any host (default)',
-  policyRestricted: 'Restricted — allowlist only',
-  policyOpenHint:
-    'Open mode: API tools may reach any http/https host; cloud-metadata ranges stay blocked. The list below is kept but not enforced.',
-  policySaved: 'Outbound policy saved',
-  allowlistTitle: 'Outbound allowlist',
-  allowlistHint:
-    'Default-deny: API tools may only reach allowlisted hosts. “internal” entries may resolve to private addresses (intranet APIs); metadata ranges stay blocked.',
-  allowlistEmpty: 'Empty — all outbound API tool traffic is denied.',
-  allowlistInternal: 'internal',
-  allowlistAdd: 'Add',
-  allowlistSaved: 'Allowlist saved',
   servicesLabel: 'API tool services',
   servicesHint:
     'The assistant may call the selected services’ tools (the api-tools group gates them).',
@@ -112,20 +98,6 @@ const zh: typeof en = {
   probeTool: '工具',
   probeRun: '执行试跑',
   probeRunning: '执行中…',
-  outboundTitle: '出站访问',
-  policyLabel: '主机策略',
-  policyOpen: '开放 —— 任意主机（默认）',
-  policyRestricted: '受限 —— 仅允许清单',
-  policyOpenHint:
-    '开放模式：API 工具可访问任意 http/https 主机；元数据网段始终封禁。下方清单保留但在本模式下不生效。',
-  policySaved: '出站策略已保存',
-  allowlistTitle: '出站允许清单',
-  allowlistHint:
-    '默认拒绝：API 工具只能访问清单内的主机。勾选 internal 的条目可解析到内网地址；元数据网段始终封禁。',
-  allowlistEmpty: '为空——所有 API 工具出站流量都被拒绝。',
-  allowlistInternal: '内网',
-  allowlistAdd: '添加',
-  allowlistSaved: '允许清单已保存',
   servicesLabel: 'API 工具服务',
   servicesHint: '助手可调用所选服务的工具（由 api-tools 组门控）。',
 };

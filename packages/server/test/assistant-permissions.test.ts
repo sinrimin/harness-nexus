@@ -476,21 +476,29 @@ describe('#79 — the sender-level write-policy switch (session overrides config
   });
 });
 
-describe('#85 — sqlite system_settings.api_tool_outbound round-trip (v28)', () => {
-  it('defaults open; restricted persists back', async (ctx) => {
+describe('#85 — sqlite system_settings outbound policy round-trip (v28+v29)', () => {
+  it('defaults allow with empty rule lists; deny + rules persist back', async (ctx) => {
     let uow: ReturnType<typeof createSqliteUnitOfWork>;
     try {
       uow = createSqliteUnitOfWork(':memory:');
     } catch {
       return ctx.skip('better-sqlite3 native binding unavailable for this Node major');
     }
-    expect((await uow.settings.get()).apiToolOutbound).toBe('open');
+    const fresh = await uow.settings.get();
+    expect(fresh.apiToolOutbound).toBe('allow');
+    expect(fresh.apiToolOutboundRules).toEqual({ external: [], internal: [] });
     await uow.settings.save({
       ...(await uow.settings.get()),
-      apiToolOutbound: 'restricted',
+      apiToolOutbound: 'deny',
+      apiToolOutboundRules: { external: ['api.weather.example.com'], internal: ['10.0.0.0/8'] },
       updatedAt: now,
     });
-    expect((await uow.settings.get()).apiToolOutbound).toBe('restricted');
+    const back = await uow.settings.get();
+    expect(back.apiToolOutbound).toBe('deny');
+    expect(back.apiToolOutboundRules).toEqual({
+      external: ['api.weather.example.com'],
+      internal: ['10.0.0.0/8'],
+    });
   });
 });
 
@@ -598,11 +606,12 @@ describe('#81 — API tool config tools (the first meta members)', () => {
 
   it('a GRANTED save creates the service and auto-attaches it to the calling config', async () => {
     const h = await setup();
-    // Save-time host validation (outbound surface #3): the bundle's host must
-    // be admin-allowlisted before the service can exist at all.
+    // Save-time host validation (outbound surface #3): under deny-mode the
+    // bundle's host must match a name rule before the service can exist.
     await h.uow.settings.save({
       ...(await h.uow.settings.get()),
-      apiToolAllowlist: [{ host: 'api.weather.example.com' }],
+      apiToolOutbound: 'deny',
+      apiToolOutboundRules: { external: ['api.weather.example.com'], internal: [] },
     });
     const a = await createAssistant({ uow: h.uow }, owner, {
       name: 'Bootstrap',
