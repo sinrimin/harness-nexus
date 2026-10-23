@@ -546,13 +546,14 @@ function ServerRow({
             <TableCell className="pl-6 font-medium">
               <div className="flex items-center gap-2">
                 {/* The trigger is the chevron + name; only meaningful when
-                 * connected AND operable (tool inspection on a global row is
-                 * admin-only — the service 404-hides it for everyone else). */}
+                 * connected. Non-admins on a global row MAY expand — the
+                 * panel then explains that inspection is admin-only instead
+                 * of fetching into a 404. */}
                 <CollapsibleTrigger asChild>
                   <button
                     type="button"
                     className="text-muted-foreground hover:text-foreground flex items-center gap-1 disabled:opacity-30"
-                    disabled={!isConnected || (server.scope === 'global' && !isAdmin)}
+                    disabled={!isConnected}
                     aria-label={open ? t('mcp.collapseTools') : t('mcp.expandTools')}
                   >
                     <ChevronRightIcon
