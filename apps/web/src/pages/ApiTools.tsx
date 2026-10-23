@@ -600,15 +600,12 @@ function ProbeDialog({
               }
             >
               {p.type === 'boolean' ? (
-                <label className="flex items-center gap-2 text-sm">
-                  <Checkbox
-                    checked={values[p.name] === true}
-                    onCheckedChange={(v) =>
-                      setValues((prev) => ({ ...prev, [p.name]: v === true }))
-                    }
-                  />
-                  {p.name}
-                </label>
+                <Checkbox
+                  checked={values[p.name] === true}
+                  onCheckedChange={(v) => setValues((prev) => ({ ...prev, [p.name]: v === true }))}
+                  aria-label={p.name}
+                  className="mt-1"
+                />
               ) : (
                 <Input
                   type={p.type === 'number' ? 'number' : 'text'}
