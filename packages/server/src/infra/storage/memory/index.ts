@@ -626,6 +626,16 @@ export function createMemoryUnitOfWork(): UnitOfWork {
         .filter((a) => a.noteId === noteId)
         .sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id));
     },
+    async countsByOwner(ownerId) {
+      const counts: Record<string, { total: number; open: number }> = {};
+      for (const a of noteAnnotations.values()) {
+        if (a.authorId !== ownerId) continue;
+        const c = (counts[a.noteId] ??= { total: 0, open: 0 });
+        c.total += 1;
+        if (a.state === 'open') c.open += 1;
+      }
+      return counts;
+    },
     async save(annotation) {
       noteAnnotations.set(annotation.id, annotation);
       return annotation;

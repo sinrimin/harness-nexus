@@ -273,7 +273,12 @@ export interface NoteRepository {
   findById(id: string): Promise<Note | null>;
   list(filter?: NoteListFilter): Promise<Note[]>;
   /** Every user's public notes for the square — read-only surface, paginated. */
-  listPublic(filter?: { tag?: string; search?: string; limit?: number; offset?: number }): Promise<Note[]>;
+  listPublic(filter?: {
+    tag?: string;
+    search?: string;
+    limit?: number;
+    offset?: number;
+  }): Promise<Note[]>;
   save(note: Note): Promise<Note>;
   /**
    * Append the immutable snapshot for `note.contentVersion`. The caller bumps
@@ -300,6 +305,11 @@ export interface NoteListFilter {
 export interface NoteAnnotationRepository {
   findById(id: string): Promise<NoteAnnotation | null>;
   listByNote(noteId: string): Promise<NoteAnnotation[]>;
+  /**
+   * Per-note annotation counts for one owner (feed/board cards): note id →
+   * total and open. Notes without annotations are absent from the map.
+   */
+  countsByOwner(ownerId: string): Promise<Record<string, { total: number; open: number }>>;
   save(annotation: NoteAnnotation): Promise<NoteAnnotation>;
   delete(id: string): Promise<void>;
 }

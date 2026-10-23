@@ -1679,7 +1679,7 @@ export function sqliteNoteRepository(db: Database): NoteRepository {
       if (filter?.search !== undefined) {
         const like = `%${filter.search.toLowerCase()}%`;
         conds.push(
-          '(LOWER(title) LIKE ? OR LOWER(COALESCE(summary, \'\')) LIKE ? OR LOWER(content_md) LIKE ?)',
+          "(LOWER(title) LIKE ? OR LOWER(COALESCE(summary, '')) LIKE ? OR LOWER(content_md) LIKE ?)",
         );
         args.push(like, like, like);
       }
@@ -1703,7 +1703,7 @@ export function sqliteNoteRepository(db: Database): NoteRepository {
       if (filter?.search !== undefined) {
         const like = `%${filter.search.toLowerCase()}%`;
         conds.push(
-          '(LOWER(title) LIKE ? OR LOWER(COALESCE(summary, \'\')) LIKE ? OR LOWER(content_md) LIKE ?)',
+          "(LOWER(title) LIKE ? OR LOWER(COALESCE(summary, '')) LIKE ? OR LOWER(content_md) LIKE ?)",
         );
         args.push(like, like, like);
       }
@@ -1769,10 +1769,14 @@ export function sqliteNoteRepository(db: Database): NoteRepository {
       const row = db
         .prepare('SELECT * FROM note_versions WHERE note_id = ? AND version = ?')
         .get(noteId, version) as
-        | { note_id: string; version: number; content_md: string; created_at: string }
-        | undefined;
+        { note_id: string; version: number; content_md: string; created_at: string } | undefined;
       return row
-        ? { noteId: row.note_id, version: row.version, contentMd: row.content_md, createdAt: row.created_at }
+        ? {
+            noteId: row.note_id,
+            version: row.version,
+            contentMd: row.content_md,
+            createdAt: row.created_at,
+          }
         : null;
     },
     async delete(id) {
@@ -1815,9 +1819,8 @@ function mapNoteAnnotation(r: NoteAnnotationRow): NoteAnnotation {
 export function sqliteNoteAnnotationRepository(db: Database): NoteAnnotationRepository {
   const repo: NoteAnnotationRepository = {
     async findById(id) {
-      const row = db
-        .prepare('SELECT * FROM note_annotations WHERE id = ?')
-        .get(id) as NoteAnnotationRow | undefined;
+      const row = db.prepare('SELECT * FROM note_annotations WHERE id = ?').get(id) as
+        NoteAnnotationRow | undefined;
       return row ? mapNoteAnnotation(row) : null;
     },
     async listByNote(noteId) {
@@ -1825,6 +1828,18 @@ export function sqliteNoteAnnotationRepository(db: Database): NoteAnnotationRepo
         .prepare('SELECT * FROM note_annotations WHERE note_id = ? ORDER BY created_at, id')
         .all(noteId) as NoteAnnotationRow[];
       return rows.map(mapNoteAnnotation);
+    },
+    async countsByOwner(ownerId) {
+      const rows = db
+        .prepare(
+          `SELECT note_id AS noteId, COUNT(*) AS total,
+                  SUM(CASE WHEN state = 'open' THEN 1 ELSE 0 END) AS open
+           FROM note_annotations WHERE author_id = ? GROUP BY note_id`,
+        )
+        .all(ownerId) as { noteId: string; total: number; open: number | null }[];
+      const counts: Record<string, { total: number; open: number }> = {};
+      for (const r of rows) counts[r.noteId] = { total: r.total, open: r.open ?? 0 };
+      return counts;
     },
     async save(annotation) {
       db.prepare(
@@ -1883,9 +1898,8 @@ function mapNoteCategory(r: NoteCategoryRow): NoteCategory {
 export function sqliteNoteCategoryRepository(db: Database): NoteCategoryRepository {
   const repo: NoteCategoryRepository = {
     async findById(id) {
-      const row = db
-        .prepare('SELECT * FROM note_categories WHERE id = ?')
-        .get(id) as NoteCategoryRow | undefined;
+      const row = db.prepare('SELECT * FROM note_categories WHERE id = ?').get(id) as
+        NoteCategoryRow | undefined;
       return row ? mapNoteCategory(row) : null;
     },
     async listByOwner(ownerId) {
@@ -1896,9 +1910,7 @@ export function sqliteNoteCategoryRepository(db: Database): NoteCategoryReposito
     },
     async findByParentAndName(ownerId, parentId, name) {
       const row = db
-        .prepare(
-          'SELECT * FROM note_categories WHERE owner_id = ? AND parent_id IS ? AND name = ?',
-        )
+        .prepare('SELECT * FROM note_categories WHERE owner_id = ? AND parent_id IS ? AND name = ?')
         .get(ownerId, parentId, name) as NoteCategoryRow | undefined;
       return row ? mapNoteCategory(row) : null;
     },
@@ -1921,9 +1933,8 @@ export function sqliteNoteCategoryRepository(db: Database): NoteCategoryReposito
     async delete(id) {
       // Port contract: children fall to the deleted node's parent, its notes
       // fall to uncategorized — one transaction, no orphans.
-      const node = db
-        .prepare('SELECT * FROM note_categories WHERE id = ?')
-        .get(id) as NoteCategoryRow | undefined;
+      const node = db.prepare('SELECT * FROM note_categories WHERE id = ?').get(id) as
+        NoteCategoryRow | undefined;
       if (!node) return;
       db.transaction(() => {
         db.prepare('UPDATE note_categories SET parent_id = ? WHERE parent_id = ?').run(

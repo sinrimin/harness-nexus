@@ -28,6 +28,7 @@ import { skillHubStrings } from './skillHub.js';
 import { chatStrings } from './chat.js';
 import { assistantsStrings } from './assistants.js';
 import { apiToolsStrings } from './apiTools.js';
+import { notesStrings } from './notes.js';
 import { kitStrings } from './kit.js';
 
 export const en = {
@@ -50,6 +51,7 @@ export const en = {
   chat: chatStrings.en,
   assistants: assistantsStrings.en,
   apiTools: apiToolsStrings.en,
+  notes: notesStrings.en,
   kit: kitStrings.en,
 };
 
@@ -73,6 +75,7 @@ export const zh: typeof en = {
   chat: chatStrings.zh,
   assistants: assistantsStrings.zh,
   apiTools: apiToolsStrings.zh,
+  notes: notesStrings.zh,
   kit: kitStrings.zh,
 };
 

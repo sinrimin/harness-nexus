@@ -5,6 +5,7 @@
 import {
   HomeIcon,
   MessageSquareIcon,
+  NotebookPenIcon,
   Wand2Icon,
   LaptopIcon,
   SparklesIcon,
@@ -89,6 +90,10 @@ export type RouteId =
   | 'apiTools'
   | 'machines'
   | 'machineDetail'
+  | 'notes'
+  | 'noteNew'
+  | 'noteDetail'
+  | 'noteEdit'
   | 'skills'
   | 'subAgents'
   | 'rules'
@@ -153,6 +158,41 @@ export const ROUTES: RouteDef[] = [
     group: 'nav',
     titleKey: 'chat.title',
     parent: 'chat',
+    layout: 'panes',
+  },
+  {
+    // #88 — notes: capture, organize, annotate. Three in-page tabs (mine /
+    // square / board); only the landing takes a nav slot.
+    id: 'notes',
+    path: '/notes',
+    group: 'nav',
+    titleKey: 'notes.title',
+    nav: { icon: NotebookPenIcon },
+    layout: 'panes',
+  },
+  {
+    // `/notes/new` before `/notes/:id` — matchRoute takes the first pattern.
+    id: 'noteNew',
+    path: '/notes/new',
+    group: 'nav',
+    titleKey: 'notes.newTitle',
+    parent: 'notes',
+    layout: 'panes',
+  },
+  {
+    id: 'noteDetail',
+    path: '/notes/:id',
+    group: 'nav',
+    titleKey: 'notes.title',
+    parent: 'notes',
+    layout: 'panes',
+  },
+  {
+    id: 'noteEdit',
+    path: '/notes/:id/edit',
+    group: 'nav',
+    titleKey: 'notes.editTitle',
+    parent: 'noteDetail',
     layout: 'panes',
   },
   {

@@ -65,18 +65,24 @@ function stampVersion(deps: ServiceDeps, note: Note, previousContent: string): N
 
 // ---- notes ----
 
+/** A feed/board card carries its annotation counts (owner-only figures). */
+export interface FeedNoteView extends Note {
+  annotationCount: number;
+  openAnnotationCount: number;
+}
+
 export async function listNotes(
   deps: ServiceDeps,
   caller: Principal,
   query: ListNotesQuery,
-): Promise<Note[]> {
+): Promise<FeedNoteView[]> {
   const categoryId =
     query.categoryId !== undefined
       ? query.categoryId
       : query.category === 'uncategorized'
         ? null
         : undefined;
-  return deps.uow.notes.list({
+  const rows = await deps.uow.notes.list({
     ownerId: caller.userId,
     ...(categoryId !== undefined ? { categoryId } : {}),
     ...(query.status !== undefined ? { status: query.status } : {}),
@@ -86,19 +92,43 @@ export async function listNotes(
     limit: query.limit,
     offset: query.offset,
   });
+  const counts = await deps.uow.noteAnnotations.countsByOwner(caller.userId);
+  return rows.map((n) => {
+    const c = counts[n.id];
+    return {
+      ...n,
+      annotationCount: c?.total ?? 0,
+      openAnnotationCount: c?.open ?? 0,
+    };
+  });
+}
+
+/** A square card carries its author's name — the row alone has only ownerId. */
+export interface SquareNoteView extends Note {
+  ownerName: string;
 }
 
 export async function listSquare(
   deps: ServiceDeps,
   _caller: Principal,
   query: ListSquareQuery,
-): Promise<Note[]> {
-  return deps.uow.notes.listPublic({
+): Promise<SquareNoteView[]> {
+  const rows = await deps.uow.notes.listPublic({
     ...(query.tag !== undefined ? { tag: query.tag } : {}),
     ...(query.search !== undefined ? { search: query.search } : {}),
     limit: query.limit,
     offset: query.offset,
   });
+  // Author names for the feed: distinct owners on the page, one read each —
+  // a page is ≤100 rows, so this stays a handful of lookups.
+  const names = new Map<string, string>();
+  await Promise.all(
+    [...new Set(rows.map((n) => n.ownerId))].map(async (ownerId) => {
+      const owner = await deps.uow.users.findById(ownerId);
+      names.set(ownerId, owner?.username ?? '—');
+    }),
+  );
+  return rows.map((n) => ({ ...n, ownerName: names.get(n.ownerId) ?? '—' }));
 }
 
 export async function getNote(deps: ServiceDeps, caller: Principal, id: string): Promise<Note> {
@@ -241,7 +271,10 @@ export async function updateAnnotation(
     ...(input.comment !== undefined ? { comment: input.comment } : {}),
     ...(input.state !== undefined ? { state: input.state } : {}),
     ...(input.state !== undefined
-      ? { resolvedAt: input.state === 'done' ? (annotation.resolvedAt ?? new Date().toISOString()) : null }
+      ? {
+          resolvedAt:
+            input.state === 'done' ? (annotation.resolvedAt ?? new Date().toISOString()) : null,
+        }
       : {}),
   };
   return deps.uow.noteAnnotations.save(next);
@@ -320,16 +353,10 @@ export async function updateCategory(
       let cursor: NoteCategory | null = parent;
       while (cursor !== null) {
         if (cursor.id === id) {
-          throw new AppError(
-            'A category cannot be moved under itself',
-            400,
-            'CATEGORY_CYCLE',
-          );
+          throw new AppError('A category cannot be moved under itself', 400, 'CATEGORY_CYCLE');
         }
         cursor =
-          cursor.parentId === null
-            ? null
-            : await deps.uow.noteCategories.findById(cursor.parentId);
+          cursor.parentId === null ? null : await deps.uow.noteCategories.findById(cursor.parentId);
       }
       parentId = input.parentId;
     } else {
@@ -338,11 +365,7 @@ export async function updateCategory(
   }
   const name = input.name ?? category.name;
   if (name !== category.name || parentId !== category.parentId) {
-    const taken = await deps.uow.noteCategories.findByParentAndName(
-      caller.userId,
-      parentId,
-      name,
-    );
+    const taken = await deps.uow.noteCategories.findByParentAndName(caller.userId, parentId, name);
     if (taken && taken.id !== id) {
       throw new AppError(
         'A category with this name already exists here',
