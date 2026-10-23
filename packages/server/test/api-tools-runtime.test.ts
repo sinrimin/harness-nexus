@@ -372,6 +372,53 @@ describe('executeApiTool (stubbed fetch + injectable DNS)', () => {
     expect(denied.output).toContain('link-local');
   });
 
+  it('#87: a single body param is still sent as a keyed JSON object, never a bare value', async () => {
+    const { uow } = await setup({ external: [], internal: [] }, 'allow');
+    const fetcher: ApiToolService = {
+      id: 's3',
+      scope: 'personal',
+      ownerId: 'u1',
+      name: 'fetcher',
+      baseUrl: 'https://api.weather.example.com',
+      headers: {},
+      tools: [
+        {
+          name: 'web_fetch',
+          description: 'Fetch one URL',
+          method: 'POST',
+          path: '/fetch',
+          params: [{ name: 'url', in: 'body', type: 'string', required: true }],
+          bodyType: 'json',
+        },
+      ],
+      createdAt: now,
+      updatedAt: now,
+    };
+    await uow.apiTools.save(fetcher);
+    const seen: { body: string | undefined; contentType: string }[] = [];
+    vi.stubGlobal('fetch', (async (_url: unknown, init: RequestInit | undefined) => {
+      seen.push({
+        body: init?.body as string | undefined,
+        contentType: (init?.headers as Record<string, string>)['Content-Type'] ?? '',
+      });
+      return new Response('{"ok":true}', {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    }) as typeof fetch);
+    const res = await executeApiTool(
+      { uow, credentialEncryptionKey: KEY },
+      fetcher,
+      'web_fetch',
+      { url: 'https://example.com' },
+      { resolveDns: okDns },
+    );
+    expect(res.isError).toBe(false);
+    // The object-expecting shape: {"url": "..."} — NOT the bare "https://…".
+    expect(seen[0]!.body).toBe('{"url":"https://example.com"}');
+    expect(seen[0]!.contentType).toBe('application/json');
+  });
+
   it('auth injects the decrypted secret; timing/IO failures are tool errors', async () => {
     const { uow } = await setup();
     const authed: ApiToolService = {

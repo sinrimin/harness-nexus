@@ -386,10 +386,14 @@ export async function executeApiTool(
   }
 
   // ---- body ----
+  // Body params are KEYS of the JSON object (a named `in: 'body'` param means
+  // "this key in the body") — always wrapped, never a bare value. The
+  // single-param shortcut once sent `JSON.stringify(value)` (a bare JSON
+  // string), which object-expecting upstreams reject with 400 (the DeepSeek
+  // fetch tool, #87).
   let body: string | undefined;
   const bodyParams = tool.params.filter((x) => x.in === 'body');
   if (bodyParams.length > 0) {
-    const single = bodyParams.length === 1 ? values.get(bodyParams[0]!.name) : undefined;
     if (tool.bodyType === 'form') {
       const form = new URLSearchParams();
       for (const p of bodyParams) form.set(p.name, String(values.get(p.name)));
@@ -397,9 +401,7 @@ export async function executeApiTool(
       headers['Content-Type'] = 'application/x-www-form-urlencoded';
     } else {
       body = JSON.stringify(
-        single !== undefined
-          ? single
-          : Object.fromEntries(bodyParams.map((p) => [p.name, values.get(p.name)])),
+        Object.fromEntries(bodyParams.map((p) => [p.name, values.get(p.name)])),
       );
       headers['Content-Type'] = 'application/json';
     }
