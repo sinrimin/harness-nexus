@@ -147,6 +147,7 @@ export function ApiToolsPage(): React.ReactNode {
 
       <DataTable
         columns={5}
+        className="mb-(--gap)"
         label={t('apiTools.listTitle')}
         icon={<BracesIcon />}
         state={tableState({ error, loading: items === null, count: rows.length })}
