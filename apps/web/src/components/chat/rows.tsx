@@ -253,7 +253,7 @@ export const AssistantStepRow = memo(function AssistantStepRow({
         <button
           type="button"
           onClick={() => onCapture?.(text)}
-          className="text-muted-foreground hover:text-foreground mr-auto inline-flex items-center gap-1 rounded px-1 py-0.5 text-[11px] transition-colors"
+          className="text-muted-foreground hover:text-foreground mr-auto inline-flex items-center gap-1 rounded px-1.5 py-1 text-[11px] transition-colors"
         >
           <NotebookPenIcon className="size-3" />
           {t('chat.captureToNote')}

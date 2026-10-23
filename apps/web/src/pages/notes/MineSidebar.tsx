@@ -138,7 +138,7 @@ export function MineSidebar({
         <div className="flex flex-col p-1">
           <CategoryRow
             label={t('notes.categoryAll')}
-            count={notes?.length ?? 0}
+            count={notes !== null ? notes.length : undefined}
             active={filters.category === null}
             onClick={() => onFilters({ ...filters, category: null })}
           />
@@ -148,6 +148,7 @@ export function MineSidebar({
               category={c}
               depth={0}
               byParent={byParent}
+              showCounts={notes !== null}
               counts={counts.perCategory}
               activeId={filters.category}
               onSelect={(id) => onFilters({ ...filters, category: id })}
@@ -157,7 +158,7 @@ export function MineSidebar({
           ))}
           <CategoryRow
             label={t('notes.categoryUncategorized')}
-            count={counts.uncategorized}
+            count={notes !== null ? counts.uncategorized : undefined}
             active={filters.category === 'uncategorized'}
             onClick={() =>
               onFilters({
@@ -190,7 +191,9 @@ export function MineSidebar({
               >
                 <Lamp state={NOTE_STATUS_STATE[s]} size="sm" />
                 {t(NOTE_STATUS_KEY[s])}
-                <span className="role-data-sm ml-auto">{statusCounts.get(s) ?? 0}</span>
+                {notes !== null ? (
+                  <span className="role-data-sm ml-auto">{statusCounts.get(s) ?? 0}</span>
+                ) : null}
               </button>
             ))}
           </div>
@@ -198,9 +201,9 @@ export function MineSidebar({
           <p className="role-label-sm text-muted-foreground px-3 pt-1.5 pb-1">
             {t('notes.tagsLabel')}
           </p>
-          {tagCounts.length === 0 ? (
+          {notes !== null && tagCounts.length === 0 ? (
             <p className="text-muted-foreground px-3 pb-2 text-[11px]">{t('notes.emptyHint')}</p>
-          ) : (
+          ) : notes === null ? null : (
             <div className="flex flex-wrap gap-[5px] px-2.5 pb-2.5">
               {(showAllTags ? tagCounts : tagCounts.slice(0, TAG_PREVIEW)).map(([name, count]) => (
                 <button
@@ -210,8 +213,8 @@ export function MineSidebar({
                   aria-pressed={filters.tag === name}
                   className={
                     filters.tag === name
-                      ? 'bg-tray text-foreground border-border role-data-sm inline-flex h-5 items-center gap-[5px] rounded border px-[7px] font-medium'
-                      : 'text-muted-foreground hover:text-foreground bg-card border-border role-data-sm inline-flex h-5 items-center gap-[5px] rounded border px-[7px]'
+                      ? 'bg-tray text-foreground border-border role-data-sm inline-flex h-6 items-center gap-[5px] rounded border px-[7px] font-medium'
+                      : 'text-muted-foreground hover:text-foreground bg-card border-border role-data-sm inline-flex h-6 items-center gap-[5px] rounded border px-[7px]'
                   }
                 >
                   {name} <b className="font-mono text-[10px] font-normal">{count}</b>
@@ -254,7 +257,7 @@ export function MineSidebar({
           }}
           title={t('notes.deleteCategory')}
           consequence={t('notes.deleteCategoryConsequence')}
-          impact={[{ label: 'category', value: pendingDelete.name }]}
+          impact={[{ label: t('notes.impactCategory'), value: pendingDelete.name }]}
           actionLabel={t('notes.deleteCategory')}
           onConfirm={() => {
             const id = pendingDelete.id;
@@ -319,6 +322,7 @@ function CategoryNode({
   depth,
   byParent,
   counts,
+  showCounts,
   activeId,
   onSelect,
   onRename,
@@ -328,6 +332,7 @@ function CategoryNode({
   depth: number;
   byParent: Map<string | null, NoteCategory[]>;
   counts: Map<string, number>;
+  showCounts: boolean;
   activeId: string | 'uncategorized' | null;
   onSelect: (id: string) => void;
   onRename: (c: NoteCategory) => void;
@@ -370,13 +375,15 @@ function CategoryNode({
         >
           {category.name}
         </button>
-        <span className="role-data-sm text-muted-foreground">{counts.get(category.id) ?? 0}</span>
+        {showCounts ? (
+          <span className="role-data-sm text-muted-foreground">{counts.get(category.id) ?? 0}</span>
+        ) : null}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button
               variant="ghost"
               size="icon"
-              className="text-muted-foreground size-4 shrink-0 opacity-60 hover:opacity-100"
+              className="text-muted-foreground size-6 shrink-0 opacity-60 hover:opacity-100"
               aria-label={t('common.openMenu')}
             >
               <MoreHorizontalIcon className="size-3" />
@@ -399,6 +406,7 @@ function CategoryNode({
               category={c}
               depth={depth + 1}
               byParent={byParent}
+              showCounts={showCounts}
               counts={counts}
               activeId={activeId}
               onSelect={onSelect}
@@ -418,7 +426,8 @@ function CategoryRow({
   onClick,
 }: {
   label: string;
-  count: number;
+  /** Omitted (not zero) until the list has loaded — a failed load renders nothing. */
+  count?: number;
   active: boolean;
   onClick: () => void;
 }) {
@@ -435,7 +444,9 @@ function CategoryRow({
     >
       <span aria-hidden="true" className="size-4 shrink-0" />
       <span className="min-w-0 flex-1 truncate text-left font-medium">{label}</span>
-      <span className="role-data-sm text-muted-foreground">{count}</span>
+      {count !== undefined ? (
+        <span className="role-data-sm text-muted-foreground">{count}</span>
+      ) : null}
     </button>
   );
 }

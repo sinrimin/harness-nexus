@@ -148,7 +148,8 @@ export function CaptureNoteDialog({
             onChange={(e) => setSummary(e.target.value)}
             placeholder={t('notes.summaryPlaceholder')}
             maxLength={1000}
-            className="min-h-16 text-xs leading-relaxed"
+            autoComplete="off"
+            className="max-h-40 min-h-16 resize-none overflow-y-auto text-xs leading-relaxed"
           />
         </Field>
         <Field label={t('notes.categoryLabel')} htmlFor="cap-category">

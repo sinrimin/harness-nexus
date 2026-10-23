@@ -96,8 +96,11 @@ export function MineFeed({
   }
 
   return (
-    <div className="flex min-w-0 flex-1 flex-col max-[900px]:min-h-0">
-      <div className="flex min-h-0 flex-1 flex-col gap-[9px] overflow-y-auto pr-1 max-[900px]:overflow-visible max-[900px]:pr-0">
+    <div className="flex min-w-0 flex-1 flex-col min-[900px]:min-h-0">
+      {/* Desktop owns the scroll (the row is height-capped); below 900px the
+       * column stacks naturally inside the page's scroller — a fixed-height
+       * list here made the cards spill over the sidebar beneath it. */}
+      <div className="flex min-[900px]:min-h-0 min-[900px]:flex-1 flex-col gap-[9px] min-[900px]:overflow-y-auto min-[900px]:pr-1">
         {error !== null && notes === null ? (
           <EmptyState
             title={t('notes.loadFailed')}
@@ -151,7 +154,7 @@ export function MineFeed({
         ))}
       </div>
 
-      {visible !== null && visible.length > 0 ? (
+      {visible !== null && pageCount > 1 ? (
         <div className="flex shrink-0 flex-wrap items-center justify-center gap-2.5 pt-2">
           <span className="role-data-sm text-muted-foreground">
             {capped ? t('notes.loadedCap', { count: notes?.length ?? 0 }) : ''}
@@ -184,7 +187,7 @@ export function MineFeed({
           }}
           title={t('notes.delete')}
           consequence={t('notes.deleteConsequence')}
-          impact={[{ label: 'note', value: pending.title }]}
+          impact={[{ label: t('notes.impactNote'), value: pending.title }]}
           actionLabel={t('notes.delete')}
           busy={busy}
           onConfirm={() => void confirmRemove()}

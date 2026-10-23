@@ -5,7 +5,14 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { toast } from 'sonner';
-import { BotIcon, CheckIcon, MessageSquareIcon, PencilIcon, SparklesIcon } from 'lucide-react';
+import {
+  BotIcon,
+  CheckIcon,
+  MessageSquareIcon,
+  PencilIcon,
+  SparklesIcon,
+  XIcon,
+} from 'lucide-react';
 import type { Note, NoteCategory, NoteStatus, NoteVisibility } from '@harness-nexus/sdk';
 import { HarnessNexusError } from '@harness-nexus/sdk';
 import { api } from '@/api';
@@ -243,22 +250,35 @@ export function NoteEditorPage() {
     <>
       <PageSlot slot="actions">
         <div className="flex items-center gap-2">
-          <Button variant="outline" onClick={() => navigate(-1)} disabled={busy}>
-            {t('notes.cancel')}
+          <Button
+            variant="outline"
+            onClick={() => navigate(-1)}
+            disabled={busy}
+            aria-label={t('notes.cancel')}
+            title={t('notes.cancel')}
+            className="max-sm:w-(--control-h) max-sm:px-0"
+          >
+            <XIcon className="size-4 max-sm:mx-auto" />
+            <span className="max-sm:hidden">{t('notes.cancel')}</span>
           </Button>
           <Button
             onClick={() => void save()}
             disabled={busy || title.trim() === '' || contentMd.trim() === ''}
+            aria-label={t('notes.save')}
+            title={t('notes.save')}
           >
-            <CheckIcon className="size-4" />
-            {t('notes.save')}
+            <CheckIcon className="size-4 max-sm:mx-auto" />
+            <span className="max-sm:hidden">{t('notes.save')}</span>
           </Button>
         </div>
       </PageSlot>
 
       <div className="flex h-full min-h-0 flex-col gap-[18px] px-[18px] pt-[18px] pb-11 max-[640px]:px-3">
-        <div className="flex min-h-0 flex-1 flex-col gap-3 min-[900px]:flex-row">
-          <Panel className="min-h-0 min-w-0 flex-1">
+        {/* Below 900px the whole column scrolls and both panels take their
+         * natural height (a flex-1 card under a fixed page height squeezed
+         * the textarea to a sliver under the metadata panel). */}
+        <div className="flex min-h-0 flex-1 flex-col gap-3 max-[900px]:overflow-y-auto min-[900px]:flex-row">
+          <Panel className="min-h-0 min-w-0 flex-1 max-[900px]:flex-none">
             <div className="flex h-9 shrink-0 items-stretch border-b px-2.5" role="tablist">
               {(['edit', 'preview'] as const).map((m) => (
                 <button
@@ -289,6 +309,7 @@ export function NoteEditorPage() {
                   placeholder={t('notes.titlePlaceholder')}
                   aria-label={t('notes.titleLabel')}
                   maxLength={200}
+                  autoComplete="off"
                   className="text-foreground h-auto rounded-none border-0 bg-transparent px-[18px] pt-4 pb-1 text-lg font-semibold tracking-tight shadow-none focus-visible:ring-0"
                 />
                 <textarea
@@ -298,6 +319,7 @@ export function NoteEditorPage() {
                   aria-label={t('notes.tabEdit')}
                   spellCheck
                   className="font-mono text-foreground placeholder:text-muted-foreground min-h-0 flex-1 resize-none bg-transparent px-[18px] pt-2.5 pb-4 text-xs leading-[1.8] outline-none max-[900px]:h-[50vh] max-[900px]:flex-none"
+                  autoComplete="off"
                 />
               </>
             ) : (
@@ -329,7 +351,7 @@ export function NoteEditorPage() {
               {t('notes.metaLabel')}
               <span className="role-data-sm text-muted-foreground ml-auto">{versionMeta}</span>
             </div>
-            <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-3">
+            <div className="flex min-h-0 flex-1 flex-col gap-3 p-3 min-[900px]:overflow-y-auto">
               <Field
                 label={t('notes.summaryLabel')}
                 htmlFor="note-summary"
@@ -352,7 +374,8 @@ export function NoteEditorPage() {
                   onChange={(e) => setSummary(e.target.value)}
                   placeholder={t('notes.summaryPlaceholder')}
                   maxLength={1000}
-                  className="min-h-16 text-xs leading-relaxed"
+                  autoComplete="off"
+                  className="max-h-40 min-h-16 resize-none overflow-y-auto text-xs leading-relaxed"
                 />
               </Field>
               <Field label={t('notes.categoryLabel')} htmlFor="note-category">

@@ -296,14 +296,28 @@ export function NoteDetailPage() {
             <Button
               onClick={() => setConfirmRevise(true)}
               disabled={revising || openCount === 0}
-              title={openCount === 0 ? t('notes.reviseNeedOpen') : undefined}
+              title={openCount === 0 ? t('notes.reviseNeedOpen') : t('notes.revise')}
+              aria-label={t('notes.revise')}
+              className="max-sm:w-(--control-h) max-sm:px-0"
             >
-              <SparklesIcon className={revising ? 'size-4 animate-pulse' : 'size-4'} />
-              {revising ? t('notes.reviseBusy') : t('notes.revise')}
+              <SparklesIcon
+                className={
+                  revising ? 'size-4 animate-pulse max-sm:mx-auto' : 'size-4 max-sm:mx-auto'
+                }
+              />
+              <span className="max-sm:hidden">
+                {revising ? t('notes.reviseBusy') : t('notes.revise')}
+              </span>
             </Button>
-            <Button variant="outline" onClick={() => navigate(`/notes/${note.id}/edit`)}>
-              <PencilIcon className="size-4" />
-              {t('notes.edit')}
+            <Button
+              variant="outline"
+              onClick={() => navigate(`/notes/${note.id}/edit`)}
+              aria-label={t('notes.edit')}
+              title={t('notes.edit')}
+              className="max-sm:w-(--control-h) max-sm:px-0"
+            >
+              <PencilIcon className="size-4 max-sm:mx-auto" />
+              <span className="max-sm:hidden">{t('notes.edit')}</span>
             </Button>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
@@ -502,7 +516,7 @@ export function NoteDetailPage() {
           }}
           title={t('notes.delete')}
           consequence={t('notes.annotationDeleteConsequence')}
-          impact={[{ label: 'annotation', value: pendingDelete.comment }]}
+          impact={[{ label: t('notes.impactAnnotation'), value: pendingDelete.comment }]}
           actionLabel={t('notes.delete')}
           onConfirm={() => void removeAnnotation()}
         />
@@ -533,7 +547,7 @@ export function NoteDetailPage() {
           }}
           title={t('notes.delete')}
           consequence={t('notes.deleteConsequence')}
-          impact={[{ label: 'note', value: note.title }]}
+          impact={[{ label: t('notes.impactNote'), value: note.title }]}
           actionLabel={t('notes.delete')}
           onConfirm={() => {
             setConfirmDeleteNote(false);
@@ -607,7 +621,7 @@ function AnnotationCard({
           <Button
             variant="ghost"
             size="icon"
-            className="size-5"
+            className="size-6"
             onClick={onToggle}
             aria-label={t(
               annotation.state === 'open' ? 'notes.resolveAnnotation' : 'notes.reopenAnnotation',
@@ -625,7 +639,7 @@ function AnnotationCard({
           <Button
             variant="ghost"
             size="icon"
-            className="text-muted-foreground size-5"
+            className="text-muted-foreground size-6"
             onClick={onDelete}
             aria-label={t('notes.delete')}
           >

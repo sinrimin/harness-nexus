@@ -204,15 +204,21 @@ function Mark({
         onFocus(mark.id);
       }}
       className={cn(
-        'box-decoration-clone cursor-pointer rounded-sm border-b-[1.5px] px-px',
+        // text-inherit: the UA paints <mark> black, unreadable on dark.
+        'text-inherit box-decoration-clone cursor-pointer rounded-sm border-b-2 px-px',
         mark.state === 'open'
           ? 'border-b-signal bg-signal/10'
-          : 'border-lamp-off border-b-dashed bg-muted/60',
+          : 'border-b-lamp-off bg-muted/60 [border-bottom-style:dashed]',
         focused && 'bg-signal/20',
       )}
     >
       {children}
-      <sup className="role-data-sm text-signal ml-0.5 align-super text-[9px] font-medium">
+      <sup
+        className={cn(
+          'role-data-sm ml-0.5 align-super text-[9px] font-medium',
+          mark.state === 'open' ? 'text-signal' : 'text-muted-foreground',
+        )}
+      >
         {circled(mark.index)}
       </sup>
     </mark>

@@ -19,6 +19,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { ConfirmDialog, EmptyState } from '@/components/kit';
+import { Lamp } from '@/components/kit/lamp';
 import { NOTE_STATUSES, NOTE_STATUS_KEY, NOTE_STATUS_STATE, shortDate } from './vocabulary';
 
 /** Per-column card cap — the board is a pipeline overview, not a second feed. */
@@ -80,38 +81,33 @@ export function BoardView({
             hint={t('notes.boardEmptyHint')}
           />
         ) : null}
-        {columns.map((col) => (
-          <section
-            key={col.status}
-            className="bg-tray/55 border-border/55 flex min-h-0 flex-col gap-2 overflow-y-auto rounded-lg border p-2.5 max-[900px]:shrink-0"
-            aria-label={t(NOTE_STATUS_KEY[col.status])}
-          >
-            <header className="flex items-center gap-1.5 px-0.5 pb-0.5">
-              <span
-                data-slot="lamp-body"
-                data-state={NOTE_STATUS_STATE[col.status]}
-                aria-hidden="true"
-                className={
-                  col.status === 'reading'
-                    ? 'bg-signal size-1.5 shrink-0 rounded-full'
-                    : 'bg-lamp-off size-1.5 shrink-0 rounded-full'
-                }
-              />
-              <h3 className="text-[10.5px] font-semibold tracking-wide">
-                {t(NOTE_STATUS_KEY[col.status])}
-              </h3>
-              <span className="role-data-sm text-muted-foreground ml-auto">{col.rows.length}</span>
-            </header>
-            {col.rows.slice(0, COLUMN_CAP).map((n) => (
-              <BoardCard key={n.id} note={n} onMove={onMove} onDelete={setPending} />
+        {notes === null
+          ? null
+          : columns.map((col) => (
+              <section
+                key={col.status}
+                className="bg-tray/55 border-border/55 flex min-h-0 flex-col gap-2 overflow-y-auto rounded-lg border p-2.5 max-[900px]:shrink-0"
+                aria-label={t(NOTE_STATUS_KEY[col.status])}
+              >
+                <header className="flex items-center gap-1.5 px-0.5 pb-0.5">
+                  <Lamp state={NOTE_STATUS_STATE[col.status]} size="sm" />
+                  <h3 className="text-[10.5px] font-semibold tracking-wide">
+                    {t(NOTE_STATUS_KEY[col.status])}
+                  </h3>
+                  <span className="role-data-sm text-muted-foreground ml-auto">
+                    {col.rows.length}
+                  </span>
+                </header>
+                {col.rows.slice(0, COLUMN_CAP).map((n) => (
+                  <BoardCard key={n.id} note={n} onMove={onMove} onDelete={setPending} />
+                ))}
+                {col.rows.length > COLUMN_CAP ? (
+                  <p className="text-muted-foreground role-data-sm py-1 text-center">
+                    {t('notes.boardMore', { count: col.rows.length - COLUMN_CAP })}
+                  </p>
+                ) : null}
+              </section>
             ))}
-            {col.rows.length > COLUMN_CAP ? (
-              <p className="text-muted-foreground role-data-sm py-1 text-center">
-                {t('notes.boardMore', { count: col.rows.length - COLUMN_CAP })}
-              </p>
-            ) : null}
-          </section>
-        ))}
       </div>
 
       {pending !== null ? (
@@ -122,7 +118,7 @@ export function BoardView({
           }}
           title={t('notes.delete')}
           consequence={t('notes.deleteConsequence')}
-          impact={[{ label: 'note', value: pending.title }]}
+          impact={[{ label: t('notes.impactNote'), value: pending.title }]}
           actionLabel={t('notes.delete')}
           onConfirm={() => {
             const id = pending.id;
