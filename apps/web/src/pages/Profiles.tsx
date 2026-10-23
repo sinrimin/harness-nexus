@@ -458,8 +458,7 @@ claude plugin install <profile-name>@harness-nexus-${user.username.toLowerCase()
             <TableRow key={p.id}>
               <TableCell>
                 <div className="font-medium">
-                  {p.name}{' '}
-                  <span className="text-muted-foreground font-mono text-[10px]">v{p.version}</span>
+                  {p.name} <span className="text-muted-foreground role-data-sm">v{p.version}</span>
                 </div>
                 {p.description && (
                   <div className="text-muted-foreground mt-0.5 text-xs">{p.description}</div>

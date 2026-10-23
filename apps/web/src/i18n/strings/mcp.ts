@@ -88,7 +88,7 @@ const en = {
   descAuto:
     'Auto: client-dialed when every referenced credential is distributable (or none), server-dialed otherwise.',
   namePlaceholder: 'e.g. context7',
-  dialSiteAuto: 'auto (derive from credentials)',
+  dialSiteAuto: 'auto (from credentials)',
   dialSiteClient: 'client (hnx shim dials)',
   dialSiteServer: 'server (platform dials)',
   transportStdio: 'stdio (client-dialed only)',

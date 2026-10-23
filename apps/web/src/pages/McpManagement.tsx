@@ -679,11 +679,11 @@ function StatusBadge({
           pulse={resolved === 'connecting'}
         />
         {resolved === 'connected' ? (
-          <Badge variant="secondary" className="nums">
+          <span className="text-muted-foreground nums text-xs">
             {toolCount === 1
               ? t('mcp.toolOne', { count: toolCount })
               : t('mcp.toolMany', { count: toolCount })}
-          </Badge>
+          </span>
         ) : null}
         {resolved === 'error' && detail ? (
           <span className="text-muted-foreground truncate text-xs" title={detail}>
@@ -1062,7 +1062,7 @@ function McpServerDialog({
               hint <p>, and without it align-content:stretch distributes that
               extra height into the OTHER cells' rows — pushing their inputs
               around (the same alignment bug the Profiles edit dialog fixed). */}
-            <div className="grid content-start gap-2">
+            <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] content-start gap-2">
               <Label htmlFor="mcp-name">{t('common.name')}</Label>
               <Input
                 id="mcp-name"
@@ -1074,10 +1074,10 @@ function McpServerDialog({
                 required
               />
             </div>
-            <div className="grid content-start gap-2">
+            <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] content-start gap-2">
               <Label htmlFor="mcp-dial-site">{t('mcp.dialSite')}</Label>
               <Select value={dialSite} onValueChange={(v) => setDialSite(v as DialSite)}>
-                <SelectTrigger id="mcp-dial-site">
+                <SelectTrigger className="w-full [&>span]:truncate" id="mcp-dial-site">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -1089,10 +1089,10 @@ function McpServerDialog({
                 </SelectContent>
               </Select>
             </div>
-            <div className="grid content-start gap-2">
+            <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] content-start gap-2">
               <Label htmlFor="mcp-type">{t('mcp.transport')}</Label>
               <Select value={type} onValueChange={(v) => onTypeChange(v as TransportType)}>
-                <SelectTrigger id="mcp-type">
+                <SelectTrigger className="w-full [&>span]:truncate" id="mcp-type">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -1104,7 +1104,7 @@ function McpServerDialog({
                 </SelectContent>
               </Select>
             </div>
-            <div className="grid content-start gap-2">
+            <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] content-start gap-2">
               <Label htmlFor="mcp-scope">{t('common.scope')}</Label>
               <Select
                 value={scope}
