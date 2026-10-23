@@ -11,7 +11,7 @@ import { z } from 'zod';
 
 export const NOTE_STATUSES = ['inbox', 'to_read', 'reading', 'read'] as const;
 export const NOTE_VISIBILITIES = ['private', 'public'] as const;
-export const NOTE_SOURCE_KINDS = ['manual', 'chat', 'url'] as const;
+export const NOTE_SOURCE_KINDS = ['manual', 'chat', 'url', 'agent'] as const;
 
 export const noteStatusSchema = z.enum(NOTE_STATUSES);
 export const noteVisibilitySchema = z.enum(NOTE_VISIBILITIES);

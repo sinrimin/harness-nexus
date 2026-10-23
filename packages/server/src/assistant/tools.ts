@@ -447,6 +447,69 @@ export function buildAssistantTools(
         execute: async (_id, params) => notesCall('notes__get', { id: params.id }),
       }),
       tool({
+        name: 'notes_create',
+        class: 'write',
+        label: 'Save note',
+        description:
+          "Save a markdown document into the user's notes library (private, inbox by default; source marked agent-created). Use when the user asks to keep, park, or store a piece of writing — pass the FULL markdown as contentMd.",
+        parameters: Type.Object({
+          title: Type.String({ description: 'Note title (1-200 chars)' }),
+          contentMd: Type.String({ description: 'Full markdown body' }),
+          summary: Type.Optional(Type.String({ description: '1-2 sentence summary' })),
+          tags: Type.Optional(Type.Array(Type.String(), { maxItems: 16 })),
+        }),
+        execute: async (_id, params) =>
+          notesCall('notes__create', {
+            title: params.title,
+            contentMd: params.contentMd,
+            ...(params.summary !== undefined ? { summary: params.summary } : {}),
+            ...(params.tags !== undefined ? { tags: params.tags } : {}),
+          }),
+      }),
+      tool({
+        name: 'notes_update',
+        class: 'write',
+        label: 'Edit note',
+        description:
+          "Edit one of the user's notes, diff-first: pass `edits` — {oldText, newText} hunks where oldText must occur EXACTLY ONCE in the current body (add context to disambiguate; '' newText deletes); pass `contentMd` (full body) only for whole-document rewrites. `expectVersion` is REQUIRED (the contentVersion from notes_get); a mismatch refuses the write — re-read and re-apply. Optional title/summary/tags/status ride along.",
+        parameters: Type.Object({
+          id: Type.String({ description: 'Note id' }),
+          expectVersion: Type.Number({ description: 'contentVersion your edits are based on' }),
+          edits: Type.Optional(
+            Type.Array(
+              Type.Object({
+                oldText: Type.String({ description: 'Must occur exactly once in the body' }),
+                newText: Type.String({ description: 'Replacement (empty deletes)' }),
+              }),
+              { maxItems: 32 },
+            ),
+          ),
+          contentMd: Type.Optional(Type.String({ description: 'Full replacement body' })),
+          title: Type.Optional(Type.String()),
+          summary: Type.Optional(Type.String()),
+          tags: Type.Optional(Type.Array(Type.String(), { maxItems: 16 })),
+          status: Type.Optional(
+            Type.Union([
+              Type.Literal('inbox'),
+              Type.Literal('to_read'),
+              Type.Literal('reading'),
+              Type.Literal('read'),
+            ]),
+          ),
+        }),
+        execute: async (_id, params) =>
+          notesCall('notes__update', {
+            id: params.id,
+            expectVersion: params.expectVersion,
+            ...(params.edits !== undefined ? { edits: params.edits } : {}),
+            ...(params.contentMd !== undefined ? { contentMd: params.contentMd } : {}),
+            ...(params.title !== undefined ? { title: params.title } : {}),
+            ...(params.summary !== undefined ? { summary: params.summary } : {}),
+            ...(params.tags !== undefined ? { tags: params.tags } : {}),
+            ...(params.status !== undefined ? { status: params.status } : {}),
+          }),
+      }),
+      tool({
         name: 'notes_annotations',
         class: 'read',
         label: 'List note annotations',
@@ -666,7 +729,7 @@ export const TOOL_NAMES_BY_GROUP: Record<AssistantToolGroup, readonly string[]> 
   profiles: ['profiles_list', 'profiles_get', 'profiles_create', 'profiles_update'],
   mcp: ['mcp_servers_list'],
   'skills-hub': ['skills_search'],
-  notes: ['notes_search', 'notes_get', 'notes_annotations'],
+  notes: ['notes_search', 'notes_get', 'notes_annotations', 'notes_create', 'notes_update'],
   machines: ['machines_list', 'machine_agents_list', 'machine_jobs_list'],
   'agent-dispatch': ['agent_dispatch', 'agent_dispatch_poll'],
   'api-tools': ['api_tools_list', 'api_tools_get', 'api_tools_save', 'api_tools_delete'],

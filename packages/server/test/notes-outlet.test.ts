@@ -195,6 +195,103 @@ describe('notes__ tools on the /mcp outlet (#88)', () => {
     expect((annos.body as ToolResult).result?.content![0]!.text).toContain('加规范版本号');
   });
 
+  it('creates a note over the wire (source=agent), then reads it back', async () => {
+    const init = await rpc(aliceJwt, aliceProfileId, 'initialize', {
+      protocolVersion: '2025-06-18',
+      capabilities: {},
+      clientInfo: { name: 'notes-outlet-create', version: '0' },
+    });
+    const sessionId = init.sessionId!;
+    const created = await rpc(
+      aliceJwt,
+      aliceProfileId,
+      'tools/call',
+      {
+        name: 'notes__create',
+        arguments: {
+          title: 'Agent 存的调研',
+          contentMd: 'Streamable HTTP 已成主流。',
+          tags: ['调研'],
+        },
+      },
+      sessionId,
+    );
+    const createResult = created.body as ToolResult;
+    expect(createResult.result?.isError).toBeUndefined();
+    const createdRow = JSON.parse(createResult.result!.content![0]!.text) as { id: string };
+
+    const got = await rpc(
+      aliceJwt,
+      aliceProfileId,
+      'tools/call',
+      { name: 'notes__get', arguments: { id: createdRow.id } },
+      sessionId,
+    );
+    expect((got.body as ToolResult).result?.content![0]!.text).toContain(
+      'Streamable HTTP 已成主流',
+    );
+
+    // The row itself carries source.kind = 'agent' (REST read-back).
+    const row = (
+      await app.inject({
+        method: 'GET',
+        url: `/api/notes/${createdRow.id}`,
+        headers: authed(aliceJwt),
+      })
+    ).json().note as { source: { kind: string } };
+    expect(row.source.kind).toBe('agent');
+  });
+
+  it('updates a note over the wire: diff edit, version gate, re-read refusal', async () => {
+    const init = await rpc(aliceJwt, aliceProfileId, 'initialize', {
+      protocolVersion: '2025-06-18',
+      capabilities: {},
+      clientInfo: { name: 'notes-outlet-update', version: '0' },
+    });
+    const sessionId = init.sessionId!;
+
+    const stale = await rpc(
+      aliceJwt,
+      aliceProfileId,
+      'tools/call',
+      {
+        name: 'notes__update',
+        arguments: {
+          id: aliceNoteId,
+          expectVersion: 99,
+          edits: [{ oldText: '正文', newText: 'x' }],
+        },
+      },
+      sessionId,
+    );
+    const staleResult = (stale.body as ToolResult).result;
+    expect(staleResult?.isError).toBe(true);
+    expect(staleResult?.content![0]!.text).toContain('version mismatch');
+
+    const ok = await rpc(
+      aliceJwt,
+      aliceProfileId,
+      'tools/call',
+      {
+        name: 'notes__update',
+        arguments: {
+          id: aliceNoteId,
+          expectVersion: 1,
+          edits: [
+            {
+              oldText: 'Streamable HTTP 将成为默认传输',
+              newText: 'Streamable HTTP（2025-03-26 规范）将成为默认传输',
+            },
+          ],
+        },
+      },
+      sessionId,
+    );
+    const okResult = ok.body as ToolResult;
+    expect(okResult.result?.isError).toBeUndefined();
+    expect(JSON.parse(okResult.result!.content![0]!.text).contentVersion).toBe(2);
+  });
+
   it('hides another user\u2019s private note (isError, NOTE_NOT_FOUND)', async () => {
     const bobNoteId = (
       (

@@ -6,7 +6,7 @@ import { describe, expect, it } from 'vitest';
 import { createMemoryUnitOfWork } from '../src/infra/storage/memory/index.js';
 import type { Principal } from '../src/services/principal.js';
 import { createNote, notesContextFor, promptTerms } from '../src/services/notes.js';
-import { NOTES_TOOL_DEFS, executeNotesTool } from '../src/mcp/notes-tools.js';
+import { NOTES_TOOL_DEFS, applyEdits, executeNotesTool } from '../src/mcp/notes-tools.js';
 import { TOOL_NAMES_BY_GROUP } from '../src/assistant/tools.js';
 
 /**
@@ -111,6 +111,99 @@ describe('executeNotesTool', () => {
     expect(parsed.annotations[0]!.comment).toBe('加规范号');
   });
 
+  it('applies a diff edit, bumps the version, and writes the snapshot', async () => {
+    const uow = await seed();
+    const { mcp } = await seedNotes(uow);
+    const r = await executeNotesTool({ uow }, owner, 'notes__update', {
+      id: mcp.id,
+      expectVersion: 1,
+      edits: [{ oldText: 'Streamable HTTP 将成为默认传输', newText: 'Streamable HTTP（2025-03 规范）将成为默认传输' }],
+    });
+    expect(r.isError).toBe(false);
+    const parsed = JSON.parse(r.text) as { contentVersion: number; bodyChanged: boolean };
+    expect(parsed.contentVersion).toBe(2);
+    expect(parsed.bodyChanged).toBe(true);
+    const row = await uow.notes.findById(mcp.id);
+    expect(row?.contentMd).toContain('2025-03 规范');
+    expect((await uow.notes.findVersion(mcp.id, 2))?.contentMd).toContain('2025-03 规范');
+  });
+
+  it('refuses a stale or missing expectVersion (read-before-write)', async () => {
+    const uow = await seed();
+    const { mcp } = await seedNotes(uow);
+    const stale = await executeNotesTool({ uow }, owner, 'notes__update', {
+      id: mcp.id,
+      expectVersion: 99,
+      edits: [{ oldText: '正文', newText: 'x' }],
+    });
+    expect(stale.isError).toBe(true);
+    expect(stale.text).toContain('version mismatch');
+    expect(stale.text).toContain('notes__get');
+
+    const missing = await executeNotesTool({ uow }, owner, 'notes__update', {
+      id: mcp.id,
+      edits: [{ oldText: '正文', newText: 'x' }],
+    });
+    expect(missing.isError).toBe(true);
+    expect(missing.text).toContain('expectVersion is required');
+  });
+
+  it('rejects ambiguous and absent oldText instead of guessing', async () => {
+    const uow = await seed();
+    const { mcp } = await seedNotes(uow);
+    // A body with a genuinely repeated span for the ambiguity case.
+    await executeNotesTool({ uow }, owner, 'notes__update', {
+      id: mcp.id,
+      expectVersion: 1,
+      contentMd: 'alpha beta alpha gamma',
+    });
+    const absent = await executeNotesTool({ uow }, owner, 'notes__update', {
+      id: mcp.id,
+      expectVersion: 2,
+      edits: [{ oldText: '不存在的句子', newText: 'x' }],
+    });
+    expect(absent.isError).toBe(true);
+    expect(absent.text).toContain('not found');
+
+    const ambiguous = await executeNotesTool({ uow }, owner, 'notes__update', {
+      id: mcp.id,
+      expectVersion: 2,
+      edits: [{ oldText: 'alpha', newText: 'X' }],
+    });
+    expect(ambiguous.isError).toBe(true);
+    expect(ambiguous.text).toContain('times');
+  });
+
+  it('full replace works; metadata-only update does not bump the version', async () => {
+    const uow = await seed();
+    const { mcp } = await seedNotes(uow);
+    const replaced = await executeNotesTool({ uow }, owner, 'notes__update', {
+      id: mcp.id,
+      expectVersion: 1,
+      contentMd: '全新正文。',
+    });
+    expect(JSON.parse(replaced.text).contentVersion).toBe(2);
+
+    const meta = await executeNotesTool({ uow }, owner, 'notes__update', {
+      id: mcp.id,
+      expectVersion: 2,
+      title: 'MCP 调研（已修订）',
+      status: 'read',
+    });
+    const parsed = JSON.parse(meta.text) as { contentVersion: number; bodyChanged: boolean };
+    expect(parsed.contentVersion).toBe(2);
+    expect(parsed.bodyChanged).toBe(false);
+  });
+
+  it('applyEdits unit: deletion via empty newText, ordered hunks', () => {
+    const r = applyEdits('甲乙丙丁\nsecond line\n', [
+      { oldText: '乙丙', newText: '' },
+      { oldText: 'second line', newText: 'third line' },
+    ]);
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.body).toBe('甲丁\nthird line\n');
+  });
+
   it('rejects unknown tool names', async () => {
     const uow = await seed();
     const r = await executeNotesTool({ uow }, owner, 'notes__nuke', {});
@@ -150,11 +243,19 @@ describe('promptTerms + notesContextFor', () => {
 
 describe('tool group wiring', () => {
   it('the notes group index covers the dispatcher surface', () => {
-    expect(TOOL_NAMES_BY_GROUP.notes).toEqual(['notes_search', 'notes_get', 'notes_annotations']);
+    expect(TOOL_NAMES_BY_GROUP.notes).toEqual([
+      'notes_search',
+      'notes_get',
+      'notes_annotations',
+      'notes_create',
+      'notes_update',
+    ]);
     expect(NOTES_TOOL_DEFS.map((d) => d.name)).toEqual([
       'notes__search',
       'notes__get',
       'notes__annotations',
+      'notes__create',
+      'notes__update',
     ]);
   });
 });

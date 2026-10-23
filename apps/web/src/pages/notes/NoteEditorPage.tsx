@@ -5,7 +5,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { toast } from 'sonner';
-import { CheckIcon, MessageSquareIcon, PencilIcon, SparklesIcon } from 'lucide-react';
+import { BotIcon, CheckIcon, MessageSquareIcon, PencilIcon, SparklesIcon } from 'lucide-react';
 import type { Note, NoteCategory, NoteStatus, NoteVisibility } from '@harness-nexus/sdk';
 import { HarnessNexusError } from '@harness-nexus/sdk';
 import { api } from '@/api';
@@ -413,8 +413,10 @@ export function NoteEditorPage() {
               </div>
               <Field label={t('notes.sourceLabel')}>
                 <div className="bg-(--well) border-border flex items-center gap-2 rounded border px-2.5 py-1.5">
-                  {note !== null && note.source.kind === 'chat' ? (
+                  {note?.source.kind === 'chat' ? (
                     <MessageSquareIcon className="text-muted-foreground size-3 shrink-0" />
+                  ) : note?.source.kind === 'agent' ? (
+                    <BotIcon className="text-muted-foreground size-3 shrink-0" />
                   ) : (
                     <PencilIcon className="text-muted-foreground size-3 shrink-0" />
                   )}
@@ -460,8 +462,10 @@ function sourceLine(note: Note, t: ReturnType<typeof useI18n>['t']): string {
   const kind =
     note.source.kind === 'chat'
       ? t('notes.sourceChat')
-      : note.source.kind === 'url'
-        ? t('notes.sourceUrl')
-        : t('notes.sourceManual');
+      : note.source.kind === 'agent'
+        ? t('notes.sourceAgent')
+        : note.source.kind === 'url'
+          ? t('notes.sourceUrl')
+          : t('notes.sourceManual');
   return note.source.ref !== undefined ? `${kind} · ${note.source.ref}` : kind;
 }

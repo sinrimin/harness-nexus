@@ -6,6 +6,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import {
+  BotIcon,
   CheckIcon,
   GlobeIcon,
   HighlighterIcon,
@@ -377,6 +378,8 @@ export function NoteDetailPage() {
             <div className="bg-well border-well-edge mt-3 flex flex-wrap items-center gap-2 rounded-(--radius-well) border px-2.5 py-1.5">
               {note.source.kind === 'chat' ? (
                 <MessageSquareIcon className="text-muted-foreground size-3 shrink-0" />
+              ) : note.source.kind === 'agent' ? (
+                <BotIcon className="text-muted-foreground size-3 shrink-0" />
               ) : note.source.kind === 'url' ? (
                 <LinkIcon className="text-muted-foreground size-3 shrink-0" />
               ) : (
@@ -643,8 +646,10 @@ function sourceLine(note: Note, t: ReturnType<typeof useI18n>['t']): string {
   const kind =
     note.source.kind === 'chat'
       ? t('notes.sourceChat')
-      : note.source.kind === 'url'
-        ? t('notes.sourceUrl')
-        : t('notes.sourceManual');
+      : note.source.kind === 'agent'
+        ? t('notes.sourceAgent')
+        : note.source.kind === 'url'
+          ? t('notes.sourceUrl')
+          : t('notes.sourceManual');
   return note.source.ref !== undefined ? `${kind} · ${note.source.ref}` : kind;
 }

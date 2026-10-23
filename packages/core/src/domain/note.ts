@@ -24,8 +24,8 @@ export type NoteStatus = 'inbox' | 'to_read' | 'reading' | 'read';
 /** `public` grants other users read of the note row itself (the square) — nothing else. */
 export type NoteVisibility = 'private' | 'public';
 
-/** How the note entered the library. */
-export type NoteSourceKind = 'manual' | 'chat' | 'url';
+/** How the note entered the library. `agent` = saved by an agent tool call. */
+export type NoteSourceKind = 'manual' | 'chat' | 'url' | 'agent';
 
 export interface NoteSource {
   kind: NoteSourceKind;
