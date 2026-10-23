@@ -24,6 +24,8 @@ export const ASSISTANT_TOOL_GROUPS = [
   'profiles',
   'mcp',
   'skills-hub',
+  // #88 — the owner's notes library (read tools + per-turn context injection).
+  'notes',
   'machines',
   // #67 — client-agent dispatch; deliberately NOT in the defaults (opt-in).
   'agent-dispatch',
@@ -41,6 +43,7 @@ export const DEFAULT_ASSISTANT_TOOL_GROUPS: readonly AssistantToolGroup[] = [
   'profiles',
   'mcp',
   'skills-hub',
+  'notes',
   'machines',
   'system',
 ];

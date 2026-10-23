@@ -63,6 +63,112 @@ function stampVersion(deps: ServiceDeps, note: Note, previousContent: string): N
   return next;
 }
 
+// ---- context injection (#88) ----
+
+/**
+ * Terms a prompt contributes: ASCII words (≥3 chars, stopword-dropped) plus
+ * CJK bigrams — Chinese prompts have no spaces to split on, and unigrams are
+ * too noisy to score.
+ */
+export function promptTerms(prompt: string): string[] {
+  const terms = new Set<string>();
+  for (const word of prompt.toLowerCase().match(/[a-z][a-z0-9_-]{2,}/g) ?? []) {
+    if (!STOPWORDS.has(word)) terms.add(word);
+  }
+  for (const run of prompt.match(/[\u4e00-\u9fff]{2,}/g) ?? []) {
+    for (let i = 0; i + 2 <= run.length; i += 1) terms.add(run.slice(i, i + 2));
+  }
+  return [...terms].slice(0, 48);
+}
+
+const STOPWORDS = new Set([
+  'the',
+  'and',
+  'for',
+  'are',
+  'but',
+  'not',
+  'you',
+  'all',
+  'can',
+  'her',
+  'was',
+  'one',
+  'our',
+  'out',
+  'his',
+  'has',
+  'have',
+  'this',
+  'that',
+  'with',
+  'from',
+  'what',
+  'when',
+  'how',
+  'why',
+  'who',
+  'will',
+  'your',
+  'into',
+  'some',
+  'just',
+  '关于',
+  '一下',
+  '这个',
+  '那个',
+  '可以',
+  '我们',
+  '他们',
+  '还是',
+  '因为',
+  '所以',
+]);
+
+const CONTEXT_TOP_N = 3;
+const CONTEXT_MIN_SCORE = 2;
+const CONTEXT_FETCH = 100;
+
+/**
+ * The per-turn <system_context>: the user's own notes whose title/summary/
+ * tags keyword-match the prompt, summaries only, top 3. The v0 of the user's
+ * validated injection mechanism (marker-wrapped, skipped in session flow);
+ * vector matching (sqlite-vec) upgrades the retrieval later, the contract —
+ * summaries in, full bodies via tools — stays.
+ */
+export async function notesContextFor(
+  deps: ServiceDeps,
+  caller: Principal,
+  promptText: string,
+): Promise<string> {
+  const terms = promptTerms(promptText);
+  if (terms.length === 0) return '';
+  const notes = await deps.uow.notes.list({ ownerId: caller.userId, limit: CONTEXT_FETCH });
+  const scored: { note: Note; score: number }[] = [];
+  for (const note of notes) {
+    const haystack = `${note.title}\n${note.summary ?? ''}\n${note.tags.join(' ')}`.toLowerCase();
+    let score = 0;
+    for (const term of terms) {
+      if (haystack.includes(term)) score += 1;
+    }
+    if (score >= CONTEXT_MIN_SCORE) scored.push({ note, score });
+  }
+  if (scored.length === 0) return '';
+  scored.sort((a, b) => b.score - a.score || b.note.updatedAt.localeCompare(a.note.updatedAt));
+  const lines = scored.slice(0, CONTEXT_TOP_N).map(({ note }) => {
+    const tags = note.tags.length > 0 ? ` [${note.tags.join(', ')}]` : '';
+    const summary = note.summary ?? '(no summary)';
+    return `- ${note.title}${tags} — ${summary} (id: ${note.id})`;
+  });
+  return [
+    '<system_context>',
+    "# Notes from the user's library (keyword-matched against this prompt; summaries only, may be irrelevant)",
+    ...lines,
+    'Fetch full bodies with the notes_get tool when a note matters.',
+    '</system_context>',
+  ].join('\n');
+}
+
 // ---- notes ----
 
 /** A feed/board card carries its annotation counts (owner-only figures). */

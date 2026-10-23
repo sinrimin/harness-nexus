@@ -61,6 +61,7 @@ const ASSISTANT_TOOL_GROUPS = [
   'profiles',
   'mcp',
   'skills-hub',
+  'notes',
   'machines',
   'agent-dispatch',
   'api-tools',
