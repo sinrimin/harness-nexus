@@ -136,6 +136,7 @@ describe('executeApiTool (stubbed fetch + injectable DNS)', () => {
     await uow.settings.save({
       ...(await uow.settings.get()),
       apiToolAllowlist: allowlist,
+      apiToolOutbound: 'restricted',
       updatedAt: now,
     });
     await uow.credentials.save({

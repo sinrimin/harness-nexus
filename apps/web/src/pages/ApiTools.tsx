@@ -88,6 +88,8 @@ export function ApiToolsPage(): React.ReactNode {
   const [busy, setBusy] = useState(false);
   const [probe, setProbe] = useState<ApiToolServiceView | null>(null);
   const [allowlist, setAllowlist] = useState<{ host: string; internal?: boolean }[] | null>(null);
+  // #85 — the outbound host policy riding next to the allowlist (admin).
+  const [outbound, setOutbound] = useState<'open' | 'restricted' | null>(null);
 
   usePageTitle(t('apiTools.title'));
 
@@ -106,6 +108,9 @@ export function ApiToolsPage(): React.ReactNode {
     withAuthGuard(() => api.getApiToolAllowlist(), logout)
       .then((res) => setAllowlist(res.entries))
       .catch(() => setAllowlist(null));
+    withAuthGuard(() => api.getApiToolOutbound(), logout)
+      .then((res) => setOutbound(res.outbound))
+      .catch(() => setOutbound(null));
   }, [user?.role, logout]);
 
   const rows = useMemo(() => items ?? [], [items]);
@@ -230,7 +235,18 @@ export function ApiToolsPage(): React.ReactNode {
       </DataTable>
 
       {user?.role === 'admin' && allowlist !== null ? (
-        <AllowlistPanel entries={allowlist} onChange={setAllowlist} onSave={saveAllowlist} />
+        <AllowlistPanel
+          entries={allowlist}
+          outbound={outbound}
+          onOutboundChange={(v) => setOutbound(v)}
+          onOutboundSave={(v) => {
+            withAuthGuard(() => api.setApiToolOutbound(v), logout)
+              .then(() => toast.success(t('apiTools.policySaved')))
+              .catch((e) => toast.error(errText(e)));
+          }}
+          onChange={setAllowlist}
+          onSave={saveAllowlist}
+        />
       ) : null}
 
       {uploadOpen || replaceOf !== null ? (
@@ -278,10 +294,17 @@ export function ApiToolsPage(): React.ReactNode {
 
 function AllowlistPanel({
   entries,
+  outbound,
+  onOutboundChange,
+  onOutboundSave,
   onChange,
   onSave,
 }: {
   entries: { host: string; internal?: boolean }[];
+  /** #85 — `open` (default) dials any host; `restricted` enforces the list. */
+  outbound: 'open' | 'restricted' | null;
+  onOutboundChange: (v: 'open' | 'restricted') => void;
+  onOutboundSave: (v: 'open' | 'restricted') => void;
   onChange: (next: { host: string; internal?: boolean }[]) => void;
   onSave: () => void;
 }): React.ReactNode {
@@ -291,9 +314,29 @@ function AllowlistPanel({
 
   return (
     <Panel>
-      <PanelHeader title={t('apiTools.allowlistTitle')} />
+      <PanelHeader title={t('apiTools.outboundTitle')} />
       <div className="space-y-2 p-4 text-sm">
-        <p className="text-muted-foreground text-xs">{t('apiTools.allowlistHint')}</p>
+        <Field label={t('apiTools.policyLabel')}>
+          <Select
+            value={outbound ?? 'open'}
+            onValueChange={(v) => {
+              const next = v === 'restricted' ? 'restricted' : 'open';
+              onOutboundChange(next);
+              onOutboundSave(next);
+            }}
+          >
+            <SelectTrigger className="w-full" aria-label={t('apiTools.policyLabel')}>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="open">{t('apiTools.policyOpen')}</SelectItem>
+              <SelectItem value="restricted">{t('apiTools.policyRestricted')}</SelectItem>
+            </SelectContent>
+          </Select>
+        </Field>
+        <p className="text-muted-foreground text-xs">
+          {outbound === 'restricted' ? t('apiTools.allowlistHint') : t('apiTools.policyOpenHint')}
+        </p>
         <div className="flex flex-wrap gap-1">
           {entries.length === 0 ? (
             <span className="text-muted-foreground text-xs">{t('apiTools.allowlistEmpty')}</span>

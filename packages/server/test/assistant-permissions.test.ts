@@ -239,6 +239,7 @@ describe('#79 — write policy through a live turn', () => {
         tools: [
           {
             name: 'get_forecast',
+            description: 'Forecast for one city',
             method: 'GET',
             path: '/v1/forecast',
             params: [{ name: 'city', in: 'query', type: 'string', required: true }],
@@ -475,6 +476,24 @@ describe('#79 — the sender-level write-policy switch (session overrides config
   });
 });
 
+describe('#85 — sqlite system_settings.api_tool_outbound round-trip (v28)', () => {
+  it('defaults open; restricted persists back', async (ctx) => {
+    let uow: ReturnType<typeof createSqliteUnitOfWork>;
+    try {
+      uow = createSqliteUnitOfWork(':memory:');
+    } catch {
+      return ctx.skip('better-sqlite3 native binding unavailable for this Node major');
+    }
+    expect((await uow.settings.get()).apiToolOutbound).toBe('open');
+    await uow.settings.save({
+      ...(await uow.settings.get()),
+      apiToolOutbound: 'restricted',
+      updatedAt: now,
+    });
+    expect((await uow.settings.get()).apiToolOutbound).toBe('restricted');
+  });
+});
+
 describe('#79 — sqlite assistant_sessions.permission_mode round-trip (v27)', () => {
   it('stores and clears the conversation policy; legacy NULL reads as undefined', async (ctx) => {
     let uow: ReturnType<typeof createSqliteUnitOfWork>;
@@ -532,6 +551,7 @@ describe('#81 — API tool config tools (the first meta members)', () => {
     tools: [
       {
         name: 'get_forecast',
+        description: 'Forecast for one city',
         method: 'GET',
         path: '/v1/forecast',
         params: [{ name: 'city', in: 'query', type: 'string', required: true }],

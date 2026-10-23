@@ -74,6 +74,7 @@ interface SettingsRow {
   image_retention_days: number;
   api_tool_allowlist: string | null;
   updated_at: string;
+  api_tool_outbound: string | null;
 }
 interface CredentialRow {
   id: string;
@@ -337,12 +338,13 @@ export function sqliteSettingsRepository(db: Database): SystemSettingsRepository
     if (existing) return existing;
     const now = new Date().toISOString();
     db.prepare(
-      `INSERT INTO system_settings (id, allow_registration, image_retention_days, api_tool_allowlist, updated_at)
-       VALUES (1, ?, ?, ?, ?)`,
+      `INSERT INTO system_settings (id, allow_registration, image_retention_days, api_tool_allowlist, api_tool_outbound, updated_at)
+       VALUES (1, ?, ?, ?, ?, ?)`,
     ).run(
       DEFAULTS.allowRegistration ? 1 : 0,
       DEFAULTS.imageRetentionDays,
       JSON.stringify(DEFAULTS.apiToolAllowlist),
+      DEFAULTS.apiToolOutbound,
       now,
     );
     return db.prepare('SELECT * FROM system_settings WHERE id = 1').get() as SettingsRow;
@@ -358,6 +360,8 @@ export function sqliteSettingsRepository(db: Database): SystemSettingsRepository
           row.api_tool_allowlist === null
             ? []
             : (JSON.parse(row.api_tool_allowlist) as SystemSettings['apiToolAllowlist']),
+        // #85 — pre-v28 rows (and any null) read as the open default.
+        apiToolOutbound: row.api_tool_outbound === 'restricted' ? 'restricted' : 'open',
         updatedAt: row.updated_at,
       };
     },
@@ -366,18 +370,20 @@ export function sqliteSettingsRepository(db: Database): SystemSettingsRepository
       const now = settings.updatedAt;
       db.prepare(
         `UPDATE system_settings
-         SET allow_registration = ?, image_retention_days = ?, api_tool_allowlist = ?, updated_at = ?
+         SET allow_registration = ?, image_retention_days = ?, api_tool_allowlist = ?, api_tool_outbound = ?, updated_at = ?
          WHERE id = 1`,
       ).run(
         settings.allowRegistration ? 1 : 0,
         settings.imageRetentionDays,
         JSON.stringify(settings.apiToolAllowlist ?? []),
+        settings.apiToolOutbound ?? 'open',
         now,
       );
       return {
         allowRegistration: settings.allowRegistration,
         imageRetentionDays: settings.imageRetentionDays,
         apiToolAllowlist: settings.apiToolAllowlist ?? [],
+        apiToolOutbound: settings.apiToolOutbound ?? 'open',
         updatedAt: now,
       };
     },

@@ -59,7 +59,8 @@ export const apiToolDefSchema = z
       .min(1)
       .max(64)
       .regex(/^[a-z][a-z0-9_]*$/, 'snake_case tool names'),
-    description: z.string().max(4000).optional(),
+    /** REQUIRED (#85): this is the model's only spec for the tool. */
+    description: z.string().min(1).max(4000),
     method: z.enum(['GET', 'POST', 'PUT', 'PATCH', 'DELETE']),
     /** URL path with `{param}` slots (must match declared path params). */
     path: z.string().min(1).max(512),

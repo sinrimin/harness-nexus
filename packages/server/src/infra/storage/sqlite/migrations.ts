@@ -520,6 +520,14 @@ ALTER TABLE assistant_configs ADD COLUMN api_tool_service_ids TEXT NOT NULL DEFA
 ALTER TABLE assistant_sessions ADD COLUMN permission_mode TEXT;
     `,
   },
+  {
+    version: 28,
+    description:
+      'issue #85 — API tool outbound policy switch: system_settings.api_tool_outbound (open | restricted, default open)',
+    sql: `
+ALTER TABLE system_settings ADD COLUMN api_tool_outbound TEXT NOT NULL DEFAULT 'open';
+    `,
+  },
 ] as const;
 
 /**

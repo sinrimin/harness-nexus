@@ -7,6 +7,7 @@ import { IMAGE_RETENTION_MAX, IMAGE_RETENTION_MIN } from '@harness-nexus/core';
 import {
   AppError,
   type UpdateApiToolAllowlistInput,
+  type UpdateApiToolOutboundInput,
   type UpdateImageRetentionInput,
   type UpdateRegistrationInput,
 } from '@harness-nexus/shared';
@@ -84,7 +85,28 @@ export function imageExpiryFrom(settings: SystemSettings, now: Date): string {
   return new Date(now.getTime() + settings.imageRetentionDays * 86_400_000).toISOString();
 }
 
-/** #80 — replace the API tool runtime's default-deny host allowlist (admin). */
+/**
+ * #85 — flip the API tool outbound host policy: `open` (default) dials any
+ * http/https host (metadata/link-local stays hard-denied in the runtime);
+ * `restricted` restores the #80 default-deny allowlist. Admin-only.
+ */
+export async function updateApiToolOutbound(
+  deps: ServiceDeps,
+  principal: Principal,
+  input: UpdateApiToolOutboundInput,
+): Promise<SystemSettings> {
+  if (principal.role !== 'admin') {
+    throw new AppError('Admin role required', 403, 'FORBIDDEN');
+  }
+  const current = await deps.uow.settings.get();
+  return deps.uow.settings.save({
+    ...current,
+    apiToolOutbound: input.outbound,
+    updatedAt: new Date().toISOString(),
+  });
+}
+
+/** #80 — replace the API tool runtime's host allowlist (enforced in restricted mode). */
 export async function updateApiToolAllowlist(
   deps: ServiceDeps,
   principal: Principal,

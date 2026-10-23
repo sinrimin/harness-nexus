@@ -18,20 +18,30 @@ export interface SystemSettings {
    */
   imageRetentionDays: number;
   /**
-   * #80 — the API tool runtime's default-DENY host allowlist. Empty (the
-   * default) = no outbound API tool traffic at all.
+   * #80 — the API tool runtime's host allowlist. Enforced only while
+   * `apiToolOutbound` is `restricted` (#85); kept and editable either way so
+   * tightening later is a flip, not a rebuild.
    */
   apiToolAllowlist: ApiToolAllowlistEntry[];
+  /**
+   * #85 — the outbound host policy. `open` (the default): any http/https host
+   * may be saved and dialed — the cloud-metadata/link-local ranges stay
+   * hard-denied in EVERY mode (that guard is not a policy). `restricted`:
+   * default-deny, only allowlisted hosts dial (internal-flagged entries may
+   * resolve private/loopback).
+   */
+  apiToolOutbound: 'open' | 'restricted';
   updatedAt: string;
 }
 
 export const DEFAULT_SYSTEM_SETTINGS: Pick<
   SystemSettings,
-  'allowRegistration' | 'imageRetentionDays' | 'apiToolAllowlist'
+  'allowRegistration' | 'imageRetentionDays' | 'apiToolAllowlist' | 'apiToolOutbound'
 > = {
   allowRegistration: true,
   imageRetentionDays: 30,
   apiToolAllowlist: [],
+  apiToolOutbound: 'open',
 };
 
 /** Bounds for the retention setting (days). */

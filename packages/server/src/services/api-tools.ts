@@ -80,13 +80,15 @@ function validateBundleAuth(
 }
 
 /**
- * The allowlist is default-deny — a saved service whose baseUrl host is not
- * on it could never dial out, so the author (human, dialog, or the #81 meta
- * tool) learns at SAVE time, not at first probe. Same match the runtime
- * applies at call time (outbound surface #3).
+ * While the outbound policy is `restricted` (#85), a saved service whose
+ * baseUrl host is not on the allowlist could never dial out, so the author
+ * (human, dialog, or the #81 meta tool) learns at SAVE time, not at first
+ * probe — same match the runtime applies at call time. In `open` mode any
+ * http/https host saves (the runtime still hard-denies metadata ranges).
  */
 async function assertHostAllowlisted(deps: ServiceDeps, baseUrl: string): Promise<void> {
   const settings = await deps.uow.settings.get();
+  if ((settings.apiToolOutbound ?? 'open') !== 'restricted') return;
   const host = new URL(baseUrl).hostname;
   if (matchAllowlist(host, settings.apiToolAllowlist ?? []) === null) {
     throw new AppError(

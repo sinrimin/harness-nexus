@@ -41,7 +41,11 @@ export type ApiToolAuth =
 
 export interface ApiToolDef {
   name: string;
-  description?: string | undefined;
+  /**
+   * REQUIRED (#85): this text is the model's only spec for the tool — it
+   * rides the `api__<service>__<tool>` definition into the LLM's context.
+   */
+  description: string;
   method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
   path: string;
   params: ApiToolParam[];

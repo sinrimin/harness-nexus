@@ -31,3 +31,9 @@ export const updateApiToolAllowlistSchema = z.object({
   entries: z.array(apiToolAllowlistEntrySchema).max(256),
 });
 export type UpdateApiToolAllowlistInput = z.infer<typeof updateApiToolAllowlistSchema>;
+
+/** #85 — the API tool outbound host policy (admin-managed). */
+export const updateApiToolOutboundSchema = z.object({
+  outbound: z.enum(['open', 'restricted']),
+});
+export type UpdateApiToolOutboundInput = z.infer<typeof updateApiToolOutboundSchema>;
