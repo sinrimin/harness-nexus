@@ -423,7 +423,9 @@ function AdaptersPanel({
                 {a.nativeSessionId === null ? (
                   <span className="text-muted-foreground">—</span>
                 ) : (
-                  <Well copy={a.nativeSessionId}>{a.nativeSessionId}</Well>
+                  <Well variant="chip" copy={a.nativeSessionId}>
+                    {a.nativeSessionId}
+                  </Well>
                 )}
               </TableCell>
               <TableCell className="nums text-sm">{adapterUptime(a.startedAt, lang)}</TableCell>
@@ -518,7 +520,9 @@ function AgentsTable({ agents }: { agents: AgentInstanceView[] }) {
               </Badge>
             </TableCell>
             <TableCell className="max-w-64">
-              <Well copy={a.directory}>{a.directory}</Well>
+              <Well variant="chip" copy={a.directory}>
+                {a.directory}
+              </Well>
             </TableCell>
             <TableCell className="text-right">
               <Button asChild variant="ghost" size="sm">

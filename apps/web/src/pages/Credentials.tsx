@@ -210,7 +210,12 @@ export function CredentialsPage() {
               <TableRow key={c.id}>
                 <TableCell className="font-medium">{c.name}</TableCell>
                 <TableCell>
-                  <Well copy={placeholder}>{placeholder}</Well>
+                  {/* Chip scale — every table-cell protocol value is a chip
+                   * Well (Machines' host, providers' credential name); the
+                   * default text Well is a row taller than its siblings. */}
+                  <Well variant="chip" copy={placeholder}>
+                    {placeholder}
+                  </Well>
                 </TableCell>
                 <TableCell>
                   <DataText size="sm" tone="dim">
