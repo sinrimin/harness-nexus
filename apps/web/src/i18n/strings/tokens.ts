@@ -73,7 +73,7 @@ const zh: typeof en = {
   sortNewest: '最新创建在前',
   emptyHint: '在此创建——完整值只在创建后显示一次。',
   prefix: '前缀',
-  scopes: '作用域',
+  scopes: '权限范围',
   expires: '过期时间',
   lastUsed: '最后使用',
   created: '创建时间',
