@@ -877,5 +877,21 @@
   background: color-mix(in oklab, var(--tray) 60%, var(--card));
 }
 
+/* A phone table's horizontal scrollbar is a 15px strip inside the table
+   container; on a page whose content nearly fills the frame that strip is
+   what tips it into a vertical scrollbar (a 15px scroll for a scrollbar's
+   sake — reported from a phone). Below the shell's 900px plate boundary the
+   strip hides: swiping is the gesture, the pinned actions column and its
+   hairline are the affordance, and overlay-scrollbar phones never drew the
+   strip anyway. Desktop keeps the scrollbar. */
+@media (max-width: 899px) {
+  [data-slot='table-container'] {
+    scrollbar-width: none;
+  }
+  [data-slot='table-container']::-webkit-scrollbar {
+    display: none;
+  }
+}
+
 /* The copies that are still `ui/table` outside the kit (unchanged pages) keep
  * their own look; nothing here reaches them. */
