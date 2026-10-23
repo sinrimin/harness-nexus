@@ -258,11 +258,18 @@ export async function executeApiTool(
     if (v !== undefined) url.searchParams.set(p.name, String(v));
   }
 
-  // ---- network guard (outbound surface #3) ----
+  // ---- network guard (outbound surface #3; #85 policy switch) ----
+  // `open` (the default): any host dials — only the metadata/link-local
+  // ranges stay hard-denied (that guard is not a policy). `restricted`:
+  // the #80 default-deny allowlist, internal-flagged entries included.
   const settings = await deps.uow.settings.get();
-  const entry = matchAllowlist(url.hostname, settings.apiToolAllowlist ?? []);
-  if (entry === null) {
-    return err(`error: host ${url.hostname} is not on the API tool allowlist`);
+  const restricted = (settings.apiToolOutbound ?? 'open') === 'restricted';
+  let entry: ApiToolAllowlistEntry | null = null;
+  if (restricted) {
+    entry = matchAllowlist(url.hostname, settings.apiToolAllowlist ?? []);
+    if (entry === null) {
+      return err(`error: host ${url.hostname} is not on the API tool allowlist`);
+    }
   }
   const resolve = opts.resolveDns ?? defaultResolve;
   let ips: string[];
@@ -274,10 +281,11 @@ export async function executeApiTool(
   if (ips.length === 0) return err(`error: no addresses for ${url.hostname}`);
   for (const ip of ips) {
     const cls = ipClassOf(ip);
-    // Metadata/link-local is hard-denied even for internal entries.
+    // Metadata/link-local is hard-denied in EVERY policy, even internal
+    // entries — cloud metadata is never a legitimate API tool target.
     if (cls === 'link-local')
       return err(`error: ${url.hostname} resolves to link-local ${ip} — denied`);
-    if (cls !== 'public' && entry.internal !== true) {
+    if (restricted && cls !== 'public' && entry !== null && entry.internal !== true) {
       return err(
         `error: ${url.hostname} resolves to ${cls} ${ip}; only internal-flagged allowlist entries may reach it`,
       );

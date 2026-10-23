@@ -120,6 +120,7 @@ beforeAll(async () => {
         tools: [
           {
             name: 'get_forecast',
+            description: 'Forecast for one city',
             method: 'GET',
             path: '/v1/forecast',
             params: [{ name: 'city', in: 'query', type: 'string', required: true }],

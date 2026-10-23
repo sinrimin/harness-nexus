@@ -5,9 +5,11 @@
 import type { FastifyInstance } from 'fastify';
 import {
   updateApiToolAllowlistSchema,
+  updateApiToolOutboundSchema,
   updateImageRetentionSchema,
   updateRegistrationSchema,
   type UpdateApiToolAllowlistInput,
+  type UpdateApiToolOutboundInput,
   type UpdateImageRetentionInput,
   type UpdateRegistrationInput,
 } from '@harness-nexus/shared';
@@ -15,6 +17,7 @@ import { principalOf } from './principal.js';
 import {
   getSystemSettings,
   updateApiToolAllowlist,
+  updateApiToolOutbound,
   updateImageRetentionSettings,
   updateRegistrationSettings,
 } from '../services/settings.js';
@@ -56,5 +59,17 @@ export async function settingsRoutes(app: FastifyInstance): Promise<void> {
     const input = updateApiToolAllowlistSchema.parse(req.body) as UpdateApiToolAllowlistInput;
     const settings = await updateApiToolAllowlist({ uow: app.uow }, principalOf(req), input);
     return { entries: settings.apiToolAllowlist };
+  });
+
+  // #85 — the outbound host policy switch (admin-only both ways).
+  app.get('/api/settings/api-tool-outbound', { preHandler: [app.requireAdmin] }, async () => {
+    const settings = await getSystemSettings({ uow: app.uow });
+    return { outbound: settings.apiToolOutbound ?? 'open' };
+  });
+
+  app.put('/api/settings/api-tool-outbound', { preHandler: [app.requireAdmin] }, async (req) => {
+    const input = updateApiToolOutboundSchema.parse(req.body) as UpdateApiToolOutboundInput;
+    const settings = await updateApiToolOutbound({ uow: app.uow }, principalOf(req), input);
+    return { outbound: settings.apiToolOutbound };
   });
 }

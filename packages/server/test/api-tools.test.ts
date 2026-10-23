@@ -97,6 +97,40 @@ afterAll(async () => {
 });
 
 describe('API tool services (#80 slice 1)', () => {
+  it('#85: the default outbound policy is open — an unlisted external host saves fine', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/api-tools',
+      headers: auth(ownerJwt),
+      payload: {
+        bundle: { ...BUNDLE, name: 'open-default', baseUrl: 'https://api.other.example.com' },
+      },
+    });
+    expect(res.statusCode).toBe(201);
+    // The policy endpoints are admin-only; the default reads back open.
+    expect(
+      (
+        await app.inject({
+          method: 'GET',
+          url: '/api/settings/api-tool-outbound',
+          headers: auth(ownerJwt),
+        })
+      ).statusCode,
+    ).toBe(403);
+    const pol = await app.inject({
+      method: 'GET',
+      url: '/api/settings/api-tool-outbound',
+      headers: auth(adminJwt),
+    });
+    expect(pol.statusCode).toBe(200);
+    expect(pol.json().outbound).toBe('open');
+    await app.inject({
+      method: 'DELETE',
+      url: `/api/api-tools/${res.json().service.id}`,
+      headers: auth(ownerJwt),
+    });
+  });
+
   it('creates a personal service (default scope) and round-trips the bundle', async () => {
     const res = await app.inject({
       method: 'POST',
@@ -468,7 +502,14 @@ describe('API tool services (#80 slice 1)', () => {
 
     // Deny arm moved to SAVE time: a host not on the allowlist can no longer
     // become a service at all (runtime denial itself is covered by
-    // api-tools-runtime.test.ts).
+    // api-tools-runtime.test.ts). #85: only in restricted mode.
+    const flipped = await app.inject({
+      method: 'PUT',
+      url: '/api/settings/api-tool-outbound',
+      headers: auth(adminJwt),
+      payload: { outbound: 'restricted' },
+    });
+    expect(flipped.statusCode).toBe(200);
     const denied = await app.inject({
       method: 'POST',
       url: '/api/api-tools',
@@ -480,6 +521,13 @@ describe('API tool services (#80 slice 1)', () => {
     expect(denied.statusCode).toBe(409);
     expect(denied.json().error).toBe('API_TOOL_HOST_NOT_ALLOWLISTED');
     expect(denied.json().message).toContain('api.other.example.com');
+    // Back to open — later app state stays default-shaped.
+    await app.inject({
+      method: 'PUT',
+      url: '/api/settings/api-tool-outbound',
+      headers: auth(adminJwt),
+      payload: { outbound: 'open' },
+    });
   });
 });
 

@@ -75,6 +75,7 @@ export function createMemoryUnitOfWork(): UnitOfWork {
     allowRegistration: DEFAULT_SYSTEM_SETTINGS.allowRegistration,
     imageRetentionDays: DEFAULT_SYSTEM_SETTINGS.imageRetentionDays,
     apiToolAllowlist: [...DEFAULT_SYSTEM_SETTINGS.apiToolAllowlist],
+    apiToolOutbound: DEFAULT_SYSTEM_SETTINGS.apiToolOutbound,
     updatedAt: new Date(0).toISOString(),
   };
 
