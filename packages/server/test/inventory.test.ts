@@ -231,6 +231,7 @@ describe('scan round-trip', () => {
       'hermes',
       'opencode',
       'pi',
+      'roder',
     ]);
 
     const list = await app.inject({
@@ -239,7 +240,7 @@ describe('scan round-trip', () => {
       headers: authed(jwt),
     });
     const rows = list.json().inventory as { target: string; agents: { items: unknown[] }[] }[];
-    expect(rows).toHaveLength(6); // 5 scannable + opencode (9 W12) + pi (9 W16)
+    expect(rows).toHaveLength(7); // all scannable targets, including Roder
     expect(rows.find((r) => r.target === 'claude-code')!.agents[0]!.items).toHaveLength(3);
 
     // /app got one freshness push per stored target. The push is emitted
