@@ -25,6 +25,7 @@
     "@modelcontextprotocol/sdk": "^1.29.0",
     "cross-spawn": "^7.0.6",
     "js-yaml": "^4.1.0",
+    "smol-toml": "1.6.0",
     "socket.io-client": "^4.8.3"
   },
   "devDependencies": {

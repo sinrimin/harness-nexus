@@ -21,6 +21,7 @@ import { beginMarker, endMarker, DSH_PATCH_FILENAME } from '../install/adapters/
 import { mergeTomlSection } from '../install/adapters/codex.js';
 import { dshNodeWarning, piNodeWarning } from './runtime.js';
 import { logOp } from './logbook.js';
+import { applyRoderConfig } from './roder-config.js';
 
 /**
  * Provider-config apply (Phase 9 W3) — the daemon half of
@@ -738,12 +739,14 @@ function applyPiConfig(spec: RuntimeConfigSpec, secret: string, homeDir: string)
 
 /** The per-target native writer — pure file surgery, no I/O beyond the harness homes. */
 export function applyRuntimeConfig(
-  target: 'claude-code' | 'codex' | 'deepseek' | 'opencode' | 'pi',
+  target: 'claude-code' | 'codex' | 'deepseek' | 'opencode' | 'pi' | 'roder',
   spec: RuntimeConfigSpec,
   secret: string,
   homeDir: string,
 ): { files: string[] } {
   switch (target) {
+    case 'roder':
+      return { files: applyRoderConfig(spec, secret, homeDir) };
     case 'claude-code':
       return { files: applyClaudeConfig(spec, secret, homeDir) };
     case 'codex':

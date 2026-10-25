@@ -32,6 +32,7 @@ export type ProviderApiKind = z.infer<typeof providerApiKindSchema>;
 export const PROVIDER_API_SUPPORT: Record<RuntimeTarget, readonly ProviderApiKind[]> = {
   'claude-code': ['anthropic'],
   codex: ['openai-responses'],
+  roder: ['openai-responses'],
   deepseek: ['anthropic', 'openai-chat'],
   // 9 W12 — opencode's provider `npm` key: anthropic → @ai-sdk/anthropic,
   // openai-chat → @ai-sdk/openai-compatible. openai-responses is DELIBERATELY
