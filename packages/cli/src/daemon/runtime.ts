@@ -17,6 +17,7 @@ import { probeRuntime, type ResolveOptions } from '../inventory/runtime.js';
 import { scanTarget, scannerFor } from '../inventory/scan.js';
 import { emptySnapshot } from './client.js';
 import { logOp } from './logbook.js';
+import { roderInstallCommand } from './roder-runtime.js';
 
 /**
  * Harness-runtime job executor (Phase 9 W2). wiki design-phase-9-harness-runtime.md §4.2.
@@ -70,6 +71,7 @@ export function harnessCommand(
   },
   currentInstallMethod: 'npm' | 'native' | 'brew' | 'unknown' | undefined,
 ): { command: string; args: string[] } | { error: string } {
+  if (payload.target === 'roder') return roderInstallCommand(payload, currentInstallMethod);
   const pkg = HARNESS_PACKAGES[payload.target];
   if (!pkg) return { error: `no harness package for target '${payload.target}'` };
   if (payload.action === 'apply-config') {
@@ -199,7 +201,20 @@ export async function runHarnessJob(
 
   // Current install method decides the claude-code upgrade path.
   const current =
-    payload.action === 'upgrade' ? await probeRuntime(payload.target, probeOpts) : null;
+    payload.action === 'upgrade' || payload.target === 'roder'
+      ? await probeRuntime(payload.target, probeOpts)
+      : null;
+  if (
+    payload.target === 'roder' &&
+    current?.installed &&
+    current.binPath !== join(homeDir, '.local', 'bin', 'roder') &&
+    current.installMethod !== 'brew'
+  ) {
+    result(false, {
+      error: 'Roder is installed outside ~/.local/bin; manage that installation on the machine',
+    });
+    return;
+  }
   const cmd = harnessCommand(payload, current?.installed ? current.installMethod : undefined);
   if ('error' in cmd) {
     result(false, { error: cmd.error });
@@ -229,7 +244,14 @@ export async function runHarnessJob(
       // Inherit the daemon's environment: proxied machines must pass
       // HTTP(S)_PROXY / npm_config_registry through to the installer.
       child = spawn(cmd.command, cmd.args, {
-        env: opts.env ?? process.env,
+        env:
+          payload.target === 'roder'
+            ? {
+                ...(opts.env ?? process.env),
+                RODER_INSTALL_DIR: join(homeDir, '.local', 'bin'),
+                RODER_INSTALL_NAME: 'roder',
+              }
+            : (opts.env ?? process.env),
         windowsHide: true, // #33 — no console window on Windows
       });
     } catch (e) {
@@ -275,6 +297,12 @@ export async function runHarnessJob(
   // the target's inventory (runtime arm feeds the Agent card + detected sync).
   progress('verify', 'probing runtime');
   const runtime: RuntimeInfo = await probeRuntime(payload.target, probeOpts);
+  if (payload.target === 'roder' && (!runtime.installed || runtime.version === undefined)) {
+    result(false, {
+      error: 'Roder installer completed but the runtime probe failed; check ~/.local/bin/roder',
+    });
+    return;
+  }
   const snapshot = scannerFor(payload.target)
     ? scanTarget(payload.target, homeDir)
     : emptySnapshot(payload.target);

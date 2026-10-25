@@ -5,6 +5,7 @@
 import { readFileSync, statSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
+import { parse, stringify } from 'smol-toml';
 import type { RuntimeConfigViewEvent, RuntimeTarget } from '@harness-nexus/shared';
 
 /**
@@ -26,6 +27,7 @@ import type { RuntimeConfigViewEvent, RuntimeTarget } from '@harness-nexus/share
 export const TARGET_CONFIG_FILES: Record<RuntimeTarget, readonly string[]> = {
   'claude-code': ['.claude/settings.json'],
   codex: ['.codex/config.toml', '.codex/auth.json'],
+  roder: ['.roder/config.toml'],
   deepseek: ['.dsh/settings.yaml', '.dsh/cordis.patch.yml', '.dsh/.env'],
   // 9 W12 — the global config + OUR key file (the `{file:…}` target the
   // provider block references; a bare secret with no key names).
@@ -160,6 +162,30 @@ function redactJsonFile(text: string, redacted: Redacted): string {
   }
 }
 
+/** Parse TOML before redaction so multiline credentials cannot escape line masking. */
+function redactRoderToml(text: string, redacted: Redacted): string {
+  try {
+    const walk = (value: unknown, prefix: string): unknown => {
+      if (Array.isArray(value)) return value.map((v, i) => walk(v, `${prefix}[${i}]`));
+      if (typeof value !== 'object' || value === null || value instanceof Date) return value;
+      return Object.fromEntries(
+        Object.entries(value).map(([key, child]) => {
+          const path = prefix === '' ? key : `${prefix}.${key}`;
+          if (SECRET_KEY_RE.test(key)) {
+            redacted.push(path);
+            return [key, REDACTED_PLACEHOLDER];
+          }
+          return [key, walk(child, path)];
+        }),
+      );
+    };
+    return stringify(walk(parse(text), '') as ReturnType<typeof parse>);
+  } catch {
+    // Invalid TOML has no safe structural interpretation.
+    return redactWholeFile(text, redacted);
+  }
+}
+
 export interface RuntimeConfigFileView {
   path: string;
   content: string;
@@ -190,13 +216,16 @@ export function readRuntimeConfigView(
       continue;
     }
     const before = redacted.length;
-    const masked = WHOLESALE_SECRET_FILES.has(rel)
-      ? redactWholeFile(content, redacted)
-      : rel.endsWith('.json')
-        ? redactJsonFile(content, redacted)
-        : rel.endsWith('.env')
-          ? redactEnvFile(content, redacted)
-          : redactLineConfig(content, redacted);
+    const masked =
+      rel === '.roder/config.toml'
+        ? redactRoderToml(content, redacted)
+        : WHOLESALE_SECRET_FILES.has(rel)
+          ? redactWholeFile(content, redacted)
+          : rel.endsWith('.json')
+            ? redactJsonFile(content, redacted)
+            : rel.endsWith('.env')
+              ? redactEnvFile(content, redacted)
+              : redactLineConfig(content, redacted);
     // Attribute this file's entries: `"<display>:<key>"`.
     for (let i = before; i < redacted.length; i++) redacted[i] = `${display}:${redacted[i]}`;
     files.push({ path: display, content: masked });

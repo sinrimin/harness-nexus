@@ -44,6 +44,7 @@ describe('RUNTIME_PROBES', () => {
     expect(RUNTIME_PROBES.map((r) => [r.target, r.bin])).toEqual([
       ['claude-code', 'claude'],
       ['codex', 'codex'],
+      ['roder', 'roder'],
       ['deepseek', 'dsh'],
       ['opencode', 'opencode'],
       ['pi', 'pi'],
@@ -107,7 +108,7 @@ describe('probeRuntimes', () => {
     // deepseek: deliberately absent
 
     const infos = await probeRuntimes({ pathEnv: binDir, homeDir: home, timeoutMs: 4000 });
-    expect(infos).toHaveLength(5); // claude-code, codex, deepseek, opencode (W12), pi (W16)
+    expect(infos).toHaveLength(6); // all managed runtime targets
 
     const claude = infos.find((r) => r.target === 'claude-code')!;
     expect(claude.installed).toBe(true);

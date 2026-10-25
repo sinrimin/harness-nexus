@@ -7,6 +7,7 @@ import { constants } from 'node:fs';
 import { spawn } from '../proc.js';
 import { isAbsolute, join } from 'node:path';
 import { homedir } from 'node:os';
+import { probeRoderVersion } from './roder-version.js';
 import type { RuntimeInfo, RuntimeTarget } from '@harness-nexus/shared';
 
 /**
@@ -34,6 +35,7 @@ export const RUNTIME_PROBES: readonly RuntimeProbe[] = [
     knownPaths: (home) => [join(home, '.local', 'bin', 'claude')],
   },
   { target: 'codex', bin: 'codex', knownPaths: () => [] },
+  { target: 'roder', bin: 'roder', knownPaths: (home) => [join(home, '.local', 'bin', 'roder')] },
   { target: 'deepseek', bin: 'dsh', knownPaths: () => [] },
   // 9 W12 — npm package `opencode-ai` ships the `opencode` binary.
   { target: 'opencode', bin: 'opencode', knownPaths: () => [] },
@@ -209,7 +211,10 @@ export async function probeRuntime(
   } catch {
     // keep the PATH-found path — classification falls back to `unknown`
   }
-  const version = await probeVersion(binPath, opts.timeoutMs ?? 5000);
+  const version =
+    target === 'roder'
+      ? await probeRoderVersion(binPath, homeDir, opts.timeoutMs ?? 5000)
+      : await probeVersion(binPath, opts.timeoutMs ?? 5000);
   return {
     target,
     installed: true,

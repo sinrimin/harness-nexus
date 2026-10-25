@@ -74,6 +74,7 @@ export const HOOK_SUPPORT: Readonly<Record<AgentTarget, ReadonlySet<HookEvent> |
   // 9 W16 — pi's extension surface is TS code (tools/sub-agents/hooks ride
   // extensions), not a declarative hooks.json — null, like the class above.
   pi: null,
+  roder: null,
   // 'generic' assumes the full set — a permissive default for unknown targets.
   generic: new Set<HookEvent>(HOOK_EVENTS),
 };

@@ -27,7 +27,15 @@ export type ResourceKind = 'skill' | 'hook' | 'sub_agent' | 'rule' | 'mcp' | 'co
  * `wiki research-phase-8-t1-deepseek-harness.md`.
  */
 export type AgentTarget =
-  'claude-code' | 'zcode' | 'hermes' | 'codex' | 'deepseek' | 'opencode' | 'pi' | 'generic';
+  | 'claude-code'
+  | 'zcode'
+  | 'hermes'
+  | 'codex'
+  | 'deepseek'
+  | 'opencode'
+  | 'pi'
+  | 'roder'
+  | 'generic';
 
 /** Visibility/scope. `global` is admin-managed; `personal` is per-user. */
 export type ResourceScope = 'global' | 'personal';

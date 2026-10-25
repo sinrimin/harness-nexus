@@ -37,6 +37,7 @@ export const agentTargetSchema = z.enum([
   'deepseek',
   'opencode',
   'pi',
+  'roder',
   'generic',
 ]);
 export type AgentTarget = z.infer<typeof agentTargetSchema>;
