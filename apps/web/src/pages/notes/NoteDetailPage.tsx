@@ -47,6 +47,8 @@ const EDITOR_POPOVER_W = 300;
 const POPOVER_MARGIN = 8;
 /** Half-width allowance for the compact toolbar pill (auto-width, centered). */
 const TOOLBAR_HALF = 56;
+/** selectionchange debounce — the event fires continuously while handles drag. */
+const SELECTION_SETTLE_MS = 350;
 
 interface PendingSelection {
   quote: string;
@@ -155,6 +157,17 @@ export function NoteDetailPage() {
       setDraftOpen(false);
       return;
     }
+    captureSelection();
+  }
+
+  /**
+   * Snapshot the current selection into a toolbar anchor. Shared by the
+   * desktop mouseup path and the mobile selectionchange path.
+   */
+  function captureSelection(): void {
+    const sel = window.getSelection();
+    if (sel === null || sel.isCollapsed || sel.rangeCount === 0) return;
+    if (bodyRef.current === null || paneRef.current === null) return;
     const text = sel.toString();
     if (
       text.trim() === '' ||
@@ -188,6 +201,36 @@ export function NoteDetailPage() {
     setDraftOpen(false);
     setFocusId(null);
   }
+
+  /**
+   * Mobile: a long-press selection never fires mouseup — settle on the
+   * document's selectionchange instead (debounced: the event fires
+   * continuously while the drag handles move). A collapse (tap elsewhere)
+   * closes the TOOLBAR; the draft survives, because caret moves inside the
+   * comment textarea land here too.
+   */
+  useEffect(() => {
+    if (!isOwner) return;
+    let timer: number | undefined;
+    const onChange = (): void => {
+      window.clearTimeout(timer);
+      timer = window.setTimeout(() => {
+        const sel = window.getSelection();
+        if (sel === null || sel.rangeCount === 0 || sel.isCollapsed) {
+          if (!draftOpen) setPendingSel(null);
+          return;
+        }
+        const node = sel.anchorNode;
+        if (node !== null && bodyRef.current?.contains(node) === true) captureSelection();
+      }, SELECTION_SETTLE_MS);
+    };
+    document.addEventListener('selectionchange', onChange);
+    return () => {
+      document.removeEventListener('selectionchange', onChange);
+      window.clearTimeout(timer);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOwner, draftOpen]);
 
   // Escape closes whatever phase of the popover is up.
   useEffect(() => {
@@ -375,7 +418,13 @@ export function NoteDetailPage() {
         <div
           ref={paneRef}
           onMouseUp={onMouseUp}
-          onScroll={() => setPendingSel(null)}
+          onScroll={() => {
+            // The popovers anchor in content coordinates, so they ride pane
+            // scrolls correctly — dismiss the TOOLBAR (its selection is
+            // usually gone by then) but keep the draft: a mobile soft
+            // keyboard scrolls the pane while the comment is being typed.
+            if (!draftOpen) setPendingSel(null);
+          }}
           className="bg-card relative min-h-0 min-w-0 flex-1 overflow-y-auto"
         >
           <div className="mx-auto max-w-[700px] px-6 pt-6 pb-10 max-[640px]:px-4">
