@@ -6,9 +6,11 @@
  * stay English in both locales; prose translates. */
 const en = {
   title: 'Notes',
-  tabMine: 'Mine',
+  tabMine: 'Library',
   // English users meet discovery feeds as "Explore" (GitHub/Instagram/X) and
-  // status-column views as "Kanban" — 广场/看板 stay the Chinese terms.
+  // status-column views as "Kanban"; the personal-collection tab is "Library"
+  // (YouTube's Library|Explore pair, Spotify's Your Library — the server code
+  // itself calls it "the owner's library"). 广场/看板/我的 stay the Chinese terms.
   tabSquare: 'Explore',
   tabBoard: 'Kanban',
   create: 'New note',
