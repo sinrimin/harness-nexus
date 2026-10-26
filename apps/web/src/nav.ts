@@ -362,6 +362,22 @@ export function matchRoute(pathname: string): RouteDef | undefined {
   return MATCHERS.find((m) => m.re.test(pathname))?.route;
 }
 
+/**
+ * The NAV destination a route belongs to — itself when it is one, else the
+ * nearest nav-bearing ancestor (noteDetail/edit → notes, machineDetail →
+ * machines, chatSession → chat). The plate and the mobile strip highlight
+ * THIS id, so a detail page keeps its section's menu item lit instead of
+ * dropping the active state entirely.
+ */
+export function navRouteFor(route: RouteDef | undefined): RouteDef | undefined {
+  let current: RouteDef | undefined = route;
+  while (current !== undefined) {
+    if (current.nav !== undefined) return current;
+    current = current.parent !== undefined ? byId.get(current.parent) : undefined;
+  }
+  return undefined;
+}
+
 /** Ancestor chain, nearest last (breadcrumb order: section first). */
 export function routeTrail(route: RouteDef): RouteDef[] {
   const trail: RouteDef[] = [];
