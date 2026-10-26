@@ -5,6 +5,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
+  DownloadIcon,
   GlobeIcon,
   HighlighterIcon,
   LockIcon,
@@ -27,7 +28,7 @@ import {
 import { ConfirmDialog, EmptyState, Skeleton } from '@/components/kit';
 import { Lamp } from '@/components/kit/lamp';
 import { NOTES_PAGE_SIZE, type CategoryFilter, type MineFilters } from './NotesPage';
-import { NOTE_STATUS_KEY, NOTE_STATUS_STATE, shortDate } from './vocabulary';
+import { NOTE_STATUS_KEY, NOTE_STATUS_STATE, downloadNoteMarkdown, shortDate } from './vocabulary';
 
 /**
  * 我的信息流 — blog-shaped cards over the client-filtered window. The whole
@@ -280,6 +281,9 @@ function NoteCard({
           <DropdownMenuContent align="end">
             <DropdownMenuItem onClick={onEdit}>
               <PencilIcon /> {t('notes.edit')}
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => downloadNoteMarkdown(note.title, note.contentMd)}>
+              <DownloadIcon /> {t('notes.download')}
             </DropdownMenuItem>
             <DropdownMenuItem variant="destructive" onClick={onDelete}>
               <TrashIcon /> {t('common.delete')}

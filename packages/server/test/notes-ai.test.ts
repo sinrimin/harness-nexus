@@ -132,9 +132,9 @@ describe('summarizeNoteContent', () => {
 
   it('surfaces the no-provider 409 untouched', async () => {
     const { deps } = await setup(false);
-    await expect(
-      summarizeNoteContent(deps, owner, { contentMd: BODY }),
-    ).rejects.toBeInstanceOf(AppError);
+    await expect(summarizeNoteContent(deps, owner, { contentMd: BODY })).rejects.toBeInstanceOf(
+      AppError,
+    );
   });
 });
 
@@ -215,9 +215,7 @@ describe('reviseNoteByAnnotations', () => {
       createdAt: '2026-01-02T00:00:00.000Z',
       resolvedAt: null,
     });
-    faux.setResponses([
-      piAi.fauxAssistantMessage([piAi.fauxText('```\n正文两段。\n```')]),
-    ]);
+    faux.setResponses([piAi.fauxAssistantMessage([piAi.fauxText('```\n正文两段。\n```')])]);
     const result = await reviseNoteByAnnotations(deps, owner, note.id);
     expect(result.note.contentMd).toBe('正文两段。');
   });

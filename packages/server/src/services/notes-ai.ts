@@ -190,9 +190,7 @@ export async function reviseNoteByAnnotations(
   const next = await updateNote(deps, caller, noteId, { contentMd: revised });
   const resolved: NoteAnnotation[] = [];
   for (const a of open) {
-    resolved.push(
-      await updateAnnotation(deps, caller, noteId, a.id, { state: 'done' }),
-    );
+    resolved.push(await updateAnnotation(deps, caller, noteId, a.id, { state: 'done' }));
   }
   return { note: next, resolved };
 }

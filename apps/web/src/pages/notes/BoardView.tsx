@@ -4,7 +4,13 @@
 
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowRightIcon, HighlighterIcon, MoreHorizontalIcon, TrashIcon } from 'lucide-react';
+import {
+  ArrowRightIcon,
+  DownloadIcon,
+  HighlighterIcon,
+  MoreHorizontalIcon,
+  TrashIcon,
+} from 'lucide-react';
 import type { FeedNoteView, NoteStatus } from '@harness-nexus/sdk';
 import { HarnessNexusError } from '@harness-nexus/sdk';
 import { useI18n } from '@/i18n';
@@ -20,7 +26,13 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { ConfirmDialog, EmptyState } from '@/components/kit';
 import { Lamp } from '@/components/kit/lamp';
-import { NOTE_STATUSES, NOTE_STATUS_KEY, NOTE_STATUS_STATE, shortDate } from './vocabulary';
+import {
+  NOTE_STATUSES,
+  NOTE_STATUS_KEY,
+  NOTE_STATUS_STATE,
+  downloadNoteMarkdown,
+  shortDate,
+} from './vocabulary';
 
 /** Per-column card cap — the board is a pipeline overview, not a second feed. */
 const COLUMN_CAP = 6;
@@ -195,6 +207,9 @@ function BoardCard({
               </DropdownMenuItem>
             ))}
             <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={() => downloadNoteMarkdown(note.title, note.contentMd)}>
+              <DownloadIcon /> {t('notes.download')}
+            </DropdownMenuItem>
             <DropdownMenuItem variant="destructive" onClick={() => onDelete(note)}>
               <TrashIcon /> {t('common.delete')}
             </DropdownMenuItem>

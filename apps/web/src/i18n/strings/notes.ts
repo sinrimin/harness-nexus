@@ -7,8 +7,10 @@
 const en = {
   title: 'Notes',
   tabMine: 'Mine',
-  tabSquare: 'Square',
-  tabBoard: 'Board',
+  // English users meet discovery feeds as "Explore" (GitHub/Instagram/X) and
+  // status-column views as "Kanban" — 广场/看板 stay the Chinese terms.
+  tabSquare: 'Explore',
+  tabBoard: 'Kanban',
   create: 'New note',
   statusInbox: 'Inbox',
   statusToRead: 'To read',
@@ -100,6 +102,8 @@ const en = {
   retry: 'Retry',
   delete: 'Delete',
   edit: 'Edit',
+  download: 'Download .md',
+  annotateAction: 'Annotate',
   impactNote: 'note',
   impactAnnotation: 'annotation',
   impactCategory: 'category',
@@ -229,6 +233,8 @@ const zh: typeof en = {
   retry: '重试',
   delete: '删除',
   edit: '编辑',
+  download: '下载 .md',
+  annotateAction: '批注',
   impactNote: '笔记',
   impactAnnotation: '批注',
   impactCategory: '分类',

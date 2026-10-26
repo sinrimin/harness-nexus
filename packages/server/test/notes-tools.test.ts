@@ -117,7 +117,12 @@ describe('executeNotesTool', () => {
     const r = await executeNotesTool({ uow }, owner, 'notes__update', {
       id: mcp.id,
       expectVersion: 1,
-      edits: [{ oldText: 'Streamable HTTP 将成为默认传输', newText: 'Streamable HTTP（2025-03 规范）将成为默认传输' }],
+      edits: [
+        {
+          oldText: 'Streamable HTTP 将成为默认传输',
+          newText: 'Streamable HTTP（2025-03 规范）将成为默认传输',
+        },
+      ],
     });
     expect(r.isError).toBe(false);
     const parsed = JSON.parse(r.text) as { contentVersion: number; bodyChanged: boolean };

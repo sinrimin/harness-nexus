@@ -546,8 +546,7 @@ ALTER TABLE system_settings DROP COLUMN api_tool_allowlist;
   },
   {
     version: 30,
-    description:
-      'issue #88 — notes: notes / note_versions / note_annotations / note_categories',
+    description: 'issue #88 — notes: notes / note_versions / note_annotations / note_categories',
     sql: `
 CREATE TABLE IF NOT EXISTS note_categories (
   id         TEXT PRIMARY KEY,

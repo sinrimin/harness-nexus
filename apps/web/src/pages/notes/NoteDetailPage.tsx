@@ -42,11 +42,21 @@ import { NOTE_STATUS_KEY, NOTE_STATUS_STATE, fullDate } from './vocabulary';
 /** Context captured around the selection: ≤200 chars each side (#88 anchor). */
 const CONTEXT_CHARS = 200;
 
+/** The editor popover's width (mirrors its `w-[300px]` + clamping margin). */
+const EDITOR_POPOVER_W = 300;
+const POPOVER_MARGIN = 8;
+/** Half-width allowance for the compact toolbar pill (auto-width, centered). */
+const TOOLBAR_HALF = 56;
+
 interface PendingSelection {
   quote: string;
   contextPrefix: string;
   contextSuffix: string;
   top: number;
+  /** Toolbar pill anchor: selection center, clamped into the pane. */
+  centerX: number;
+  /** Editor popover left edge, clamped so the box stays inside the pane. */
+  left: number;
 }
 
 /**
@@ -67,6 +77,7 @@ export function NoteDetailPage() {
   const [focusId, setFocusId] = useState<string | null>(null);
   const [matchedIds, setMatchedIds] = useState<Set<string>>(new Set());
   const [pendingSel, setPendingSel] = useState<PendingSelection | null>(null);
+  const [draftOpen, setDraftOpen] = useState(false);
   const [comment, setComment] = useState('');
   const [busy, setBusy] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<NoteAnnotation | null>(null);
@@ -141,6 +152,7 @@ export function NoteDetailPage() {
     // A collapsed selection (plain click) dismisses the popover.
     if (sel === null || sel.isCollapsed || sel.rangeCount === 0) {
       setPendingSel(null);
+      setDraftOpen(false);
       return;
     }
     const text = sel.toString();
@@ -156,16 +168,39 @@ export function NoteDetailPage() {
     const pane = paneRef.current;
     const paneRect = pane.getBoundingClientRect();
     const rect = sel.getRangeAt(0).getBoundingClientRect();
+    // Both anchors live in the pane's scrolled coordinate space, clamped so a
+    // selection near an edge keeps its popover inside the pane (the old
+    // left-2 box ignored the selection horizontally).
+    const centerX = rect.left + rect.width / 2 - paneRect.left + pane.scrollLeft;
+    const editorW = Math.min(EDITOR_POPOVER_W, pane.clientWidth - 2 * POPOVER_MARGIN);
     setPendingSel({
       quote: text,
       contextPrefix: at >= 0 ? full.slice(Math.max(0, at - CONTEXT_CHARS), at) : '',
       contextSuffix: at >= 0 ? full.slice(at + text.length, at + text.length + CONTEXT_CHARS) : '',
-      // The popover lives in the pane's scrolled coordinate space.
       top: rect.bottom - paneRect.top + pane.scrollTop,
+      centerX: Math.min(Math.max(centerX, TOOLBAR_HALF), pane.clientWidth - TOOLBAR_HALF),
+      left: Math.min(
+        Math.max(centerX - editorW / 2, POPOVER_MARGIN),
+        pane.clientWidth - editorW - POPOVER_MARGIN,
+      ),
     });
     setComment('');
+    setDraftOpen(false);
     setFocusId(null);
   }
+
+  // Escape closes whatever phase of the popover is up.
+  useEffect(() => {
+    if (pendingSel === null) return;
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === 'Escape') {
+        setPendingSel(null);
+        setDraftOpen(false);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [pendingSel]);
 
   async function saveAnnotation(): Promise<void> {
     if (pendingSel === null || id === undefined || comment.trim() === '') return;
@@ -185,6 +220,7 @@ export function NoteDetailPage() {
       setAnnotations(annRes.annotations);
       window.getSelection()?.removeAllRanges();
       setPendingSel(null);
+      setDraftOpen(false);
       setComment('');
     } catch (e) {
       toast.error(e instanceof HarnessNexusError ? e.message : t('common.saveFailed'));
@@ -417,11 +453,33 @@ export function NoteDetailPage() {
             </div>
           </div>
 
-          {pendingSel !== null ? (
+          {pendingSel !== null && !draftOpen ? (
             <div
               data-annotation-popover
-              className="bg-popover text-popover-foreground absolute left-2 z-30 w-[300px] max-w-[calc(100%-16px)] rounded-lg border p-3 shadow-(--shadow-panel)"
-              style={{ top: `${pendingSel.top + 6}px` }}
+              // preventDefault on mousedown keeps the selection (and copy)
+              // alive while the toolbar is up — focus only moves when the
+              // user explicitly opens the comment draft.
+              onMouseDown={(e) => e.preventDefault()}
+              className="bg-popover text-popover-foreground absolute z-30 -translate-x-1/2 rounded-full border py-0.5 pl-0.5 pr-1.5 shadow-(--shadow-panel)"
+              style={{ top: `${pendingSel.top + 6}px`, left: `${pendingSel.centerX}px` }}
+            >
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-7 gap-1.5 rounded-full px-2 text-xs"
+                onClick={() => setDraftOpen(true)}
+              >
+                <HighlighterIcon className="size-3.5" />
+                {t('notes.annotateAction')}
+              </Button>
+            </div>
+          ) : null}
+
+          {pendingSel !== null && draftOpen ? (
+            <div
+              data-annotation-popover
+              className="bg-popover text-popover-foreground absolute z-30 w-[300px] max-w-[calc(100%-16px)] rounded-lg border p-3 shadow-(--shadow-panel)"
+              style={{ top: `${pendingSel.top + 6}px`, left: `${pendingSel.left}px` }}
             >
               <div className="flex items-center gap-2">
                 <span className="role-data-sm text-signal font-medium">

@@ -47,3 +47,24 @@ export function fullDate(iso: string, lang: string): string {
     minute: '2-digit',
   });
 }
+
+/**
+ * Download a note's body as a local `.md` file — pure client-side (the feed
+ * view already carries `contentMd`), so no fetch and no server surface.
+ */
+export function downloadNoteMarkdown(title: string, contentMd: string): void {
+  const safe =
+    title
+      .replace(/[\\/:*?"<>|\u0000-\u001f]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim() || 'note';
+  const blob = new Blob([contentMd], { type: 'text/markdown;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `${safe}.md`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}

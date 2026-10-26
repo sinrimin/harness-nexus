@@ -114,12 +114,22 @@ describe('notes CRUD (#88)', () => {
     });
 
     expect(
-      (await app.inject({ method: 'GET', url: `/api/notes/${priv.body.note.id}`, headers: auth(strangerJwt) }))
-        .statusCode,
+      (
+        await app.inject({
+          method: 'GET',
+          url: `/api/notes/${priv.body.note.id}`,
+          headers: auth(strangerJwt),
+        })
+      ).statusCode,
     ).toBe(404);
     expect(
-      (await app.inject({ method: 'GET', url: `/api/notes/${pub.body.note.id}`, headers: auth(strangerJwt) }))
-        .statusCode,
+      (
+        await app.inject({
+          method: 'GET',
+          url: `/api/notes/${pub.body.note.id}`,
+          headers: auth(strangerJwt),
+        })
+      ).statusCode,
     ).toBe(200);
     // Foreign and public: readable row, but annotations stay owner-only.
     expect(
@@ -162,7 +172,10 @@ describe('notes CRUD (#88)', () => {
 
 describe('annotations (#88)', () => {
   it('creates quote+context annotations pinned to the current version, resolves by id', async () => {
-    const { body } = await createNote(ownerJwt, { title: 'ann', contentMd: '结论段落。Streamable HTTP 将成为默认。选型建议 qdrant。' });
+    const { body } = await createNote(ownerJwt, {
+      title: 'ann',
+      contentMd: '结论段落。Streamable HTTP 将成为默认。选型建议 qdrant。',
+    });
     const id = body.note.id;
 
     const created = await app.inject({
@@ -269,7 +282,11 @@ describe('categories (#88)', () => {
       headers: auth(ownerJwt),
     });
     expect(del.statusCode).toBe(200);
-    expect((await app.inject({ method: 'GET', url: `/api/notes/${noteId}`, headers: auth(ownerJwt) })).json().note.categoryId).toBeNull();
+    expect(
+      (
+        await app.inject({ method: 'GET', url: `/api/notes/${noteId}`, headers: auth(ownerJwt) })
+      ).json().note.categoryId,
+    ).toBeNull();
 
     // Foreign categories 404.
     expect(

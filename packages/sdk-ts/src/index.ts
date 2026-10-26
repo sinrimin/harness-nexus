@@ -989,10 +989,7 @@ export class HarnessNexusClient {
   }
 
   /** #88 AI pass — one-shot LLM summary of (possibly unsaved) note content. */
-  async summarizeNote(input: {
-    title?: string;
-    contentMd: string;
-  }): Promise<{ summary: string }> {
+  async summarizeNote(input: { title?: string; contentMd: string }): Promise<{ summary: string }> {
     return this.request('POST', '/api/notes/summarize', input);
   }
 
