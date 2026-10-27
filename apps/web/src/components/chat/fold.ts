@@ -115,6 +115,21 @@ export interface PermissionCardState {
   toolCall: ChatToolCallView;
   options: { optionId: string; name: string; kind: string }[];
   settled: boolean;
+  /**
+   * #92 — the gate escalated to the human and attached its lean: advisory
+   * ONLY (clearly marked on the card; never a decision). Absent = no gate
+   * or nothing to say.
+   */
+  advisory?: { lean: 'allow' | 'reject'; confidence: number; reason?: string };
+  /** #92 — how it settled (`undefined` on pre-#92 events = a human did). */
+  resolution?: {
+    responder: 'human' | 'delegated';
+    decidedBy?: 'floor' | 'model';
+    providerName?: string;
+    modelId?: string;
+    confidence?: number;
+    denialReason?: string;
+  };
 }
 
 /** 9 W14.1 — an open agent question (ACP elicitation, form mode). */
@@ -144,6 +159,8 @@ export interface FoldState {
     currentModeId?: string;
     availableModes?: SessionMode[];
     configOptions?: SessionConfigOption[];
+    /** #92 — the delegated-approvals slice (present = machine has a provider). */
+    approvals?: { responder: 'manual' | 'delegated'; providerName?: string; modelId?: string };
   };
   /**
    * 9 W14 — the agent's todo/task plan (ACP `plan` snapshots, FULL replace:
@@ -492,11 +509,53 @@ function applyEvent(state: FoldState, event: ChatStreamEvent): FoldState {
           },
         ],
       };
+    case 'permission_advisory':
+      // #92 — attach (or update) the gate's advisory on the pending card.
+      return {
+        ...state,
+        permissions: state.permissions.map((p) =>
+          p.requestId === event.requestId
+            ? {
+                ...p,
+                advisory: {
+                  lean: event.lean,
+                  confidence: event.confidence,
+                  ...(event.reason !== undefined ? { reason: event.reason } : {}),
+                },
+              }
+            : p,
+        ),
+      };
     case 'permission_resolved':
       return {
         ...state,
         permissions: state.permissions.map((p) =>
-          p.requestId === event.requestId ? { ...p, settled: true } : p,
+          p.requestId === event.requestId
+            ? {
+                ...p,
+                settled: true,
+                ...(event.responder !== undefined || event.delegated !== undefined
+                  ? {
+                      resolution: {
+                        responder: event.responder ?? 'human',
+                        ...(event.decidedBy !== undefined ? { decidedBy: event.decidedBy } : {}),
+                        ...(event.delegated !== undefined
+                          ? {
+                              providerName: event.delegated.providerName,
+                              modelId: event.delegated.modelId,
+                              ...(event.delegated.confidence !== undefined
+                                ? { confidence: event.delegated.confidence }
+                                : {}),
+                              ...(event.delegated.denial !== undefined
+                                ? { denialReason: event.delegated.denial.reason }
+                                : {}),
+                            }
+                          : {}),
+                      },
+                    }
+                  : {}),
+              }
+            : p,
         ),
       };
     case 'elicitation_request':
@@ -580,6 +639,7 @@ function applyEvent(state: FoldState, event: ChatStreamEvent): FoldState {
             ? { availableModes: event.modes.availableModes }
             : {}),
           ...(event.configOptions !== undefined ? { configOptions: event.configOptions } : {}),
+          ...(event.approvals !== undefined ? { approvals: event.approvals } : {}),
         },
       };
     case 'plan':

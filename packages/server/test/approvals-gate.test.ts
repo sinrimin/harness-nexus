@@ -43,10 +43,7 @@ type FetchImpl = (
 ) => Promise<{ ok: boolean; status: number; text: () => Promise<string> }>;
 
 /** The fake SystemOne — per-test answers, captured requests. */
-function fakeSystemOne(
-  answers: Record<string, unknown>,
-  log: FetchLog[],
-): FetchImpl {
+function fakeSystemOne(answers: Record<string, unknown>, log: FetchLog[]): FetchImpl {
   return async (url, init) => {
     log.push({ url, body: JSON.parse(init.body) });
     return { ok: true, status: 200, text: async () => JSON.stringify({ answers }) };
@@ -272,7 +269,7 @@ describe('delegated approvals gate (#92)', () => {
     expect(responds[0]!.payload.meta).toBeUndefined(); // no reason channel on hermes
     const queued = channelEvents(t.channel, 'queue_state');
     expect(queued).toHaveLength(1);
-    const note = ((queued[0]!.prompt as { type: string; text: string }[])[0]!.text).toString();
+    const note = (queued[0]!.prompt as { type: string; text: string }[])[0]!.text.toString();
     expect(note).toContain('[delegated approvals]');
     expect(note).toContain('NOT a manual user denial');
   });
@@ -392,9 +389,9 @@ describe('delegated approvals gate (#92)', () => {
     expect(await t.svc.setApprovals('u92', t.sessionId, 'manual')).toEqual({ ok: true });
     const setEvents = t.ctl.filter((c) => c.event === 'chat:approvals.set');
     expect(setEvents).toHaveLength(1);
-    expect((setEvents[0]!.payload as { approvals: { responder: string } }).approvals.responder).toBe(
-      'manual',
-    );
+    expect(
+      (setEvents[0]!.payload as { approvals: { responder: string } }).approvals.responder,
+    ).toBe('manual');
     // Back to delegated — the config still exists, so it re-resolves.
     expect(await t.svc.setApprovals('u92', t.sessionId, 'delegated')).toEqual({ ok: true });
     // Strip the machine config: delegated now refuses honestly.

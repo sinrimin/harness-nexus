@@ -58,7 +58,11 @@ export type SystemOneFetch = (
 ) => Promise<{ ok: boolean; status: number; text: () => Promise<string> }>;
 
 const defaultFetch: SystemOneFetch = (url, init) =>
-  fetch(url, init) as unknown as Promise<{ ok: boolean; status: number; text: () => Promise<string> }>;
+  fetch(url, init) as unknown as Promise<{
+    ok: boolean;
+    status: number;
+    text: () => Promise<string>;
+  }>;
 
 /** The bounded state body cap — context hygiene is enforced by the CALLER
  * (the gate never puts file bodies or tool outputs in); this is the belt. */
@@ -95,11 +99,20 @@ export async function callSystemOne(
     });
     const text = await res.text();
     if (!res.ok) {
-      return Promise.reject({ kind: 'http', status: res.status, body: text.slice(0, 512) } as SystemOneError);
+      return Promise.reject({
+        kind: 'http',
+        status: res.status,
+        body: text.slice(0, 512),
+      } as SystemOneError);
     }
     const parsed: unknown = JSON.parse(text);
     const answers = (parsed as { answers?: unknown }).answers;
-    if (parsed === null || typeof parsed !== 'object' || typeof answers !== 'object' || answers === null) {
+    if (
+      parsed === null ||
+      typeof parsed !== 'object' ||
+      typeof answers !== 'object' ||
+      answers === null
+    ) {
       return Promise.reject({ kind: 'shape', message: 'missing answers' } as SystemOneError);
     }
     return { answers: answers as Record<string, SystemOneAnswer> };

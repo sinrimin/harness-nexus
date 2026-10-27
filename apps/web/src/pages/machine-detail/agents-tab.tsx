@@ -167,9 +167,7 @@ function ApprovalsCard({
   const { t } = useI18n();
   const [providers, setProviders] = useState<LlmProviderView[] | null>(null);
   const saved = machine?.chatApprovals;
-  const [responder, setResponder] = useState<'manual' | 'delegated'>(
-    saved?.responder ?? 'manual',
-  );
+  const [responder, setResponder] = useState<'manual' | 'delegated'>(saved?.responder ?? 'manual');
   const [providerId, setProviderId] = useState(saved?.providerId ?? '');
   const [modelId, setModelId] = useState(saved?.modelId ?? '');
   const [threshold, setThreshold] = useState(String(saved?.confidenceThreshold ?? 0.9));
@@ -196,7 +194,10 @@ function ApprovalsCard({
   const decisionModels = provider?.models.filter((m) => m.type === 'decision') ?? [];
   const thresholdNum = Number(threshold);
   const thresholdValid =
-    threshold.trim() !== '' && Number.isFinite(thresholdNum) && thresholdNum >= 0.5 && thresholdNum <= 1;
+    threshold.trim() !== '' &&
+    Number.isFinite(thresholdNum) &&
+    thresholdNum >= 0.5 &&
+    thresholdNum <= 1;
   const patterns = neverAllow
     .split('\n')
     .map((l) => l.trim())

@@ -730,8 +730,17 @@ export function attachChatHandlers(
       return;
     }
     ack?.({ accepted: true });
-    const { sessionId, target, cwd, resume, modelOptions, defaultMode, prewarm, createDirectory, approvals } =
-      parsed.data;
+    const {
+      sessionId,
+      target,
+      cwd,
+      resume,
+      modelOptions,
+      defaultMode,
+      prewarm,
+      createDirectory,
+      approvals,
+    } = parsed.data;
     void (async () => {
       inFlightStarts.add(sessionId);
       // #70 — the cwd may be a brand-new project directory (the assistant

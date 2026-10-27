@@ -19,7 +19,12 @@ import type {
 } from '@harness-nexus/shared';
 import { generateId } from '../infra/crypto.js';
 import { decryptSecret } from '../infra/crypto.js';
-import { callSystemOne, systemOneErrorMessage, type SystemOneError, type SystemOneFetch } from '../infra/systemone.js';
+import {
+  callSystemOne,
+  systemOneErrorMessage,
+  type SystemOneError,
+  type SystemOneFetch,
+} from '../infra/systemone.js';
 import { findCredentialForOwner } from '../infra/credential-scope.js';
 
 /**
@@ -977,9 +982,9 @@ export class ChatService {
    * effort: an unreadable provider row reads as manual — the gate must never
    * block or crash an open.
    */
-  private async resolveApprovalsView(
-    machine: { chatApprovals?: { providerId: string; responder: 'manual' | 'delegated'; modelId: string } },
-  ): Promise<ChatApprovalsView> {
+  private async resolveApprovalsView(machine: {
+    chatApprovals?: { providerId: string; responder: 'manual' | 'delegated'; modelId: string };
+  }): Promise<ChatApprovalsView> {
     const cfg = machine.chatApprovals;
     if (cfg === undefined || cfg.responder !== 'delegated') return { responder: 'manual' };
     try {
@@ -1062,7 +1067,9 @@ export class ChatService {
     // target; the reason reaches the model where a channel exists, and via
     // the correction note where it does not.
     const title = toolCall.title ?? '';
-    const hit = cfg.neverAllow.find((p) => p !== '' && title.toLowerCase().includes(p.toLowerCase()));
+    const hit = cfg.neverAllow.find(
+      (p) => p !== '' && title.toLowerCase().includes(p.toLowerCase()),
+    );
     if (hit !== undefined) {
       const reject = pickRejectOption(options);
       if (reject === undefined) return; // no reject option offered ⇒ human
@@ -1114,7 +1121,7 @@ export class ChatService {
       covered: {
         type: 'noul' as const,
         instructions:
-          'Did the user\'s own requests plausibly call for this exact tool action (tool and arguments)?',
+          "Did the user's own requests plausibly call for this exact tool action (tool and arguments)?",
       },
       why: {
         type: 'choice' as const,
@@ -1140,7 +1147,10 @@ export class ChatService {
           state,
           questions,
         },
-        { timeoutMs: gate.timeoutMs, ...(gate.fetchImpl !== undefined ? { fetchImpl: gate.fetchImpl } : {}) },
+        {
+          timeoutMs: gate.timeoutMs,
+          ...(gate.fetchImpl !== undefined ? { fetchImpl: gate.fetchImpl } : {}),
+        },
       );
       answers = result.answers;
     } catch (e) {
@@ -1564,7 +1574,6 @@ export class ChatService {
   }
 }
 
-
 // ---- #92 gate helpers (module scope, unit-testable) ----
 
 function hasReasonChannel(target: string): boolean {
@@ -1575,8 +1584,7 @@ function pickRejectOption(
   options: readonly { optionId: string; kind: string }[],
 ): { optionId: string; kind: string } | undefined {
   return (
-    options.find((o) => o.kind === 'reject_once') ??
-    options.find((o) => o.kind === 'reject_always')
+    options.find((o) => o.kind === 'reject_once') ?? options.find((o) => o.kind === 'reject_always')
   );
 }
 
@@ -1609,8 +1617,10 @@ export function denyMessage(view: ChatApprovalsView, reason: DelegationDenialRea
     view.providerName !== undefined && view.modelId !== undefined
       ? ` (${view.providerName}/${view.modelId})`
       : '';
-  return `[delegated approvals] rejected by the decision model${by}: ${reason}. This was NOT a manual user denial — adjust the approach, or ask the user.`
-    .slice(0, 512);
+  return `[delegated approvals] rejected by the decision model${by}: ${reason}. This was NOT a manual user denial — adjust the approach, or ask the user.`.slice(
+    0,
+    512,
+  );
 }
 
 /** The fallback correction note (next-prompt lane, targets without a channel). */

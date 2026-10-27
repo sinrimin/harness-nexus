@@ -10,6 +10,7 @@ import { AssistantStepRow, SystemNote, TurnTail, UserMessage } from './rows.js';
 import { ToolCallRow } from './tool-card.js';
 import { SubagentRow } from './subagent-card.js';
 import { PermissionCards } from './permission-cards.js';
+import type { PermissionCardState } from './fold.js';
 import { ElicitationCards } from './elicitation-cards.js';
 
 /**
@@ -103,6 +104,7 @@ export function ChatStream({
   }, [state.rows, jumpToBottom]);
 
   const unsettled = state.permissions.filter((p) => !p.settled);
+  const settled = state.permissions.filter((p) => p.settled);
   const openQuestions = state.elicitations.filter((e) => !e.settled);
 
   return (
@@ -148,6 +150,7 @@ export function ChatStream({
           {unsettled.length > 0 ? (
             <PermissionCards permissions={unsettled} onRespond={onPermissionRespond} />
           ) : null}
+          {settled.length > 0 ? <SettledPermissions permissions={settled} /> : null}
           {openQuestions.length > 0 ? (
             <ElicitationCards elicitations={openQuestions} onRespond={onElicitationRespond} />
           ) : null}
@@ -176,13 +179,31 @@ export function ChatStream({
   );
 }
 
-/** Settled permission cards are collapsed to a single muted line. */
-const SettledPermissions = memo(function SettledPermissions({ count }: { count: number }) {
+/**
+ * Settled permission cards collapse to a single muted line. #92 — the line
+ * grows a delegated summary when the gate answered any of them, so the
+ * interruption-absorbing stays visible after the cards vanish.
+ */
+const SettledPermissions = memo(function SettledPermissions({
+  permissions,
+}: {
+  permissions: PermissionCardState[];
+}) {
   const { t } = useI18n();
-  if (count === 0) return null;
+  if (permissions.length === 0) return null;
+  const delegated = permissions.filter((p) => p.resolution?.responder === 'delegated');
+  const allowed = delegated.filter((p) => p.resolution?.denialReason === undefined);
+  const denied = delegated.filter((p) => p.resolution?.denialReason !== undefined);
   return (
     <span className="text-muted-foreground/60 text-[11px]">
-      {t('chat.permissionsSettled', { count })}
+      {t('chat.permissionsSettled', { count: permissions.length })}
+      {delegated.length > 0
+        ? ` · ${t('chat.approvalsSettledSummary', {
+            delegated: delegated.length,
+            allowed: allowed.length,
+            denied: denied.length,
+          })}`
+        : ''}
     </span>
   );
 });

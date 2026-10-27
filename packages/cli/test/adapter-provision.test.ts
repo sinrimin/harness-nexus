@@ -60,7 +60,6 @@ function seedStore(dir: string, opts: { bins?: boolean; patched?: boolean } = {}
   );
 }
 
-
 /**
  * #92 — the REAL claude-agent-acp 0.93.0 `dist/permissions/effects.js`
  * excerpts (parse head + the plain-reject arm), vendored verbatim from the
