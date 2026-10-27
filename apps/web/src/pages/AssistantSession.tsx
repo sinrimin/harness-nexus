@@ -512,7 +512,10 @@ export function AssistantSessionPage() {
 
   usePageTitle(assistant !== null ? assistant.name : t('assistants.endAssistant'));
 
-  const sortedSessions = useMemo(() => [...sessions].reverse(), [sessions]);
+  // Server order IS the display order — newest activity first (the storage
+  // contract; the welcome cards below rely on the same array). #94: this rail
+  // used to .reverse() it into oldest-first.
+  const sortedSessions = sessions;
 
   /** #54 — the welcome's recent cards: this config's conversations, newest
    *  first (the sessions push arrives newest-first from the server). */
