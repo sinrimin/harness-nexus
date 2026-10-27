@@ -350,6 +350,22 @@ describe('delegated approvals gate (#92)', () => {
     expect(advisory[0]!.lean).toBe('allow');
   });
 
+  it('options without an allow_once (persistent-only allows) escalate silently', async () => {
+    const t = await setup({ target: 'claude-code' });
+    await t.svc.onStream('m92', t.sessionId, {
+      kind: 'permission_request',
+      requestId: 'r-persist',
+      toolCall: TOOL,
+      options: [
+        { optionId: 'always', name: 'Always allow', kind: 'allow_always' },
+        { optionId: 'no-once', name: 'No', kind: 'reject_once' },
+      ],
+    });
+    await settle();
+    expect(ctlResponds(t.ctl, t.sessionId)).toHaveLength(0); // nothing we may answer
+    expect(t.fetchLog).toHaveLength(0); // and the model is never consulted
+  });
+
   it('the human wins the race: a later gate verdict is dropped', async () => {
     const t = await setup({ target: 'claude-code' });
     await t.svc.onStream('m92', t.sessionId, {

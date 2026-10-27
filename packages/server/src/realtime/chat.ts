@@ -1088,9 +1088,14 @@ export class ChatService {
     }
 
     // 2 — eligible options: one-shot only. A delegation never grants
-    // persistence, so allow_always/reject_always are never chosen.
-    const eligible = options.filter((o) => o.kind === 'allow_once' || o.kind === 'reject_once');
-    if (eligible.length === 0) return; // nothing we may answer ⇒ human
+    // persistence, so allow_always/reject_always are never chosen. Without
+    // an allow_once there is no answer we may safely give (only persistent
+    // allows or a deny we cannot justify) ⇒ the human decides.
+    const allowOnce = options.find((o) => o.kind === 'allow_once');
+    if (allowOnce === undefined) return;
+    const rejectOnce = options.find((o) => o.kind === 'reject_once');
+    const eligible =
+      rejectOnce === undefined ? [allowOnce] : [allowOnce, rejectOnce];
 
     // 3 — resolve the provider + credential. Any miss ⇒ human.
     const provider = await this.deps.uow.llmProviders.findById(cfg.providerId).catch(() => null);
@@ -1171,9 +1176,10 @@ export class ChatService {
     // 5 — the verdict. Allow needs BOTH confidences; a model DENY only
     // hard-denies where the reason can reach the model (claude-code) —
     // everywhere else it escalates (an inexplicable deny just stalls).
+    const allowId = allowOnce.optionId;
     if (
       pick?.choice !== undefined &&
-      pick.choice === allowOptionId(eligible) &&
+      pick.choice === allowId &&
       pick.confidence !== undefined &&
       pick.confidence >= threshold &&
       covered !== undefined &&
@@ -1188,7 +1194,7 @@ export class ChatService {
     }
     if (
       pick?.choice !== undefined &&
-      pick.choice !== allowOptionId(eligible) &&
+      pick.choice !== allowId &&
       pick.confidence !== undefined &&
       pick.confidence >= threshold &&
       hasReasonChannel(session.target)
@@ -1208,7 +1214,7 @@ export class ChatService {
 
     // 6 — escalate with the model's lean as an advisory (never a decision).
     if (pick?.choice !== undefined && pick.confidence !== undefined) {
-      const lean = pick.choice === allowOptionId(eligible) ? 'allow' : 'reject';
+      const lean = pick.choice === allowId ? 'allow' : 'reject';
       this.deps.io.toChannel(session.sessionId, 'chat:event', {
         sessionId: session.sessionId,
         event: {
@@ -1586,10 +1592,6 @@ function pickRejectOption(
   return (
     options.find((o) => o.kind === 'reject_once') ?? options.find((o) => o.kind === 'reject_always')
   );
-}
-
-function allowOptionId(eligible: readonly { optionId: string; kind: string }[]): string {
-  return (eligible.find((o) => o.kind === 'allow_once') ?? eligible[0]!).optionId;
 }
 
 function normalizeWhy(choice: string | undefined): DelegationDenialReason {
