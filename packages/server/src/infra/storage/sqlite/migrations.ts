@@ -608,6 +608,33 @@ CREATE INDEX IF NOT EXISTS idx_note_annotations_note ON note_annotations(note_id
 ALTER TABLE machines ADD COLUMN chat_approvals TEXT;
     `,
   },
+  {
+    version: 32,
+    description:
+      'issue #95 — providers speak several wires: api TEXT → apis JSON [{kind,path}] (a row with embedding models gains the openai-embedding kind); model type → per-model apiKind (chat → the row\'s old api, embedding → openai-embedding, decision → systemone); users: default_models JSON (user-level default model slots)',
+    sql: `
+ALTER TABLE llm_providers ADD COLUMN apis TEXT NOT NULL DEFAULT '';
+ALTER TABLE users ADD COLUMN default_models TEXT;
+
+UPDATE llm_providers SET
+  models = COALESCE((
+    SELECT json_group_array(
+      json_set(json_remove(j.value, '$.type'), '$.apiKind',
+        CASE json_extract(j.value, '$.type')
+          WHEN 'embedding' THEN 'openai-embedding'
+          WHEN 'decision'  THEN 'systemone'
+          ELSE llm_providers.api END))
+    FROM json_each(COALESCE(llm_providers.models, '[]')) j
+  ), '[]'),
+  apis = CASE
+    WHEN COALESCE(models, '[]') LIKE '%"type":"embedding"%' AND api <> 'openai-embedding'
+      THEN json_array(json_object('kind', api, 'path', NULL), json_object('kind', 'openai-embedding', 'path', NULL))
+    ELSE json_array(json_object('kind', api, 'path', NULL))
+  END;
+
+ALTER TABLE llm_providers DROP COLUMN api;
+    `,
+  },
 ] as const;
 
 /**

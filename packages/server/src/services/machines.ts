@@ -121,28 +121,31 @@ export async function updateMachine(
 }
 
 /**
- * #92 — a chatApprovals config is valid iff its provider row exists, is
- * visible to this owner, speaks `systemone`, and carries the named model as a
- * `type: 'decision'` registry entry. Kept here (not the zod layer) because it
- * is a cross-row invariant only the service can see.
+ * #92 — a chatApprovals config's machine-level override is valid iff its
+ * provider row exists, is visible to this owner, speaks `systemone`, and
+ * carries the named model as an `apiKind: 'systemone'` registry entry. Kept
+ * here (not the zod layer) because it is a cross-row invariant only the
+ * service can see. #95 — the pair is OPTIONAL (omit both = follow the
+ * user-level default decision model, validated on the users service instead).
  */
 async function validateChatApprovals(
   deps: ServiceDeps,
   principal: Principal,
-  approvals: { providerId: string; modelId: string },
+  approvals: { providerId?: string | undefined; modelId?: string | undefined },
 ): Promise<void> {
+  if (approvals.providerId === undefined || approvals.modelId === undefined) return;
   const provider = await deps.uow.llmProviders.findById(approvals.providerId);
   if (!provider || !(provider.scope === 'global' || provider.ownerId === principal.userId)) {
     throw new AppError('Provider not found', 404, 'CHAT_APPROVALS_PROVIDER_NOT_FOUND');
   }
-  if (provider.api !== 'systemone') {
+  if (!provider.apis.some((a) => a.kind === 'systemone')) {
     throw new AppError(
       'The delegated-approvals provider must speak the systemone api',
       400,
       'CHAT_APPROVALS_PROVIDER_NOT_DECISION',
     );
   }
-  if (!provider.models.some((m) => m.id === approvals.modelId && m.type === 'decision')) {
+  if (!provider.models.some((m) => m.id === approvals.modelId && m.apiKind === 'systemone')) {
     throw new AppError(
       `Model "${approvals.modelId}" is not a decision model on that provider`,
       400,

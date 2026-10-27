@@ -8,6 +8,7 @@ import {
   DEFAULT_CHAT_PREWARM_SETTINGS,
   PREWARM_ADAPTER_TARGETS,
   isRuntimeTarget,
+  providerEndpointUrl,
 } from '@harness-nexus/shared';
 import type {
   ChatApprovalsView,
@@ -383,7 +384,7 @@ export class ChatService {
       readyTimer: null,
       permissionTimers: new Map(),
       elicitationTimers: new Map(),
-      approvals: await this.resolveApprovalsView(machine),
+      approvals: await this.resolveApprovalsView(ownerId, machine),
       recentPrompts: [],
     };
     session.readyTimer = setTimeout(() => {
@@ -978,22 +979,60 @@ export class ChatService {
   }
 
   /**
-   * #92 — the machine's approvals view (name/model for provenance). Best
-   * effort: an unreadable provider row reads as manual — the gate must never
-   * block or crash an open.
+   * #95 — the EFFECTIVE decision model: the machine's override pair when set,
+   * else the USER's default slot. Null when nothing resolves (or the row no
+   * longer carries the named systemone model). Best effort — the gate must
+   * never block or crash an open.
    */
-  private async resolveApprovalsView(machine: {
-    chatApprovals?: { providerId: string; responder: 'manual' | 'delegated'; modelId: string };
-  }): Promise<ChatApprovalsView> {
+  private async resolveDecisionModel(
+    ownerId: string,
+    machine: {
+      chatApprovals?: {
+        providerId?: string | undefined;
+        responder: 'manual' | 'delegated';
+        modelId?: string | undefined;
+      };
+    },
+  ): Promise<{ providerName: string; modelId: string } | null> {
+    try {
+      const cfg = machine.chatApprovals;
+      const ref =
+        cfg?.providerId !== undefined && cfg?.modelId !== undefined
+          ? { providerId: cfg.providerId, modelId: cfg.modelId }
+          : (await this.deps.uow.users.findById(ownerId))?.defaultModels?.decision;
+      if (ref === undefined) return null;
+      const provider = await this.deps.uow.llmProviders.findById(ref.providerId);
+      if (provider === null) return null;
+      if (!provider.models.some((m) => m.id === ref.modelId && m.apiKind === 'systemone')) {
+        return null;
+      }
+      return { providerName: provider.name, modelId: ref.modelId };
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * #92 — the session's MACHINE-DEFAULT approvals view (open-time only):
+   * delegation stays opt-in, so a machine row without `responder:
+   * 'delegated'` opens manual even when a user default exists.
+   */
+  private async resolveApprovalsView(
+    ownerId: string,
+    machine: {
+      chatApprovals?: {
+        providerId?: string | undefined;
+        responder: 'manual' | 'delegated';
+        modelId?: string | undefined;
+      };
+    },
+  ): Promise<ChatApprovalsView> {
     const cfg = machine.chatApprovals;
     if (cfg === undefined || cfg.responder !== 'delegated') return { responder: 'manual' };
-    try {
-      const provider = await this.deps.uow.llmProviders.findById(cfg.providerId);
-      if (provider === null) return { responder: 'manual' };
-      return { responder: 'delegated', providerName: provider.name, modelId: cfg.modelId };
-    } catch {
-      return { responder: 'manual' };
-    }
+    const resolved = await this.resolveDecisionModel(ownerId, machine);
+    return resolved === null
+      ? { responder: 'manual' }
+      : { responder: 'delegated', ...resolved };
   }
 
   /**
@@ -1009,20 +1048,19 @@ export class ChatService {
     const session = this.live.get(sessionId);
     if (!session || session.ownerId !== ownerId) return { ok: false, code: 'SESSION_NOT_FOUND' };
     if (session.phase !== 'ready') return { ok: false, code: 'SESSION_NOT_READY' };
-    if (responder === 'delegated') {
-      const machine = await this.deps.uow.machines.findById(session.machineId);
-      if (machine?.chatApprovals === undefined) {
-        return { ok: false, code: 'CHAT_APPROVALS_NO_PROVIDER' };
-      }
+    // #95 — delegated is offerable iff a decision model RESOLVES (machine
+    // override or the user's default slot), regardless of the machine's
+    // responder default: the live switch is the user's own opt-in.
+    const machine = (await this.deps.uow.machines.findById(session.machineId)) ?? {};
+    const resolved =
+      responder === 'delegated' ? await this.resolveDecisionModel(ownerId, machine) : null;
+    const view: ChatApprovalsView =
+      responder === 'delegated' && resolved !== null
+        ? { responder: 'delegated', ...resolved }
+        : { responder: 'manual' };
+    if (responder === 'delegated' && view.responder !== 'delegated') {
+      return { ok: false, code: 'CHAT_APPROVALS_NO_PROVIDER' };
     }
-    const view =
-      responder === 'delegated'
-        ? session.approvals.responder === 'delegated'
-          ? session.approvals
-          : await this.resolveApprovalsView(
-              (await this.deps.uow.machines.findById(session.machineId)) ?? {},
-            )
-        : { responder: 'manual' as const };
     session.approvals = view;
     if (this.deps.isOnline(session.machineId)) {
       this.deps.io.toCtl(session.machineId, 'chat:approvals.set', {
@@ -1053,8 +1091,9 @@ export class ChatService {
     } catch {
       return; // unreadable config ⇒ human decides
     }
+    // #95 — the machine row may be absent entirely (delegation switched on in
+    // session against the USER's default model); policy falls back then.
     const cfg = machine?.chatApprovals;
-    if (cfg === undefined) return;
     const view = session.approvals;
     const attribution = {
       responder: 'delegated' as const,
@@ -1067,7 +1106,7 @@ export class ChatService {
     // target; the reason reaches the model where a channel exists, and via
     // the correction note where it does not.
     const title = toolCall.title ?? '';
-    const hit = cfg.neverAllow.find(
+    const hit = (cfg?.neverAllow ?? []).find(
       (p) => p !== '' && title.toLowerCase().includes(p.toLowerCase()),
     );
     if (hit !== undefined) {
@@ -1080,7 +1119,7 @@ export class ChatService {
         ...(hasReasonChannel(session.target)
           ? { meta: { denyMessage: denyMessage(view, 'policy') } }
           : {}),
-        ...(cfg.denyNote && !hasReasonChannel(session.target)
+        ...((cfg?.denyNote ?? true) && !hasReasonChannel(session.target)
           ? { queueNote: correctionNote(title, 'policy') }
           : {}),
       });
@@ -1097,9 +1136,24 @@ export class ChatService {
     const eligible =
       rejectOnce === undefined ? [allowOnce] : [allowOnce, rejectOnce];
 
-    // 3 — resolve the provider + credential. Any miss ⇒ human.
-    const provider = await this.deps.uow.llmProviders.findById(cfg.providerId).catch(() => null);
-    if (provider === null || provider.api !== 'systemone' || provider.baseUrl === null) return;
+    // 3 — resolve the decision model (machine override, else the user's
+    // default slot) + its provider + credential. Any miss ⇒ human.
+    const ref =
+      cfg !== undefined && cfg.providerId !== undefined && cfg.modelId !== undefined
+        ? { providerId: cfg.providerId, modelId: cfg.modelId }
+        : (await this.deps.uow.users.findById(session.ownerId).catch(() => null))?.defaultModels
+            ?.decision;
+    if (ref === undefined) return;
+    const provider = await this.deps.uow.llmProviders.findById(ref.providerId).catch(() => null);
+    if (provider === null) return;
+    const systemoneApi = provider.apis.find((a) => a.kind === 'systemone');
+    if (systemoneApi === undefined) return;
+    if (!provider.models.some((m) => m.id === ref.modelId && m.apiKind === 'systemone')) return;
+    const endpoint = providerEndpointUrl('systemone', {
+      baseUrl: provider.baseUrl,
+      path: systemoneApi.path,
+    });
+    if (endpoint === null) return;
     const credential = await findCredentialForOwner(
       this.deps.uow,
       provider.credentialName,
@@ -1146,9 +1200,9 @@ export class ChatService {
     try {
       const result = await callSystemOne(
         {
-          baseUrl: provider.baseUrl,
+          url: endpoint,
           apiKey: secret,
-          model: cfg.modelId,
+          model: ref.modelId,
           state,
           questions,
         },
@@ -1171,7 +1225,7 @@ export class ChatService {
     const pick = answers.pick;
     const covered = answers.covered?.noul;
     const why = normalizeWhy(answers.why?.choice);
-    const threshold = cfg.confidenceThreshold;
+    const threshold = cfg?.confidenceThreshold ?? 0.9;
 
     // 5 — the verdict. Allow needs BOTH confidences; a model DENY only
     // hard-denies where the reason can reach the model (claude-code) —

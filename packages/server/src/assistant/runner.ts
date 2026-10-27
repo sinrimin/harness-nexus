@@ -12,6 +12,7 @@ import type {
   AssistantPromptBlock,
   AssistantSession,
 } from '@harness-nexus/core';
+import { isChatApiKind } from '@harness-nexus/shared';
 import type { ChatStreamEvent, ProviderModelConfig } from '@harness-nexus/shared';
 import { decryptSecret, generateId } from '../infra/crypto.js';
 import { findCredentialForOwner } from '../infra/credential-scope.js';
@@ -76,7 +77,7 @@ export async function resolveTurnModel(
   provider: LlmProvider,
   modelId: string,
 ) {
-  const entry = provider.models.find((m) => m.id === modelId && m.type === 'chat');
+  const entry = provider.models.find((m) => m.id === modelId && isChatApiKind(m.apiKind));
   if (entry === undefined) {
     throw new TurnSetupError(
       `Model "${modelId}" is no longer configured on provider "${provider.name}"`,
@@ -89,13 +90,14 @@ export async function resolveTurnModel(
     );
   }
   const secret = decryptSecret(credential.secret, deps.credentialEncryptionKey);
-  // #92 — a systemone provider cannot reach here (the config service refuses
-  // it), but the runtime holds the line too: the gateway is chat-only.
-  if (provider.api === 'systemone') {
-    throw new TurnSetupError(`Provider "${provider.name}" is decision-only, not a chat gateway`);
+  // #92/#95 — a non-chat model cannot reach here (the config service refuses
+  // it), but the runtime holds the line too: the gateway is chat-only. The
+  // wire comes from the MODEL's apiKind — the row speaks several (#95).
+  if (!isChatApiKind(entry.apiKind)) {
+    throw new TurnSetupError(`Model "${modelId}" is not a chat model on "${provider.name}"`);
   }
   return buildGatewayModel({
-    kind: provider.api,
+    kind: entry.apiKind,
     baseUrl: provider.baseUrl,
     providerLabel: provider.name,
     secret,

@@ -47,14 +47,14 @@ async function seed() {
   await uow.llmProviders.save({
     id: 'prov-1',
     name: 'Gateway',
-    api: 'openai-chat',
+    apis: [{ kind: 'openai-chat', path: null }],
     baseUrl: null,
     credentialName: 'k',
     scope: 'personal',
     ownerId: owner.userId,
     models: [
-      { id: 'chat-a', type: 'chat' },
-      { id: 'embed-a', type: 'embedding' },
+      { id: 'chat-a', apiKind: 'openai-chat' },
+      { id: 'embed-a', apiKind: 'openai-embedding' },
     ],
     createdAt: now,
     updatedAt: now,

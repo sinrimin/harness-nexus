@@ -6,7 +6,14 @@ import { describe, expect, it } from 'vitest';
 import { createMemoryUnitOfWork } from '../src/infra/storage/memory/index.js';
 import { verifyPassword } from '../src/infra/crypto.js';
 import type { Principal, ServiceDeps } from '../src/services/principal.js';
-import { createUser, deleteUser, listUsers, updateUserRole } from '../src/services/users.js';
+import {
+  createUser,
+  deleteUser,
+  getUserDefaultModels,
+  listUsers,
+  setUserDefaultModels,
+  updateUserRole,
+} from '../src/services/users.js';
 import type { User } from '@harness-nexus/core';
 
 /**
@@ -118,5 +125,64 @@ describe('svc users — safety rails', () => {
     await expect(updateUserRole(d, admin, plebRow.id, { role: 'admin' })).resolves.toMatchObject({
       role: 'admin',
     });
+  });
+});
+
+describe('svc users — #95 default model slots', () => {
+  async function seedProviderRow(d: ServiceDeps) {
+    await d.uow.llmProviders.save({
+      id: 'p95',
+      name: 'bailian',
+      apis: [
+        { kind: 'openai-chat', path: null },
+        { kind: 'systemone', path: null },
+      ],
+      baseUrl: 'https://dashscope.example.com/compatible-mode/v1',
+      credentialName: 'cred',
+      scope: 'personal',
+      ownerId: 'u1',
+      models: [
+        { id: 'qwen', apiKind: 'openai-chat' },
+        { id: 'decider', apiKind: 'systemone' },
+      ],
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    });
+  }
+
+  it('round-trips the decision slot; full replace; {} clears', async () => {
+    const d = deps();
+    await seedUser(d, { id: 'u1' });
+    await seedProviderRow(d);
+    await setUserDefaultModels(d, { userId: 'u1', role: 'user' }, {
+      decision: { providerId: 'p95', modelId: 'decider' },
+    });
+    expect(await getUserDefaultModels(d, { userId: 'u1', role: 'user' })).toEqual({
+      decision: { providerId: 'p95', modelId: 'decider' },
+    });
+    await setUserDefaultModels(d, { userId: 'u1', role: 'user' }, {});
+    expect(await getUserDefaultModels(d, { userId: 'u1', role: 'user' })).toEqual({});
+  });
+
+  it('validates the ref: foreign provider 404s, wrong-kind model 400s, rerank is reserved', async () => {
+    const d = deps();
+    const owner = await seedUser(d, { id: 'u1' });
+    await seedProviderRow(d);
+    await expect(
+      setUserDefaultModels(d, { userId: 'u1', role: 'user' }, {
+        decision: { providerId: 'missing', modelId: 'decider' },
+      }),
+    ).rejects.toMatchObject({ code: 'DEFAULT_MODEL_PROVIDER_NOT_FOUND' });
+    await expect(
+      setUserDefaultModels(d, { userId: 'u1', role: 'user' }, {
+        decision: { providerId: 'p95', modelId: 'qwen' },
+      }),
+    ).rejects.toMatchObject({ code: 'DEFAULT_MODEL_KIND_MISMATCH' });
+    await expect(
+      setUserDefaultModels(d, { userId: 'u1', role: 'user' }, {
+        rerank: { providerId: 'p95', modelId: 'qwen' },
+      }),
+    ).rejects.toMatchObject({ code: 'DEFAULT_MODELS_RERANK_RESERVED' });
+    expect(owner.role).toBe('user');
   });
 });

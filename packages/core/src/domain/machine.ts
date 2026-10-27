@@ -60,10 +60,14 @@ export interface ChatDefaultModeSettings {
  */
 export interface ChatApprovalsSettings {
   responder: 'manual' | 'delegated';
-  /** LlmProvider row with `api: 'systemone'` — resolved + validated at save. */
-  providerId: string;
-  /** A `models[]` entry of that row with `type: 'decision'`. */
-  modelId: string;
+  /**
+   * #95 — machine-level override of the decision model: a provider row with
+   * the `systemone` wire + one of its `models[]` with `apiKind: 'systemone'`
+   * (resolved + validated at save). BOTH optional: omitting the pair follows
+   * the USER-level default decision model.
+   */
+  providerId?: string | undefined;
+  modelId?: string | undefined;
   /** Both the choice confidence AND the `covered` noul must clear it. */
   confidenceThreshold: number;
   /**

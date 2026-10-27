@@ -2,8 +2,13 @@
 //
 // SPDX-License-Identifier: MIT
 
-import type { User } from '@harness-nexus/core';
-import { AppError, type CreateUserInput, type UpdateRoleInput } from '@harness-nexus/shared';
+import type { User, UserDefaultModels } from '@harness-nexus/core';
+import {
+  AppError,
+  type CreateUserInput,
+  type UpdateRoleInput,
+  type UserDefaultModelsInput,
+} from '@harness-nexus/shared';
 import { hashPassword, generateId } from '../infra/crypto.js';
 import type { Principal, ServiceDeps } from './principal.js';
 
@@ -98,4 +103,59 @@ export async function updateUserRole(
     role: input.role,
     updatedAt: new Date().toISOString(),
   });
+}
+
+/**
+ * #95 — the user-level default model slots (provider page 默认模型 dialog).
+ * Full-replace semantics, mirroring the other settings maps: PATCH sends the
+ * whole object; an empty object clears every slot.
+ */
+export async function getUserDefaultModels(
+  deps: ServiceDeps,
+  principal: Principal,
+): Promise<UserDefaultModels> {
+  const user = await deps.uow.users.findById(principal.userId);
+  if (!user) throw new AppError('User not found', 404, 'USER_NOT_FOUND');
+  return user.defaultModels ?? {};
+}
+
+/** The api kind each slot must point at; `rerank` has no wire yet (reserved). */
+const DEFAULT_SLOT_KIND = {
+  embedding: 'openai-embedding',
+  decision: 'systemone',
+} as const;
+
+export async function setUserDefaultModels(
+  deps: ServiceDeps,
+  principal: Principal,
+  input: UserDefaultModelsInput,
+): Promise<UserDefaultModels> {
+  const user = await deps.uow.users.findById(principal.userId);
+  if (!user) throw new AppError('User not found', 404, 'USER_NOT_FOUND');
+  const next = input as UserDefaultModels;
+  for (const slot of ['embedding', 'rerank', 'decision'] as const) {
+    const ref = next[slot];
+    if (ref === undefined) continue;
+    if (slot === 'rerank') {
+      throw new AppError('The rerank slot is reserved — no rerank wire exists yet', 400, 'DEFAULT_MODELS_RERANK_RESERVED');
+    }
+    const provider = await deps.uow.llmProviders.findById(ref.providerId);
+    if (!provider || !(provider.scope === 'global' || provider.ownerId === principal.userId)) {
+      throw new AppError('Provider not found', 404, 'DEFAULT_MODEL_PROVIDER_NOT_FOUND');
+    }
+    const kind = DEFAULT_SLOT_KIND[slot];
+    if (!provider.models.some((m) => m.id === ref.modelId && m.apiKind === kind)) {
+      throw new AppError(
+        `Model "${ref.modelId}" is not a ${kind} model on that provider`,
+        400,
+        'DEFAULT_MODEL_KIND_MISMATCH',
+      );
+    }
+  }
+  await deps.uow.users.save({
+    ...user,
+    defaultModels: next,
+    updatedAt: new Date().toISOString(),
+  });
+  return next;
 }

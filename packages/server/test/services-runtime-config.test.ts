@@ -57,7 +57,7 @@ async function seedProvider(
   const provider: LlmProvider = {
     id: 'prov-' + Math.random().toString(36).slice(2, 8),
     name: 'gw',
-    api: 'openai-chat',
+    apis: [{ kind: 'openai-chat', path: null }],
     baseUrl: 'https://gw.example.com/v1',
     credentialName: 'gw-key',
     scope: 'personal',
@@ -226,12 +226,12 @@ describe('svc runtime-config — extras normalization + #51 modelEntries snapsho
     const provider = await seedProvider(d, [
       {
         id: 'gw-large',
-        type: 'chat',
+        apiKind: 'openai-chat',
         displayName: 'GW Large',
         contextWindow: 200000,
         temperature: 0.7, // advanced params never enter the snapshot
       },
-      { id: 'm2', type: 'chat', vision: true },
+      { id: 'm2', apiKind: 'openai-chat', vision: true },
     ]);
     const plan = await planRuntimeConfigUpsert(d, owner, machine.id, 'codex', {
       ...codexSpec,

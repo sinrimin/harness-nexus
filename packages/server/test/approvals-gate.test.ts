@@ -56,6 +56,10 @@ async function setup(opts: {
   denyNote?: boolean;
   answers?: Record<string, unknown>;
   baseUrl?: string;
+  /** #95 — machine carries NO override pair; the user default decides. */
+  followDefault?: boolean;
+  /** #95 — machine carries NO chatApprovals at all. */
+  noMachineConfig?: boolean;
 }): Promise<{
   svc: ChatService;
   uow: UnitOfWork;
@@ -71,6 +75,9 @@ async function setup(opts: {
     passwordHash: null,
     role: 'user',
     status: 'active',
+    ...(opts.followDefault
+      ? { defaultModels: { decision: { providerId: 'p92', modelId: 'decision-model-preview' } } }
+      : {}),
     createdAt: NOW,
     updatedAt: NOW,
   });
@@ -85,14 +92,19 @@ async function setup(opts: {
     capabilities: ['chat'],
     remoteChatEnabled: true,
     baseWorkspace: '/w',
-    chatApprovals: {
-      responder: 'delegated',
-      providerId: 'p92',
-      modelId: 'decision-model-preview',
-      confidenceThreshold: 0.9,
-      neverAllow: opts.neverAllow ?? [],
-      denyNote: opts.denyNote ?? true,
-    },
+    ...(opts.noMachineConfig
+      ? {}
+      : {
+          chatApprovals: {
+            responder: 'delegated' as const,
+            ...(opts.followDefault
+              ? {}
+              : { providerId: 'p92', modelId: 'decision-model-preview' }),
+            confidenceThreshold: 0.9,
+            neverAllow: opts.neverAllow ?? [],
+            denyNote: opts.denyNote ?? true,
+          },
+        }),
     enrollmentPatId: 'pat92',
     enrolledAt: NOW,
     lastSeenAt: null,
@@ -114,12 +126,12 @@ async function setup(opts: {
   await uow.llmProviders.save({
     id: 'p92',
     name: 'bailian-decision',
-    api: 'systemone',
+    apis: [{ kind: 'systemone', path: null }],
     baseUrl: opts.baseUrl ?? 'https://dashscope.example.com/compatible-mode/v1',
     credentialName: 'cred92',
     scope: 'personal',
     ownerId: 'u92',
-    models: [{ id: 'decision-model-preview', type: 'decision' }],
+    models: [{ id: 'decision-model-preview', apiKind: 'systemone' }],
     createdAt: NOW,
     updatedAt: NOW,
   });
@@ -232,6 +244,51 @@ describe('delegated approvals gate (#92)', () => {
       'no-once',
     ]);
     expect(t.fetchLog[0]!.body.model).toBe('decision-model-preview');
+  });
+
+  it('#95 — follows the USER default decision model when the machine sets no override', async () => {
+    const t = await setup({ target: 'claude-code', followDefault: true });
+    await t.svc.onStream('m92', t.sessionId, {
+      kind: 'permission_request',
+      requestId: 'r1',
+      toolCall: TOOL,
+      options: OPTIONS,
+    });
+    await settle();
+    const responds = ctlResponds(t.ctl, t.sessionId);
+    expect(responds).toHaveLength(1);
+    expect(responds[0]!.payload.optionId).toBe('yes-once');
+    expect(t.fetchLog[0]!.body.model).toBe('decision-model-preview');
+    const resolved = channelEvents(t.channel, 'permission_resolved');
+    expect((resolved[0]!.delegated as { providerName: string }).providerName).toBe(
+      'bailian-decision',
+    );
+  });
+
+  it('#95 — setApprovals offers delegated via the user default even with NO machine config', async () => {
+    const t = await setup({ target: 'claude-code', followDefault: true, noMachineConfig: true });
+    // default responder is manual (delegation is opt-in)…
+    expect((await t.svc.setApprovals('u92', t.sessionId, 'delegated'))).toEqual({ ok: true });
+    const set = t.ctl.filter((c) => c.event === 'chat:approvals.set');
+    expect(set).toHaveLength(1);
+    expect((set[0]!.payload as { approvals: { modelId: string } }).approvals.modelId).toBe(
+      'decision-model-preview',
+    );
+    // …and once the user default no longer resolves, delegated is refused again.
+    await t.uow.users.save({
+      id: 'u92',
+      email: 'u92@x',
+      passwordHash: null,
+      role: 'user',
+      status: 'active',
+      createdAt: NOW,
+      updatedAt: NOW,
+    });
+    await t.svc.setApprovals('u92', t.sessionId, 'manual');
+    expect(await t.svc.setApprovals('u92', t.sessionId, 'delegated')).toEqual({
+      ok: false,
+      code: 'CHAT_APPROVALS_NO_PROVIDER',
+    });
   });
 
   it('the floor denies BEFORE the model, with a deny message on claude', async () => {

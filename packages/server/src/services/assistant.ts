@@ -13,6 +13,8 @@ import {
   DEFAULT_ASSISTANT_TOOL_GROUPS,
   type AssistantConfigCreateInput,
   type AssistantConfigUpdateInput,
+  isChatApiKind,
+  type ProviderApiKind,
 } from '@harness-nexus/shared';
 import { generateId } from '../infra/crypto.js';
 import type { Principal, ServiceDeps } from './principal.js';
@@ -36,11 +38,11 @@ async function requireVisibleProvider(deps: ServiceDeps, principal: Principal, p
   if (!provider || (provider.scope === 'personal' && provider.ownerId !== principal.userId)) {
     throw new AppError('Provider not found', 404, 'PROVIDER_NOT_FOUND');
   }
-  // #92 — decision-model providers (api 'systemone') are not chat gateways;
-  // the assistant never runs on one.
-  if (provider.api === 'systemone') {
+  // #92/#95 — the assistant runs on chat WIRES: a row qualifies iff it
+  // enables at least one of them (a systemone/embedding-only row never does).
+  if (!provider.apis.some((a) => isChatApiKind(a.kind))) {
     throw new AppError(
-      'Assistant configs require a chat provider (systemone is decision-only)',
+      'Assistant configs require a provider with a chat api enabled',
       409,
       'ASSISTANT_PROVIDER_NOT_CHAT',
     );
@@ -48,13 +50,13 @@ async function requireVisibleProvider(deps: ServiceDeps, principal: Principal, p
   return provider;
 }
 
-/** The default model must be a configured `type:'chat'` entry on that provider. */
+/** The default model must be a configured chat-kind entry on that provider. */
 function assertModelOnProvider(
   defaultModel: string,
-  models: { id: string; type: 'chat' | 'embedding' | 'decision' }[],
+  models: { id: string; apiKind: ProviderApiKind }[],
 ) {
   const model = models.find((m) => m.id === defaultModel);
-  if (model === undefined || model.type !== 'chat') {
+  if (model === undefined || !isChatApiKind(model.apiKind)) {
     throw new AppError(
       `Model "${defaultModel}" is not a configured chat model on this provider`,
       409,

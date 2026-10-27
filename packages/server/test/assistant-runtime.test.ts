@@ -59,7 +59,7 @@ async function setup(): Promise<Harness> {
   await uow.llmProviders.save({
     id: 'prov-1',
     name: 'Gateway',
-    api: 'openai-chat',
+    apis: [{ kind: 'openai-chat', path: null }],
     baseUrl: 'https://gw.example.com/v1',
     credentialName: 'gw-key',
     scope: 'personal',
@@ -67,7 +67,7 @@ async function setup(): Promise<Harness> {
     models: [
       {
         id: 'gw-large',
-        type: 'chat',
+        apiKind: 'openai-chat',
         displayName: 'Gateway Large',
         contextWindow: 64_000,
         maxOutputTokens: 4_000,
@@ -322,12 +322,12 @@ describe('#52 assistant runtime (faux provider)', () => {
     await h.uow.llmProviders.save({
       id: 'prov-2',
       name: 'Second Gateway',
-      api: 'openai-chat',
+      apis: [{ kind: 'openai-chat', path: null }],
       baseUrl: 'https://gw2.example.com/v1',
       credentialName: 'gw-key',
       scope: 'global',
       ownerId: null,
-      models: [{ id: 'gw-large', type: 'chat', displayName: 'Gw2 Large' }],
+      models: [{ id: 'gw-large', apiKind: 'openai-chat', displayName: 'Gw2 Large' }],
       createdAt: '2026-01-01T00:00:00.000Z',
       updatedAt: '2026-01-01T00:00:00.000Z',
     });
@@ -335,12 +335,12 @@ describe('#52 assistant runtime (faux provider)', () => {
     await h.uow.llmProviders.save({
       id: 'prov-other',
       name: 'Stranger',
-      api: 'openai-chat',
+      apis: [{ kind: 'openai-chat', path: null }],
       baseUrl: 'https://stranger.example.com/v1',
       credentialName: 'gw-key',
       scope: 'personal',
       ownerId: other.userId,
-      models: [{ id: 'sneaky', type: 'chat' }],
+      models: [{ id: 'sneaky', apiKind: 'openai-chat' }],
       createdAt: '2026-01-01T00:00:00.000Z',
       updatedAt: '2026-01-01T00:00:00.000Z',
     });

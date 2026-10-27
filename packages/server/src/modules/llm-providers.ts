@@ -76,7 +76,7 @@ function toView(p: LlmProvider): LlmProviderView {
   return {
     id: p.id,
     name: p.name,
-    api: p.api,
+    apis: p.apis,
     baseUrl: p.baseUrl,
     credentialName: p.credentialName,
     scope: p.scope,

@@ -10,6 +10,7 @@ import type {
   AssistantSession,
   LlmProvider,
 } from '@harness-nexus/core';
+import { isChatApiKind } from '@harness-nexus/shared';
 import type { ChatStreamEvent, HistoryItem, PromptBlock } from '@harness-nexus/shared';
 import { generateId } from '../infra/crypto.js';
 import { rowsToHistoryItems } from '../assistant/history.js';
@@ -187,7 +188,7 @@ export class AssistantRealtimeService {
     ]);
     const models = providers.flatMap((p) =>
       p.models
-        .filter((m) => m.type === 'chat')
+        .filter((m) => isChatApiKind(m.apiKind))
         .map((m) => ({ value: `${p.id}/${m.id}`, name: m.displayName ?? m.id, group: p.name })),
     );
     return {
@@ -647,7 +648,9 @@ export class AssistantRealtimeService {
       const wantedProviderId = slash === -1 ? ch.providerId : set.value.slice(0, slash);
       const wantedModelId = slash === -1 ? set.value : set.value.slice(slash + 1);
       const provider = (await this.visibleProviders(userId)).find((p) => p.id === wantedProviderId);
-      const model = provider?.models.find((m) => m.id === wantedModelId && m.type === 'chat');
+      const model = provider?.models.find(
+        (m) => m.id === wantedModelId && isChatApiKind(m.apiKind),
+      );
       if (provider === undefined || model === undefined) {
         return { ok: false, code: 'ASSISTANT_MODEL_NOT_ON_PROVIDER' };
       }

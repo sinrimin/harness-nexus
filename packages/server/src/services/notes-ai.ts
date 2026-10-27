@@ -4,7 +4,7 @@
 
 import { Agent, type AgentMessage } from '@earendil-works/pi-agent-core';
 import type { LlmProvider, Note, NoteAnnotation } from '@harness-nexus/core';
-import { AppError, type SummarizeNoteInput } from '@harness-nexus/shared';
+import { AppError, isChatApiKind, type SummarizeNoteInput } from '@harness-nexus/shared';
 import type { Principal, ServiceDeps } from './principal.js';
 import { resolveTurnModel } from '../assistant/runner.js';
 import type { GatewayModel } from '../assistant/provider.js';
@@ -49,7 +49,7 @@ export async function resolveNotesModel(
   ];
   for (const pool of pools) {
     for (const provider of pool) {
-      const chat = provider.models.find((m) => m.type === 'chat');
+      const chat = provider.models.find((m) => isChatApiKind(m.apiKind));
       if (chat !== undefined) return { provider, modelId: chat.id };
     }
   }

@@ -51,12 +51,12 @@ async function setup() {
   await uow.llmProviders.save({
     id: 'prov-1',
     name: 'Gateway',
-    api: 'openai-chat',
+    apis: [{ kind: 'openai-chat', path: null }],
     baseUrl: 'https://gw.example.com/v1',
     credentialName: 'gw-key',
     scope: 'personal',
     ownerId: owner.userId,
-    models: [{ id: 'gw-large', type: 'chat', vision: true }],
+    models: [{ id: 'gw-large', apiKind: 'openai-chat', vision: true }],
     createdAt: '2026-01-01T00:00:00.000Z',
     updatedAt: '2026-01-01T00:00:00.000Z',
   });

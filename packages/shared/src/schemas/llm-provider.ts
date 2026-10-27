@@ -14,22 +14,97 @@ import type { ProviderApi } from './runtime-config.js';
  */
 
 /**
- * The API kind the provider endpoint speaks — FINER-grained than the W3 spec
- * flavor, because the "openai" bucket splits at the wire: codex is
- * Responses-only (codex-rs removed chat), dsh's pi-ai speaks chat
- * completions (`openai-completions`) or Anthropic Messages. `systemone` (#92)
- * is the decision-model protocol (TypeSafe Jev and Bailian's
- * `decision-model-preview` share the wire): never runtime-pushable, never in
- * PROVIDER_API_SUPPORT, and it has NO official default endpoint (baseUrl is
- * required at save).
+ * The API kind a wire speaks — FINER-grained than the W3 spec flavor, because
+ * the "openai" bucket splits at the wire: codex is Responses-only (codex-rs
+ * removed chat), dsh's pi-ai speaks chat completions (`openai-completions`) or
+ * Anthropic Messages. `systemone` (#92) is the decision-model protocol (TypeSafe
+ * Jev and Bailian's `decision-model-preview` share the wire): never
+ * runtime-pushable, never in PROVIDER_API_SUPPORT, and it has NO official
+ * default endpoint (baseUrl is required at save). `openai-embedding` (#95)
+ * replaces the old reserved `type: 'embedding'` — embeddings ride an
+ * openai-compatible `/embeddings` wire; also never runtime-pushable.
  */
 export const providerApiKindSchema = z.enum([
   'openai-chat',
   'openai-responses',
   'anthropic',
   'systemone',
+  'openai-embedding',
 ]);
 export type ProviderApiKind = z.infer<typeof providerApiKindSchema>;
+
+/** Kinds that are never runtime-pushable (no W3 spec flavor exists). */
+export const NON_RUNTIME_KINDS: readonly ProviderApiKind[] = ['systemone', 'openai-embedding'];
+
+/** True for the three chat wires (the assistant / runtime-push candidate set). */
+export function isChatApiKind(
+  kind: ProviderApiKind,
+): kind is Exclude<ProviderApiKind, 'systemone' | 'openai-embedding'> {
+  return kind === 'openai-chat' || kind === 'openai-responses' || kind === 'anthropic';
+}
+
+/**
+ * #95 — one enabled wire on a provider. `path` overrides the kind's default
+ * path: `null`/omitted = default; a value starting with `/` is appended to the
+ * shared baseUrl; a FULL http(s) URL escapes the baseUrl entirely (wires
+ * hosted off a different root, e.g. Bailian's systemone).
+ */
+export const providerApiPathSchema = z
+  .string()
+  .max(512)
+  .refine((v) => v === '' || v.startsWith('/') || /^https?:\/\//.test(v), {
+    message: 'path must start with "/" or be a full http(s) URL',
+  });
+export const providerApiEndpointSchema = z.object({
+  kind: providerApiKindSchema,
+  /** Explicit null (or '') = the kind's default path. */
+  path: providerApiPathSchema.nullable(),
+});
+export type ProviderApiEndpointInput = z.input<typeof providerApiEndpointSchema>;
+export type ProviderApiEndpoint = z.infer<typeof providerApiEndpointSchema>;
+
+/** The provider's enabled wires — at least one, each kind at most once. */
+export const providerApisSchema = z
+  .array(providerApiEndpointSchema)
+  .min(1)
+  .max(5)
+  .refine((apis) => new Set(apis.map((a) => a.kind)).size === apis.length, {
+    message: 'api kinds must be unique within a provider',
+  });
+
+/**
+ * #95 — default PATH per kind, appended to the provider's baseUrl. These match
+ * what the official SDKs append today, so a stored row with `path: null`
+ * behaves byte-identically to pre-#95 rows. `systemone` has no official base
+ * (PROVIDER_DEFAULT_BASE_URLS.systemone === ''), so its endpoint is only
+ * reachable with an explicit baseUrl or a full-URL path.
+ */
+export const PROVIDER_DEFAULT_PATHS: Record<ProviderApiKind, string> = {
+  'openai-chat': '/chat/completions',
+  'openai-responses': '/responses',
+  anthropic: '/v1/messages',
+  systemone: '/systemone',
+  'openai-embedding': '/embeddings',
+};
+
+/**
+ * #95 — resolve one wire's endpoint URL. `null` when unresolvable (systemone
+ * with neither a baseUrl nor a full-URL path). Pure: web previews and the
+ * server's outbound surfaces share it.
+ */
+export function providerEndpointUrl(
+  kind: ProviderApiKind,
+  input: { baseUrl?: string | null; path?: string | null; defaultBaseUrl?: string },
+): string | null {
+  const path = input.path ?? null;
+  if (path !== null && /^https?:\/\//.test(path)) return path;
+  const base = (input.baseUrl ?? input.defaultBaseUrl ?? PROVIDER_DEFAULT_BASE_URLS[kind]).replace(
+    /\/+$/,
+    '',
+  );
+  if (base === '') return null;
+  return base + (path === null || path === '' ? PROVIDER_DEFAULT_PATHS[kind] : path);
+}
 
 /**
  * Which provider api kinds each runtime target can be pointed at (machine
@@ -60,12 +135,13 @@ export const PROVIDER_API_SUPPORT: Record<RuntimeTarget, readonly ProviderApiKin
 
 /**
  * Map a provider kind onto the W3 spec flavor (writers keyed on it stay
- * untouched). `systemone` has NO spec flavor — it is never runtime-pushable,
- * so reaching this arm with one is a programming error, not a fallback.
+ * untouched). `systemone` and `openai-embedding` have NO spec flavor — they
+ * are never runtime-pushable, so reaching those arms is a programming error,
+ * not a fallback.
  */
 export function providerApiToSpecApi(kind: ProviderApiKind): ProviderApi {
-  if (kind === 'systemone') {
-    throw new Error('systemone providers are not runtime-pushable');
+  if (kind === 'systemone' || kind === 'openai-embedding') {
+    throw new Error(`${kind} providers are not runtime-pushable`);
   }
   return kind === 'anthropic' ? 'anthropic-messages' : 'openai';
 }
@@ -81,6 +157,7 @@ export const PROVIDER_DEFAULT_BASE_URLS: Record<ProviderApiKind, string> = {
   'openai-responses': 'https://api.openai.com/v1',
   anthropic: 'https://api.anthropic.com',
   systemone: '',
+  'openai-embedding': 'https://api.openai.com/v1',
 };
 
 /**
@@ -88,15 +165,13 @@ export const PROVIDER_DEFAULT_BASE_URLS: Record<ProviderApiKind, string> = {
  * single source of truth: consumers (runtime-config form, the platform
  * assistant) pick from it, they never re-discover. `/v1/models` returns bare
  * ids at best — contextWindow/vision are NOT fetchable, they are curated
- * here. `type: 'embedding'` is RESERVED (pickers filter to 'chat'; no
- * consumer surface yet).
+ * here. #95 — the model carries its OWN `apiKind` (must be one of the
+ * provider's enabled kinds); pickers filter by kind (chat consumers take the
+ * three chat wires, the approvals gate takes `systemone`).
  */
-export const providerModelTypeSchema = z.enum(['chat', 'embedding', 'decision']);
-export type ProviderModelType = z.infer<typeof providerModelTypeSchema>;
-
 export const providerModelConfigSchema = z.object({
   id: z.string().min(1).max(128),
-  type: providerModelTypeSchema.default('chat'),
+  apiKind: providerApiKindSchema,
   /** Display name → pi models.json `name`. */
   displayName: z.string().max(256).optional(),
   /** Context window in tokens → pi models.json `contextWindow`. */
@@ -140,6 +215,7 @@ export const SERVER_TOOL_PRESETS: Record<ProviderApiKind, readonly string[]> = {
   'openai-responses': ['web_search', 'web_extractor', 'code_interpreter'],
   anthropic: ['web_search_20250305'],
   systemone: [],
+  'openai-embedding': [],
 };
 
 /**
@@ -153,6 +229,7 @@ export const EXTRA_BODY_PRESETS: Record<ProviderApiKind, readonly string[]> = {
   'openai-responses': ['enable_thinking'],
   anthropic: [],
   systemone: [],
+  'openai-embedding': [],
 };
 
 /**
@@ -183,6 +260,7 @@ export const providerModelsSchema = z
  * etc.). Pure: the web dialog computes these client-side from the same
  * shared code. Structured `{ code, modelId }` (not prose) so the renderer
  * can translate — the machine reads the code, the human gets their locale.
+ * #95 — the gate is the MODEL's own apiKind (the provider speaks several).
  */
 export type ProviderModelConfigWarningCode = 'serverToolsIrrelevant' | 'extraBodyIrrelevant';
 
@@ -192,17 +270,17 @@ export interface ProviderModelConfigWarning {
 }
 
 export function providerModelConfigWarnings(
-  api: ProviderApiKind,
   models: readonly ProviderModelConfig[],
 ): ProviderModelConfigWarning[] {
   const warnings: ProviderModelConfigWarning[] = [];
   for (const m of models) {
-    // #56 — serverTools now ride BOTH openai-responses and anthropic wires
-    // (append-injection); openai-chat alone has no tools[] surface.
-    if (m.serverTools !== undefined && (api === 'openai-chat' || api === 'systemone')) {
+    const kind = m.apiKind;
+    // #56 — serverTools ride BOTH openai-responses and anthropic wires
+    // (append-injection); the other kinds have no tools[] surface.
+    if (m.serverTools !== undefined && kind !== 'openai-responses' && kind !== 'anthropic') {
       warnings.push({ code: 'serverToolsIrrelevant', modelId: m.id });
     }
-    if (m.extraBody !== undefined && (api === 'anthropic' || api === 'systemone')) {
+    if (m.extraBody !== undefined && (kind === 'anthropic' || kind === 'systemone')) {
       warnings.push({ code: 'extraBodyIrrelevant', modelId: m.id });
     }
   }
@@ -222,13 +300,15 @@ export function providerModelsUrls(api: ProviderApiKind, baseUrl?: string): stri
   if (api === 'systemone') return [];
   const base = (baseUrl ?? PROVIDER_DEFAULT_BASE_URLS[api]).replace(/\/+$/, '');
   if (api === 'anthropic') return [`${base}/v1/models?limit=1000`];
+  // openai-chat / openai-responses / openai-embedding share the /models listing
   return base.endsWith('/v1') ? [`${base}/models`] : [`${base}/v1/models`, `${base}/models`];
 }
 
 export const llmProviderCreateSchema = z.object({
   name: z.string().min(1).max(64),
-  api: providerApiKindSchema,
-  /** Omit = the kind's official endpoint. */
+  /** #95 — the enabled wires (>=1, kinds unique); models must pick from them. */
+  apis: providerApisSchema,
+  /** Omit = each kind's official endpoint. */
   baseUrl: z.string().url().max(512).optional(),
   /** Handle of the Credential carrying the API key. */
   credentialName: z.string().min(1).max(64),
@@ -246,7 +326,7 @@ export type LlmProviderCreateInput = z.input<typeof llmProviderCreateSchema>;
 export const llmProviderUpdateSchema = z
   .object({
     name: z.string().min(1).max(64).optional(),
-    api: providerApiKindSchema.optional(),
+    apis: providerApisSchema.optional(),
     baseUrl: z.string().url().max(512).nullable().optional(),
     credentialName: z.string().min(1).max(64).optional(),
     models: providerModelsSchema.optional(),
@@ -258,7 +338,7 @@ export type LlmProviderUpdateInput = z.input<typeof llmProviderUpdateSchema>;
 export const llmProviderViewSchema = z.object({
   id: z.string().min(1),
   name: z.string().min(1).max(64),
-  api: providerApiKindSchema,
+  apis: providerApisSchema,
   baseUrl: z.string().url().max(512).nullable(),
   credentialName: z.string().min(1).max(64),
   scope: z.enum(['global', 'personal']),
@@ -268,6 +348,27 @@ export const llmProviderViewSchema = z.object({
   updatedAt: z.string().datetime(),
 });
 export type LlmProviderView = z.infer<typeof llmProviderViewSchema>;
+
+/**
+ * #95 — one user-level default-model slot. `embedding`/`rerank` are reserved
+ * (no consumer yet; the UI shows them disabled); `decision` feeds delegated
+ * approvals (#92) when a machine's chatApprovals omits its own provider/model.
+ */
+export const defaultModelRefSchema = z.object({
+  providerId: z.string().min(1).max(64),
+  modelId: z.string().min(1).max(128),
+});
+export type DefaultModelRefInput = z.input<typeof defaultModelRefSchema>;
+export type DefaultModelRef = z.infer<typeof defaultModelRefSchema>;
+
+/** Full-replace PATCH body / stored shape — an empty object clears every slot. */
+export const userDefaultModelsSchema = z.object({
+  embedding: defaultModelRefSchema.optional(),
+  rerank: defaultModelRefSchema.optional(),
+  decision: defaultModelRefSchema.optional(),
+});
+export type UserDefaultModelsInput = z.input<typeof userDefaultModelsSchema>;
+export type UserDefaultModels = z.infer<typeof userDefaultModelsSchema>;
 
 /** One discovered model id (cc-switch 获取模型). `name` is the display name when the endpoint offers one. */
 export const llmModelInfoSchema = z.object({

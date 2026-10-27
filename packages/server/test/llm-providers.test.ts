@@ -90,7 +90,7 @@ describe('provider CRUD', () => {
       headers: auth(ownerJwt),
       payload: {
         name: 'team-gateway',
-        api: 'openai-responses',
+        apis: [{ kind: 'openai-responses', path: null }],
         baseUrl: 'https://gw.example.com/v1',
         credentialName: 'gw-key',
       },
@@ -98,7 +98,7 @@ describe('provider CRUD', () => {
     expect(create.statusCode).toBe(201);
     expect(create.json().provider).toMatchObject({
       name: 'team-gateway',
-      api: 'openai-responses',
+      apis: [{ kind: 'openai-responses', path: null }],
       scope: 'personal',
       credentialName: 'gw-key',
     });
@@ -110,7 +110,7 @@ describe('provider CRUD', () => {
       headers: auth(rootToken),
       payload: {
         name: 'shared-openai',
-        api: 'openai-chat',
+        apis: [{ kind: 'openai-chat', path: null }],
         credentialName: 'global-key',
         scope: 'global',
       },
@@ -141,7 +141,7 @@ describe('provider CRUD', () => {
       method: 'POST',
       url: '/api/llm-providers',
       headers: auth(ownerJwt),
-      payload: { name: 'nope', api: 'anthropic', credentialName: 'gw-key', scope: 'global' },
+      payload: { name: 'nope', apis: [{ kind: 'anthropic', path: null }], credentialName: 'gw-key', scope: 'global' },
     });
     expect(globalByUser.statusCode).toBe(403);
 
@@ -149,7 +149,7 @@ describe('provider CRUD', () => {
       method: 'POST',
       url: '/api/llm-providers',
       headers: auth(strangerJwt),
-      payload: { name: 'steal', api: 'anthropic', credentialName: 'gw-key' },
+      payload: { name: 'steal', apis: [{ kind: 'anthropic', path: null }], credentialName: 'gw-key' },
     });
     expect(foreignCred.statusCode).toBe(404);
     expect(foreignCred.json().error).toBe('CREDENTIAL_NOT_FOUND');
@@ -160,7 +160,7 @@ describe('provider CRUD', () => {
       method: 'POST',
       url: '/api/llm-providers',
       headers: auth(ownerJwt),
-      payload: { name: 'team-gateway', api: 'anthropic', credentialName: 'gw-key' },
+      payload: { name: 'team-gateway', apis: [{ kind: 'anthropic', path: null }], credentialName: 'gw-key' },
     });
     expect(dup.statusCode).toBe(409);
     expect(dup.json().error).toBe('PROVIDER_NAME_TAKEN');
@@ -170,7 +170,7 @@ describe('provider CRUD', () => {
       method: 'POST',
       url: '/api/llm-providers',
       headers: auth(strangerJwt),
-      payload: { name: 'team-gateway', api: 'anthropic', credentialName: 'stranger-key' },
+      payload: { name: 'team-gateway', apis: [{ kind: 'anthropic', path: null }], credentialName: 'stranger-key' },
     });
     expect(other.statusCode).toBe(201);
   });
@@ -432,17 +432,21 @@ describe('#51 — provider model registry', () => {
       headers: auth(ownerJwt),
       payload: {
         name: 'registry-gw',
-        api: 'openai-chat',
+        apis: [
+          { kind: 'openai-chat', path: null },
+          { kind: 'openai-embedding', path: null },
+        ],
         baseUrl: 'https://gw2.example.com/v1',
         credentialName: 'gw-key',
         models: [
           {
             id: 'gw-large',
+            apiKind: 'openai-chat',
             displayName: 'Gateway Large',
             contextWindow: 256_000,
             maxOutputTokens: 32_000,
           },
-          { id: 'gw-embed', type: 'embedding' },
+          { id: 'gw-embed', apiKind: 'openai-embedding' },
         ],
       },
     });
@@ -451,12 +455,12 @@ describe('#51 — provider model registry', () => {
     expect(provider.models).toEqual([
       {
         id: 'gw-large',
-        type: 'chat',
+        apiKind: 'openai-chat',
         displayName: 'Gateway Large',
         contextWindow: 256_000,
         maxOutputTokens: 32_000,
       },
-      { id: 'gw-embed', type: 'embedding' },
+      { id: 'gw-embed', apiKind: 'openai-embedding' },
     ]);
 
     const dup = await app.inject({
@@ -465,7 +469,7 @@ describe('#51 — provider model registry', () => {
       headers: auth(ownerJwt),
       payload: {
         name: 'registry-gw-2',
-        api: 'openai-chat',
+        apis: [{ kind: 'openai-chat', path: null }],
         credentialName: 'gw-key',
         models: [{ id: 'a' }, { id: 'a' }],
       },
@@ -476,11 +480,11 @@ describe('#51 — provider model registry', () => {
       method: 'PATCH',
       url: `/api/llm-providers/${provider.id}`,
       headers: auth(ownerJwt),
-      payload: { models: [{ id: 'only-one', temperature: 0.3 }] },
+      payload: { models: [{ id: 'only-one', apiKind: 'openai-chat', temperature: 0.3 }] },
     });
     expect(replaced.statusCode).toBe(200);
     expect(replaced.json().provider.models).toEqual([
-      { id: 'only-one', type: 'chat', temperature: 0.3 },
+      { id: 'only-one', apiKind: 'openai-chat', temperature: 0.3 },
     ]);
 
     // modelEntries snapshot: the PUT fills metadata for ids the registry

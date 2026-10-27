@@ -15,23 +15,42 @@
  * chat. `systemone` (#92) is NOT a chat wire at all — it is the decision-model
  * protocol (TypeSafe Jev / Bailian `decision-model-preview` share it), consumed
  * ONLY by delegated approvals; it is never runtime-pushable and has no official
- * default endpoint (baseUrl is required).
+ * default endpoint (baseUrl is required). #95 — one provider speaks SEVERAL
+ * kinds at once (Bailian serves every wire off one credential), so the kind
+ * moved off the provider row onto the endpoint entry and the MODEL;
+ * `openai-embedding` replaces the old reserved `type: 'embedding'`.
  */
-export type LlmProviderApi = 'openai-chat' | 'openai-responses' | 'anthropic' | 'systemone';
+export type LlmProviderApi =
+  | 'openai-chat'
+  | 'openai-responses'
+  | 'anthropic'
+  | 'systemone'
+  | 'openai-embedding';
+
+/**
+ * #95 — one enabled protocol on a provider. `path` overrides the kind's
+ * default path (`null` = default); a full http(s) URL escapes the shared
+ * baseUrl for wires hosted off a different root (Bailian's systemone lives
+ * off the compatible-mode root).
+ */
+export interface ProviderApiEndpoint {
+  kind: LlmProviderApi;
+  path: string | null;
+}
 
 /**
  * Issue #51 — one CONFIGURED model on a provider row (the registry). The
  * regular fields feed every consumer's metadata (pi models.json on machines,
  * the assistant's in-process pi-ai Model); the advanced fields are
  * provider-level policy applied per consumer capability (the assistant uses
- * them all; machine pushes only carry the metadata subset). `type:
- * 'embedding'` is reserved (no consumer yet); `type: 'decision'` (#92) marks
- * SystemOne decision models — the delegated-approvals gate is their only
- * consumer, chat pickers keep filtering to 'chat'.
+ * them all; machine pushes only carry the metadata subset). #95 — the model
+ * carries its OWN apiKind (one of the provider's enabled kinds); the chat-only
+ * fields are meaningless on `systemone` / `openai-embedding` models and are
+ * hidden by their editors.
  */
 export interface ProviderModelConfig {
   id: string;
-  type: 'chat' | 'embedding' | 'decision';
+  apiKind: LlmProviderApi;
   displayName?: string | undefined;
   /** Context window in tokens. */
   contextWindow?: number | undefined;
@@ -53,7 +72,8 @@ export interface ProviderModelConfig {
 export interface LlmProvider {
   id: string;
   name: string;
-  api: LlmProviderApi;
+  /** #95 — the enabled wires + per-kind path overrides (never empty). */
+  apis: ProviderApiEndpoint[];
   /** null = the kind's official endpoint (Anthropic / OpenAI proper). */
   baseUrl: string | null;
   /** Handle of the Credential carrying the API key (not an id — like RuntimeConfig). */

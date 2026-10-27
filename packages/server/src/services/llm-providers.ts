@@ -8,6 +8,7 @@ import {
   type LlmModelInfo,
   type LlmProviderCreateInput,
   type LlmProviderUpdateInput,
+  type ProviderApiEndpoint,
   type ProviderApiKind,
   type ProviderModelConfig,
 } from '@harness-nexus/shared';
@@ -87,6 +88,55 @@ async function nameTaken(
   return existing !== null && existing.id !== exceptId;
 }
 
+/**
+ * #95 — shape rules shared by create + update: a systemone wire needs an
+ * explicit baseUrl (no official endpoint), and every model's apiKind must be
+ * one of the row's enabled wires.
+ */
+function validateProviderShape(input: {
+  apis: readonly ProviderApiEndpoint[];
+  baseUrl: string | null;
+  models: readonly ProviderModelConfig[];
+}): void {
+  if (input.apis.some((a) => a.kind === 'systemone') && input.baseUrl === null) {
+    throw new AppError(
+      'systemone providers require an explicit baseUrl',
+      400,
+      'SYSTEMONE_BASE_URL_REQUIRED',
+    );
+  }
+  const enabled = new Set(input.apis.map((a) => a.kind));
+  const offenders = input.models.filter((m) => !enabled.has(m.apiKind)).map((m) => m.id);
+  if (offenders.length > 0) {
+    throw new AppError(
+      `models [${offenders.join(', ')}] use api kinds the provider does not enable`,
+      400,
+      'MODEL_KIND_NOT_ENABLED',
+    );
+  }
+}
+
+/**
+ * Which wire's models-listing a stored row offers: the openai arm if any
+ * openai-ish kind is enabled, else anthropic, else nothing (a systemone-only
+ * row has no listing — #92).
+ */
+export function modelsListKind(apis: readonly ProviderApiEndpoint[]): ProviderApiKind | null {
+  const kinds = apis.map((a) => a.kind);
+  if (
+    kinds.includes('openai-chat') ||
+    kinds.includes('openai-responses') ||
+    kinds.includes('openai-embedding')
+  ) {
+    return kinds.includes('openai-chat')
+      ? 'openai-chat'
+      : kinds.includes('openai-responses')
+        ? 'openai-responses'
+        : 'openai-embedding';
+  }
+  return kinds.includes('anthropic') ? 'anthropic' : null;
+}
+
 export async function createLlmProvider(
   deps: LlmProviderDeps,
   principal: Principal,
@@ -95,15 +145,12 @@ export async function createLlmProvider(
   if (input.scope === 'global' && principal.role !== 'admin') {
     throw new AppError('Only admins can create global providers', 403, 'FORBIDDEN');
   }
-  // #92 — the decision-model kind has no official endpoint; the row is
-  // meaningless without one.
-  if (input.api === 'systemone' && input.baseUrl === undefined) {
-    throw new AppError(
-      'systemone providers require an explicit baseUrl',
-      400,
-      'SYSTEMONE_BASE_URL_REQUIRED',
-    );
-  }
+  // #95 — systemone needs an explicit base; models must ride enabled wires.
+  validateProviderShape({
+    apis: input.apis,
+    baseUrl: input.baseUrl ?? null,
+    models: input.models ?? [],
+  });
   // A personal provider's baseUrl is caller-chosen; a global provider's is
   // admin-chosen (admin-only create) — drives the credential gate above.
   await visibleCredential(deps, input.credentialName, principal, input.scope === 'personal');
@@ -120,12 +167,12 @@ export async function createLlmProvider(
   const provider: LlmProvider = {
     id: generateId(),
     name: input.name,
-    api: input.api,
+    apis: input.apis as ProviderApiEndpoint[],
     baseUrl: input.baseUrl ?? null,
     credentialName: input.credentialName,
     scope: input.scope,
     ownerId,
-    models: input.models as ProviderModelConfig[],
+    models: (input.models ?? []) as ProviderModelConfig[],
     createdAt: now,
     updatedAt: now,
   };
@@ -159,16 +206,13 @@ export async function updateLlmProvider(
   if (input.credentialName !== undefined && input.credentialName !== existing.credentialName) {
     await visibleCredential(deps, input.credentialName, principal, existing.scope === 'personal');
   }
-  // #92 — same rule as create, against the EFFECTIVE api after the patch.
-  const nextApi = input.api ?? existing.api;
+  // #95 — same rules as create, against the EFFECTIVE shape after the patch.
   const nextBaseUrl = input.baseUrl !== undefined ? input.baseUrl : existing.baseUrl;
-  if (nextApi === 'systemone' && nextBaseUrl === null) {
-    throw new AppError(
-      'systemone providers require an explicit baseUrl',
-      400,
-      'SYSTEMONE_BASE_URL_REQUIRED',
-    );
-  }
+  validateProviderShape({
+    apis: input.apis ?? existing.apis ?? [],
+    baseUrl: nextBaseUrl,
+    models: input.models ?? existing.models ?? [],
+  });
   if (input.name !== undefined && input.name !== existing.name) {
     if (await nameTaken(deps, input.name, existing.scope, existing.ownerId, existing.id)) {
       throw new AppError(
@@ -182,7 +226,7 @@ export async function updateLlmProvider(
   const next: LlmProvider = {
     ...existing,
     ...(input.name !== undefined ? { name: input.name } : {}),
-    ...(input.api !== undefined ? { api: input.api } : {}),
+    ...(input.apis !== undefined ? { apis: input.apis as ProviderApiEndpoint[] } : {}),
     // `baseUrl: null` clears the override back to the official endpoint.
     ...(input.baseUrl !== undefined ? { baseUrl: input.baseUrl } : {}),
     ...(input.credentialName !== undefined ? { credentialName: input.credentialName } : {}),
@@ -236,7 +280,10 @@ export async function queryProviderModels(
     if (!provider || !visibleTo(provider, principal.userId)) {
       throw new AppError('Provider not found', 404, 'PROVIDER_NOT_FOUND');
     }
-    api = provider.api;
+    // #95 — a row speaks several wires; systemone-only rows offer NO listing.
+    const listKind = modelsListKind(provider.apis);
+    if (listKind === null) return [];
+    api = listKind;
     baseUrl = provider.baseUrl ?? undefined;
     credentialName = provider.credentialName;
     callerControlsUrl = provider.scope === 'personal';
