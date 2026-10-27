@@ -3,17 +3,18 @@
 // SPDX-License-Identifier: MIT
 
 // @vitest-environment jsdom
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import { I18nProvider } from '@/i18n';
+import { SkinProvider } from '@/components/skin-provider';
 import { MarkdownText } from './markdown-text.js';
 
 /**
  * Mermaid fences (#93) — the mechanical contract only: a `language-mermaid`
  * fence swaps the well body for the lazily loaded mermaid view (strict
- * security, classic look, light theme `neutral`), anything that does not
- * parse — including a streaming half-fence — keeps the plain code block, and
- * other languages are untouched. Visual correctness is the agent-browser
+ * security, classic look, token-derived theme variables), anything that does
+ * not parse — including a streaming half-fence — keeps the plain code block,
+ * and other languages are untouched. Visual correctness is the agent-browser
  * pass.
  */
 
@@ -30,7 +31,9 @@ vi.mock('mermaid', () => ({
 function ui(text: string) {
   return (
     <I18nProvider>
-      <MarkdownText text={text} />
+      <SkinProvider>
+        <MarkdownText text={text} />
+      </SkinProvider>
     </I18nProvider>
   );
 }
@@ -38,6 +41,11 @@ function ui(text: string) {
 afterEach(() => {
   cleanup();
   vi.clearAllMocks();
+});
+
+beforeAll(() => {
+  // jsdom has no 2D canvas; the palette then falls back to its system colors.
+  vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(null);
 });
 
 describe('mermaid fences (#93)', () => {
@@ -54,6 +62,13 @@ describe('mermaid fences (#93)', () => {
         look: 'classic',
         theme: 'neutral',
         startOnLoad: false,
+        themeVariables: expect.objectContaining({
+          background: 'transparent',
+          primaryColor: expect.any(String),
+          primaryTextColor: expect.any(String),
+          lineColor: expect.any(String),
+          edgeLabelBackground: expect.any(String),
+        }),
       }),
     );
     const img = await screen.findByRole('img', { name: 'Diagram' });

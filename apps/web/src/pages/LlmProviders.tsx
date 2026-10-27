@@ -104,6 +104,22 @@ const API_KINDS: ProviderApiKind[] = [
   'openai-embedding',
 ];
 
+function isApiKind(value: string): value is ProviderApiKind {
+  return (API_KINDS as readonly string[]).includes(value);
+}
+
+/**
+ * Stable keys for the editor's row lists. Index keys made React reuse the
+ * REMOVED row's Radix `Select` for the row that shifted up; Radix's hidden
+ * native <select> then dispatched a synthetic change with "" because the new
+ * kind was not in the old row's option set, blanking the surviving wire.
+ */
+let rowKeySeq = 0;
+function nextRowKey(): number {
+  rowKeySeq += 1;
+  return rowKeySeq;
+}
+
 /** A path starting with `http(s)://` overrides the shared base URL. */
 const FULL_URL_RE = /^https?:\/\//i;
 
@@ -143,6 +159,8 @@ interface ExtraBodyEntry {
  * parsed into the wire shape only at the save boundary (`cleanRow`).
  */
 interface ModelRow {
+  /** Stable React key (see `nextRowKey`). */
+  key: number;
   id: string;
   displayName: string;
   /** #95 — the wire this model speaks; must be one of the provider's enabled kinds. */
@@ -286,6 +304,7 @@ function ModelIdInput({
 /** #95 — a fresh registry row starts on one of the row's enabled wires. */
 function emptyModelRow(apiKind: ProviderApiKind): ModelRow {
   return {
+    key: nextRowKey(),
     id: '',
     displayName: '',
     apiKind,
@@ -301,6 +320,7 @@ function emptyModelRow(apiKind: ProviderApiKind): ModelRow {
 
 function rowFromModel(m: ProviderModelConfig): ModelRow {
   return {
+    key: nextRowKey(),
     id: m.id,
     displayName: m.displayName ?? '',
     apiKind: m.apiKind,
@@ -756,7 +776,9 @@ function ModelRowCard({
           <Label htmlFor={`llmp-mapi-${index}`}>{t('llmProviders.apiKindLabel')}</Label>
           <Select
             value={row.apiKind}
-            onValueChange={(v) => onChange({ apiKind: v as ProviderApiKind })}
+            onValueChange={(v) => {
+              if (isApiKind(v)) onChange({ apiKind: v });
+            }}
           >
             <SelectTrigger id={`llmp-mapi-${index}`} className="font-mono text-xs">
               <SelectValue />
@@ -967,13 +989,15 @@ function ModelRowCard({
 
 /** #95 — one editable wire row in the provider dialog. */
 interface ApiRow {
+  /** Stable React key (see `nextRowKey`). */
+  key: number;
   kind: ProviderApiKind;
   /** Empty = the kind's default path. */
   path: string;
 }
 
 function apiRowFrom(a: ProviderApiEndpoint): ApiRow {
-  return { kind: a.kind, path: a.path ?? '' };
+  return { key: nextRowKey(), kind: a.kind, path: a.path ?? '' };
 }
 
 /**
@@ -1003,8 +1027,11 @@ function ApiEndpointRow({
 }) {
   const { t } = useI18n();
   const path = row.path.trim();
+  const base = baseUrl.trim();
+  // Empty means "the kind's official endpoint" (the input's own placeholder):
+  // pass null, not '', so the pure resolver falls through to the default.
   const resolved = providerEndpointUrl(row.kind, {
-    baseUrl: baseUrl.trim(),
+    baseUrl: base === '' ? null : base,
     path: path === '' ? null : path,
   });
   const options = API_KINDS.filter((k) => k === row.kind || !usedKinds.includes(k));
@@ -1105,7 +1132,7 @@ function ProviderApisEditor({
       <div className="flex flex-col gap-2">
         {rows.map((row, i) => (
           <ApiEndpointRow
-            key={i}
+            key={row.key}
             index={i}
             row={row}
             usedKinds={usedKinds}
@@ -1331,7 +1358,9 @@ function ProviderForm({
   const [creds, setCreds] = useState<CredentialView[] | null>(null);
   const [name, setName] = useState(existing?.name ?? '');
   const [apiRows, setApiRows] = useState<ApiRow[]>(() =>
-    existing !== undefined ? existing.apis.map(apiRowFrom) : [{ kind: 'anthropic', path: '' }],
+    existing !== undefined
+      ? existing.apis.map(apiRowFrom)
+      : [{ key: nextRowKey(), kind: 'anthropic', path: '' }],
   );
   const [baseUrl, setBaseUrl] = useState(existing?.baseUrl ?? '');
   const [credentialName, setCredentialName] = useState(existing?.credentialName ?? '');
@@ -1353,6 +1382,9 @@ function ProviderForm({
   }
 
   function changeApiKind(index: number, kind: ProviderApiKind): void {
+    // Radix's hidden native select can round-trip an empty value while the
+    // rows shift; an invalid kind must never reach the editor state.
+    if (!isApiKind(kind)) return;
     const current = apiRows[index];
     if (current === undefined || current.kind === kind) return;
     const ids = modelsUsing(current.kind);
@@ -1386,7 +1418,7 @@ function ProviderForm({
     const used = new Set(apiRows.map((r) => r.kind));
     const kind = API_KINDS.find((k) => !used.has(k));
     if (kind === undefined) return;
-    setApiRows((prev) => [...prev, { kind, path: '' }]);
+    setApiRows((prev) => [...prev, { key: nextRowKey(), kind, path: '' }]);
     setCandidates(null);
   }
 
@@ -1673,7 +1705,7 @@ function ProviderForm({
               <div className="flex flex-col gap-3">
                 {rows.map((row, i) => (
                   <ModelRowCard
-                    key={i}
+                    key={row.key}
                     index={i}
                     row={row}
                     enabledKinds={enabledKinds}
