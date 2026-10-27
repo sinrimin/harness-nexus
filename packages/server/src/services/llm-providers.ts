@@ -89,18 +89,24 @@ async function nameTaken(
 }
 
 /**
- * #95 — shape rules shared by create + update: a systemone wire needs an
- * explicit baseUrl (no official endpoint), and every model's apiKind must be
- * one of the row's enabled wires.
+ * #95 — shape rules shared by create + update: a systemone wire needs a
+ * resolvable endpoint (an explicit baseUrl, or a full-URL path override —
+ * the kind has no official default), and every model's apiKind must be one
+ * of the row's enabled wires.
  */
 function validateProviderShape(input: {
   apis: readonly ProviderApiEndpoint[];
   baseUrl: string | null;
   models: readonly ProviderModelConfig[];
 }): void {
-  if (input.apis.some((a) => a.kind === 'systemone') && input.baseUrl === null) {
+  const systemoneApi = input.apis.find((a) => a.kind === 'systemone');
+  const systemoneReachable =
+    systemoneApi === undefined ||
+    input.baseUrl !== null ||
+    (systemoneApi.path !== null && /^https?:\/\//.test(systemoneApi.path));
+  if (!systemoneReachable) {
     throw new AppError(
-      'systemone providers require an explicit baseUrl',
+      'systemone providers require an explicit baseUrl (or a full-URL path)',
       400,
       'SYSTEMONE_BASE_URL_REQUIRED',
     );

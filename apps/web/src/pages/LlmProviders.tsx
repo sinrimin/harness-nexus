@@ -11,6 +11,7 @@ import {
   PlugZapIcon,
   PlusIcon,
   RefreshCwIcon,
+  Settings2Icon,
   TrashIcon,
   XIcon,
 } from 'lucide-react';
@@ -22,6 +23,7 @@ import {
   ConfirmDialog,
   DataTable,
   DataText,
+  Field,
   FilterBar,
   FilterSelect,
   Note,
@@ -74,27 +76,55 @@ import {
 import { FormDialog } from '@/components/ui/form-dialog';
 import {
   HarnessNexusError,
+  isChatApiKind,
+  providerEndpointUrl,
   providerModelConfigWarnings,
   EXTRA_BODY_BOOLEAN_KEYS,
   EXTRA_BODY_PRESETS,
+  PROVIDER_DEFAULT_PATHS,
   SERVER_TOOL_PRESETS,
   type CredentialView,
   type LlmModelInfo,
   type LlmProviderView,
+  type ProviderApiEndpoint,
+  type ProviderApiEndpointInput,
   type ProviderApiKind,
   type ProviderModelConfig,
   type ProviderModelConfigInput,
+  type UserDefaultModels,
 } from '@harness-nexus/sdk';
 
 type Scope = 'global' | 'personal';
 
-const API_KINDS: ProviderApiKind[] = ['openai-chat', 'openai-responses', 'anthropic', 'systemone'];
+const API_KINDS: ProviderApiKind[] = [
+  'openai-chat',
+  'openai-responses',
+  'anthropic',
+  'systemone',
+  'openai-embedding',
+];
+
+/** A path starting with `http(s)://` overrides the shared base URL. */
+const FULL_URL_RE = /^https?:\/\//i;
 
 /** The list's vocabulary (07-p3-list-pages.md §5). */
 const PROVIDER_SPEC: ListQuerySpec = {
   filters: { api: API_KINDS, scope: ['personal', 'global'] },
   sort: ['name', '-updated'],
 };
+
+/**
+ * #95 — the listing arm a provider row offers (mirrors the server's
+ * `modelsListKind`): the openai-ish kinds all serve `/models`, anthropic its
+ * own; systemone has no listing endpoint.
+ */
+function listingApiKind(kinds: readonly ProviderApiKind[]): ProviderApiKind | null {
+  if (kinds.includes('openai-chat')) return 'openai-chat';
+  if (kinds.includes('openai-responses')) return 'openai-responses';
+  if (kinds.includes('openai-embedding')) return 'openai-embedding';
+  if (kinds.includes('anthropic')) return 'anthropic';
+  return null;
+}
 
 /**
  * #56 — one extraBody entry's editor state: the key (a TagCombobox value)
@@ -115,7 +145,8 @@ interface ExtraBodyEntry {
 interface ModelRow {
   id: string;
   displayName: string;
-  type: 'chat' | 'embedding' | 'decision';
+  /** #95 — the wire this model speaks; must be one of the provider's enabled kinds. */
+  apiKind: ProviderApiKind;
   contextWindow: string;
   maxOutputTokens: string;
   vision: boolean;
@@ -125,8 +156,8 @@ interface ModelRow {
   extraBody: ExtraBodyEntry[];
 }
 
-/** The wire shape after parsing — `type` always explicit, unset keys omitted. */
-type CleanModel = ProviderModelConfigInput & { type: 'chat' | 'embedding' | 'decision' };
+/** The wire shape after parsing — `apiKind` always explicit, unset keys omitted. */
+type CleanModel = ProviderModelConfigInput;
 
 /**
  * #58-1 — the model-id field with the fetched candidates as a dropdown. Free
@@ -252,24 +283,27 @@ function ModelIdInput({
   );
 }
 
-const EMPTY_MODEL_ROW: ModelRow = {
-  id: '',
-  displayName: '',
-  type: 'chat',
-  contextWindow: '',
-  maxOutputTokens: '',
-  vision: false,
-  temperature: '',
-  topP: '',
-  serverTools: [],
-  extraBody: [],
-};
+/** #95 — a fresh registry row starts on one of the row's enabled wires. */
+function emptyModelRow(apiKind: ProviderApiKind): ModelRow {
+  return {
+    id: '',
+    displayName: '',
+    apiKind,
+    contextWindow: '',
+    maxOutputTokens: '',
+    vision: false,
+    temperature: '',
+    topP: '',
+    serverTools: [],
+    extraBody: [],
+  };
+}
 
 function rowFromModel(m: ProviderModelConfig): ModelRow {
   return {
     id: m.id,
     displayName: m.displayName ?? '',
-    type: m.type,
+    apiKind: m.apiKind,
     contextWindow: m.contextWindow !== undefined ? String(m.contextWindow) : '',
     maxOutputTokens: m.maxOutputTokens !== undefined ? String(m.maxOutputTokens) : '',
     vision: m.vision === true,
@@ -341,24 +375,30 @@ function syncExtraBodyEntries(existing: ExtraBodyEntry[], keys: string[]): Extra
 function cleanRow(r: ModelRow, extraBody: Record<string, unknown> | undefined): CleanModel | null {
   const id = r.id.trim();
   if (id === '') return null;
+  // #95 — only the chat wires carry the chat metadata / advanced knobs; a
+  // systemone or embedding row is id + display name (the dialog hides the
+  // rest), so they never ride the wire even if stale editor state holds them.
+  const chat = isChatApiKind(r.apiKind);
   const num = {
-    contextWindow: optionalNumber(r.contextWindow),
-    maxOutputTokens: optionalNumber(r.maxOutputTokens),
-    temperature: optionalNumber(r.temperature),
-    topP: optionalNumber(r.topP),
+    contextWindow: chat ? optionalNumber(r.contextWindow) : undefined,
+    maxOutputTokens: chat ? optionalNumber(r.maxOutputTokens) : undefined,
+    temperature: chat ? optionalNumber(r.temperature) : undefined,
+    topP: chat ? optionalNumber(r.topP) : undefined,
   };
-  const tools = [...new Set(r.serverTools.map((s) => s.trim()).filter((s) => s !== ''))];
+  const tools = chat
+    ? [...new Set(r.serverTools.map((s) => s.trim()).filter((s) => s !== ''))]
+    : [];
   return {
     id,
-    type: r.type,
+    apiKind: r.apiKind,
     ...(r.displayName.trim() !== '' ? { displayName: r.displayName.trim() } : {}),
     ...(num.contextWindow !== undefined ? { contextWindow: num.contextWindow } : {}),
     ...(num.maxOutputTokens !== undefined ? { maxOutputTokens: num.maxOutputTokens } : {}),
-    ...(r.vision ? { vision: true } : {}),
+    ...(chat && r.vision ? { vision: true } : {}),
     ...(num.temperature !== undefined ? { temperature: num.temperature } : {}),
     ...(num.topP !== undefined ? { topP: num.topP } : {}),
     ...(tools.length > 0 ? { serverTools: tools } : {}),
-    ...(extraBody !== undefined ? { extraBody } : {}),
+    ...(chat && extraBody !== undefined ? { extraBody } : {}),
   };
 }
 
@@ -376,6 +416,7 @@ export function LlmProvidersPage() {
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState<LlmProviderView | null>(null);
   const [pending, setPending] = useState<LlmProviderView | null>(null);
+  const [defaultsOpen, setDefaultsOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const isAdmin = user?.role === 'admin';
 
@@ -397,8 +438,8 @@ export function LlmProvidersPage() {
     if (items === null) return null;
     const rows = items.filter(
       (p) =>
-        matchesQuery(query.q, [p.name, p.baseUrl, p.credentialName, p.api]) &&
-        (query.filters['api'] === null || p.api === query.filters['api']) &&
+        matchesQuery(query.q, [p.name, p.baseUrl, p.credentialName, p.apis.map((a) => a.kind)]) &&
+        (query.filters['api'] === null || p.apis.some((a) => a.kind === query.filters['api'])) &&
         (query.filters['scope'] === null || p.scope === query.filters['scope']),
     );
     return sortRows(rows, effectiveSort(PROVIDER_SPEC, query), (p, key) =>
@@ -435,6 +476,13 @@ export function LlmProvidersPage() {
   return (
     <>
       <PageSlot slot="actions">
+        <PageAction
+          label={t('llmProviders.defaultsAction')}
+          icon={Settings2Icon}
+          variant="outline"
+          disabled={items === null}
+          onClick={() => setDefaultsOpen(true)}
+        />
         <PageAction label={t('common.create')} onClick={() => setCreating(true)} />
       </PageSlot>
 
@@ -524,9 +572,13 @@ export function LlmProvidersPage() {
                 </span>
               </TableCell>
               <TableCell>
-                <Badge variant="secondary" className="role-data-sm">
-                  {p.api}
-                </Badge>
+                <span className="flex flex-wrap items-center gap-1">
+                  {p.apis.map((a) => (
+                    <Badge key={a.kind} variant="secondary" className="role-data-sm">
+                      {a.kind}
+                    </Badge>
+                  ))}
+                </span>
               </TableCell>
               {/* Both are protocol material — a URL and a credential NAME —
                   so they render as devices, not as hand-rolled mono text
@@ -588,7 +640,18 @@ export function LlmProvidersPage() {
           consequence={t('llmProviders.deleteConsequence')}
           impact={[
             { label: 'provider', value: pending.name },
-            { label: 'api', value: pending.api },
+            ...pending.apis.map((a) => {
+              const path =
+                a.path === null || a.path === '' ? t('llmProviders.defaultPath') : a.path;
+              const url = providerEndpointUrl(a.kind, {
+                baseUrl: pending.baseUrl,
+                path: a.path,
+              });
+              return {
+                label: a.kind,
+                value: `${path} · ${url ?? t('llmProviders.unresolvedEndpoint')}`,
+              };
+            }),
             { label: 'credential', value: pending.credentialName },
           ]}
           actionLabel={t('llmProviders.deleteAction')}
@@ -597,6 +660,9 @@ export function LlmProvidersPage() {
         />
       ) : null}
 
+      {defaultsOpen ? (
+        <DefaultModelsDialog providers={items ?? []} onClose={() => setDefaultsOpen(false)} />
+      ) : null}
       {creating ? (
         <ProviderForm
           onClose={() => setCreating(false)}
@@ -623,21 +689,22 @@ export function LlmProvidersPage() {
 /**
  * One registry row, reflowed as TWO input lines (one line never fits the seven
  * controls at dialog width — the id field measured 65px before the rework):
- * identity (model id + display name) then figures (type / context / max
- * output / vision), plus an "advanced" disclosure. #56: serverTools and the
- * extraBody KEYS are TagComboboxes with per-api presets (SERVER_TOOL_PRESETS
- * / EXTRA_BODY_PRESETS, Bailian-baselined) — typed custom values are the
- * gateway-compat escape hatch. #58-2 hide-and-clear: serverTools renders on
- * the kinds that HAVE a tools[] surface (openai-responses, anthropic) and
- * extraBody on the OpenAI-compatible kinds — a kind that hides a field also
- * clears it (the api switch wipes it from every row), so stored payloads
- * never carry values the wire cannot use. The shared warnings stay as the
- * backstop for REST-written rows.
+ * identity (model id + display name) then figures (protocol / context / max
+ * output / vision), plus an "advanced" disclosure. #95 — each model declares
+ * the wire it speaks, picked from the provider row's ENABLED kinds only; the
+ * non-chat kinds (systemone, openai-embedding) keep just id + display name.
+ * #56: serverTools and the extraBody KEYS are TagComboboxes with per-MODEL
+ * presets (SERVER_TOOL_PRESETS / EXTRA_BODY_PRESETS, Bailian-baselined) —
+ * typed custom values are the gateway-compat escape hatch. #58-2 hide-and-clear:
+ * serverTools renders on the kinds that HAVE a tools[] surface
+ * (openai-responses, anthropic) and extraBody on the OpenAI-compatible kinds;
+ * the save boundary drops the fields a non-chat kind hides. The shared
+ * warnings stay as the backstop for REST-written rows.
  */
 function ModelRowCard({
   index,
-  api,
   row,
+  enabledKinds,
   candidates,
   duplicate,
   invalidExtraBody,
@@ -646,9 +713,9 @@ function ModelRowCard({
 }: {
   /** Row position — used only to build unique control ids. */
   index: number;
-  /** The provider's api kind — drives the preset lists (see above). */
-  api: ProviderApiKind;
   row: ModelRow;
+  /** #95 — only the provider's enabled wires are offerable. */
+  enabledKinds: readonly ProviderApiKind[];
   /** #58-1 — the fetched model list, offered by the id field's dropdown. */
   candidates: LlmModelInfo[] | null;
   duplicate: boolean;
@@ -657,8 +724,9 @@ function ModelRowCard({
   onRemove: () => void;
 }) {
   const { t } = useI18n();
-  const showServerTools = api !== 'openai-chat';
-  const showExtraBody = api !== 'anthropic';
+  const chat = isChatApiKind(row.apiKind);
+  const showServerTools = chat && row.apiKind !== 'openai-chat';
+  const showExtraBody = chat && row.apiKind !== 'anthropic';
   return (
     <div className="relative flex flex-col gap-3 rounded-md border p-3">
       <div className="grid gap-x-3 gap-y-2 pr-9 sm:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
@@ -685,13 +753,16 @@ function ModelRowCard({
       </div>
       <div className="grid grid-cols-2 gap-x-3 gap-y-2 sm:grid-cols-4">
         <div className="grid gap-2">
-          <Label htmlFor={`llmp-mtype-${index}`}>{t('llmProviders.modelTypeLabel')}</Label>
-          <Select value={row.type} onValueChange={(v) => onChange({ type: v as ModelRow['type'] })}>
-            <SelectTrigger id={`llmp-mtype-${index}`} className="font-mono text-xs">
+          <Label htmlFor={`llmp-mapi-${index}`}>{t('llmProviders.apiKindLabel')}</Label>
+          <Select
+            value={row.apiKind}
+            onValueChange={(v) => onChange({ apiKind: v as ProviderApiKind })}
+          >
+            <SelectTrigger id={`llmp-mapi-${index}`} className="font-mono text-xs">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              {(['chat', 'embedding', 'decision'] as const).map((k) => (
+              {enabledKinds.map((k) => (
                 <SelectItem key={k} value={k} className="font-mono text-xs">
                   {k}
                 </SelectItem>
@@ -699,179 +770,187 @@ function ModelRowCard({
             </SelectContent>
           </Select>
         </div>
-        <div className="grid gap-2">
-          <Label htmlFor={`llmp-mcw-${index}`}>{t('llmProviders.modelContextLabel')}</Label>
-          <Input
-            id={`llmp-mcw-${index}`}
-            type="number"
-            min={1}
-            step={1}
-            value={row.contextWindow}
-            onChange={(e) => onChange({ contextWindow: e.target.value })}
-            className="font-mono text-xs tabular-nums"
-            autoComplete="off"
-            inputMode="numeric"
-            spellCheck={false}
-          />
-        </div>
-        <div className="grid gap-2">
-          <Label htmlFor={`llmp-mmo-${index}`}>{t('llmProviders.modelMaxOutputLabel')}</Label>
-          <Input
-            id={`llmp-mmo-${index}`}
-            type="number"
-            min={1}
-            step={1}
-            value={row.maxOutputTokens}
-            onChange={(e) => onChange({ maxOutputTokens: e.target.value })}
-            className="font-mono text-xs tabular-nums"
-            autoComplete="off"
-            inputMode="numeric"
-            spellCheck={false}
-          />
-        </div>
-        <div className="grid gap-2">
-          <Label htmlFor={`llmp-mvis-${index}`}>{t('llmProviders.modelVisionLabel')}</Label>
-          <div className="flex h-(--control-h) items-center">
-            <Checkbox
-              id={`llmp-mvis-${index}`}
-              checked={row.vision}
-              onCheckedChange={(v) => onChange({ vision: v === true })}
-            />
-          </div>
-        </div>
-      </div>
-      <Collapsible>
-        <CollapsibleTrigger asChild>
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            className="group text-muted-foreground h-7 self-start gap-1 px-2 text-xs hover:text-foreground"
-          >
-            <ChevronDownIcon className="size-3.5 transition-transform group-data-[state=open]:rotate-180" />
-            {t('llmProviders.advancedLabel')}
-          </Button>
-        </CollapsibleTrigger>
-        <CollapsibleContent>
-          <div className="grid gap-3 pt-1 sm:grid-cols-2">
+        {chat ? (
+          <>
             <div className="grid gap-2">
-              <Label htmlFor={`llmp-mtemp-${index}`}>
-                {t('llmProviders.modelTemperatureLabel')}
-              </Label>
+              <Label htmlFor={`llmp-mcw-${index}`}>{t('llmProviders.modelContextLabel')}</Label>
               <Input
-                id={`llmp-mtemp-${index}`}
+                id={`llmp-mcw-${index}`}
                 type="number"
-                min={0}
-                max={2}
-                step="any"
-                value={row.temperature}
-                onChange={(e) => onChange({ temperature: e.target.value })}
+                min={1}
+                step={1}
+                value={row.contextWindow}
+                onChange={(e) => onChange({ contextWindow: e.target.value })}
                 className="font-mono text-xs tabular-nums"
                 autoComplete="off"
-                inputMode="decimal"
+                inputMode="numeric"
                 spellCheck={false}
               />
             </div>
             <div className="grid gap-2">
-              <Label htmlFor={`llmp-mtopp-${index}`}>{t('llmProviders.modelTopPLabel')}</Label>
+              <Label htmlFor={`llmp-mmo-${index}`}>{t('llmProviders.modelMaxOutputLabel')}</Label>
               <Input
-                id={`llmp-mtopp-${index}`}
+                id={`llmp-mmo-${index}`}
                 type="number"
-                min={0}
-                max={1}
-                step="any"
-                value={row.topP}
-                onChange={(e) => onChange({ topP: e.target.value })}
+                min={1}
+                step={1}
+                value={row.maxOutputTokens}
+                onChange={(e) => onChange({ maxOutputTokens: e.target.value })}
                 className="font-mono text-xs tabular-nums"
                 autoComplete="off"
-                inputMode="decimal"
+                inputMode="numeric"
                 spellCheck={false}
               />
             </div>
-            {showServerTools ? (
-              <div className="grid gap-2">
-                <Label htmlFor={`llmp-mtools-${index}`}>{t('llmProviders.serverToolsLabel')}</Label>
-                <TagCombobox
-                  id={`llmp-mtools-${index}`}
-                  value={row.serverTools}
-                  options={SERVER_TOOL_PRESETS[api]}
-                  onChange={(serverTools) => onChange({ serverTools })}
-                  placeholder={t('llmProviders.tagComboboxPlaceholder')}
-                  addLabel={(v) => t('llmProviders.tagComboboxAdd', { value: v })}
-                  removeLabel={(v) => t('llmProviders.tagComboboxRemove', { value: v })}
+            <div className="grid gap-2">
+              <Label htmlFor={`llmp-mvis-${index}`}>{t('llmProviders.modelVisionLabel')}</Label>
+              <div className="flex h-(--control-h) items-center">
+                <Checkbox
+                  id={`llmp-mvis-${index}`}
+                  checked={row.vision}
+                  onCheckedChange={(v) => onChange({ vision: v === true })}
                 />
               </div>
-            ) : null}
-            {showExtraBody ? (
-              <div className="grid gap-2 sm:col-span-2">
-                <Label htmlFor={`llmp-mextra-${index}`}>{t('llmProviders.extraBodyLabel')}</Label>
-                <TagCombobox
-                  id={`llmp-mextra-${index}`}
-                  value={row.extraBody.map((e) => e.key)}
-                  options={EXTRA_BODY_PRESETS[api]}
-                  onChange={(keys) =>
-                    onChange({ extraBody: syncExtraBodyEntries(row.extraBody, keys) })
-                  }
-                  placeholder={t('llmProviders.tagComboboxPlaceholder')}
-                  addLabel={(v) => t('llmProviders.tagComboboxAdd', { value: v })}
-                  removeLabel={(v) => t('llmProviders.tagComboboxRemove', { value: v })}
+            </div>
+          </>
+        ) : null}
+      </div>
+      {chat ? (
+        <Collapsible>
+          <CollapsibleTrigger asChild>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="group text-muted-foreground h-7 self-start gap-1 px-2 text-xs hover:text-foreground"
+            >
+              <ChevronDownIcon className="size-3.5 transition-transform group-data-[state=open]:rotate-180" />
+              {t('llmProviders.advancedLabel')}
+            </Button>
+          </CollapsibleTrigger>
+          <CollapsibleContent>
+            <div className="grid gap-3 pt-1 sm:grid-cols-2">
+              <div className="grid gap-2">
+                <Label htmlFor={`llmp-mtemp-${index}`}>
+                  {t('llmProviders.modelTemperatureLabel')}
+                </Label>
+                <Input
+                  id={`llmp-mtemp-${index}`}
+                  type="number"
+                  min={0}
+                  max={2}
+                  step="any"
+                  value={row.temperature}
+                  onChange={(e) => onChange({ temperature: e.target.value })}
+                  className="font-mono text-xs tabular-nums"
+                  autoComplete="off"
+                  inputMode="decimal"
+                  spellCheck={false}
                 />
-                {row.extraBody.length > 0 ? (
-                  <div className="grid gap-1.5">
-                    {row.extraBody.map((e, j) => (
-                      <div
-                        key={e.key}
-                        className="grid gap-1.5 sm:grid-cols-[minmax(0,220px)_minmax(0,1fr)] sm:items-center"
-                      >
-                        <span
-                          className="role-data-sm truncate font-mono text-xs"
-                          title={e.key}
-                          data-extra-key={e.key}
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor={`llmp-mtopp-${index}`}>{t('llmProviders.modelTopPLabel')}</Label>
+                <Input
+                  id={`llmp-mtopp-${index}`}
+                  type="number"
+                  min={0}
+                  max={1}
+                  step="any"
+                  value={row.topP}
+                  onChange={(e) => onChange({ topP: e.target.value })}
+                  className="font-mono text-xs tabular-nums"
+                  autoComplete="off"
+                  inputMode="decimal"
+                  spellCheck={false}
+                />
+              </div>
+              {showServerTools ? (
+                <div className="grid gap-2">
+                  <Label htmlFor={`llmp-mtools-${index}`}>
+                    {t('llmProviders.serverToolsLabel')}
+                  </Label>
+                  <TagCombobox
+                    id={`llmp-mtools-${index}`}
+                    value={row.serverTools}
+                    options={SERVER_TOOL_PRESETS[row.apiKind]}
+                    onChange={(serverTools) => onChange({ serverTools })}
+                    placeholder={t('llmProviders.tagComboboxPlaceholder')}
+                    addLabel={(v) => t('llmProviders.tagComboboxAdd', { value: v })}
+                    removeLabel={(v) => t('llmProviders.tagComboboxRemove', { value: v })}
+                  />
+                </div>
+              ) : null}
+              {showExtraBody ? (
+                <div className="grid gap-2 sm:col-span-2">
+                  <Label htmlFor={`llmp-mextra-${index}`}>{t('llmProviders.extraBodyLabel')}</Label>
+                  <TagCombobox
+                    id={`llmp-mextra-${index}`}
+                    value={row.extraBody.map((e) => e.key)}
+                    options={EXTRA_BODY_PRESETS[row.apiKind]}
+                    onChange={(keys) =>
+                      onChange({ extraBody: syncExtraBodyEntries(row.extraBody, keys) })
+                    }
+                    placeholder={t('llmProviders.tagComboboxPlaceholder')}
+                    addLabel={(v) => t('llmProviders.tagComboboxAdd', { value: v })}
+                    removeLabel={(v) => t('llmProviders.tagComboboxRemove', { value: v })}
+                  />
+                  {row.extraBody.length > 0 ? (
+                    <div className="grid gap-1.5">
+                      {row.extraBody.map((e, j) => (
+                        <div
+                          key={e.key}
+                          className="grid gap-1.5 sm:grid-cols-[minmax(0,220px)_minmax(0,1fr)] sm:items-center"
                         >
-                          {e.key}
-                        </span>
-                        {EXTRA_BODY_BOOLEAN_KEYS.has(e.key) ? (
-                          <div className="flex h-(--control-h) items-center">
-                            <Switch
-                              checked={e.bool}
-                              onCheckedChange={(v) =>
+                          <span
+                            className="role-data-sm truncate font-mono text-xs"
+                            title={e.key}
+                            data-extra-key={e.key}
+                          >
+                            {e.key}
+                          </span>
+                          {EXTRA_BODY_BOOLEAN_KEYS.has(e.key) ? (
+                            <div className="flex h-(--control-h) items-center">
+                              <Switch
+                                checked={e.bool}
+                                onCheckedChange={(v) =>
+                                  onChange({
+                                    extraBody: row.extraBody.map((x, k) =>
+                                      k === j ? { ...x, bool: v } : x,
+                                    ),
+                                  })
+                                }
+                                aria-label={e.key}
+                              />
+                            </div>
+                          ) : (
+                            <Input
+                              value={e.text}
+                              onChange={(ev) =>
                                 onChange({
                                   extraBody: row.extraBody.map((x, k) =>
-                                    k === j ? { ...x, bool: v } : x,
+                                    k === j ? { ...x, text: ev.target.value } : x,
                                   ),
                                 })
                               }
-                              aria-label={e.key}
+                              placeholder={t('llmProviders.extraBodyValuePlaceholder')}
+                              className="font-mono text-xs"
+                              autoComplete="off"
+                              spellCheck={false}
                             />
-                          </div>
-                        ) : (
-                          <Input
-                            value={e.text}
-                            onChange={(ev) =>
-                              onChange({
-                                extraBody: row.extraBody.map((x, k) =>
-                                  k === j ? { ...x, text: ev.target.value } : x,
-                                ),
-                              })
-                            }
-                            placeholder={t('llmProviders.extraBodyValuePlaceholder')}
-                            className="font-mono text-xs"
-                            autoComplete="off"
-                            spellCheck={false}
-                          />
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                ) : null}
-                {invalidExtraBody ? (
-                  <p className="text-danger text-xs">{t('llmProviders.extraBodyInvalid')}</p>
-                ) : null}
-              </div>
-            ) : null}
-          </div>
-        </CollapsibleContent>
-      </Collapsible>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
+                  {invalidExtraBody ? (
+                    <p className="text-danger text-xs">{t('llmProviders.extraBodyInvalid')}</p>
+                  ) : null}
+                </div>
+              ) : null}
+            </div>
+          </CollapsibleContent>
+        </Collapsible>
+      ) : null}
       <Button
         type="button"
         variant="ghost"
@@ -883,6 +962,357 @@ function ModelRowCard({
         <XIcon className="size-3.5" />
       </Button>
     </div>
+  );
+}
+
+/** #95 — one editable wire row in the provider dialog. */
+interface ApiRow {
+  kind: ProviderApiKind;
+  /** Empty = the kind's default path. */
+  path: string;
+}
+
+function apiRowFrom(a: ProviderApiEndpoint): ApiRow {
+  return { kind: a.kind, path: a.path ?? '' };
+}
+
+/**
+ * One enabled wire: the kind (only kinds another row does not already own are
+ * offerable), the optional path override, the resolved endpoint preview, and
+ * the remove control. The preview runs the same pure helper the server's
+ * outbound surfaces use, so the dialog never promises a URL the wire won't call.
+ */
+function ApiEndpointRow({
+  index,
+  row,
+  usedKinds,
+  baseUrl,
+  canRemove,
+  onKindChange,
+  onPathChange,
+  onRemove,
+}: {
+  index: number;
+  row: ApiRow;
+  usedKinds: readonly ProviderApiKind[];
+  baseUrl: string;
+  canRemove: boolean;
+  onKindChange: (kind: ProviderApiKind) => void;
+  onPathChange: (path: string) => void;
+  onRemove: () => void;
+}) {
+  const { t } = useI18n();
+  const path = row.path.trim();
+  const resolved = providerEndpointUrl(row.kind, {
+    baseUrl: baseUrl.trim(),
+    path: path === '' ? null : path,
+  });
+  const options = API_KINDS.filter((k) => k === row.kind || !usedKinds.includes(k));
+  return (
+    <div className="grid gap-3 rounded-md border p-3 sm:grid-cols-[minmax(0,180px)_minmax(0,1fr)_auto] sm:items-start">
+      <div className="grid gap-2">
+        <Label htmlFor={`llmp-api-kind-${index}`}>{t('llmProviders.apiKindLabel')}</Label>
+        <Select value={row.kind} onValueChange={(v) => onKindChange(v as ProviderApiKind)}>
+          <SelectTrigger id={`llmp-api-kind-${index}`} className="font-mono text-xs">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {options.map((k) => (
+              <SelectItem key={k} value={k} className="font-mono text-xs">
+                {k}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+      <div className="grid min-w-0 gap-2">
+        <Label htmlFor={`llmp-api-path-${index}`}>{t('llmProviders.apiPathLabel')}</Label>
+        <Input
+          id={`llmp-api-path-${index}`}
+          value={row.path}
+          onChange={(e) => onPathChange(e.target.value)}
+          placeholder={t('llmProviders.defaultPathPlaceholder', {
+            path: PROVIDER_DEFAULT_PATHS[row.kind],
+          })}
+          className="font-mono text-xs"
+          autoComplete="off"
+          spellCheck={false}
+          inputMode="url"
+        />
+        <DataText
+          size="sm"
+          tone="dim"
+          className="block truncate"
+          title={resolved ?? t('llmProviders.unresolvedEndpoint')}
+        >
+          {resolved ?? t('llmProviders.unresolvedEndpoint')}
+        </DataText>
+      </div>
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon"
+        className="text-muted-foreground hover:text-danger shrink-0 sm:mt-7"
+        onClick={onRemove}
+        disabled={!canRemove}
+        title={canRemove ? undefined : t('llmProviders.keepOneWire')}
+        aria-label={t('llmProviders.removeWire', { kind: row.kind })}
+      >
+        <XIcon className="size-3.5" />
+      </Button>
+    </div>
+  );
+}
+
+/** #95 — the dialog's "API endpoints" band: one row per enabled wire. */
+function ProviderApisEditor({
+  rows,
+  baseUrl,
+  onKindChange,
+  onPathChange,
+  onAdd,
+  onRemove,
+}: {
+  rows: readonly ApiRow[];
+  baseUrl: string;
+  onKindChange: (index: number, kind: ProviderApiKind) => void;
+  onPathChange: (index: number, path: string) => void;
+  onAdd: () => void;
+  onRemove: (index: number) => void;
+}) {
+  const { t } = useI18n();
+  const usedKinds = rows.map((r) => r.kind);
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div>
+          <p className="text-sm font-medium">{t('llmProviders.apiEndpointsTitle')}</p>
+          <p className="text-muted-foreground max-w-[68ch] text-xs">
+            {t('llmProviders.apiEndpointsDesc')}
+          </p>
+        </div>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={onAdd}
+          disabled={usedKinds.length >= API_KINDS.length}
+        >
+          <PlusIcon className="size-3.5" />
+          {t('llmProviders.addWire')}
+        </Button>
+      </div>
+      <div className="flex flex-col gap-2">
+        {rows.map((row, i) => (
+          <ApiEndpointRow
+            key={i}
+            index={i}
+            row={row}
+            usedKinds={usedKinds}
+            baseUrl={baseUrl}
+            canRemove={rows.length > 1}
+            onKindChange={(kind) => onKindChange(i, kind)}
+            onPathChange={(path) => onPathChange(i, path)}
+            onRemove={() => onRemove(i)}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/** Radix Select forbids an empty item value; this sentinel means "未设置". */
+const NO_DEFAULT = '__none__';
+
+/** A reserved default-model slot: visible, disabled, and honest about why. */
+function ReservedModelSlot({ id, label }: { id: string; label: string }) {
+  const { t } = useI18n();
+  return (
+    <Field label={label} htmlFor={id} hint={t('llmProviders.reservedHint')}>
+      <Select value={NO_DEFAULT} disabled>
+        <SelectTrigger id={id}>
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value={NO_DEFAULT}>{t('llmProviders.reserved')}</SelectItem>
+        </SelectContent>
+      </Select>
+    </Field>
+  );
+}
+
+/**
+ * #95 — user-level default models. Embedding / rerank are reserved slots (no
+ * consumer yet, shown disabled); the decision slot feeds delegated approvals
+ * when a machine's own config omits its provider/model. The save is a FULL
+ * replace, so the untouched slots ride through from the loaded state verbatim.
+ */
+function DefaultModelsDialog({
+  providers,
+  onClose,
+}: {
+  providers: readonly LlmProviderView[];
+  onClose: () => void;
+}) {
+  const { logout } = useAuth();
+  const { t } = useI18n();
+  const [loaded, setLoaded] = useState<UserDefaultModels | null>(null);
+  const [loadFailed, setLoadFailed] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [decisionProviderId, setDecisionProviderId] = useState('');
+  const [decisionModelId, setDecisionModelId] = useState('');
+
+  const decisionProviders = useMemo(
+    () => providers.filter((p) => p.models.some((m) => m.apiKind === 'systemone')),
+    [providers],
+  );
+  const decisionProvider = decisionProviders.find((p) => p.id === decisionProviderId) ?? null;
+  const decisionModels = decisionProvider?.models.filter((m) => m.apiKind === 'systemone') ?? [];
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const defaults = await withAuthGuard(() => api.getUserDefaultModels(), logout);
+        if (cancelled) return;
+        setLoaded(defaults);
+        // Only preselect a decision ref that still resolves to a listed
+        // provider/model; a deleted provider reads as "未设置" rather than
+        // leaving a hidden stale value the save would echo back.
+        const provider = decisionProviders.find((p) => p.id === defaults.decision?.providerId);
+        if (
+          provider !== undefined &&
+          provider.models.some(
+            (m) => m.id === defaults.decision?.modelId && m.apiKind === 'systemone',
+          )
+        ) {
+          setDecisionProviderId(provider.id);
+          setDecisionModelId(defaults.decision?.modelId ?? '');
+        }
+      } catch {
+        if (!cancelled) setLoadFailed(true);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // Load once on open — the action is disabled until the page's list exists.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [logout]);
+
+  async function save(): Promise<void> {
+    if (loaded === null || saving) return;
+    setSaving(true);
+    try {
+      const next: UserDefaultModels = { ...loaded };
+      if (decisionProviderId !== '' && decisionModelId !== '') {
+        next.decision = { providerId: decisionProviderId, modelId: decisionModelId };
+      } else {
+        delete next.decision;
+      }
+      await withAuthGuard(() => api.setUserDefaultModels(next), logout);
+      toast.success(t('llmProviders.defaultsSavedToast'));
+      onClose();
+    } catch (e) {
+      const code = e instanceof HarnessNexusError ? e.code : '';
+      toast.error(
+        code === 'DEFAULT_MODEL_PROVIDER_NOT_FOUND'
+          ? t('llmProviders.defaultProviderNotFound')
+          : code === 'DEFAULT_MODEL_KIND_MISMATCH'
+            ? t('llmProviders.defaultKindMismatch')
+            : e instanceof HarnessNexusError
+              ? e.message
+              : t('llmProviders.defaultSaveFailed'),
+      );
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <FormDialog
+      open
+      onClose={onClose}
+      title={t('llmProviders.defaultsTitle')}
+      description={t('llmProviders.defaultsDesc')}
+      footer={
+        <>
+          <Button type="button" variant="ghost" onClick={onClose} disabled={saving}>
+            {t('common.cancel')}
+          </Button>
+          <Button type="button" onClick={() => void save()} disabled={saving || loaded === null}>
+            {saving ? t('common.saving') : t('common.save')}
+          </Button>
+        </>
+      }
+    >
+      {loadFailed ? (
+        <Note tone="fail">{t('llmProviders.defaultsLoadFailed')}</Note>
+      ) : loaded === null ? (
+        <p className="text-muted-foreground text-xs">{t('common.loading')}</p>
+      ) : (
+        <div className="grid gap-4 sm:grid-cols-2">
+          <ReservedModelSlot id="llmp-default-embedding" label={t('llmProviders.embeddingSlot')} />
+          <ReservedModelSlot id="llmp-default-rerank" label={t('llmProviders.rerankSlot')} />
+          <Field
+            className="sm:col-span-2"
+            label={t('llmProviders.decisionSlot')}
+            htmlFor="llmp-default-provider"
+            hint={t('llmProviders.decisionHint')}
+          >
+            <div className="grid gap-2 sm:grid-cols-2">
+              <Select
+                value={decisionProviderId === '' ? NO_DEFAULT : decisionProviderId}
+                onValueChange={(v) => {
+                  const providerId = v === NO_DEFAULT ? '' : v;
+                  setDecisionProviderId(providerId);
+                  setDecisionModelId(
+                    decisionProviders
+                      .find((p) => p.id === providerId)
+                      ?.models.find((m) => m.apiKind === 'systemone')?.id ?? '',
+                  );
+                }}
+                disabled={decisionProviders.length === 0}
+              >
+                <SelectTrigger id="llmp-default-provider">
+                  <SelectValue placeholder={t('llmProviders.defaultsPickProvider')} />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={NO_DEFAULT}>{t('llmProviders.unset')}</SelectItem>
+                  {decisionProviders.map((p) => (
+                    <SelectItem key={p.id} value={p.id}>
+                      {p.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Select
+                value={decisionModelId === '' ? NO_DEFAULT : decisionModelId}
+                onValueChange={(v) => setDecisionModelId(v === NO_DEFAULT ? '' : v)}
+                disabled={decisionProviderId === '' || decisionModels.length === 0}
+              >
+                <SelectTrigger id="llmp-default-model">
+                  <SelectValue placeholder={t('llmProviders.defaultsPickModel')} />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={NO_DEFAULT}>{t('llmProviders.unset')}</SelectItem>
+                  {decisionModels.map((m) => (
+                    <SelectItem key={m.id} value={m.id} className="font-mono text-xs">
+                      {m.id}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            {decisionProviders.length === 0 ? (
+              <p className="text-muted-foreground text-xs">
+                {t('llmProviders.noDecisionProviders')}
+              </p>
+            ) : null}
+          </Field>
+        </div>
+      )}
+    </FormDialog>
   );
 }
 
@@ -900,7 +1330,9 @@ function ProviderForm({
   const isAdmin = user?.role === 'admin';
   const [creds, setCreds] = useState<CredentialView[] | null>(null);
   const [name, setName] = useState(existing?.name ?? '');
-  const [apiKind, setApiKind] = useState<ProviderApiKind>(existing?.api ?? 'anthropic');
+  const [apiRows, setApiRows] = useState<ApiRow[]>(() =>
+    existing !== undefined ? existing.apis.map(apiRowFrom) : [{ kind: 'anthropic', path: '' }],
+  );
   const [baseUrl, setBaseUrl] = useState(existing?.baseUrl ?? '');
   const [credentialName, setCredentialName] = useState(existing?.credentialName ?? '');
   const [scope, setScope] = useState<Scope>(existing?.scope ?? 'personal');
@@ -909,6 +1341,69 @@ function ProviderForm({
   const [candidates, setCandidates] = useState<LlmModelInfo[] | null>(null);
   const [fetching, setFetching] = useState(false);
   const [busy, setBusy] = useState(false);
+
+  const enabledKinds = apiRows.map((r) => r.kind);
+  /** The listing arm (null = the row offers no models-list endpoint). */
+  const listingKind = listingApiKind(enabledKinds);
+  const hasSystemone = enabledKinds.includes('systemone');
+
+  /** Models that still declare a wire — the guard for disabling it. */
+  function modelsUsing(kind: ProviderApiKind): string[] {
+    return rows.filter((r) => r.apiKind === kind && r.id.trim() !== '').map((r) => r.id.trim());
+  }
+
+  function changeApiKind(index: number, kind: ProviderApiKind): void {
+    const current = apiRows[index];
+    if (current === undefined || current.kind === kind) return;
+    const ids = modelsUsing(current.kind);
+    if (ids.length > 0) {
+      toast.error(t('llmProviders.apiKindInUse', { kind: current.kind, ids: ids.join(', ') }));
+      return;
+    }
+    setApiRows((prev) => prev.map((r, i) => (i === index ? { ...r, kind } : r)));
+    // A different wire space means the fetched candidates are stale.
+    setCandidates(null);
+  }
+
+  function removeApiRow(index: number): void {
+    if (apiRows.length === 1) {
+      toast.error(t('llmProviders.keepOneWire'));
+      return;
+    }
+    const current = apiRows[index];
+    if (current !== undefined) {
+      const ids = modelsUsing(current.kind);
+      if (ids.length > 0) {
+        toast.error(t('llmProviders.apiKindInUse', { kind: current.kind, ids: ids.join(', ') }));
+        return;
+      }
+    }
+    setApiRows((prev) => prev.filter((_, i) => i !== index));
+    setCandidates(null);
+  }
+
+  function addApiRow(): void {
+    const used = new Set(apiRows.map((r) => r.kind));
+    const kind = API_KINDS.find((k) => !used.has(k));
+    if (kind === undefined) return;
+    setApiRows((prev) => [...prev, { kind, path: '' }]);
+    setCandidates(null);
+  }
+
+  /** Validate the editor rows; null = blocked (a toast already said why). */
+  function readApis(): ProviderApiEndpointInput[] | null {
+    const paths = apiRows.map((r) => ({ kind: r.kind, path: r.path.trim() }));
+    if (paths.some((p) => p.path !== '' && !p.path.startsWith('/') && !FULL_URL_RE.test(p.path))) {
+      toast.error(t('llmProviders.pathInvalid'));
+      return null;
+    }
+    const systemone = paths.find((p) => p.kind === 'systemone');
+    if (systemone !== undefined && baseUrl.trim() === '' && !FULL_URL_RE.test(systemone.path)) {
+      toast.error(t('llmProviders.systemoneBaseUrlRequired'));
+      return null;
+    }
+    return paths.map((p) => ({ kind: p.kind, path: p.path === '' ? null : p.path }));
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -950,10 +1445,10 @@ function ProviderForm({
       .filter((c): c is CleanModel => c !== null);
     return {
       cleaned,
-      warnings: providerModelConfigWarnings(apiKind, cleaned),
+      warnings: providerModelConfigWarnings(cleaned),
       extraInvalid: parsed.map((p) => p.invalid),
     };
-  }, [rows, apiKind]);
+  }, [rows]);
 
   /**
    * 获取候选 — fetch the endpoint's live model list as SUGGESTIONS for the
@@ -961,6 +1456,7 @@ function ProviderForm({
    * itself; rows are created by explicit picking (or typing, as before).
    */
   async function fetchCandidates(): Promise<void> {
+    if (listingKind === null) return;
     setFetching(true);
     try {
       const list = await withAuthGuard(() => {
@@ -970,7 +1466,7 @@ function ProviderForm({
           return api.queryProviderModels({ providerId: existing.id });
         }
         return api.queryProviderModels({
-          api: apiKind,
+          api: listingKind,
           ...(baseUrl.trim() !== '' ? { baseUrl: baseUrl.trim() } : {}),
           credentialName,
         });
@@ -992,6 +1488,8 @@ function ProviderForm({
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
+    const apis = readApis();
+    if (apis === null) return;
     setBusy(true);
     try {
       if (existing !== undefined) {
@@ -999,7 +1497,7 @@ function ProviderForm({
           () =>
             api.updateLlmProvider(existing.id, {
               name,
-              api: apiKind,
+              apis,
               // Empty input = clear the override back to the official endpoint.
               baseUrl: baseUrl.trim() === '' ? null : baseUrl.trim(),
               credentialName,
@@ -1014,7 +1512,7 @@ function ProviderForm({
           () =>
             api.createLlmProvider({
               name,
-              api: apiKind,
+              apis,
               ...(baseUrl.trim() !== '' ? { baseUrl: baseUrl.trim() } : {}),
               credentialName,
               scope,
@@ -1059,42 +1557,6 @@ function ProviderForm({
               />
             </div>
             <div className="grid gap-2">
-              <Label htmlFor="llmp-api">{t('llmProviders.apiLabel')}</Label>
-              <Select
-                value={apiKind}
-                onValueChange={(v) => {
-                  const kind = v as ProviderApiKind;
-                  setApiKind(kind);
-                  // A different kind means a different endpoint — the fetched
-                  // candidates are stale the moment the url space changes.
-                  setCandidates(null);
-                  // #58-2 hide-and-clear: a field the kind makes meaningless
-                  // is wiped from every row, so the payload never carries
-                  // values the wire cannot use.
-                  setRows((prev) =>
-                    prev.map((r) => ({
-                      ...r,
-                      ...(kind === 'openai-chat' || kind === 'systemone'
-                        ? { serverTools: [] }
-                        : {}),
-                      ...(kind === 'anthropic' || kind === 'systemone' ? { extraBody: [] } : {}),
-                    })),
-                  );
-                }}
-              >
-                <SelectTrigger id="llmp-api" className="font-mono text-xs">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {API_KINDS.map((k) => (
-                    <SelectItem key={k} value={k} className="font-mono text-xs">
-                      {k}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="grid gap-2">
               <Label htmlFor="llmp-url">{t('llmProviders.baseUrlLabel')}</Label>
               <Input
                 id="llmp-url"
@@ -1105,13 +1567,7 @@ function ProviderForm({
                 autoComplete="off"
                 spellCheck={false}
                 inputMode="url"
-                required={apiKind === 'systemone'}
               />
-              {apiKind === 'systemone' ? (
-                <p className="text-muted-foreground text-xs">
-                  {t('llmProviders.systemoneBaseUrlHint')}
-                </p>
-              ) : null}
             </div>
             {existing === undefined ? (
               <div className="grid gap-2">
@@ -1150,10 +1606,30 @@ function ProviderForm({
               </Select>
             </div>
           </div>
-          <p className="text-muted-foreground text-xs">{t('llmProviders.apiHint')}</p>
+          <p className="text-muted-foreground max-w-[68ch] text-xs">{t('llmProviders.apiHint')}</p>
+          {hasSystemone ? (
+            <p className="text-muted-foreground max-w-[68ch] text-xs">
+              {t('llmProviders.systemoneBaseUrlHint')}
+            </p>
+          ) : null}
           {creds !== null && creds.length === 0 ? (
             <p className="text-muted-foreground text-xs">{t('llmProviders.noCredentials')}</p>
           ) : null}
+
+          {/* #95 — the enabled wires (>=1): a kind, an optional path override
+              and the resolved endpoint preview. */}
+          <div className="flex flex-col gap-3 border-t pt-4">
+            <ProviderApisEditor
+              rows={apiRows}
+              baseUrl={baseUrl}
+              onKindChange={changeApiKind}
+              onPathChange={(index, path) =>
+                setApiRows((prev) => prev.map((r, i) => (i === index ? { ...r, path } : r)))
+              }
+              onAdd={addApiRow}
+              onRemove={removeApiRow}
+            />
+          </div>
 
           {/* #51 — the model REGISTRY. Curated here (full replace on save);
               machine pages pick from it instead of re-discovering. */}
@@ -1164,9 +1640,9 @@ function ProviderForm({
                 <p className="text-muted-foreground text-xs">{t('llmProviders.modelsDesc')}</p>
               </div>
               <div className="flex shrink-0 gap-2">
-                {/* #92 — SystemOne has no models-list endpoint; the decision
-                    model id is curated by hand. */}
-                {apiKind === 'systemone' ? null : (
+                {/* #95 — the listing arm is derived from the enabled wires;
+                    systemone-only rows have no models-list endpoint. */}
+                {listingKind === null ? null : (
                   <Button
                     type="button"
                     variant="outline"
@@ -1182,7 +1658,9 @@ function ProviderForm({
                   type="button"
                   variant="outline"
                   size="sm"
-                  onClick={() => setRows((prev) => [...prev, { ...EMPTY_MODEL_ROW }])}
+                  onClick={() =>
+                    setRows((prev) => [...prev, emptyModelRow(apiRows[0]?.kind ?? 'anthropic')])
+                  }
                 >
                   <PlusIcon className="size-3.5" />
                   {t('llmProviders.addModel')}
@@ -1197,8 +1675,8 @@ function ProviderForm({
                   <ModelRowCard
                     key={i}
                     index={i}
-                    api={apiKind}
                     row={row}
+                    enabledKinds={enabledKinds}
                     candidates={candidates}
                     duplicate={duplicateIds.has(row.id.trim())}
                     invalidExtraBody={extraInvalid[i] ?? false}

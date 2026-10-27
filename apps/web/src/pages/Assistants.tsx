@@ -13,7 +13,7 @@ import {
   TrashIcon,
   Wand2Icon,
 } from 'lucide-react';
-import { DEFAULT_ASSISTANT_SYSTEM_PROMPT } from '@harness-nexus/sdk';
+import { DEFAULT_ASSISTANT_SYSTEM_PROMPT, isChatApiKind } from '@harness-nexus/sdk';
 import { api } from '@/api';
 import { useAuth, withAuthGuard } from '@/auth';
 import { useI18n } from '@/i18n';
@@ -190,7 +190,8 @@ export function AssistantsPage() {
   const providerById = useMemo(() => new Map(providers.map((p) => [p.id, p])), [providers]);
   /** The draft provider's chat models (the #51 registry — pick only). */
   const draftModels = useMemo(
-    () => (providerById.get(draft.providerId)?.models ?? []).filter((m) => m.type === 'chat'),
+    () =>
+      (providerById.get(draft.providerId)?.models ?? []).filter((m) => isChatApiKind(m.apiKind)),
     [providerById, draft.providerId],
   );
 
@@ -199,7 +200,7 @@ export function AssistantsPage() {
     setDraft({
       ...EMPTY_DRAFT,
       providerId: first?.id ?? '',
-      defaultModel: first?.models.find((m) => m.type === 'chat')?.id ?? '',
+      defaultModel: first?.models.find((m) => isChatApiKind(m.apiKind))?.id ?? '',
     });
     setEditing(null);
     setCreating(true);
@@ -452,7 +453,7 @@ export function AssistantsPage() {
                   setDraft((d) => ({
                     ...d,
                     providerId: v,
-                    defaultModel: prov?.models.find((m) => m.type === 'chat')?.id ?? '',
+                    defaultModel: prov?.models.find((m) => isChatApiKind(m.apiKind))?.id ?? '',
                   }));
                 }}
               >

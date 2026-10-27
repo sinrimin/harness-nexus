@@ -59,12 +59,16 @@ import type {
   RuntimeConfigView,
   LlmProviderView,
   LlmModelInfo,
+  ProviderApiEndpoint,
+  ProviderApiEndpointInput,
   ProviderApiKind,
   ProviderModelConfig,
   ProviderModelConfigInput,
   ProviderModelConfigWarning,
   ProviderModelConfigWarningCode,
   ProviderModelsQueryInput,
+  UserDefaultModels,
+  UserDefaultModelsInput,
   AssistantConfigView,
   AssistantSessionView,
   AssistantToolGroup,
@@ -89,6 +93,10 @@ export {
   DEFAULT_ASSISTANT_SYSTEM_PROMPT,
   providerApiToSpecApi,
   providerModelConfigWarnings,
+  isChatApiKind,
+  providerEndpointUrl,
+  PROVIDER_DEFAULT_PATHS,
+  PROVIDER_DEFAULT_BASE_URLS,
   CLAUDE_CODE_TIERS,
   CODEX_REASONING_EFFORTS,
   CODEX_REASONING_SUMMARIES,
@@ -136,11 +144,15 @@ export type {
   RuntimeConfigView,
   LlmProviderView,
   LlmModelInfo,
+  ProviderApiEndpoint,
+  ProviderApiEndpointInput,
   ProviderApiKind,
   ProviderModelConfig,
   ProviderModelConfigInput,
   ProviderModelConfigWarning,
   ProviderModelConfigWarningCode,
+  UserDefaultModels,
+  UserDefaultModelsInput,
   AssistantConfigView,
   AssistantSessionView,
   AssistantToolGroup,
@@ -731,7 +743,8 @@ export class HarnessNexusClient {
 
   async createLlmProvider(input: {
     name: string;
-    api: ProviderApiKind;
+    /** #95 — the enabled wires (>=1, kinds unique). */
+    apis: ProviderApiEndpointInput[];
     baseUrl?: string;
     credentialName: string;
     scope?: 'global' | 'personal';
@@ -745,7 +758,8 @@ export class HarnessNexusClient {
     id: string,
     input: {
       name?: string;
-      api?: ProviderApiKind;
+      /** #95 — full replace of the enabled wires. */
+      apis?: ProviderApiEndpointInput[];
       /** `null` clears the override back to the official endpoint. */
       baseUrl?: string | null;
       credentialName?: string;
@@ -754,6 +768,18 @@ export class HarnessNexusClient {
     },
   ): Promise<{ provider: LlmProviderView }> {
     return this.request('PATCH', `/api/llm-providers/${id}`, input);
+  }
+
+  /** #95 — the caller's default model slots (embedding/rerank reserved). */
+  async getUserDefaultModels(): Promise<UserDefaultModels> {
+    const res = await this.request('GET', '/api/users/me/default-models');
+    return res.defaultModels;
+  }
+
+  /** #95 — full replace; an empty object clears every slot. */
+  async setUserDefaultModels(input: UserDefaultModelsInput): Promise<UserDefaultModels> {
+    const res = await this.request('PATCH', '/api/users/me/default-models', input);
+    return res.defaultModels;
   }
 
   async deleteLlmProvider(id: string): Promise<void> {

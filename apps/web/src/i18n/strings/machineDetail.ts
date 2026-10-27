@@ -53,6 +53,9 @@ const en = {
     'The machine default; sessions switch it live from the sender. Manual = every confirmation waits for you.',
   approvalsManual: 'Manual (human card)',
   approvalsDelegated: 'Delegated (decision model)',
+  approvalsFollowDefault: 'Follow platform default',
+  approvalsFollowDefaultHint: 'Using the platform default decision model: {model}',
+  approvalsNoDefault: 'No platform default decision model set',
   approvalsProvider: 'Decision provider',
   approvalsPickProvider: 'pick a systemone provider…',
   approvalsModel: 'Decision model',
@@ -68,7 +71,7 @@ const en = {
     'On Agents whose reject cannot carry a reason, a floor denial injects a short platform note as the next prompt, so the Agent adjusts instead of stalling.',
   approvalsSavedToast: 'Approval settings saved.',
   approvalsNoProvider:
-    'No systemone provider configured yet — create one (api “systemone”, a decision model) on the LLM providers page first.',
+    'No provider enables the systemone wire yet — create one (enable systemone, add a systemone decision model) on the LLM providers page first.',
   prewarmDesc:
     'Keep one warmed-up adapter for this Agent while a chat session page is open — clicking a session skips the adapter boot.',
   installButton: 'Install',
@@ -108,6 +111,7 @@ const en = {
   baseUrlLabel: 'Base URL',
   baseUrlPlaceholder: 'default endpoint',
   apiLabel: 'API flavor',
+  providerApisLabel: 'Protocols',
   modelDefaultLabel: 'Default model',
   credentialLabel: 'Credential (distributable)',
   pickCredential: 'Pick a credential…',
@@ -130,7 +134,8 @@ const en = {
   baseUrlNeeded: 'DeepSeek requires a base URL and this provider sets none — enter one.',
   // #51 — the registry-backed model pickers.
   pickModel: 'Pick a model…',
-  noModelsOnProvider: 'No models configured on this provider — add them in LLM Providers.',
+  noModelsOnProvider:
+    'No models on this provider speak an API this Agent supports — add one in LLM Providers.',
   extraModelsTitle: 'Extra models',
   extraModelsAdd: 'Add',
   extraModelsPlaceholder: 'model id',
@@ -447,6 +452,9 @@ const zh: typeof en = {
   approvalsResponderDesc: '机器级默认值；会话里可在发送区随时切换。人工 = 每次确认都等你点击。',
   approvalsManual: '人工确认',
   approvalsDelegated: '模型代审',
+  approvalsFollowDefault: '跟随平台默认',
+  approvalsFollowDefaultHint: '使用平台默认决策模型：{model}',
+  approvalsNoDefault: '未设置默认',
   approvalsProvider: '决策模型供应商',
   approvalsPickProvider: '选择 systemone 供应商…',
   approvalsModel: '决策模型',
@@ -461,7 +469,7 @@ const zh: typeof en = {
     '对无法携带拒绝理由的 Agent，底线拒绝会以下一条输入注入一段平台署名说明，让 Agent 调整做法而不是卡住。',
   approvalsSavedToast: '审批设置已保存。',
   approvalsNoProvider:
-    '还没有 systemone 供应商——请先在 LLM 供应商页创建（api 选 systemone，登记一个 decision 模型）。',
+    '还没有启用 systemone 协议的供应商——请先在 LLM 供应商页创建（启用 systemone 协议，登记一个 systemone 决策模型）。',
   prewarmDesc: '会话页面打开期间为该代理常备一个预热适配器，点击会话时跳过适配器启动。',
   installButton: '安装',
   upgradeButton: '升级',
@@ -490,6 +498,7 @@ const zh: typeof en = {
   baseUrlLabel: 'Base URL',
   baseUrlPlaceholder: '默认端点',
   apiLabel: 'API 风格',
+  providerApisLabel: '协议',
   modelDefaultLabel: '默认模型',
   credentialLabel: '凭据（可分发）',
   pickCredential: '选择凭据…',
@@ -509,7 +518,7 @@ const zh: typeof en = {
   baseUrlNeeded: 'DeepSeek 必须设置 Base URL，该供应商未设置——请补充。',
   // #51 —— 基于注册表的模型选择。
   pickModel: '选择模型…',
-  noModelsOnProvider: '该供应商尚未配置模型——请到“LLM 供应商”页添加。',
+  noModelsOnProvider: '该供应商没有此 Agent 可用的模型——请到“LLM 供应商”页添加。',
   extraModelsTitle: '附加模型',
   extraModelsAdd: '添加',
   extraModelsPlaceholder: '模型 id',

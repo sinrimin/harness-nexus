@@ -146,6 +146,14 @@ export function AgentsTab({
 }
 
 /**
+ * Radix's `Select.Value` treats `''` as "no selection" (it renders the
+ * placeholder instead of the item label), so the follow-the-platform-default
+ * arm carries a real sentinel. The EMPTY STRING stays the state's wire value:
+ * it is what omits `providerId`/`modelId` from the PATCH payload.
+ */
+const FOLLOW_DEFAULT = '__default__';
+
+/**
  * Issue #92 — delegated approvals, machine-scoped: who answers a surfaced
  * permission request (human card vs decision model) plus the deterministic
  * floor. Lives ABOVE the per-Agent cards because it is target-agnostic — the
@@ -170,6 +178,12 @@ function ApprovalsCard({
   const [responder, setResponder] = useState<'manual' | 'delegated'>(saved?.responder ?? 'manual');
   const [providerId, setProviderId] = useState(saved?.providerId ?? '');
   const [modelId, setModelId] = useState(saved?.modelId ?? '');
+  // #95 — the user-level decision slot, for the "follow the platform default"
+  // provenance hint. `undefined` = unknown (not fetched yet or the read
+  // failed: the hint stays hidden), `null` = fetched, no default set.
+  const [defaultDecision, setDefaultDecision] = useState<
+    { providerId: string; modelId: string } | null | undefined
+  >(undefined);
   const [threshold, setThreshold] = useState(String(saved?.confidenceThreshold ?? 0.9));
   const [neverAllow, setNeverAllow] = useState((saved?.neverAllow ?? []).join('\n'));
   const [denyNote, setDenyNote] = useState(saved?.denyNote ?? true);
@@ -180,7 +194,10 @@ function ApprovalsCard({
     void (async () => {
       try {
         const list = await withAuthGuard(() => api.listLlmProviders(), logout);
-        if (!cancelled) setProviders(list.filter((p) => p.api === 'systemone'));
+        // #95 — a provider ENABLES the systemone wire (among possibly several);
+        // its decision models are the ones carrying apiKind 'systemone'.
+        if (!cancelled)
+          setProviders(list.filter((p) => p.apis.some((a) => a.kind === 'systemone')));
       } catch {
         if (!cancelled) setProviders([]);
       }
@@ -190,8 +207,32 @@ function ApprovalsCard({
     };
   }, [logout]);
 
+  const followDefault = providerId === '';
+
+  // Fetched only while the follow-default arm is active. A failed read is
+  // silent by design — the hint is provenance, never an error surface.
+  useEffect(() => {
+    if (!followDefault || defaultDecision !== undefined) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const defaults = await withAuthGuard(() => api.getUserDefaultModels(), logout);
+        if (!cancelled) setDefaultDecision(defaults.decision ?? null);
+      } catch {
+        // Leave it undefined → no hint line.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [followDefault, defaultDecision, logout]);
+
   const provider = providers?.find((p) => p.id === providerId) ?? null;
-  const decisionModels = provider?.models.filter((m) => m.type === 'decision') ?? [];
+  const decisionModels = provider?.models.filter((m) => m.apiKind === 'systemone') ?? [];
+  const defaultProviderName =
+    defaultDecision !== undefined && defaultDecision !== null
+      ? (providers?.find((p) => p.id === defaultDecision.providerId)?.name ?? null)
+      : null;
   const thresholdNum = Number(threshold);
   const thresholdValid =
     threshold.trim() !== '' &&
@@ -203,7 +244,7 @@ function ApprovalsCard({
     .map((l) => l.trim())
     .filter((l) => l !== '');
   const canSave =
-    providerId !== '' && modelId !== '' && thresholdValid && patterns.length <= 64 && !busy;
+    (followDefault || modelId !== '') && thresholdValid && patterns.length <= 64 && !busy;
 
   async function save(): Promise<void> {
     if (!canSave) return;
@@ -214,8 +255,10 @@ function ApprovalsCard({
           api.updateMachine(machineId, {
             chatApprovals: {
               responder,
-              providerId,
-              modelId,
+              // #95 — omitting the pair follows the user-level default
+              // decision model (resolved server-side); the service rejects
+              // half a pair, so both ride together.
+              ...(followDefault ? {} : { providerId, modelId }),
               confidenceThreshold: thresholdNum,
               neverAllow: patterns,
               denyNote,
@@ -265,9 +308,9 @@ function ApprovalsCard({
           <div className="grid gap-2">
             <Label htmlFor="approvals-provider">{t('machineDetail.approvalsProvider')}</Label>
             <Select
-              value={providerId}
+              value={followDefault ? FOLLOW_DEFAULT : providerId}
               onValueChange={(v) => {
-                setProviderId(v);
+                setProviderId(v === FOLLOW_DEFAULT ? '' : v);
                 setModelId('');
               }}
               disabled={disabled}
@@ -276,6 +319,9 @@ function ApprovalsCard({
                 <SelectValue placeholder={t('machineDetail.approvalsPickProvider')} />
               </SelectTrigger>
               <SelectContent>
+                <SelectItem value={FOLLOW_DEFAULT} className="font-mono text-xs">
+                  {t('machineDetail.approvalsFollowDefault')}
+                </SelectItem>
                 {(providers ?? []).map((p) => (
                   <SelectItem key={p.id} value={p.id} className="font-mono text-xs">
                     {p.name}
@@ -283,22 +329,38 @@ function ApprovalsCard({
                 ))}
               </SelectContent>
             </Select>
+            {followDefault ? (
+              defaultDecision === undefined ? null : (
+                <p className="text-muted-foreground text-xs">
+                  {defaultDecision === null
+                    ? t('machineDetail.approvalsNoDefault')
+                    : t('machineDetail.approvalsFollowDefaultHint', {
+                        model:
+                          defaultProviderName !== null
+                            ? `${defaultProviderName} / ${defaultDecision.modelId}`
+                            : defaultDecision.modelId,
+                      })}
+                </p>
+              )
+            ) : null}
           </div>
-          <div className="grid gap-2">
-            <Label htmlFor="approvals-model">{t('machineDetail.approvalsModel')}</Label>
-            <Select value={modelId} onValueChange={setModelId} disabled={provider === null}>
-              <SelectTrigger id="approvals-model" className="font-mono text-xs">
-                <SelectValue placeholder={t('machineDetail.approvalsPickModel')} />
-              </SelectTrigger>
-              <SelectContent>
-                {decisionModels.map((m) => (
-                  <SelectItem key={m.id} value={m.id} className="font-mono text-xs">
-                    {m.id}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+          {followDefault ? null : (
+            <div className="grid gap-2">
+              <Label htmlFor="approvals-model">{t('machineDetail.approvalsModel')}</Label>
+              <Select value={modelId} onValueChange={setModelId} disabled={provider === null}>
+                <SelectTrigger id="approvals-model" className="font-mono text-xs">
+                  <SelectValue placeholder={t('machineDetail.approvalsPickModel')} />
+                </SelectTrigger>
+                <SelectContent>
+                  {decisionModels.map((m) => (
+                    <SelectItem key={m.id} value={m.id} className="font-mono text-xs">
+                      {m.id}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
           <div className="grid gap-2">
             <Label htmlFor="approvals-threshold">{t('machineDetail.approvalsThreshold')}</Label>
             <Input
@@ -924,14 +986,20 @@ function ProviderConfigForm({
   const managedTarget = runtime !== null ? (target as RuntimeTarget) : null;
   const apiOptions = managedTarget !== null ? RUNTIME_API_SUPPORT[managedTarget] : [];
   const supportedKinds = managedTarget !== null ? PROVIDER_API_SUPPORT[managedTarget] : [];
-  const usableProviders = (providers ?? []).filter((p) => supportedKinds.includes(p.api));
+  // #95 — a provider ENABLES one or more wires; any wire this target can push
+  // makes the row usable (the chosen MODEL then fixes the actual spec flavor).
+  const usableProviders = (providers ?? []).filter((p) =>
+    p.apis.some((a) => supportedKinds.includes(a.kind)),
+  );
   const selectedProvider = usableProviders.find((p) => p.id === providerId) ?? null;
   const manual = selectedProvider === null;
-  // #51 — the registry is the picker's world: only chat rows are selectable.
-  // A provider with no chat models (and the manual arm) falls back to
-  // free-text model inputs below.
+  // #51 — the registry is the picker's world: only rows whose own apiKind this
+  // target can push are selectable. A provider with no such models (and the
+  // manual arm) falls back to free-text model inputs below.
   const chatModels =
-    selectedProvider !== null ? selectedProvider.models.filter((m) => m.type === 'chat') : [];
+    selectedProvider !== null
+      ? selectedProvider.models.filter((m) => supportedKinds.includes(m.apiKind))
+      : [];
   const useModelSelect = selectedProvider !== null && chatModels.length > 0;
 
   // Prefill: a stored providerId that still resolves selects that provider;
@@ -970,7 +1038,9 @@ function ProviderConfigForm({
       const kinds = PROVIDER_API_SUPPORT[managedTarget];
       const match =
         existing?.providerId !== undefined
-          ? allProviders.find((p) => p.id === existing?.providerId && kinds.includes(p.api))
+          ? allProviders.find(
+              (p) => p.id === existing?.providerId && p.apis.some((a) => kinds.includes(a.kind)),
+            )
           : undefined;
       setProviderGone(existing?.providerId !== undefined && match === undefined);
       setProviderId(match?.id ?? MANUAL_PROVIDER);
@@ -980,6 +1050,9 @@ function ProviderConfigForm({
       // into the panel's oneM checkbox, apply re-appends it (ccDraftFromSpec
       // read the same spec, so the two agree).
       setModel(existing?.model !== undefined ? stripClaudeOneMarker(existing.model) : '');
+      // The stored spec's COARSE flavor seeds the manual arm only. In the
+      // provider arm the flavor is re-derived from the selected model's
+      // apiKind at apply time (#95) — the provider row no longer names one.
       setApiFlavor(existing?.api ?? apiOptions[0] ?? '');
       setCredentialName(existing?.credentialName ?? '');
       setExtraModels(
@@ -1016,6 +1089,19 @@ function ProviderConfigForm({
       // model — rows dedupe against BOTH spellings (#60).
       const wireModel = setClaudeOneMarker(model.trim(), cc.oneM);
       const baseModel = stripClaudeOneMarker(model.trim());
+      // #95 — a provider speaks several wires, so the W3 spec flavor follows
+      // the SELECTED MODEL's apiKind (looked up in the provider registry).
+      // A free-text model on a registry-less provider has no entry to read:
+      // fall back to the provider's first wire this target can push.
+      const selectedModel =
+        selectedProvider !== null
+          ? (selectedProvider.models.find(
+              (m) => m.id === baseModel && supportedKinds.includes(m.apiKind),
+            ) ?? null)
+          : null;
+      const specKind =
+        selectedModel?.apiKind ??
+        selectedProvider?.apis.find((a) => supportedKinds.includes(a.kind))?.kind;
       const normalizedExtras = [
         ...new Set(
           extraModels
@@ -1038,8 +1124,8 @@ function ProviderConfigForm({
       ]);
       const spec: RuntimeConfigSpec = {
         providerLabel: (selectedProvider?.name ?? providerLabel).trim(),
-        api: (selectedProvider !== null
-          ? providerApiToSpecApi(selectedProvider.api)
+        api: (selectedProvider !== null && specKind !== undefined
+          ? providerApiToSpecApi(specKind)
           : apiFlavor || apiOptions[0]) as RuntimeConfigSpec['api'],
         model: wireModel,
         credentialName: selectedProvider?.credentialName ?? credentialName,
@@ -1099,7 +1185,7 @@ function ProviderConfigForm({
                 const next = usableProviders.find((p) => p.id === v) ?? null;
                 const ids = new Set(
                   next !== null
-                    ? next.models.filter((m) => m.type === 'chat').map((m) => m.id)
+                    ? next.models.filter((m) => supportedKinds.includes(m.apiKind)).map((m) => m.id)
                     : [],
                 );
                 if (ids.size === 0) return;
@@ -1146,8 +1232,15 @@ function ProviderConfigForm({
                   />
                 </div>
               )}
-              <ReadonlyField label={t('machineDetail.apiLabel')} className="min-w-36">
-                {selectedProvider.api}
+              {/* #95 — a provider row is multi-wire now; list the kinds it
+                  enables (mono, English wire ids) instead of the old single
+                  flavor. The pushed flavor comes from the selected model. */}
+              <ReadonlyField
+                label={t('machineDetail.providerApisLabel')}
+                className="min-w-44"
+                title={selectedProvider.apis.map((a) => a.kind).join(' · ')}
+              >
+                {selectedProvider.apis.map((a) => a.kind).join(' · ')}
               </ReadonlyField>
               <ReadonlyField
                 label={t('machineDetail.credentialLabel')}

@@ -26,6 +26,7 @@ export function PageAction({
   icon: Icon = PlusIcon,
   disabled,
   busy,
+  variant = 'default',
 }: {
   /** Already-translated action name; also the icon-only accessible name. */
   label: string;
@@ -34,6 +35,8 @@ export function PageAction({
   disabled?: boolean;
   /** The action is running: the icon spins (the label already says so). */
   busy?: boolean;
+  /** The page's primary action is ink; a secondary one asks for `outline`. */
+  variant?: 'default' | 'outline';
 }) {
   return (
     <Button
@@ -41,6 +44,7 @@ export function PageAction({
       disabled={disabled}
       aria-label={label}
       title={label}
+      variant={variant}
       className="gap-1.5 max-sm:w-(--control-h) max-sm:px-0"
     >
       <Icon className={cn('size-4', busy === true && 'animate-spin')} />

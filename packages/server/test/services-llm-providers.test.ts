@@ -199,6 +199,13 @@ describe('svc llm-providers — #95 multi-wire rows', () => {
         ],
       } as Parameters<typeof createLlmProvider>[2]),
     ).rejects.toMatchObject({ code: 'SYSTEMONE_BASE_URL_REQUIRED' });
+    // …but a FULL-URL systemone path escapes the shared base and resolves alone.
+    const fullUrl = await createLlmProvider(d, owner, {
+      ...noBase,
+      apis: [{ kind: 'systemone', path: 'https://root.example.com/v1/systemone' }],
+      models: [{ id: 'dec-m', apiKind: 'systemone' }],
+    } as Parameters<typeof createLlmProvider>[2]);
+    expect(fullUrl.apis[0]!.path).toBe('https://root.example.com/v1/systemone');
   });
 
   it('one row carries chat + embedding + systemone wires; update keeps the invariant', async () => {
