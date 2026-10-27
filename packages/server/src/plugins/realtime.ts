@@ -36,6 +36,7 @@ import {
   chatPermissionRespondRequestSchema,
   chatElicitationRespondRequestSchema,
   chatConfigSetRequestSchema,
+  chatApprovalsSetRequestSchema,
   chatSessionCloseRequestSchema,
   chatSessionClosedEventSchema,
   chatSessionOpenRequestSchema,
@@ -133,6 +134,7 @@ export async function registerRealtime(
     chatReconnectGraceMs: number;
     chatIdleTtlMs: number;
     chatViewerGraceMs: number;
+    chatApprovalsTimeoutMs: number;
     sessionsListTimeoutMs: number;
     adaptersReportTimeoutMs: number;
   },
@@ -156,6 +158,13 @@ export async function registerRealtime(
     {
       uow: app.uow,
       isOnline: (machineId) => presence.isOnline(machineId),
+      // #92 — the delegated-approvals gate: credential decrypt + the
+      // decision-model budget, threaded app-decorated like every service dep.
+      approvals: {
+        credentialEncryptionKey: app.credentialEncryptionKey,
+        timeoutMs: opts.chatApprovalsTimeoutMs,
+        log: app.log,
+      },
       io: {
         toCtl: (machineId, event, payload) => {
           ctl.to(`machine:${machineId}`).emit(event, payload);
@@ -826,6 +835,20 @@ export async function registerRealtime(
         );
       }
       ack?.(result.ok ? { accepted: true } : { error: result.code });
+    });
+
+    // #92 — switch the live session's approvals responder (next-request
+    // effect; the server owns the truth, the daemon re-synthesizes the
+    // session_config slice for the viewers).
+    socket.on('chat:approvals.set', (payload: unknown, ack?: (res: unknown) => void) => {
+      const parsed = chatApprovalsSetRequestSchema.safeParse(payload);
+      if (!parsed.success) {
+        ack?.({ error: 'proto:invalid' });
+        return;
+      }
+      void realtime.chat
+        .setApprovals(socket.data.userId as string, parsed.data.sessionId, parsed.data.responder)
+        .then((result) => ack?.(result.ok ? { accepted: true } : { error: result.code }));
     });
 
     socket.on('chat:permission.respond', (payload: unknown, ack?: (res: unknown) => void) => {
