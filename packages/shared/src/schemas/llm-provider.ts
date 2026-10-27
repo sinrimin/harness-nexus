@@ -17,9 +17,18 @@ import type { ProviderApi } from './runtime-config.js';
  * The API kind the provider endpoint speaks — FINER-grained than the W3 spec
  * flavor, because the "openai" bucket splits at the wire: codex is
  * Responses-only (codex-rs removed chat), dsh's pi-ai speaks chat
- * completions (`openai-completions`) or Anthropic Messages.
+ * completions (`openai-completions`) or Anthropic Messages. `systemone` (#92)
+ * is the decision-model protocol (TypeSafe Jev and Bailian's
+ * `decision-model-preview` share the wire): never runtime-pushable, never in
+ * PROVIDER_API_SUPPORT, and it has NO official default endpoint (baseUrl is
+ * required at save).
  */
-export const providerApiKindSchema = z.enum(['openai-chat', 'openai-responses', 'anthropic']);
+export const providerApiKindSchema = z.enum([
+  'openai-chat',
+  'openai-responses',
+  'anthropic',
+  'systemone',
+]);
 export type ProviderApiKind = z.infer<typeof providerApiKindSchema>;
 
 /**
@@ -49,16 +58,29 @@ export const PROVIDER_API_SUPPORT: Record<RuntimeTarget, readonly ProviderApiKin
   pi: ['anthropic', 'openai-chat', 'openai-responses'],
 };
 
-/** Map a provider kind onto the W3 spec flavor (writers keyed on it stay untouched). */
+/**
+ * Map a provider kind onto the W3 spec flavor (writers keyed on it stay
+ * untouched). `systemone` has NO spec flavor — it is never runtime-pushable,
+ * so reaching this arm with one is a programming error, not a fallback.
+ */
 export function providerApiToSpecApi(kind: ProviderApiKind): ProviderApi {
+  if (kind === 'systemone') {
+    throw new Error('systemone providers are not runtime-pushable');
+  }
   return kind === 'anthropic' ? 'anthropic-messages' : 'openai';
 }
 
-/** Official endpoints used when a provider sets no baseUrl. */
+/**
+ * Official endpoints used when a provider sets no baseUrl. `systemone` has
+ * none — every decision-model provider names its endpoint explicitly (the
+ * '' sentinel makes the record total; the service refuses the save without a
+ * baseUrl, and no default-consuming path is reachable for the kind).
+ */
 export const PROVIDER_DEFAULT_BASE_URLS: Record<ProviderApiKind, string> = {
   'openai-chat': 'https://api.openai.com/v1',
   'openai-responses': 'https://api.openai.com/v1',
   anthropic: 'https://api.anthropic.com',
+  systemone: '',
 };
 
 /**
@@ -69,7 +91,7 @@ export const PROVIDER_DEFAULT_BASE_URLS: Record<ProviderApiKind, string> = {
  * here. `type: 'embedding'` is RESERVED (pickers filter to 'chat'; no
  * consumer surface yet).
  */
-export const providerModelTypeSchema = z.enum(['chat', 'embedding']);
+export const providerModelTypeSchema = z.enum(['chat', 'embedding', 'decision']);
 export type ProviderModelType = z.infer<typeof providerModelTypeSchema>;
 
 export const providerModelConfigSchema = z.object({
@@ -117,6 +139,7 @@ export const SERVER_TOOL_PRESETS: Record<ProviderApiKind, readonly string[]> = {
   'openai-chat': [],
   'openai-responses': ['web_search', 'web_extractor', 'code_interpreter'],
   anthropic: ['web_search_20250305'],
+  systemone: [],
 };
 
 /**
@@ -129,6 +152,7 @@ export const EXTRA_BODY_PRESETS: Record<ProviderApiKind, readonly string[]> = {
   'openai-chat': ['enable_search', 'search_options', 'enable_text_image_mixed', 'enable_thinking'],
   'openai-responses': ['enable_thinking'],
   anthropic: [],
+  systemone: [],
 };
 
 /**
@@ -175,10 +199,10 @@ export function providerModelConfigWarnings(
   for (const m of models) {
     // #56 — serverTools now ride BOTH openai-responses and anthropic wires
     // (append-injection); openai-chat alone has no tools[] surface.
-    if (m.serverTools !== undefined && api === 'openai-chat') {
+    if (m.serverTools !== undefined && (api === 'openai-chat' || api === 'systemone')) {
       warnings.push({ code: 'serverToolsIrrelevant', modelId: m.id });
     }
-    if (m.extraBody !== undefined && api === 'anthropic') {
+    if (m.extraBody !== undefined && (api === 'anthropic' || api === 'systemone')) {
       warnings.push({ code: 'extraBodyIrrelevant', modelId: m.id });
     }
   }
@@ -193,6 +217,9 @@ export function providerModelConfigWarnings(
  * Anthropic's listing lives at `{base}/v1/models`.
  */
 export function providerModelsUrls(api: ProviderApiKind, baseUrl?: string): string[] {
+  // #92 — SystemOne has NO models-list endpoint; discovery is never offered
+  // for the kind (the model id is curated by hand in the registry).
+  if (api === 'systemone') return [];
   const base = (baseUrl ?? PROVIDER_DEFAULT_BASE_URLS[api]).replace(/\/+$/, '');
   if (api === 'anthropic') return [`${base}/v1/models?limit=1000`];
   return base.endsWith('/v1') ? [`${base}/models`] : [`${base}/v1/models`, `${base}/models`];

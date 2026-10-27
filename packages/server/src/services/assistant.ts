@@ -36,13 +36,22 @@ async function requireVisibleProvider(deps: ServiceDeps, principal: Principal, p
   if (!provider || (provider.scope === 'personal' && provider.ownerId !== principal.userId)) {
     throw new AppError('Provider not found', 404, 'PROVIDER_NOT_FOUND');
   }
+  // #92 — decision-model providers (api 'systemone') are not chat gateways;
+  // the assistant never runs on one.
+  if (provider.api === 'systemone') {
+    throw new AppError(
+      'Assistant configs require a chat provider (systemone is decision-only)',
+      409,
+      'ASSISTANT_PROVIDER_NOT_CHAT',
+    );
+  }
   return provider;
 }
 
 /** The default model must be a configured `type:'chat'` entry on that provider. */
 function assertModelOnProvider(
   defaultModel: string,
-  models: { id: string; type: 'chat' | 'embedding' }[],
+  models: { id: string; type: 'chat' | 'embedding' | 'decision' }[],
 ) {
   const model = models.find((m) => m.id === defaultModel);
   if (model === undefined || model.type !== 'chat') {

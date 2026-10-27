@@ -95,6 +95,15 @@ export async function createLlmProvider(
   if (input.scope === 'global' && principal.role !== 'admin') {
     throw new AppError('Only admins can create global providers', 403, 'FORBIDDEN');
   }
+  // #92 — the decision-model kind has no official endpoint; the row is
+  // meaningless without one.
+  if (input.api === 'systemone' && input.baseUrl === undefined) {
+    throw new AppError(
+      'systemone providers require an explicit baseUrl',
+      400,
+      'SYSTEMONE_BASE_URL_REQUIRED',
+    );
+  }
   // A personal provider's baseUrl is caller-chosen; a global provider's is
   // admin-chosen (admin-only create) — drives the credential gate above.
   await visibleCredential(deps, input.credentialName, principal, input.scope === 'personal');
@@ -149,6 +158,16 @@ export async function updateLlmProvider(
 
   if (input.credentialName !== undefined && input.credentialName !== existing.credentialName) {
     await visibleCredential(deps, input.credentialName, principal, existing.scope === 'personal');
+  }
+  // #92 — same rule as create, against the EFFECTIVE api after the patch.
+  const nextApi = input.api ?? existing.api;
+  const nextBaseUrl = input.baseUrl !== undefined ? input.baseUrl : existing.baseUrl;
+  if (nextApi === 'systemone' && nextBaseUrl === null) {
+    throw new AppError(
+      'systemone providers require an explicit baseUrl',
+      400,
+      'SYSTEMONE_BASE_URL_REQUIRED',
+    );
   }
   if (input.name !== undefined && input.name !== existing.name) {
     if (await nameTaken(deps, input.name, existing.scope, existing.ownerId, existing.id)) {

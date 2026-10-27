@@ -89,6 +89,11 @@ export async function resolveTurnModel(
     );
   }
   const secret = decryptSecret(credential.secret, deps.credentialEncryptionKey);
+  // #92 — a systemone provider cannot reach here (the config service refuses
+  // it), but the runtime holds the line too: the gateway is chat-only.
+  if (provider.api === 'systemone') {
+    throw new TurnSetupError(`Provider "${provider.name}" is decision-only, not a chat gateway`);
+  }
   return buildGatewayModel({
     kind: provider.api,
     baseUrl: provider.baseUrl,

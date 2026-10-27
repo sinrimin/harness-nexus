@@ -10,8 +10,14 @@
  * See wiki design-phase-9-w10-llm-providers.md + design-provider-model-registry.md.
  */
 
-/** Finer-grained than the W3 spec flavor: codex is Responses-only, dsh speaks chat. */
-export type LlmProviderApi = 'openai-chat' | 'openai-responses' | 'anthropic';
+/**
+ * Finer-grained than the W3 spec flavor: codex is Responses-only, dsh speaks
+ * chat. `systemone` (#92) is NOT a chat wire at all — it is the decision-model
+ * protocol (TypeSafe Jev / Bailian `decision-model-preview` share it), consumed
+ * ONLY by delegated approvals; it is never runtime-pushable and has no official
+ * default endpoint (baseUrl is required).
+ */
+export type LlmProviderApi = 'openai-chat' | 'openai-responses' | 'anthropic' | 'systemone';
 
 /**
  * Issue #51 — one CONFIGURED model on a provider row (the registry). The
@@ -19,11 +25,13 @@ export type LlmProviderApi = 'openai-chat' | 'openai-responses' | 'anthropic';
  * the assistant's in-process pi-ai Model); the advanced fields are
  * provider-level policy applied per consumer capability (the assistant uses
  * them all; machine pushes only carry the metadata subset). `type:
- * 'embedding'` is reserved — no consumer yet, pickers filter to 'chat'.
+ * 'embedding'` is reserved (no consumer yet); `type: 'decision'` (#92) marks
+ * SystemOne decision models — the delegated-approvals gate is their only
+ * consumer, chat pickers keep filtering to 'chat'.
  */
 export interface ProviderModelConfig {
   id: string;
-  type: 'chat' | 'embedding';
+  type: 'chat' | 'embedding' | 'decision';
   displayName?: string | undefined;
   /** Context window in tokens. */
   contextWindow?: number | undefined;
