@@ -8,6 +8,8 @@ import remarkGfm from 'remark-gfm';
 import rehypeHighlight from 'rehype-highlight';
 import { CheckIcon, CopyIcon } from 'lucide-react';
 import { useCopyFeedback } from './copy-feedback.js';
+import { MermaidDiagram } from './mermaid-diagram.js';
+import { useI18n } from '@/i18n';
 
 /**
  * Streaming markdown body (Phase 9 W6). One markdown stack for the whole chat
@@ -15,7 +17,9 @@ import { useCopyFeedback } from './copy-feedback.js';
  * CDN — the font rule generalizes to every asset). The `streaming` caret goes
  * ONLY on the live last block. Fenced code keeps rehype-highlight's span tree
  * (never re-stringified) and gains a language tag + copy button on the `pre`
- * wrapper. Mermaid stays a plain code block (diagram rendering deferred).
+ * wrapper. `language-mermaid` fences render as diagrams (#93): same well
+ * chrome, body swapped for the lazily loaded mermaid view, plain code kept as
+ * the fallback (parse failure / streaming half-fence).
  */
 
 /** Recursively collect the literal text of a rendered node tree (copy source). */
@@ -29,6 +33,7 @@ function nodeText(node: ReactNode): string {
 
 function PreBlock({ children }: { children?: ReactNode }) {
   const { copied, onCopy } = useCopyFeedback();
+  const { t } = useI18n();
   const child = Array.isArray(children) ? children[0] : children;
   const className = isValidElement(child)
     ? ((child.props as { className?: string }).className ?? '')
@@ -45,12 +50,19 @@ function PreBlock({ children }: { children?: ReactNode }) {
           type="button"
           onClick={() => onCopy(code)}
           className="text-muted-foreground hover:text-foreground flex items-center gap-1 rounded px-1 py-0.5 transition-colors"
-          aria-label="Copy code"
+          aria-label={t('common.copyCode')}
         >
           {copied ? <CheckIcon className="size-3" /> : <CopyIcon className="size-3" />}
         </button>
       </div>
-      <pre className="overflow-x-auto p-3 text-xs leading-relaxed">{children}</pre>
+      {language === 'mermaid' ? (
+        <MermaidDiagram
+          code={code}
+          fallback={<pre className="overflow-x-auto p-3 text-xs leading-relaxed">{children}</pre>}
+        />
+      ) : (
+        <pre className="overflow-x-auto p-3 text-xs leading-relaxed">{children}</pre>
+      )}
     </div>
   );
 }

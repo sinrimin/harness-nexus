@@ -19,6 +19,9 @@ const en = {
   done: 'Done',
   copy: 'Copy',
   copied: 'Copied',
+  copyCode: 'Copy code',
+  // The rendered mermaid body (#93) — an accessible name for the diagram image.
+  diagram: 'Diagram',
   openMenu: 'Open menu',
   actions: 'Actions',
   name: 'Name',
@@ -58,6 +61,8 @@ const zh: typeof en = {
   done: '完成',
   copy: '复制',
   copied: '已复制',
+  copyCode: '复制代码',
+  diagram: '图表',
   openMenu: '打开菜单',
   actions: '操作',
   name: '名称',
