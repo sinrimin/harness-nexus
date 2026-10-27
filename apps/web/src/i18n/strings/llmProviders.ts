@@ -23,6 +23,8 @@ const en = {
     'The kind must match the Agent — Claude Code: anthropic · Codex: openai-responses · DeepSeek: anthropic / openai-chat.',
   baseUrlLabel: 'Base URL (optional)',
   baseUrlPlaceholder: 'official endpoint',
+  systemoneBaseUrlHint:
+    'SystemOne providers have no official endpoint — the decision-model base URL is required (…/compatible-mode/v1 etc.).',
   credentialLabel: 'Credential (distributable)',
   pickCredential: 'Pick a credential…',
   noCredentials: 'No distributable credentials — create one first.',
@@ -93,6 +95,8 @@ const zh: typeof en = {
     '类型需与 Agent 匹配 —— Claude Code：anthropic · Codex：openai-responses · DeepSeek：anthropic / openai-chat。',
   baseUrlLabel: 'Base URL（可选）',
   baseUrlPlaceholder: '官方端点',
+  systemoneBaseUrlHint:
+    'SystemOne 没有官方端点——必须填写决策模型的 base URL（如 …/compatible-mode/v1）。',
   credentialLabel: '凭据（可分发）',
   pickCredential: '选择凭据…',
   noCredentials: '暂无可分发凭据——请先创建。',

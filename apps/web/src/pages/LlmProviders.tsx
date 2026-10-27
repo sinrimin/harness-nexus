@@ -88,7 +88,7 @@ import {
 
 type Scope = 'global' | 'personal';
 
-const API_KINDS: ProviderApiKind[] = ['openai-chat', 'openai-responses', 'anthropic'];
+const API_KINDS: ProviderApiKind[] = ['openai-chat', 'openai-responses', 'anthropic', 'systemone'];
 
 /** The list's vocabulary (07-p3-list-pages.md §5). */
 const PROVIDER_SPEC: ListQuerySpec = {
@@ -115,7 +115,7 @@ interface ExtraBodyEntry {
 interface ModelRow {
   id: string;
   displayName: string;
-  type: 'chat' | 'embedding';
+  type: 'chat' | 'embedding' | 'decision';
   contextWindow: string;
   maxOutputTokens: string;
   vision: boolean;
@@ -126,7 +126,7 @@ interface ModelRow {
 }
 
 /** The wire shape after parsing — `type` always explicit, unset keys omitted. */
-type CleanModel = ProviderModelConfigInput & { type: 'chat' | 'embedding' };
+type CleanModel = ProviderModelConfigInput & { type: 'chat' | 'embedding' | 'decision' };
 
 /**
  * #58-1 — the model-id field with the fetched candidates as a dropdown. Free
@@ -691,7 +691,7 @@ function ModelRowCard({
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              {(['chat', 'embedding'] as const).map((k) => (
+              {(['chat', 'embedding', 'decision'] as const).map((k) => (
                 <SelectItem key={k} value={k} className="font-mono text-xs">
                   {k}
                 </SelectItem>
@@ -1074,8 +1074,10 @@ function ProviderForm({
                   setRows((prev) =>
                     prev.map((r) => ({
                       ...r,
-                      ...(kind === 'openai-chat' ? { serverTools: [] } : {}),
-                      ...(kind === 'anthropic' ? { extraBody: [] } : {}),
+                      ...(kind === 'openai-chat' || kind === 'systemone'
+                        ? { serverTools: [] }
+                        : {}),
+                      ...(kind === 'anthropic' || kind === 'systemone' ? { extraBody: [] } : {}),
                     })),
                   );
                 }}
@@ -1103,7 +1105,13 @@ function ProviderForm({
                 autoComplete="off"
                 spellCheck={false}
                 inputMode="url"
+                required={apiKind === 'systemone'}
               />
+              {apiKind === 'systemone' ? (
+                <p className="text-muted-foreground text-xs">
+                  {t('llmProviders.systemoneBaseUrlHint')}
+                </p>
+              ) : null}
             </div>
             {existing === undefined ? (
               <div className="grid gap-2">
@@ -1156,16 +1164,20 @@ function ProviderForm({
                 <p className="text-muted-foreground text-xs">{t('llmProviders.modelsDesc')}</p>
               </div>
               <div className="flex shrink-0 gap-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  disabled={fetching || (existing === undefined && credentialName === '')}
-                  onClick={() => void fetchCandidates()}
-                >
-                  <RefreshCwIcon className={fetching ? 'animate-spin' : ''} />
-                  {t('llmProviders.fetchCandidates')}
-                </Button>
+                {/* #92 — SystemOne has no models-list endpoint; the decision
+                    model id is curated by hand. */}
+                {apiKind === 'systemone' ? null : (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={fetching || (existing === undefined && credentialName === '')}
+                    onClick={() => void fetchCandidates()}
+                  >
+                    <RefreshCwIcon className={fetching ? 'animate-spin' : ''} />
+                    {t('llmProviders.fetchCandidates')}
+                  </Button>
+                )}
                 <Button
                   type="button"
                   variant="outline"
