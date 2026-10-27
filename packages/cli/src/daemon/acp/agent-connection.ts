@@ -23,7 +23,8 @@ interface PendingRequest {
 }
 
 export type PermissionOutcome =
-  { outcome: 'selected'; optionId: string } | { outcome: 'cancelled' };
+  | { outcome: 'selected'; optionId: string; _meta?: { denyMessage?: string | undefined } }
+  | { outcome: 'cancelled' };
 
 /**
  * A JSON-RPC request id, echoed VERBATIM when answering an agent-initiated

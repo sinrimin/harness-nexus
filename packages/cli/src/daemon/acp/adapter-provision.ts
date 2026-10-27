@@ -48,9 +48,44 @@ export interface AdapterPatch {
 }
 
 // #71 — the setModel-skip patch (issue #2) is RETIRED: upstream 0.93.0 landed
-// its own skip (`skipSetModel` in session-model.js), so the list ships empty.
-// The mechanism stays — a future pinned-version regression gets a patch here.
-export const ADAPTER_PATCHES: readonly AdapterPatch[] = [];
+// its own skip (`skipSetModel` in session-model.js).
+//
+// #92 — the denyMessage patches: the ACP permission response's first-party
+// `_meta` slot carries the delegated gate's deny reason, and the adapter
+// feeds it to the CC SDK as the deny feedback (the TUI reject-with-feedback
+// path) instead of the hardcoded "User refused permission to run tool". Two
+// edits in one file: parse `_meta.denyMessage` out of the selection, then
+// use it on the plain-reject arm. Upstream PR rides along — once merged and
+// the pin bumps past it, both patches retire (anchor-miss = skipped safely).
+export const ADAPTER_PATCHES: readonly AdapterPatch[] = [
+  {
+    id: 'claude-agent-acp-deny-message-parse',
+    pkg: '@agentclientprotocol/claude-agent-acp',
+    file: 'node_modules/@agentclientprotocol/claude-agent-acp/dist/permissions/effects.js',
+    anchor: `    const optionId = response.outcome.optionId;
+    const contextResetMode = toolName === "ExitPlanMode" ? exitPlanClearContextMode(optionId) : undefined;
+    return { optionId, ...(contextResetMode ? { contextResetMode } : {}) };`,
+    replacement: `    const optionId = response.outcome.optionId;
+    const denyMessage = typeof response.outcome._meta?.denyMessage === "string" && response.outcome._meta.denyMessage.trim() !== ""
+        ? response.outcome._meta.denyMessage.slice(0, 500)
+        : undefined;
+    const contextResetMode = toolName === "ExitPlanMode" ? exitPlanClearContextMode(optionId) : undefined;
+    return { optionId, ...(denyMessage ? { denyMessage } : {}), ...(contextResetMode ? { contextResetMode } : {}) };`,
+    marker: '...(denyMessage ? { denyMessage } : {})',
+    reason: '#92 delegated approvals: surface the gate deny reason to the model',
+  },
+  {
+    id: 'claude-agent-acp-deny-message-use',
+    pkg: '@agentclientprotocol/claude-agent-acp',
+    file: 'node_modules/@agentclientprotocol/claude-agent-acp/dist/permissions/effects.js',
+    anchor: `        case PERMISSION_OPTION_ID.reject:
+            return deny(context);`,
+    replacement: `        case PERMISSION_OPTION_ID.reject:
+            return deny(context, selection.denyMessage ?? "User refused permission to run tool");`,
+    marker: 'selection.denyMessage ??',
+    reason: '#92 delegated approvals: use the deny reason as the CC deny feedback',
+  },
+];
 
 export interface PatchOutcome {
   applied: string[];
