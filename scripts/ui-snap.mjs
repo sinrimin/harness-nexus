@@ -563,14 +563,14 @@ async function seed(token) {
   for (const p of [
     {
       name: 'Anthropic',
-      api: 'anthropic',
+      apis: [{ kind: 'anthropic', path: null }],
       baseUrl: 'https://api.anthropic.com',
       credentialName: 'anthropic-key',
       scope: 'global',
     },
     {
       name: 'OpenRouter',
-      api: 'openai-chat',
+      apis: [{ kind: 'openai-chat', path: null }],
       baseUrl: 'https://openrouter.ai/api/v1',
       credentialName: 'openrouter-key',
       scope: 'personal',
