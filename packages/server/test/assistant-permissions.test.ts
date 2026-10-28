@@ -121,11 +121,14 @@ describe('#79 — the class × mode decision table', () => {
   const cases: [AssistantToolClass, AssistantPermissionMode | undefined, boolean][] = [
     ['read', 'prompt', false],
     ['read', 'autoWrite', false],
+    ['read', 'delegated', false],
     ['write', 'prompt', true],
     ['write', 'autoWrite', false],
+    ['write', 'delegated', true], // #95 — the gate answers, the card still exists
     ['write', undefined, true], // absent config field = prompt (pre-#79 rows)
     ['meta', 'prompt', true],
     ['meta', 'autoWrite', true], // no silent tier for boundary-changing ops
+    ['meta', 'delegated', true],
   ];
   for (const [cls, mode, expected] of cases) {
     it(`${cls} × ${mode ?? '(absent)'} → ${expected ? 'approval' : 'silent'}`, () => {

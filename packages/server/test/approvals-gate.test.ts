@@ -99,9 +99,7 @@ async function setup(opts: {
       : {
           chatApprovals: {
             responder: (opts.responder ?? 'delegated') as 'manual' | 'delegated',
-            ...(opts.followDefault
-              ? {}
-              : { providerId: 'p92', modelId: 'decision-model-preview' }),
+            ...(opts.followDefault ? {} : { providerId: 'p92', modelId: 'decision-model-preview' }),
             confidenceThreshold: 0.9,
             neverAllow: opts.neverAllow ?? [],
             denyNote: opts.denyNote ?? true,
@@ -280,9 +278,18 @@ describe('delegated approvals gate (#92)', () => {
     });
     // and flipping it on live still works
     expect(await t.svc.setApprovals('u92', t.sessionId, 'delegated')).toEqual({ ok: true });
+    // the SERVER pushes the slice itself (old daemons never synthesize it)
+    const cfgEvents = channelEvents(t.channel, 'session_config').filter(
+      (e) => e.approvals !== undefined,
+    );
+    expect(cfgEvents.length).toBeGreaterThanOrEqual(2); // ready push + flip push
+    expect(cfgEvents.at(-1)!.approvals).toMatchObject({
+      responder: 'delegated',
+      modelId: 'decision-model-preview',
+    });
   });
 
-  it('#95 — with NOTHING resolvable the start payload omits approvals entirely', async () => {
+  it('#95 — with NOTHING resolvable the view is STILL advertised (manual, no model) so the switch stays discoverable', async () => {
     const t = await setup({ target: 'claude-code', followDefault: true, responder: 'manual' });
     await t.uow.users.save({
       id: 'u92',
@@ -299,8 +306,16 @@ describe('delegated approvals gate (#92)', () => {
     await t.svc.onReady('m92', { sessionId: reopened.sessionId });
     const starts = t.ctl.filter((c) => c.event === 'chat:session.start');
     const last = starts.at(-1)!;
-    expect((last.payload as { approvals?: unknown }).approvals).toBeUndefined();
-    expect(await t.svc.setApprovals('u92', (reopened as { sessionId: string }).sessionId, 'delegated')).toEqual({
+    // The sender renders the control from this view; the web disables the
+    // switch and points at the provider defaults because modelId is absent.
+    expect((last.payload as { approvals?: unknown }).approvals).toEqual({ responder: 'manual' });
+    const cfgEvents = channelEvents(t.channel, 'session_config').filter(
+      (e) => e.approvals !== undefined,
+    );
+    expect(cfgEvents.at(-1)!.approvals).toEqual({ responder: 'manual' });
+    expect(
+      await t.svc.setApprovals('u92', (reopened as { sessionId: string }).sessionId, 'delegated'),
+    ).toEqual({
       ok: false,
       code: 'CHAT_APPROVALS_NO_PROVIDER',
     });
@@ -309,7 +324,7 @@ describe('delegated approvals gate (#92)', () => {
   it('#95 — setApprovals offers delegated via the user default even with NO machine config', async () => {
     const t = await setup({ target: 'claude-code', followDefault: true, noMachineConfig: true });
     // default responder is manual (delegation is opt-in)…
-    expect((await t.svc.setApprovals('u92', t.sessionId, 'delegated'))).toEqual({ ok: true });
+    expect(await t.svc.setApprovals('u92', t.sessionId, 'delegated')).toEqual({ ok: true });
     const set = t.ctl.filter((c) => c.event === 'chat:approvals.set');
     expect(set).toHaveLength(1);
     expect((set[0]!.payload as { approvals: { modelId: string } }).approvals.modelId).toBe(

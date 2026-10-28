@@ -37,8 +37,13 @@ export type AssistantToolGroup =
  * surfaces the approval card per call; `'autoWrite'` runs them silently.
  * READ tools are silent in every mode; META tools prompt in every mode (no
  * silent tier exists for boundary-changing operations).
+ *
+ * #95 follow-up — `'delegated'` keeps the same prompt points but hands the
+ * answer to the owner's default decision model (#92's gate). Writes and META
+ * calls still surface through the seam; a decisive model verdict answers,
+ * anything uncertain falls back to the human card.
  */
-export type AssistantPermissionMode = 'prompt' | 'autoWrite';
+export type AssistantPermissionMode = 'prompt' | 'autoWrite' | 'delegated';
 
 /** One named assistant configuration — many per user, name unique per owner. */
 export interface AssistantConfig {

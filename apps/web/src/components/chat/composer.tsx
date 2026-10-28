@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: MIT
 
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { Link } from 'react-router-dom';
 import {
   ArrowUpIcon,
   BotIcon,
@@ -73,6 +74,10 @@ function PermissionsControl({
   const { t } = useI18n();
   const [open, setOpen] = useState(false);
   const delegated = approvals.responder === 'delegated';
+  // #95 — the axis is advertised even when no decision model resolves; the
+  // switch is then disabled and points at the provider defaults instead of
+  // hiding the capability entirely.
+  const delegateReady = approvals.modelId !== undefined;
   const modeName = modeChoices.find((c) => c.value === modeValue)?.name ?? modeValue;
   // Modes that rarely surface a permission request make delegated moot —
   // say so instead of enforcing anything (the axes stay orthogonal).
@@ -177,11 +182,19 @@ function PermissionsControl({
           </div>
           <Switch
             aria-label={t('chat.approvalsSwitchTitle')}
-            disabled={disabled}
+            disabled={disabled || !delegateReady}
             checked={delegated}
             onCheckedChange={onApprovalsToggle}
           />
         </div>
+        {!delegateReady ? (
+          <p className="text-muted-foreground border-t px-3 pb-2.5 pt-2 text-[11px] leading-snug">
+            {t('chat.approvalsNoModel')}{' '}
+            <Link to="/llm-providers" className="text-signal underline underline-offset-2">
+              {t('chat.approvalsConfigure')}
+            </Link>
+          </p>
+        ) : null}
       </PopoverContent>
     </Popover>
   );
@@ -725,7 +738,9 @@ export function Composer({
       ? t('assistants.permPrompt')
       : value === 'autoWrite'
         ? t('assistants.permAutoWrite')
-        : wire;
+        : value === 'delegated'
+          ? t('assistants.permDelegated')
+          : wire;
   const permChoices: SelectChoice[] =
     permOption?.options?.map((o) => ({
       value: o.value,
@@ -751,7 +766,7 @@ export function Composer({
   // `confirmMode` writes it through. #79 — the assistant's `autoWrite` policy
   // weakens the same gate, so it rides the same held-pick confirm.
   const [pendingMode, setPendingMode] = useState<{
-    kind: 'mode' | 'permission' | 'approvals';
+    kind: 'mode' | 'permission' | 'approvals' | 'perm-delegated';
     value: string;
     name: string;
   } | null>(null);
@@ -769,6 +784,12 @@ export function Composer({
       setPendingMode({ kind: 'permission', value, name: permName(value, value) });
       return;
     }
+    // #95 follow-up — handing answers to a decision model delegates the
+    // owner's authority; same designed confirm as the chat switch.
+    if (value === 'delegated' && permOption.currentValue !== 'delegated') {
+      setPendingMode({ kind: 'perm-delegated', value, name: permName(value, value) });
+      return;
+    }
     onConfigSet({ kind: 'option', configId: permOption.id, value });
   };
   const confirmMode = (): void => {
@@ -781,6 +802,10 @@ export function Composer({
       // #92 — enabling delegated approvals delegates the owner's answering
       // authority; the same designed confirm as a weakening mode pick.
       onApprovalsSet('delegated');
+    } else if (next.kind === 'perm-delegated') {
+      // #95 follow-up — the assistant's third write policy: same authority
+      // hand-off, expressed on the sender's permissionMode option.
+      onConfigSet({ kind: 'option', configId: 'permissionMode', value: next.value });
     } else {
       onConfigSet({ kind: 'option', configId: 'permissionMode', value: next.value });
     }
@@ -1150,7 +1175,9 @@ export function Composer({
               ? t('chat.modeConsequence', { name: pendingMode.name })
               : pendingMode.kind === 'approvals'
                 ? t('chat.approvalsConsequence')
-                : t('chat.permConsequence', { name: pendingMode.name })
+                : pendingMode.kind === 'perm-delegated'
+                  ? t('chat.permDelegatedConsequence')
+                  : t('chat.permConsequence', { name: pendingMode.name })
           }
           impact={[
             {

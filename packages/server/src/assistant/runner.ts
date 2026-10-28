@@ -167,13 +167,15 @@ export function startAssistantTurn(
     /**
      * M3 — the write-tool approval seam. Absent (tests, default) = writes run
      * ungated; the realtime layer supplies one that surfaces a
-     * `permission_request` card and resolves with the user's answer.
+     * `permission_request` card and resolves with the user's answer. #95
+     * follow-up — a delegated answer (decision model) may carry the denial
+     * reason the model should see; an empty answer keeps the human wording.
      */
     requestApproval?: (toolCall: {
       toolCallId: string;
       toolName: string;
       args: unknown;
-    }) => Promise<boolean>;
+    }) => Promise<{ allowed: boolean; reason?: string }>;
   },
 ): RunningTurn {
   const { session, config, emit } = input;
@@ -408,15 +410,15 @@ export function startAssistantTurn(
           ) &&
           input.requestApproval !== undefined
         ) {
-          const okToRun = await input.requestApproval({
+          const decision = await input.requestApproval({
             toolCallId: toolCall.id,
             toolName: toolCall.name,
             args,
           });
-          if (!okToRun) {
+          if (!decision.allowed) {
             return {
               block: true,
-              reason: 'the user declined this write operation',
+              reason: decision.reason ?? 'the user declined this write operation',
             };
           }
         }

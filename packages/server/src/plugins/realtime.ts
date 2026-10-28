@@ -206,6 +206,13 @@ export async function registerRealtime(
         allowlist: app.marketplaceAllowlist,
       },
       dispatch: assistantDispatch,
+      // #95 follow-up — the assistant's `permissionMode:'delegated'` rides
+      // the same decision gate as the machine chat axis (the user default is
+      // the whole resolution chain here; there is no machine).
+      approvals: {
+        timeoutMs: opts.chatApprovalsTimeoutMs,
+        log: app.log,
+      },
     },
     {
       toChannel: (sessionId, event, payload) => {

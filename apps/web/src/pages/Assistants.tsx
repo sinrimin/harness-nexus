@@ -82,7 +82,7 @@ interface Draft {
   providerId: string;
   defaultModel: string;
   systemPromptOverride: string;
-  permissionMode: 'prompt' | 'autoWrite';
+  permissionMode: 'prompt' | 'autoWrite' | 'delegated';
   enabledToolGroups: string[];
   mcpServerIds: string[];
   apiToolServiceIds: string[];
@@ -526,7 +526,8 @@ export function AssistantsPage() {
               onValueChange={(v) =>
                 setDraft((d) => ({
                   ...d,
-                  permissionMode: v === 'autoWrite' ? 'autoWrite' : 'prompt',
+                  permissionMode:
+                    v === 'autoWrite' ? 'autoWrite' : v === 'delegated' ? 'delegated' : 'prompt',
                 }))
               }
             >
@@ -536,6 +537,7 @@ export function AssistantsPage() {
               <SelectContent>
                 <SelectItem value="prompt">{t('assistants.permPrompt')}</SelectItem>
                 <SelectItem value="autoWrite">{t('assistants.permAutoWrite')}</SelectItem>
+                <SelectItem value="delegated">{t('assistants.permDelegated')}</SelectItem>
               </SelectContent>
             </Select>
           </Field>
