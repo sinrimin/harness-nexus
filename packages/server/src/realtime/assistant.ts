@@ -34,6 +34,7 @@ import {
   denyMessage,
   GATE_PROMPT_CHAR_CAP,
   GATE_PROMPT_WINDOW,
+  toolInputText,
 } from './approvals-gate.js';
 
 /**
@@ -799,7 +800,14 @@ export class AssistantRealtimeService {
         prompt,
         rows: rowsBefore,
         emit: (event) => this.emit(ch.sessionId, event),
-        requestApproval: this.makeApprovalSeam(ch, rowsBefore),
+        // The seam's prompt window must include THIS turn's prompt:
+        // rowsBefore was read before the append above, so without the
+        // synthesized row a first-message session handed the decision model
+        // an EMPTY userPrompts (the ds-web trial: nothing but a tool name).
+        requestApproval: this.makeApprovalSeam(ch, [
+          ...rowsBefore,
+          { seq: rowsBefore.length + 1, type: 'user', blocks: prompt },
+        ]),
         append: async (row: AssistantMessageRow) => {
           // #68 — allocate from the LIVE tail (a mid-turn note may have
           // claimed this seq since the turn started).
@@ -1118,7 +1126,14 @@ export class AssistantRealtimeService {
         target: 'assistant',
         recentPrompts,
         view,
-        toolCall: { title: toolCall.toolName },
+        toolCall: {
+          title: toolCall.toolName,
+          // #92 — the seam holds the full args; the gate bounds the text.
+          // Without it the `covered` question cannot be answered (the
+          // ds-web trial: a web_search call scored 0.16 with the query
+          // invisible to the decision model).
+          input: toolInputText(toolCall.args),
+        },
         options,
       },
     );

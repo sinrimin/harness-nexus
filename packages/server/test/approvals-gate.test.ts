@@ -32,7 +32,11 @@ interface FetchLog {
   url: string;
   body: {
     model: string;
-    state: { userPrompts: string[]; toolCall: { title: string }; options: unknown[] };
+    state: {
+      userPrompts: string[];
+      toolCall: { title: string; input?: string };
+      options: unknown[];
+    };
     questions: { pick: { criteria: Record<string, string> } };
   };
 }
@@ -191,7 +195,11 @@ async function setup(opts: {
   return { svc, uow, ctl, channel, fetchLog, sessionId: opened.sessionId };
 }
 
-const TOOL = { toolCallId: 'tc1', title: 'Bash(rm -rf /tmp/x)' };
+const TOOL = {
+  toolCallId: 'tc1',
+  title: 'Bash(rm -rf /tmp/x)',
+  rawInput: { command: 'rm -rf /tmp/x' },
+};
 const OPTIONS = [
   { optionId: 'yes-once', name: 'Yes', kind: 'allow_once' },
   { optionId: 'always', name: 'Always allow', kind: 'allow_always' },
@@ -244,6 +252,28 @@ describe('delegated approvals gate (#92)', () => {
       'no-once',
     ]);
     expect(t.fetchLog[0]!.body.model).toBe('decision-model-preview');
+    // #92 amendment — the arguments travel with the tool view (the `covered`
+    // question judges "tool and arguments"; the ds-web trial scored 0.16
+    // with the query invisible).
+    expect(t.fetchLog[0]!.body.state.toolCall.input).toBe('{"command":"rm -rf /tmp/x"}');
+  });
+
+  it('the never-allow floor also matches a pattern that only lives in the arguments', async () => {
+    const t = await setup({
+      target: 'claude-code',
+      neverAllow: ['grid.purge'],
+      answers: { pick: { choice: 'yes-once', confidence: 0.99 }, covered: { noul: 0.99 } },
+    });
+    await t.svc.onStream('m92', t.sessionId, {
+      kind: 'permission_request',
+      requestId: 'r1',
+      toolCall: { toolCallId: 'tc1', title: 'Run job', rawInput: { target: 'grid.purge --all' } },
+      options: OPTIONS,
+    });
+    await settle();
+    expect(t.fetchLog).toHaveLength(0); // the floor fired BEFORE the model
+    const resolved = channelEvents(t.channel, 'permission_resolved');
+    expect(resolved[0]!.decidedBy).toBe('floor');
   });
 
   it('#95 — follows the USER default decision model when the machine sets no override', async () => {

@@ -40,6 +40,26 @@ export interface ApprovalGateDeps {
 /** #92 — how many of the owner's own prompts the decision model may see. */
 export const GATE_PROMPT_WINDOW = 3;
 export const GATE_PROMPT_CHAR_CAP = 2_000;
+/** The tool arguments view carries the same per-field budget as a prompt. */
+export const GATE_TOOL_INPUT_CHAR_CAP = 2_000;
+
+/**
+ * Compact text for the tool's ARGUMENTS — the thing the `covered` question
+ * asks the model to judge ("tool and arguments"), which a bare tool name
+ * cannot answer (the ds-web report: a web-search call with the query hidden
+ * scored 0.16 because the model rightly could not verify coverage).
+ * Callers hand over the raw args/rawInput object; bounding happens in the
+ * gate so no call site can forget it.
+ */
+export function toolInputText(raw: unknown): string | undefined {
+  if (raw === undefined || raw === null) return undefined;
+  try {
+    const s = JSON.stringify(raw);
+    return s === undefined ? String(raw) : s;
+  } catch {
+    return String(raw);
+  }
+}
 
 export interface ApprovalGatePolicy {
   /** Machine-scoped never-allow substrings (the L3 floor). */
@@ -61,7 +81,12 @@ export interface ApprovalGateInput {
   policy?: ApprovalGatePolicy;
   /** The resolved decision model's display provenance. */
   view: ChatApprovalsView;
-  toolCall: { title?: string | undefined; kind?: string | undefined };
+  toolCall: {
+    title?: string | undefined;
+    kind?: string | undefined;
+    /** Compact arguments text (`toolInputText`); bounded inside the gate. */
+    input?: string | undefined;
+  };
   options: readonly { optionId: string; kind: string; name: string }[];
 }
 
@@ -160,10 +185,17 @@ export async function decideApproval(
 
   // 1 — the floor. Safety outranks stalling: it hard-denies on EVERY
   // target; the reason reaches the model where a channel exists, and via
-  // the correction note where it does not.
+  // the correction note where it does not. The pattern matches the title
+  // AND the arguments text — a `rm -rf`-shaped floor that only ever saw
+  // tool names could not fire on the one place the pattern lives.
   const title = input.toolCall.title ?? '';
+  const inputText =
+    input.toolCall.input === undefined
+      ? undefined
+      : input.toolCall.input.slice(0, GATE_TOOL_INPUT_CHAR_CAP);
+  const haystack = inputText === undefined ? title : `${title}\n${inputText}`;
   const hit = (policy?.neverAllow ?? []).find(
-    (p) => p !== '' && title.toLowerCase().includes(p.toLowerCase()),
+    (p) => p !== '' && haystack.toLowerCase().includes(p.toLowerCase()),
   );
   if (hit !== undefined) {
     const reject = pickRejectOption(input.options);
@@ -216,11 +248,17 @@ export async function decideApproval(
   const secret = decryptSecret(credential.secret, deps.credentialEncryptionKey);
 
   // 4 — the call. State = the user's own recent prompts + the bounded tool
-  // view + the eligible options (context hygiene: no file bodies, no tool
-  // outputs — the supervised agent cannot talk its way past).
+  // view (title, kind, and the bounded ARGUMENTS text — the `covered`
+  // question judges "tool and arguments", so the arguments travel along;
+  // outputs and file bodies still never do) + the eligible options
+  // (context hygiene: the supervised agent cannot talk its way past).
   const state = {
     userPrompts: [...input.recentPrompts],
-    toolCall: { title, kind: input.toolCall.kind ?? '' },
+    toolCall: {
+      title,
+      kind: input.toolCall.kind ?? '',
+      ...(inputText !== undefined ? { input: inputText } : {}),
+    },
     options: eligible.map((o) => ({ optionId: o.optionId, name: o.name, kind: o.kind })),
   };
   const questions = {

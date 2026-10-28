@@ -19,7 +19,12 @@ import type {
 } from '@harness-nexus/shared';
 import { generateId } from '../infra/crypto.js';
 import type { SystemOneFetch } from '../infra/systemone.js';
-import { decideApproval, GATE_PROMPT_CHAR_CAP, GATE_PROMPT_WINDOW } from './approvals-gate.js';
+import {
+  decideApproval,
+  GATE_PROMPT_CHAR_CAP,
+  GATE_PROMPT_WINDOW,
+  toolInputText,
+} from './approvals-gate.js';
 
 /**
  * Chat routing + gating (Phase 8 C5, reworked 9 W7). wiki design-phase-8-c5.md
@@ -1112,7 +1117,11 @@ export class ChatService {
   private async runApprovalsGate(
     session: LiveSession,
     requestId: string,
-    toolCall: { title?: string | undefined; kind?: string | undefined },
+    toolCall: {
+      title?: string | undefined;
+      kind?: string | undefined;
+      rawInput?: Record<string, unknown> | undefined;
+    },
     options: readonly { optionId: string; kind: string; name: string }[],
   ): Promise<void> {
     const gate = this.deps.approvals;
@@ -1151,7 +1160,13 @@ export class ChatService {
             }
           : {}),
         view: session.approvals,
-        toolCall,
+        toolCall: {
+          title: toolCall.title,
+          kind: toolCall.kind,
+          // #92 — the arguments the `covered` question judges; the daemon
+          // already bounds rawInput's fields, the gate bounds the text.
+          input: toolInputText(toolCall.rawInput),
+        },
         options,
       },
     );
