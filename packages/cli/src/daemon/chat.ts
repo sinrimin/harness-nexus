@@ -1135,6 +1135,13 @@ export function attachChatHandlers(
       return;
     }
     ack?.({ accepted: true });
+    // Send the cancel BEFORE settling the cards: the adapter's cancel path
+    // aborts its pending user inputs itself (the permission bridge races the
+    // abort signal), and it must still SEE them pending when it arms its
+    // force-cancel floor — answering first lets the CC SDK decode our
+    // 'cancelled' as a plain denial and keep grinding the turn (the reported
+    // "stop = deny, session keeps running").
+    void session.conn.request('session/cancel', {}, 5000).catch(() => {});
     // Settle every pending permission / elicitation card NOW: the adapter may
     // drop its outstanding requests when the turn aborts, and without this
     // the cards linger until the 75s backstop — with the turn dead they read
@@ -1151,8 +1158,6 @@ export function attachChatHandlers(
       session.conn.respondElicitation(pending.jsonrpcId, { action: 'cancel' });
       emitEvent(session, { kind: 'elicitation_resolved', requestId, outcome: 'cancelled' });
     }
-    // The pending session/prompt resolves as 'cancelled' → turn_result fires.
-    void session.conn.request('session/cancel', {}, 5000).catch(() => {});
   });
 
   // #92 — the server switched the live approvals responder; merge the view
@@ -1597,6 +1602,39 @@ function wireSession(
   const { conn } = session;
 
   conn.setNotificationHandler((method, params) => {
+    // The adapter cancels one of ITS requests (interrupt/teardown withdraws
+    // an open permission or elicitation). Map the raw jsonrpc id back to our
+    // card and settle it as cancelled, or it lingers until the 75s backstop.
+    if (method === '$/cancel_request') {
+      const id = (params as { id?: unknown }).id;
+      if (typeof id === 'number' || typeof id === 'string') {
+        for (const [requestId, pending] of session.permissions) {
+          if (pending.jsonrpcId === id) {
+            clearTimeout(pending.timer);
+            session.permissions.delete(requestId);
+            // The bridge already released locally (it races the abort); the
+            // reply only closes the wire request it is still holding open.
+            session.conn.respondPermission(id, { outcome: 'cancelled' });
+            emitEvent(session, {
+              kind: 'permission_resolved',
+              requestId,
+              outcome: 'cancelled',
+            });
+            return;
+          }
+        }
+        for (const [requestId, pending] of session.elicitations) {
+          if (pending.jsonrpcId === id) {
+            clearTimeout(pending.timer);
+            session.elicitations.delete(requestId);
+            session.conn.respondElicitation(id, { action: 'cancel' });
+            emitEvent(session, { kind: 'elicitation_resolved', requestId, outcome: 'cancelled' });
+            return;
+          }
+        }
+      }
+      return;
+    }
     if (method !== 'session/update') return;
     // #71 — native sub-agent frames route BEFORE the root handling: child
     // sessions must never fold into the main transcript.

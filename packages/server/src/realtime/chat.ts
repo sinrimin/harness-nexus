@@ -688,6 +688,25 @@ export class ChatService {
     const session = this.live.get(sessionId);
     if (!session || session.machineId !== machineId) return { ok: false };
 
+    // A daemon-side settlement (user answered in another viewer is impossible
+    // — answers route through us — but the daemon itself settles cards on
+    // cancel, backstop, and $/cancel_request). Clear our watchdog for the
+    // card or it later fires a phantom respond into the daemon (#B report:
+    // a cancelled card's timer answered a request that no longer existed).
+    if (event.kind === 'permission_resolved') {
+      const timer = session.permissionTimers.get(event.requestId);
+      if (timer !== undefined) {
+        clearTimeout(timer);
+        session.permissionTimers.delete(event.requestId);
+      }
+    } else if (event.kind === 'elicitation_resolved') {
+      const timer = session.elicitationTimers.get(event.requestId);
+      if (timer !== undefined) {
+        clearTimeout(timer);
+        session.elicitationTimers.delete(event.requestId);
+      }
+    }
+
     if (event.kind === 'permission_request') {
       const { requestId } = event;
       session.permissionTimers.set(
@@ -1031,11 +1050,6 @@ export class ChatService {
   }
 
   /**
-   * #92 — browser's `chat:approvals.set`: switch the LIVE session's responder
-   * (next-REQUEST effect). The server owns the truth; the daemon only
-   * re-synthesizes the session_config slice for the viewers.
-   */
-  /**
    * #92/#95 — push the approvals slice to the channel as a `session_config`
    * event straight from the SERVER. The daemon synthesizes the same slice
    * for its own viewers, but only #92-era+ daemons know the field — a
@@ -1051,6 +1065,11 @@ export class ChatService {
     });
   }
 
+  /**
+   * #92 — browser's `chat:approvals.set`: switch the LIVE session's responder
+   * (next-REQUEST effect). The server owns the truth; the daemon only
+   * re-synthesizes the session_config slice for the viewers.
+   */
   async setApprovals(
     ownerId: string,
     sessionId: string,
