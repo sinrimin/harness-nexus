@@ -60,6 +60,8 @@ async function setup(opts: {
   followDefault?: boolean;
   /** #95 — machine carries NO chatApprovals at all. */
   noMachineConfig?: boolean;
+  /** #95 — the machine row's responder default (harness defaults delegated). */
+  responder?: 'manual' | 'delegated';
 }): Promise<{
   svc: ChatService;
   uow: UnitOfWork;
@@ -96,7 +98,7 @@ async function setup(opts: {
       ? {}
       : {
           chatApprovals: {
-            responder: 'delegated' as const,
+            responder: (opts.responder ?? 'delegated') as 'manual' | 'delegated',
             ...(opts.followDefault
               ? {}
               : { providerId: 'p92', modelId: 'decision-model-preview' }),
@@ -263,6 +265,45 @@ describe('delegated approvals gate (#92)', () => {
     expect((resolved[0]!.delegated as { providerName: string }).providerName).toBe(
       'bailian-decision',
     );
+  });
+
+  it('#95 — a MANUAL machine with a user default ADVERTISES the switch (responder manual + provenance)', async () => {
+    const t = await setup({ target: 'claude-code', followDefault: true, responder: 'manual' });
+    const start = t.ctl.find((c) => c.event === 'chat:session.start');
+    expect(start).toBeDefined();
+    const approvals = (start!.payload as { approvals?: Record<string, unknown> }).approvals;
+    // advertised while MANUAL — the sender's switch renders from this view
+    expect(approvals).toMatchObject({
+      responder: 'manual',
+      modelId: 'decision-model-preview',
+      providerName: 'bailian-decision',
+    });
+    // and flipping it on live still works
+    expect(await t.svc.setApprovals('u92', t.sessionId, 'delegated')).toEqual({ ok: true });
+  });
+
+  it('#95 — with NOTHING resolvable the start payload omits approvals entirely', async () => {
+    const t = await setup({ target: 'claude-code', followDefault: true, responder: 'manual' });
+    await t.uow.users.save({
+      id: 'u92',
+      email: 'u92@x',
+      passwordHash: null,
+      role: 'user',
+      status: 'active',
+      createdAt: NOW,
+      updatedAt: NOW,
+    }); // clears the user default the harness seeded
+    const reopened = await t.svc.open('u92', 'a92', undefined, 'sock-2', undefined, undefined);
+    expect(reopened.ok).toBe(true);
+    if (!reopened.ok) throw new Error('open failed');
+    await t.svc.onReady('m92', { sessionId: reopened.sessionId });
+    const starts = t.ctl.filter((c) => c.event === 'chat:session.start');
+    const last = starts.at(-1)!;
+    expect((last.payload as { approvals?: unknown }).approvals).toBeUndefined();
+    expect(await t.svc.setApprovals('u92', (reopened as { sessionId: string }).sessionId, 'delegated')).toEqual({
+      ok: false,
+      code: 'CHAT_APPROVALS_NO_PROVIDER',
+    });
   });
 
   it('#95 — setApprovals offers delegated via the user default even with NO machine config', async () => {

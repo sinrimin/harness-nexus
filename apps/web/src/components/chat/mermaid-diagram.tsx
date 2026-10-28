@@ -165,6 +165,20 @@ function resolvePalette(el: HTMLElement): Palette {
   };
 }
 
+/**
+ * Mermaid appends a `.mermaidTooltip` div to <body> at render time, parked
+ * at ~100vh with a 6×6 box — inside the SPA it survives route changes and
+ * overflows the document (a global vertical scrollbar on every page). The
+ * diagrams are figures (`role="img"`); hover tooltips are not part of the
+ * contract, so prune the node and keep the base-CSS kill-switch for any
+ * node a later interaction re-creates.
+ */
+function pruneMermaidTooltip(): void {
+  document
+    .querySelectorAll('#mermaidTooltip, .mermaidTooltip')
+    .forEach((el) => el.remove());
+}
+
 /** Mermaid theme variables shared by every diagram family it renders. */
 function themeVariables(p: Palette): Record<string, string | boolean> {
   return {
@@ -283,12 +297,14 @@ export function MermaidDiagram({ code, fallback }: { code: string; fallback: Rea
     })();
     return () => {
       cancelled = true;
+      pruneMermaidTooltip();
     };
   }, [code, resolvedTheme, skin, manifest]);
 
   // Tooltip/click bindings attach to the committed SVG, not the markup string.
   useEffect(() => {
     if (svg !== null && bind !== null && svgHostRef.current) bind(svgHostRef.current);
+    if (svg !== null) pruneMermaidTooltip();
   }, [svg, bind]);
 
   if (failed) return <>{fallback}</>;

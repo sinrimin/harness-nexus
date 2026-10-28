@@ -903,3 +903,12 @@
 
 /* The copies that are still `ui/table` outside the kit (unchanged pages) keep
  * their own look; nothing here reaches them. */
+
+/* #93 — mermaid parks its hover-tooltip div on <body> at ~100vh; inside the
+ * SPA it survives route changes and overflows the document (a global
+ * vertical scrollbar on every page). Diagrams are figures — the tooltip
+ * never shows. (The component also prunes the node.) */
+.mermaidTooltip,
+#mermaidTooltip {
+  display: none;
+}

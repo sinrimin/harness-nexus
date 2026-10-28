@@ -442,8 +442,10 @@ export class ChatService {
       ...(modelOptions !== undefined ? { modelOptions } : {}),
       ...(defaultMode !== undefined ? { defaultMode } : {}),
       ...(prewarm ? { prewarm: true } : {}),
-      // #92 — the approvals view for the daemon's session_config synthesis.
-      ...(session.approvals.responder === 'delegated' ? { approvals: session.approvals } : {}),
+      // #92/#95 — the approvals view for the daemon's session_config
+      // synthesis. Advertised whenever a decision model RESOLVES (even
+      // manual) — the sender's switch renders from it.
+      ...(session.approvals.modelId !== undefined ? { approvals: session.approvals } : {}),
     });
     this.pushSnapshot(ownerId);
     return { ok: true, sessionId, joined: false, phase: 'starting', cwd };
@@ -1014,8 +1016,12 @@ export class ChatService {
 
   /**
    * #92 — the session's MACHINE-DEFAULT approvals view (open-time only):
-   * delegation stays opt-in, so a machine row without `responder:
-   * 'delegated'` opens manual even when a user default exists.
+   * delegation stays opt-in, so the responder follows the machine row. #95 —
+   * the view also carries the RESOLVED model's provenance when one exists
+   * (machine override or user default), even while manual: the sender's
+   * switch is rendered from it, so a user default alone makes the live
+   * toggle discoverable instead of unreachable (the chicken-and-egg of a
+   * manual machine that never advertised the capability).
    */
   private async resolveApprovalsView(
     ownerId: string,
@@ -1028,11 +1034,9 @@ export class ChatService {
     },
   ): Promise<ChatApprovalsView> {
     const cfg = machine.chatApprovals;
-    if (cfg === undefined || cfg.responder !== 'delegated') return { responder: 'manual' };
     const resolved = await this.resolveDecisionModel(ownerId, machine);
-    return resolved === null
-      ? { responder: 'manual' }
-      : { responder: 'delegated', ...resolved };
+    if (resolved === null) return { responder: 'manual' };
+    return { responder: cfg?.responder === 'delegated' ? 'delegated' : 'manual', ...resolved };
   }
 
   /**
