@@ -96,6 +96,13 @@ interface SwitchRaceBuffer {
   failed?: ChatSessionFailedPush;
   closed?: ChatSessionClosedPush;
   history?: ChatHistoryEvent['items'];
+  /**
+   * #92/#95 — `session_config` patches (approvals / modes / configOptions)
+   * pushed during the open ack, before the keyed listener attaches. An
+   * ARRAY: a patch carries only its own fields, so replaying just the latest
+   * would drop an earlier modes/configOptions slice.
+   */
+  configs?: ChatEventEnvelope['event'][];
 }
 
 /** Rail data: the daemon-routed listing or the gate that blocked it. */
@@ -567,15 +574,27 @@ export function AgentSessionPage() {
     const onHistory = (push: ChatHistoryEvent): void => {
       entry(push.sessionId).history = push.items;
     };
+    // #95 — the SERVER's approvals `session_config` (and any daemon config
+    // patch) can land inside the open ack, before the keyed listener exists.
+    // Buffer the patches, not just the latest: each carries its own fields.
+    const onEvent = (envelope: ChatEventEnvelope): void => {
+      if (envelope.event.kind !== 'session_config') return;
+      const e = entry(envelope.sessionId);
+      e.configs ??= [];
+      e.configs.push(envelope.event);
+      if (e.configs.length > 8) e.configs.shift();
+    };
     socket.on('chat:session.ready', onReady);
     socket.on('chat:session.failed', onFailed);
     socket.on('chat:session.closed', onClosed);
     socket.on('chat:history', onHistory);
+    socket.on('chat:event', onEvent);
     return () => {
       socket.off('chat:session.ready', onReady);
       socket.off('chat:session.failed', onFailed);
       socket.off('chat:session.closed', onClosed);
       socket.off('chat:history', onHistory);
+      socket.off('chat:event', onEvent);
     };
   }, []);
 
@@ -688,6 +707,11 @@ export function AgentSessionPage() {
     if (buffered === undefined) return;
     switchBufferRef.current.delete(sessionId);
     if (buffered.history !== undefined) dispatch({ type: 'history', items: buffered.history });
+    // #95 — replay the config patches caught before the keyed listener
+    // attached (the server's approvals push is the first one on every open).
+    if (buffered.configs !== undefined) {
+      for (const event of buffered.configs) dispatch({ type: 'event', event });
+    }
     if (buffered.ready !== undefined) {
       setPhase('ready');
       if (buffered.ready.nativeSessionId !== undefined) {

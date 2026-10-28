@@ -315,3 +315,33 @@ describe('native sub-agent rows (#71)', () => {
     ).toBe(true);
   });
 });
+
+describe('fold history ingestion (#95: session config survives a row rebuild)', () => {
+  it('keeps the server approvals slice when a pre-#92 daemon batch re-emits config without it', () => {
+    const approvals = {
+      responder: 'manual' as const,
+      providerName: 'bailian-decision',
+      modelId: 'decision-model-preview',
+    };
+    let state = fold(createFoldState(), {
+      type: 'event',
+      event: { kind: 'session_config', approvals },
+    });
+    // Reattach: the server pushed approvals, then the daemon's resync batch
+    // re-emitted its own modes/configOptions — but an alpha.8 daemon never
+    // carries approvals, and history starts from a fresh row state.
+    state = fold(state, {
+      type: 'history',
+      items: [
+        { type: 'user', blocks: [{ type: 'text', text: 'Q0' }] },
+        {
+          type: 'event',
+          event: { kind: 'session_config', modes: { currentModeId: 'auto' } },
+        },
+        { type: 'event', event: { kind: 'message_delta', delta: 'reply' } },
+      ],
+    });
+    expect(state.config.approvals).toMatchObject(approvals);
+    expect(state.config.currentModeId).toBe('auto');
+  });
+});

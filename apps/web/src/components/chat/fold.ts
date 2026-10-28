@@ -690,10 +690,16 @@ export function fold(state: FoldState, action: FoldAction): FoldState {
       return applyEvent(state, action.event);
 
     case 'history': {
-      // 9 W7 — (re)build from a transcript batch. Idempotent by construction:
-      // a resync re-ingest starts from a FRESH state, so every viewer ends up
-      // with the same rows regardless of what they saw before.
-      let next = createFoldState();
+      // 9 W7 — (re)build the ROWS from a transcript batch. Idempotent by
+      // construction: a resync re-ingest starts from a FRESH row state, so
+      // every viewer ends up with the same rows regardless of what they saw
+      // before. The session CONFIG is not transcript state: a pre-#92 daemon
+      // re-emits modes/options but never approvals, and the server's
+      // approvals push is not in the daemon's history ring — carrying it
+      // across the rebuild keeps the sender's switch from vanishing on the
+      // resync that follows every open. The batch's own session_config
+      // snapshots still merge on top.
+      let next = { ...createFoldState(), config: state.config };
       for (const item of action.items) {
         if (item.type === 'user') {
           // A user item is a turn BOUNDARY (#8): close whatever step is open
