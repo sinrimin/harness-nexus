@@ -103,7 +103,13 @@ export function providerEndpointUrl(
     '',
   );
   if (base === '') return null;
-  return base + (path === null || path === '' ? PROVIDER_DEFAULT_PATHS[kind] : path);
+  const effective = path === null || path === '' ? PROVIDER_DEFAULT_PATHS[kind] : path;
+  // A baseUrl that already ENDS with the effective path is the whole
+  // endpoint, not a base: dashboards hand out full URLs (Bailian's dedicated
+  // `…/compatible-mode/v1/systemone` gets pasted verbatim — appending the
+  // default again produced `…/systemone/systemone` and a provider 400).
+  if (effective !== '' && base.endsWith(effective)) return base;
+  return base + effective;
 }
 
 /**

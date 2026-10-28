@@ -9,6 +9,7 @@ import {
   PROVIDER_API_SUPPORT,
   providerApiKindSchema,
   providerApiToSpecApi,
+  providerEndpointUrl,
   providerModelsQuerySchema,
   providerModelsUrls,
   providerModelsResultSchema,
@@ -118,6 +119,41 @@ describe('providerModelsUrls', () => {
     expect(providerModelsUrls('openai-chat', 'https://api.openai.com/v1///')).toEqual([
       'https://api.openai.com/v1/models',
     ]);
+  });
+});
+
+describe('providerEndpointUrl', () => {
+  it('appends the default path to a plain base', () => {
+    expect(providerEndpointUrl('systemone', { baseUrl: 'https://gw.example.com' })).toBe(
+      'https://gw.example.com/systemone',
+    );
+    expect(providerEndpointUrl('openai-chat', { baseUrl: 'https://gw.example.com/v1' })).toBe(
+      'https://gw.example.com/v1/chat/completions',
+    );
+  });
+
+  it('treats a baseUrl that already ends with the effective path as the whole endpoint', () => {
+    // The deployed report: Bailian's dedicated endpoint pasted verbatim got
+    // the default appended again (`…/systemone/systemone` → provider 400).
+    expect(
+      providerEndpointUrl('systemone', {
+        baseUrl: 'https://llm-x.maas.aliyuncs.com/compatible-mode/v1/systemone',
+      }),
+    ).toBe('https://llm-x.maas.aliyuncs.com/compatible-mode/v1/systemone');
+  });
+
+  it('dedupes an explicit path the base already carries, and keeps full-URL paths', () => {
+    expect(providerEndpointUrl('openai-chat', { baseUrl: 'https://gw.example.com/v1', path: '/v1' })).toBe(
+      'https://gw.example.com/v1',
+    );
+    expect(providerEndpointUrl('anthropic', { path: 'https://proxy.example.com/messages' })).toBe(
+      'https://proxy.example.com/messages',
+    );
+  });
+
+  it('returns null only for systemone without a base', () => {
+    expect(providerEndpointUrl('systemone', {})).toBeNull();
+    expect(providerEndpointUrl('openai-chat', {})).toBe('https://api.openai.com/v1/chat/completions');
   });
 });
 
