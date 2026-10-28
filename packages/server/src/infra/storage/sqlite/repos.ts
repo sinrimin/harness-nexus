@@ -1348,7 +1348,12 @@ function mapAssistantConfig(r: AssistantConfigRow): AssistantConfig {
     ...(r.system_prompt_override !== null
       ? { systemPromptOverride: r.system_prompt_override }
       : {}),
-    permissionMode: r.permission_mode === 'autoWrite' ? 'autoWrite' : 'prompt',
+    permissionMode:
+      r.permission_mode === 'autoWrite'
+        ? 'autoWrite'
+        : r.permission_mode === 'delegated'
+          ? 'delegated'
+          : 'prompt',
     apiToolServiceIds:
       r.api_tool_service_ids === null ? [] : (JSON.parse(r.api_tool_service_ids) as string[]),
     enabledToolGroups: JSON.parse(r.enabled_tool_groups) as AssistantConfig['enabledToolGroups'],
@@ -1463,9 +1468,13 @@ function mapAssistantSession(r: AssistantSessionRow): AssistantSession {
     updatedAt: r.updated_at,
     lastMessageAt: r.last_message_at,
     permissionMode:
-      r.permission_mode === 'prompt' || r.permission_mode === 'autoWrite'
-        ? r.permission_mode
-        : undefined,
+      r.permission_mode === 'prompt'
+        ? 'prompt'
+        : r.permission_mode === 'autoWrite'
+          ? 'autoWrite'
+          : r.permission_mode === 'delegated'
+            ? 'delegated'
+            : undefined,
   };
 }
 

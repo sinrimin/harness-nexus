@@ -215,6 +215,51 @@ describe('#79 — write policy through a live turn', () => {
     expect((await h.uow.assistants.findById(legacy.id))?.permissionMode).toBeUndefined();
   });
 
+  it('#95 — sqlite round-trips the delegated write policy (config + session)', async (ctx) => {
+    let uow: ReturnType<typeof createSqliteUnitOfWork>;
+    try {
+      uow = createSqliteUnitOfWork(':memory:');
+    } catch {
+      return ctx.skip('better-sqlite3 native binding unavailable for this Node major');
+    }
+    await uow.users.save({
+      id: 'u-del',
+      username: 'delegated',
+      email: null,
+      passwordHash: null,
+      role: 'user',
+      status: 'active',
+      createdAt: now,
+      updatedAt: now,
+    });
+    await uow.assistants.save({
+      id: 'asst-del',
+      ownerId: 'u-del',
+      name: 'Delegated',
+      providerId: 'prov-1',
+      defaultModel: 'gw-large',
+      permissionMode: 'delegated',
+      enabledToolGroups: [],
+      mcpServerIds: [],
+      skillResourceIds: [],
+      apiToolServiceIds: [],
+      createdAt: now,
+      updatedAt: now,
+    });
+    expect((await uow.assistants.findById('asst-del'))?.permissionMode).toBe('delegated');
+    await uow.assistants.saveSession({
+      id: 'sess-del',
+      ownerId: 'u-del',
+      assistantId: 'asst-del',
+      title: '',
+      createdAt: now,
+      updatedAt: now,
+      lastMessageAt: null,
+      permissionMode: 'delegated',
+    });
+    expect((await uow.assistants.findSessionById('sess-del'))?.permissionMode).toBe('delegated');
+  });
+
   it('#80 — a configured API tool joins the turn as api__<service>__<tool>, class from method', async () => {
     const h = await setup();
     // A REAL loopback upstream (internal-flagged allowlist entry) — the full
