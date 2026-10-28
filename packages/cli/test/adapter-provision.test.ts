@@ -173,9 +173,7 @@ describe('applyAdapterPatches (issue #2)', () => {
       join(store, CLAUDE_ACP_AGENT_0930.split('**FILE**')[0]!.trim()),
       'utf8',
     );
-    expect(agent).toContain(
-      '(session.openUserInputs?.size ?? 0) > 0 ? 1500 : this.forceCancelGraceMs',
-    );
+    expect(agent).toContain('(session.openUserInputs?.size ?? 0) > 0 ? 1500 : 5000');
     const again = applyAdapterPatches(store);
     expect(again.already).toHaveLength(3);
     expect(again.applied).toEqual([]);
@@ -185,7 +183,7 @@ describe('applyAdapterPatches (issue #2)', () => {
     expect(ADAPTER_PATCHES.map((p) => p.id)).toEqual([
       'claude-agent-acp-deny-message-parse',
       'claude-agent-acp-deny-message-use',
-      'claude-agent-acp-cancel-floor-open-inputs',
+      'claude-agent-acp-cancel-floor',
     ]);
   });
 });

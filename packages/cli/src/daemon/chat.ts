@@ -137,6 +137,20 @@ interface DaemonSession {
   startedAt: number;
   conn: AgentConnection;
   busy: boolean;
+  /**
+   * #stop-during-execution — the ACP interrupt cannot kill a tool that is
+   * already running (the subprocess finishes on its own), and the adapter
+   * only force-settles some turn shapes. After a cancel, if the turn is
+   * still busy once the grace elapses, the daemon declares it cancelled for
+   * every viewer (`turn_result`), drops the orphan turn's further updates,
+   * and skips the eventual natural result. Cleared when the next turn
+   * starts.
+   */
+  cancelForce?: { gen: number; timer: NodeJS.Timeout } | undefined;
+  /** Generation counter — arms the force-settle against THIS turn only. */
+  turnGen: number;
+  /** True between the local force-settle and the next prompt: drop updates. */
+  locallyCancelled?: boolean;
   /** In-flight permission requests by our wire requestId. */
   permissions: Map<string, { jsonrpcId: JsonRpcId; timer: NodeJS.Timeout }>;
   /** 9 W14.1 — in-flight `elicitation/create` requests, same shape. */
@@ -454,6 +468,8 @@ export function attachChatHandlers(
     sessions.delete(session.sessionId);
     session.tail?.stop();
     session.tap?.close();
+    clearTimeout(session.cancelForce?.timer);
+    session.cancelForce = undefined;
     for (const [, p] of session.permissions) clearTimeout(p.timer);
     session.permissions.clear();
     for (const [, e] of session.elicitations) clearTimeout(e.timer);
@@ -960,6 +976,7 @@ export function attachChatHandlers(
           startedAt: ledgerStartedAt,
           conn,
           busy: false,
+          turnGen: 0,
           permissions: new Map(),
           elicitations: new Map(),
           config:
@@ -1142,6 +1159,31 @@ export function attachChatHandlers(
     // 'cancelled' as a plain denial and keep grinding the turn (the reported
     // "stop = deny, session keeps running").
     void session.conn.request('session/cancel', {}, 5000).catch(() => {});
+    // #stop-during-execution — a tool that is ALREADY running survives the
+    // ACP interrupt (the subprocess finishes on its own) and the adapter's
+    // force-settle does not reach every turn shape: the re-test had a long
+    // command run to natural completion 20s+ after Stop. Grace for the
+    // honest settle paths first, then the daemon declares the turn
+    // cancelled for every viewer and drops the orphan's further updates.
+    if (session.busy) {
+      const gen = session.turnGen;
+      clearTimeout(session.cancelForce?.timer);
+      session.cancelForce = {
+        gen,
+        timer: setTimeout(() => {
+          if (!session.busy || session.turnGen !== gen || session.cancelForce === undefined) {
+            return;
+          }
+          // Viewers see the turn end NOW; the session stays BUSY (no idle
+          // emit) so the server PARKS the next prompt instead of racing the
+          // orphan — the finally below emits idle when the orphan settles
+          // and the queue flushes onto a clean turn.
+          session.locallyCancelled = true;
+          session.cancelForce = undefined;
+          emitEvent(session, { kind: 'turn_result', stopReason: 'cancelled' });
+        }, 6000),
+      };
+    }
     // Settle every pending permission / elicitation card NOW: the adapter may
     // drop its outstanding requests when the turn aborts, and without this
     // the cards linger until the 75s backstop — with the turn dead they read
@@ -1602,6 +1644,10 @@ function wireSession(
   const { conn } = session;
 
   conn.setNotificationHandler((method, params) => {
+    // #stop-during-execution — after the daemon force-settled a cancelled
+    // turn, the orphan's streamed updates would open post-turn bubbles;
+    // drop them until the next prompt clears the flag.
+    if (session.locallyCancelled && method === 'session/update') return;
     // The adapter cancels one of ITS requests (interrupt/teardown withdraws
     // an open permission or elicitation). Map the raw jsonrpc id back to our
     // card and settle it as cancelled, or it lingers until the 75s backstop.
@@ -1757,6 +1803,11 @@ async function runPrompt(
 ): Promise<void> {
   const promptStartedAt = Date.now();
   session.busy = true;
+  const gen = session.turnGen + 1;
+  session.turnGen = gen;
+  session.locallyCancelled = false;
+  clearTimeout(session.cancelForce?.timer);
+  session.cancelForce = undefined;
   emitEvent(session, { kind: 'session_status', state: 'active' });
   try {
     // No client-side timeout: a turn can legitimately run for minutes; the
@@ -1805,12 +1856,19 @@ async function runPrompt(
         await new Promise((r) => setTimeout(r, 25));
       }
     }
+    if (session.locallyCancelled && session.turnGen === gen) {
+      // The daemon already declared this turn cancelled (force-settle after
+      // a stop the adapter could not honor); the orphan's natural result is
+      // redundant — swallow it.
+      return;
+    }
     emitEvent(session, {
       kind: 'turn_result',
       stopReason,
       ...(turnUsage !== null && hasTokenCounts(turnUsage) ? { usage: turnUsage } : {}),
     });
   } catch (e) {
+    if (session.locallyCancelled && session.turnGen === gen) return;
     // A rejected prompt is a TURN error (adapters answer protocol failures —
     // "Authentication required", upstream API errors — through JSON-RPC
     // errors while staying alive), not a dead subprocess. Real process death
@@ -1824,6 +1882,13 @@ async function runPrompt(
     emitEvent(session, { kind: 'turn_result', stopReason: 'end_turn' });
   } finally {
     session.busy = false;
+    // The `as` sheds the head assignment's `undefined` narrowing — the
+    // cancel handler may have armed a NEW force between then and now.
+    const force = session.cancelForce as { gen: number; timer: NodeJS.Timeout } | undefined;
+    if (force !== undefined && force.gen === gen) session.cancelForce = undefined;
+    // ALWAYS idle here: when the force-settle parked the next prompt
+    // server-side, this transition is the flush hook (#10).
+    if (session.turnGen === gen) session.locallyCancelled = false;
     emitEvent(session, { kind: 'session_status', state: 'idle' });
   }
 }

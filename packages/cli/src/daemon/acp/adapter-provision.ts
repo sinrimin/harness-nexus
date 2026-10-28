@@ -86,21 +86,22 @@ export const ADAPTER_PATCHES: readonly AdapterPatch[] = [
     reason: '#92 delegated approvals: use the deny reason as the CC deny feedback',
   },
   {
-    // Stop-during-permission: the interrupt already released the pending
-    // tool call at a permission boundary, but the CC SDK continues the turn
-    // (the abort reads to the model as a failed tool, and it keeps working).
-    // The 30s force-cancel floor exists for a WEDGED consumer; with user
-    // inputs open at cancel time the turn is at a boundary, so settle it
-    // within 1.5s instead — "stop" must read as stopped, not as one denial.
-    id: 'claude-agent-acp-cancel-floor-open-inputs',
+    // Stop must read as stopped. Two observed gaps against the 30s
+    // force-cancel floor (which exists for a WEDGED consumer): (a) cancel
+    // while a permission/elicitation is pending — the turn sits at a
+    // permission boundary, settle in 1.5s; (b) cancel while a tool is
+    // EXECUTING with nothing pending (the video-extraction re-test: long
+    // ffmpeg-class commands) — the trailing reaction turn is exactly what
+    // the user asked to cut, settle within 5s.
+    id: 'claude-agent-acp-cancel-floor',
     pkg: '@agentclientprotocol/claude-agent-acp',
     file: 'node_modules/@agentclientprotocol/claude-agent-acp/dist/acp-agent.js',
     anchor: `                cancelController.abort();
             }, this.forceCancelGraceMs);`,
     replacement: `                cancelController.abort();
-            }, (session.openUserInputs?.size ?? 0) > 0 ? 1500 : this.forceCancelGraceMs);`,
-    marker: '> 0 ? 1500 : this.forceCancelGraceMs',
-    reason: 'stop-during-permission settles the turn at once instead of the 30s wedged floor',
+            }, (session.openUserInputs?.size ?? 0) > 0 ? 1500 : 5000);`,
+    marker: '> 0 ? 1500 : 5000',
+    reason: 'user stop settles the turn in 1.5s (permission pending) / 5s (executing), not the 30s wedged floor',
   },
 ];
 
