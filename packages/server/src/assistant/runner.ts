@@ -175,6 +175,8 @@ export function startAssistantTurn(
       toolCallId: string;
       toolName: string;
       args: unknown;
+      /** The tool's own description — the #92 decision-model view. */
+      description?: string | undefined;
     }) => Promise<{ allowed: boolean; reason?: string }>;
   },
 ): RunningTurn {
@@ -365,6 +367,9 @@ export function startAssistantTurn(
     // The gate is the turn's ACTUAL toolset (static groups + dynamic MCP
     // names + read_skill) — belt-and-braces against rebind races.
     const allowed = new Set(tools.map((t) => t.name));
+    // #92 — the decision-model view: each tool's own description (the same
+    // text the model sees), so an `api__x__y` name need not speak for itself.
+    const descriptionOf = new Map(tools.map((t) => [t.name, t.description]));
 
     // #69 — ground truth at turn start: which of this session's dispatch
     // handles are still live. Appended AFTER the extras addendum and to
@@ -414,6 +419,7 @@ export function startAssistantTurn(
             toolCallId: toolCall.id,
             toolName: toolCall.name,
             args,
+            description: descriptionOf.get(toolCall.name),
           });
           if (!decision.allowed) {
             return {

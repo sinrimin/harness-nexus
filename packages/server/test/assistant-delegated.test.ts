@@ -212,12 +212,17 @@ describe('#95 — assistant delegated write policy', () => {
     // The gate saw the user's prompt and the one-shot options only.
     expect(h.fetchLog).toHaveLength(1);
     // #92 amendment — the seam's args travel as toolCall.input (the ds-web
-    // trial: a web_search scored 0.16 with the query invisible), and the
-    // user's own prompt rides along.
+    // trial: a web_search scored 0.16 with the query invisible), the tool's
+    // own description rides along, and the user's own prompt is in the
+    // window (the rowsBefore fix).
     const sent = h.fetchLog[0] as {
-      state: { toolCall: { title: string; input?: string }; userPrompts: string[] };
+      state: {
+        toolCall: { title: string; input?: string; description?: string };
+        userPrompts: string[];
+      };
     };
     expect(sent.state.toolCall.input).toContain('skill:delegated');
+    expect(sent.state.toolCall.description).toContain('Create a resource');
     expect(sent.state.userPrompts).toContain('make a skill');
     const list = await h.uow.resources.list({ scope: 'personal', ownerId: owner.userId });
     expect(list.some((r) => r.key === 'skill:delegated')).toBe(true);

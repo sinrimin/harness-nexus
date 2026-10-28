@@ -1105,7 +1105,7 @@ export class AssistantRealtimeService {
   private async runDelegatedAnswer(
     ch: LiveChannel,
     requestId: string,
-    toolCall: { toolCallId: string; toolName: string; args: unknown },
+    toolCall: { toolCallId: string; toolName: string; args: unknown; description?: string | undefined },
     options: readonly { optionId: string; name: string; kind: string }[],
     recentPrompts: readonly string[],
   ): Promise<void> {
@@ -1133,6 +1133,9 @@ export class AssistantRealtimeService {
           // ds-web trial: a web_search call scored 0.16 with the query
           // invisible to the decision model).
           input: toolInputText(toolCall.args),
+          // The tool's own description — an `api__x__y` name alone may not
+          // tell the model what the call does.
+          description: toolCall.description,
         },
         options,
       },

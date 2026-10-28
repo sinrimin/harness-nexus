@@ -42,6 +42,8 @@ export const GATE_PROMPT_WINDOW = 3;
 export const GATE_PROMPT_CHAR_CAP = 2_000;
 /** The tool arguments view carries the same per-field budget as a prompt. */
 export const GATE_TOOL_INPUT_CHAR_CAP = 2_000;
+/** The tool's own description is platform-authored and short. */
+export const GATE_TOOL_DESC_CHAR_CAP = 1_000;
 
 /**
  * Compact text for the tool's ARGUMENTS — the thing the `covered` question
@@ -86,6 +88,8 @@ export interface ApprovalGateInput {
     kind?: string | undefined;
     /** Compact arguments text (`toolInputText`); bounded inside the gate. */
     input?: string | undefined;
+    /** The tool's own description (assistant axis; bounded inside the gate). */
+    description?: string | undefined;
   };
   options: readonly { optionId: string; kind: string; name: string }[];
 }
@@ -193,6 +197,10 @@ export async function decideApproval(
     input.toolCall.input === undefined
       ? undefined
       : input.toolCall.input.slice(0, GATE_TOOL_INPUT_CHAR_CAP);
+  const descText =
+    input.toolCall.description === undefined || input.toolCall.description === ''
+      ? undefined
+      : input.toolCall.description.slice(0, GATE_TOOL_DESC_CHAR_CAP);
   const haystack = inputText === undefined ? title : `${title}\n${inputText}`;
   const hit = (policy?.neverAllow ?? []).find(
     (p) => p !== '' && haystack.toLowerCase().includes(p.toLowerCase()),
@@ -248,16 +256,18 @@ export async function decideApproval(
   const secret = decryptSecret(credential.secret, deps.credentialEncryptionKey);
 
   // 4 — the call. State = the user's own recent prompts + the bounded tool
-  // view (title, kind, and the bounded ARGUMENTS text — the `covered`
-  // question judges "tool and arguments", so the arguments travel along;
-  // outputs and file bodies still never do) + the eligible options
-  // (context hygiene: the supervised agent cannot talk its way past).
+  // view (title, kind, the bounded ARGUMENTS text, and where the axis has
+  // it the tool's own description — the `covered` question judges "tool and
+  // arguments", so the arguments travel along; outputs and file bodies
+  // still never do) + the eligible options (context hygiene: the supervised
+  // agent cannot talk its way past).
   const state = {
     userPrompts: [...input.recentPrompts],
     toolCall: {
       title,
       kind: input.toolCall.kind ?? '',
       ...(inputText !== undefined ? { input: inputText } : {}),
+      ...(descText !== undefined ? { description: descText } : {}),
     },
     options: eligible.map((o) => ({ optionId: o.optionId, name: o.name, kind: o.kind })),
   };
