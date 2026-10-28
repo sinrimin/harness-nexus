@@ -48,10 +48,7 @@ function v31Db(): import('better-sqlite3').Database {
   return db;
 }
 
-function seedProvider(
-  db: import('better-sqlite3').Database,
-  row: Record<string, unknown>,
-): void {
+function seedProvider(db: import('better-sqlite3').Database, row: Record<string, unknown>): void {
   db.prepare(
     `INSERT INTO llm_providers (id, name, api, base_url, credential_name, scope, owner_id, models, created_at, updated_at)
      VALUES (@id, @name, @api, @base_url, @credential_name, @scope, @owner_id, @models, @created_at, @updated_at)`,
@@ -134,9 +131,11 @@ describe('migration v32 — providers speak several wires (#95)', () => {
     expect(JSON.parse(official.models)).toEqual([]);
 
     // the dead `api` column is gone; users gained default_models (NULL).
-    const providerCols = (db.prepare('PRAGMA table_info(llm_providers)').all() as {
-      name: string;
-    }[]).map((c) => c.name);
+    const providerCols = (
+      db.prepare('PRAGMA table_info(llm_providers)').all() as {
+        name: string;
+      }[]
+    ).map((c) => c.name);
     expect(providerCols).not.toContain('api');
     expect(providerCols).toContain('apis');
     const user = db.prepare('SELECT default_models FROM users WHERE id = ?').get('u1') as {

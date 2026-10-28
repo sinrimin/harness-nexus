@@ -137,7 +137,11 @@ export async function setUserDefaultModels(
     const ref = next[slot];
     if (ref === undefined) continue;
     if (slot === 'rerank') {
-      throw new AppError('The rerank slot is reserved — no rerank wire exists yet', 400, 'DEFAULT_MODELS_RERANK_RESERVED');
+      throw new AppError(
+        'The rerank slot is reserved — no rerank wire exists yet',
+        400,
+        'DEFAULT_MODELS_RERANK_RESERVED',
+      );
     }
     const provider = await deps.uow.llmProviders.findById(ref.providerId);
     if (!provider || !(provider.scope === 'global' || provider.ownerId === principal.userId)) {
