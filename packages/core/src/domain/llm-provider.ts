@@ -21,11 +21,7 @@
  * `openai-embedding` replaces the old reserved `type: 'embedding'`.
  */
 export type LlmProviderApi =
-  | 'openai-chat'
-  | 'openai-responses'
-  | 'anthropic'
-  | 'systemone'
-  | 'openai-embedding';
+  'openai-chat' | 'openai-responses' | 'anthropic' | 'systemone' | 'openai-embedding';
 
 /**
  * #95 — one enabled protocol on a provider. `path` overrides the kind's

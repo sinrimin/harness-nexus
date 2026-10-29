@@ -204,7 +204,12 @@ describe('credential scoping (#21)', () => {
       method: 'POST',
       url: '/api/llm-providers',
       headers: { authorization: `Bearer ${bobJwt}` },
-      payload: { name: 'stealer', apis: [{ kind: 'openai-chat', path: null }], credentialName: 'corp', scope: 'personal' },
+      payload: {
+        name: 'stealer',
+        apis: [{ kind: 'openai-chat', path: null }],
+        credentialName: 'corp',
+        scope: 'personal',
+      },
     });
     expect(create.statusCode).toBe(403);
     expect(create.json().error).toBe('CREDENTIAL_NOT_DISTRIBUTABLE');

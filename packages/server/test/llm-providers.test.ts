@@ -141,7 +141,12 @@ describe('provider CRUD', () => {
       method: 'POST',
       url: '/api/llm-providers',
       headers: auth(ownerJwt),
-      payload: { name: 'nope', apis: [{ kind: 'anthropic', path: null }], credentialName: 'gw-key', scope: 'global' },
+      payload: {
+        name: 'nope',
+        apis: [{ kind: 'anthropic', path: null }],
+        credentialName: 'gw-key',
+        scope: 'global',
+      },
     });
     expect(globalByUser.statusCode).toBe(403);
 
@@ -149,7 +154,11 @@ describe('provider CRUD', () => {
       method: 'POST',
       url: '/api/llm-providers',
       headers: auth(strangerJwt),
-      payload: { name: 'steal', apis: [{ kind: 'anthropic', path: null }], credentialName: 'gw-key' },
+      payload: {
+        name: 'steal',
+        apis: [{ kind: 'anthropic', path: null }],
+        credentialName: 'gw-key',
+      },
     });
     expect(foreignCred.statusCode).toBe(404);
     expect(foreignCred.json().error).toBe('CREDENTIAL_NOT_FOUND');
@@ -160,7 +169,11 @@ describe('provider CRUD', () => {
       method: 'POST',
       url: '/api/llm-providers',
       headers: auth(ownerJwt),
-      payload: { name: 'team-gateway', apis: [{ kind: 'anthropic', path: null }], credentialName: 'gw-key' },
+      payload: {
+        name: 'team-gateway',
+        apis: [{ kind: 'anthropic', path: null }],
+        credentialName: 'gw-key',
+      },
     });
     expect(dup.statusCode).toBe(409);
     expect(dup.json().error).toBe('PROVIDER_NAME_TAKEN');
@@ -170,7 +183,11 @@ describe('provider CRUD', () => {
       method: 'POST',
       url: '/api/llm-providers',
       headers: auth(strangerJwt),
-      payload: { name: 'team-gateway', apis: [{ kind: 'anthropic', path: null }], credentialName: 'stranger-key' },
+      payload: {
+        name: 'team-gateway',
+        apis: [{ kind: 'anthropic', path: null }],
+        credentialName: 'stranger-key',
+      },
     });
     expect(other.statusCode).toBe(201);
   });

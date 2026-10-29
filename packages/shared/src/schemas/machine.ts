@@ -66,10 +66,9 @@ export const chatApprovalsSettingsSchema = z
     neverAllow: z.array(z.string().min(1).max(256)).max(64),
     denyNote: z.boolean().default(true),
   })
-  .refine(
-    (v) => (v.providerId === undefined) === (v.modelId === undefined),
-    { message: 'providerId and modelId are set or omitted together (omit = follow the user default)' },
-  );
+  .refine((v) => (v.providerId === undefined) === (v.modelId === undefined), {
+    message: 'providerId and modelId are set or omitted together (omit = follow the user default)',
+  });
 
 export const updateMachineSchema = z
   .object({

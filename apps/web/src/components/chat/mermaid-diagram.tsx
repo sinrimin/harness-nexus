@@ -174,9 +174,7 @@ function resolvePalette(el: HTMLElement): Palette {
  * node a later interaction re-creates.
  */
 function pruneMermaidTooltip(): void {
-  document
-    .querySelectorAll('#mermaidTooltip, .mermaidTooltip')
-    .forEach((el) => el.remove());
+  document.querySelectorAll('#mermaidTooltip, .mermaidTooltip').forEach((el) => el.remove());
 }
 
 /** Mermaid theme variables shared by every diagram family it renders. */

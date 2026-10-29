@@ -154,9 +154,13 @@ describe('svc users — #95 default model slots', () => {
     const d = deps();
     await seedUser(d, { id: 'u1' });
     await seedProviderRow(d);
-    await setUserDefaultModels(d, { userId: 'u1', role: 'user' }, {
-      decision: { providerId: 'p95', modelId: 'decider' },
-    });
+    await setUserDefaultModels(
+      d,
+      { userId: 'u1', role: 'user' },
+      {
+        decision: { providerId: 'p95', modelId: 'decider' },
+      },
+    );
     expect(await getUserDefaultModels(d, { userId: 'u1', role: 'user' })).toEqual({
       decision: { providerId: 'p95', modelId: 'decider' },
     });
@@ -169,19 +173,31 @@ describe('svc users — #95 default model slots', () => {
     const owner = await seedUser(d, { id: 'u1' });
     await seedProviderRow(d);
     await expect(
-      setUserDefaultModels(d, { userId: 'u1', role: 'user' }, {
-        decision: { providerId: 'missing', modelId: 'decider' },
-      }),
+      setUserDefaultModels(
+        d,
+        { userId: 'u1', role: 'user' },
+        {
+          decision: { providerId: 'missing', modelId: 'decider' },
+        },
+      ),
     ).rejects.toMatchObject({ code: 'DEFAULT_MODEL_PROVIDER_NOT_FOUND' });
     await expect(
-      setUserDefaultModels(d, { userId: 'u1', role: 'user' }, {
-        decision: { providerId: 'p95', modelId: 'qwen' },
-      }),
+      setUserDefaultModels(
+        d,
+        { userId: 'u1', role: 'user' },
+        {
+          decision: { providerId: 'p95', modelId: 'qwen' },
+        },
+      ),
     ).rejects.toMatchObject({ code: 'DEFAULT_MODEL_KIND_MISMATCH' });
     await expect(
-      setUserDefaultModels(d, { userId: 'u1', role: 'user' }, {
-        rerank: { providerId: 'p95', modelId: 'qwen' },
-      }),
+      setUserDefaultModels(
+        d,
+        { userId: 'u1', role: 'user' },
+        {
+          rerank: { providerId: 'p95', modelId: 'qwen' },
+        },
+      ),
     ).rejects.toMatchObject({ code: 'DEFAULT_MODELS_RERANK_RESERVED' });
     expect(owner.role).toBe('user');
   });

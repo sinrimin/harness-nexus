@@ -81,8 +81,10 @@ describe('llmProviderCreateSchema / updateSchema', () => {
       }).success,
     ).toBe(true);
     expect(
-      llmProviderCreateSchema.safeParse({ ...validProvider, apis: [{ kind: 'anthropic', path: 'v1/messages' }] })
-        .success,
+      llmProviderCreateSchema.safeParse({
+        ...validProvider,
+        apis: [{ kind: 'anthropic', path: 'v1/messages' }],
+      }).success,
     ).toBe(false);
   });
 
@@ -143,9 +145,9 @@ describe('providerEndpointUrl', () => {
   });
 
   it('dedupes an explicit path the base already carries, and keeps full-URL paths', () => {
-    expect(providerEndpointUrl('openai-chat', { baseUrl: 'https://gw.example.com/v1', path: '/v1' })).toBe(
-      'https://gw.example.com/v1',
-    );
+    expect(
+      providerEndpointUrl('openai-chat', { baseUrl: 'https://gw.example.com/v1', path: '/v1' }),
+    ).toBe('https://gw.example.com/v1');
     expect(providerEndpointUrl('anthropic', { path: 'https://proxy.example.com/messages' })).toBe(
       'https://proxy.example.com/messages',
     );
@@ -153,7 +155,9 @@ describe('providerEndpointUrl', () => {
 
   it('returns null only for systemone without a base', () => {
     expect(providerEndpointUrl('systemone', {})).toBeNull();
-    expect(providerEndpointUrl('openai-chat', {})).toBe('https://api.openai.com/v1/chat/completions');
+    expect(providerEndpointUrl('openai-chat', {})).toBe(
+      'https://api.openai.com/v1/chat/completions',
+    );
   });
 });
 
@@ -264,9 +268,7 @@ describe('providerModelConfigWarnings — warn, never reject (#51)', () => {
         { id: 'm2', apiKind: 'anthropic', serverTools: ['web_search_20250305'] },
       ]),
     ).toEqual([]);
-    expect(
-      providerModelConfigWarnings([{ id: 'm3', apiKind: 'anthropic' }]),
-    ).toEqual([]);
+    expect(providerModelConfigWarnings([{ id: 'm3', apiKind: 'anthropic' }])).toEqual([]);
   });
 });
 

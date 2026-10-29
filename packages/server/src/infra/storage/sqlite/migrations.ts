@@ -611,7 +611,7 @@ ALTER TABLE machines ADD COLUMN chat_approvals TEXT;
   {
     version: 32,
     description:
-      'issue #95 — providers speak several wires: api TEXT → apis JSON [{kind,path}] (a row with embedding models gains the openai-embedding kind); model type → per-model apiKind (chat → the row\'s old api, embedding → openai-embedding, decision → systemone); users: default_models JSON (user-level default model slots)',
+      "issue #95 — providers speak several wires: api TEXT → apis JSON [{kind,path}] (a row with embedding models gains the openai-embedding kind); model type → per-model apiKind (chat → the row's old api, embedding → openai-embedding, decision → systemone); users: default_models JSON (user-level default model slots)",
     sql: `
 ALTER TABLE llm_providers ADD COLUMN apis TEXT NOT NULL DEFAULT '';
 ALTER TABLE users ADD COLUMN default_models TEXT;

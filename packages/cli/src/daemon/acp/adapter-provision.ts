@@ -101,7 +101,8 @@ export const ADAPTER_PATCHES: readonly AdapterPatch[] = [
     replacement: `                cancelController.abort();
             }, (session.openUserInputs?.size ?? 0) > 0 ? 1500 : 5000);`,
     marker: '> 0 ? 1500 : 5000',
-    reason: 'user stop settles the turn in 1.5s (permission pending) / 5s (executing), not the 30s wedged floor',
+    reason:
+      'user stop settles the turn in 1.5s (permission pending) / 5s (executing), not the 30s wedged floor',
   },
 ];
 
