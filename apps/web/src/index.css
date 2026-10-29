@@ -66,6 +66,10 @@
 
   /* Semantic status — the one place color carries meaning. */
   --signal: oklch(0.55 0.11 230); /* cyan-700 */
+  /* The accent AS TYPE (#99): --signal on the 8% active tint is 4.01:1, under
+   * AA for the 10px status word. Same split as --lamp-* vs --state-*-ink —
+   * edges and lamps are lit objects, a word is type. */
+  --signal-ink: oklch(0.5 0.11 230);
   --signal-foreground: oklch(0.98 0.004 250);
   /* Brand palette (hexagonal-ribbon logo): the mark carries its own blues,
    * deliberately separate from the UI's single --signal accent. */
@@ -253,6 +257,7 @@
   --ring: oklch(0.7 0.12 230);
 
   --signal: oklch(0.72 0.13 200); /* brighter cyan in dark */
+  --signal-ink: var(--signal); /* 7.11 on the active tint — no deepening needed */
   --signal-foreground: oklch(0.18 0.02 260);
   --brand-bright: #2e9dfd;
   --brand-mid: #2776dd;
@@ -332,6 +337,7 @@
   --color-ring: var(--ring);
 
   --color-signal: var(--signal);
+  --color-signal-ink: var(--signal-ink);
   --color-signal-foreground: var(--signal-foreground);
   --color-scrim: var(--scrim);
   --color-tray: var(--tray);

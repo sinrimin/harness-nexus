@@ -10,7 +10,7 @@ import { api } from '@/api';
 import { useAuth, withAuthGuard } from '@/auth';
 import { useI18n, dateLocale } from '@/i18n';
 import { StateSignal } from '@/components/state-signal';
-import { ConfirmDialog, DataText, EmptyState } from '@/components/kit';
+import { ConfirmDialog, EmptyState } from '@/components/kit';
 import {
   appSocket,
   emitWithAck,
@@ -28,13 +28,13 @@ import {
   type LlmProviderView,
 } from '@harness-nexus/sdk';
 import { Button } from '@/components/ui/button';
-import { cn } from '@/lib/utils';
 import { Dialog as DialogPrimitive } from 'radix-ui';
 import { ChatStream } from '@/components/chat/chat-stream.js';
 import { CaptureNoteDialog } from '@/pages/notes/CaptureNoteDialog';
 import { WelcomePane, type WelcomeCard } from '@/components/chat/welcome-pane.js';
 import { ChannelTabs } from '@/components/chat/channel-tabs.js';
 import { SessionRow } from '@/components/chat/session-row.js';
+import { RailSessionRow } from '@/components/chat/rail-session-row.js';
 import { useChatChannels } from '@/components/chat/use-chat-channels.js';
 import { useAssistantSessions } from '@/components/chat/use-assistant-sessions.js';
 import { Composer, type ComposerConfig } from '@/components/chat/composer.js';
@@ -568,9 +568,9 @@ export function AssistantSessionPage() {
           {t('assistants.newAssistantSession')}
         </Button>
       </div>
-      <div className="min-h-0 flex-1 overflow-y-auto p-2">
+      <div className="min-h-0 flex-1 overflow-y-auto">
         {sortedSessions.length === 0 ? (
-          <p className="text-muted-foreground px-2 py-4 text-xs">{t('assistants.noSessions')}</p>
+          <p className="text-muted-foreground px-3 py-4 text-xs">{t('assistants.noSessions')}</p>
         ) : (
           sortedSessions.map((s) => {
             const active = s.id === sessionId;
@@ -587,38 +587,21 @@ export function AssistantSessionPage() {
                     : undefined
                 }
               >
-                <button
-                  type="button"
+                {/* #99 — the flat assistant rail: the SAME row device as the
+                    machine rail (edge + tint, 32px hanging indent, status
+                    word) with no folder header and no group lines. There is
+                    no per-row attached concept here, so the only word is
+                    `running`; the current row shows none when idle. */}
+                <RailSessionRow
+                  title={s.title || t('chat.untitled')}
+                  meta={`${relativeTime(s.lastMessageAt ?? s.updatedAt, dateLocale(lang))} · ${s.id.slice(0, 8)}`}
+                  active={active}
+                  word={s.busy ? ('running' as const) : null}
+                  titleAttr={s.title || t('chat.untitled')}
                   onClick={() => {
                     if (!active) void openSession(s.id);
                   }}
-                  className={cn(
-                    'flex w-full items-start gap-2 border-b px-3 py-2 text-left last:border-b-0',
-                    active ? 'bg-tray' : 'hover:bg-tray/60',
-                  )}
-                  title={s.title || t('chat.untitled')}
-                >
-                  <span className="mt-1 flex w-2 shrink-0 justify-center">
-                    <StateSignal
-                      state={s.busy ? 'busy' : active ? 'live' : 'idle'}
-                      className="size-1.5"
-                    />
-                  </span>
-                  <span className="min-w-0 flex-1">
-                    <span
-                      className={cn(
-                        'block truncate text-xs',
-                        active && 'text-foreground font-semibold',
-                      )}
-                    >
-                      {s.title || t('chat.untitled')}
-                    </span>
-                    <DataText size="sm" tone="dim" className="mt-0.5 block truncate">
-                      {relativeTime(s.lastMessageAt ?? s.updatedAt, dateLocale(lang))} ·{' '}
-                      {s.id.slice(0, 8)}
-                    </DataText>
-                  </span>
-                </button>
+                />
               </SessionRow>
             );
           })

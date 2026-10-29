@@ -43,6 +43,10 @@
   --ring: #ef5b13;
   --signal: #ef5b13;
   --signal-foreground: #ffffff;
+  /* The accent as type (#99): the LED orange is 2.42:1 as text on aluminium;
+   * the deepened ink clears AA on every chassis surface (4.94 bg / 5.86 tray /
+   * 6.30 paper). Edges and lamps keep --signal. */
+  --signal-ink: #9c3a0b;
 
   /* LEDs (connection state only — the rule survives the skin) */
   --ok: #1a9c53;
