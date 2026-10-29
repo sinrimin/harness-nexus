@@ -1038,7 +1038,10 @@ function ApiEndpointRow({
   });
   const options = API_KINDS.filter((k) => k === row.kind || !usedKinds.includes(k));
   return (
-    <div className="grid gap-3 rounded-md border p-3 sm:grid-cols-[minmax(0,180px)_minmax(0,1fr)_auto] sm:items-start">
+    // The remove × is the model row's pattern (absolute top-right of the card,
+    // content reserves pr-9): an in-flow third column stacked to bottom-left
+    // once the grid collapses on narrow viewports.
+    <div className="relative grid gap-3 rounded-md border p-3 pr-9 sm:grid-cols-[minmax(0,180px)_minmax(0,1fr)] sm:items-start">
       <div className="grid gap-2">
         <Label htmlFor={`llmp-api-kind-${index}`}>{t('llmProviders.apiKindLabel')}</Label>
         <Select value={row.kind} onValueChange={(v) => onKindChange(v as ProviderApiKind)}>
@@ -1081,7 +1084,7 @@ function ApiEndpointRow({
         type="button"
         variant="ghost"
         size="icon"
-        className="text-muted-foreground hover:text-danger shrink-0 sm:mt-7"
+        className="text-muted-foreground absolute right-2 top-2 size-8 shrink-0 hover:text-danger"
         onClick={onRemove}
         disabled={!canRemove}
         title={canRemove ? undefined : t('llmProviders.keepOneWire')}
