@@ -57,7 +57,8 @@ function answers(opts: {
   severity: number;
   intent: number;
   sevConfidence?: number;
-  intentConfidence?: number;
+  /** `null` = the wire's noul answers that carry NO confidence at all. */
+  intentConfidence?: number | null;
   why?: string;
 }): Record<string, unknown> {
   return {
@@ -362,6 +363,20 @@ describe('delegated approvals gate (#92) — v2 verdict matrix', () => {
     expect(advisory).toHaveLength(1);
     expect(advisory[0]!.lean).toBe('allow'); // the lean survives; the DECISION does not
     expect(advisory[0]!.confidence).toBe(0.3);
+  });
+
+  it('a mid-band intent WITHOUT a confidence field still allows (the wire omits noul confidence)', async () => {
+    // Calibration finding: Bailian decision-model-preview never attaches
+    // confidence to noul answers — absent must not read as "flat" (that
+    // would brick every mid-band allow on SystemOne-compatible providers).
+    const t = await setup({
+      target: 'claude-code',
+      answers: answers({ severity: 4.2, intent: 0.91, intentConfidence: null }),
+    });
+    await fire(t);
+    const responds = ctlResponds(t.ctl, t.sessionId);
+    expect(responds).toHaveLength(1);
+    expect(responds[0]!.payload.optionId).toBe('yes-once');
   });
 
   it('a flat INTENT answer fail-closes only in the mid band (not in the routine tier)', async () => {

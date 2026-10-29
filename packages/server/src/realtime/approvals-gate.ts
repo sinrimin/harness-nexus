@@ -452,7 +452,12 @@ export async function decideApproval(
   const sevConfidence = answers.severity?.confidence;
   const intentConfidence = answers.intent?.confidence;
   const sevConfident = (sevConfidence ?? 0) >= answerFloor;
-  const intentConfident = (intentConfidence ?? 0) >= answerFloor;
+  // Calibration finding (Bailian decision-model-preview): noul answers carry
+  // NO confidence on this wire — the value itself is the probability, its
+  // sharpness IS the information. Absent ⇒ the check cannot apply (treating
+  // it as 0 would brick every mid-band allow on SystemOne-compatible
+  // providers); an EXPLICIT low confidence still escalates.
+  const intentConfident = intentConfidence === undefined || intentConfidence >= answerFloor;
 
   if (severity >= 6.5) {
     if (!sevConfident) {
