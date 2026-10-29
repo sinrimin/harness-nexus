@@ -303,6 +303,49 @@ describe('rejoin (9 W7 — resync, no persisted rows)', () => {
     }
   }, 15000);
 
+  it('history paging: the browser fetch relays to the daemon; pages relay back to the room', async () => {
+    const d = await connectDaemon(['chat']);
+    try {
+      const startPromise = once(d, 'chat:session.start');
+      const res = await openSession(browser, agentId);
+      const start = (await startPromise) as { sessionId: string };
+      d.emit('chat:session.ready', { sessionId: start.sessionId, nativeSessionId: 'native-p' });
+      await once(browser, 'chat:session.ready');
+
+      // The browser pages older history: the request reaches the daemon
+      // verbatim (cursor + limit).
+      const fetchP = once(d, 'chat:history.fetch');
+      const ackP = emitAck(browser, 'chat:history.fetch', {
+        sessionId: start.sessionId,
+        beforeSeq: 42,
+        limit: 500,
+      });
+      const fetch = (await fetchP) as { sessionId: string; beforeSeq?: number; limit?: number };
+      expect(fetch).toMatchObject({ sessionId: start.sessionId, beforeSeq: 42, limit: 500 });
+      expect(await ackP).toEqual({ accepted: true });
+
+      // The daemon's page lands in the room as chat:history.page.
+      const pageP = once(browser, 'chat:history.page');
+      d.emit('chat:history.page', {
+        sessionId: start.sessionId,
+        items: [
+          { type: 'user', blocks: [{ type: 'text', text: 'older turn' }], seq: 7 },
+          { type: 'event', event: { kind: 'message_delta', delta: 'older answer' }, seq: 8 },
+        ],
+        hasMore: false,
+      });
+      const page = (await pageP) as { sessionId: string; items: unknown[]; hasMore?: boolean };
+      expect(page.sessionId).toBe(start.sessionId);
+      expect(page.items).toHaveLength(2);
+      expect(page.hasMore).toBe(false);
+
+      await emitAck(d, 'chat:session.closed', { sessionId: start.sessionId, reason: 'user' });
+      await once(browser, 'chat:session.closed');
+    } finally {
+      d.close();
+    }
+  }, 15000);
+
   it('a FRESH socket rejoining a ready channel receives the ready re-push + history (join-before-push)', async () => {
     // Tab-switch/refresh transcript loss (user-found 2026-09-15): the
     // rejoin used to push `ready` + the resync from INSIDE open(), before

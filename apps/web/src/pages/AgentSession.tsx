@@ -13,6 +13,7 @@ import {
   PencilIcon,
   PlusIcon,
   RefreshCwIcon,
+  HistoryIcon,
   XIcon,
 } from 'lucide-react';
 import { api } from '@/api';
@@ -27,6 +28,8 @@ import {
   type ChatChannelView,
   type ChatEventEnvelope,
   type ChatHistoryEvent,
+  type ChatHistoryPageEvent,
+  type HistoryItem,
   type ChatSessionClosedPush,
   type ChatSessionFailedPush,
   type ChatSessionReadyPush,
@@ -525,6 +528,22 @@ export function AgentSessionPage() {
   /** From the ready push's promptCapabilities — gates image attach. */
   const [imageSupported, setImageSupported] = useState(false);
   const [conversation, dispatch] = useReducer(fold, undefined, createFoldState);
+  /**
+   * History paging — the fold's item base (initial window + prepended pages
+   * + live events since), the hasMore cursor, and the prepend key (bumps on
+   * each applied prepend so the scroller can hold the viewport position).
+   * The daemon's ring is compacted (one item per message/tool call), so a
+   * heavy day fits — but beyond the sync window the pane pages older content
+   * on scroll-to-top, and the load-all control beside 断开 fetches the rest.
+   */
+  const historyItemsRef = useRef<HistoryItem[]>([]);
+  const historyHasMoreRef = useRef(false);
+  const [historyHasMore, setHistoryHasMore] = useState(false);
+  const historyFetchingRef = useRef(false);
+  const pendingPrependRef = useRef<HistoryItem[] | null>(null);
+  const [prependKey, setPrependKey] = useState(0);
+  const conversationRef = useRef(conversation);
+  conversationRef.current = conversation;
   /** 9 W11 B — the tab strip's live-channel truth (snapshot pushes). */
   const channels = useChatChannels();
   /** #52 M3 — the user's busy assistant turns, as tabs ahead of the channels. */
@@ -749,13 +768,54 @@ export function AgentSessionPage() {
   useEffect(() => {
     if (sessionId === '') return;
     const socket = appSocket();
+    // Paging bookkeeping resets with the channel (the refs ride the session).
+    historyItemsRef.current = [];
+    historyHasMoreRef.current = false;
+    setHistoryHasMore(false);
+    historyFetchingRef.current = false;
+    pendingPrependRef.current = null;
+    /** Rebuild from the item base; mid-turn prepends wait for the turn end
+     *  (the history rebuild force-closes running rows). */
+    const applyItems = (items: HistoryItem[]): void => {
+      if (conversationRef.current.turnActive) {
+        pendingPrependRef.current = items;
+        return;
+      }
+      historyItemsRef.current = items;
+      dispatch({ type: 'history', items });
+      setPrependKey((k) => k + 1);
+    };
     const onEvent = (envelope: ChatEventEnvelope): void => {
       if (envelope.sessionId !== sessionId) return;
       dispatch({ type: 'event', event: envelope.event });
+      // Keep the item base complete — live events join it so a later prepend
+      // rebuild replays the whole transcript, not just the ring window.
+      historyItemsRef.current.push({ type: 'event', event: envelope.event });
+      // A parked prepend applies at the turn's end.
+      if (
+        pendingPrependRef.current !== null &&
+        (envelope.event.kind === 'turn_result' ||
+          (envelope.event.kind === 'session_status' && envelope.event.state === 'idle'))
+      ) {
+        const items = pendingPrependRef.current;
+        pendingPrependRef.current = null;
+        applyItems(items);
+      }
     };
     const onHistory = (push: ChatHistoryEvent): void => {
       if (push.sessionId !== sessionId) return;
+      historyHasMoreRef.current = push.hasMore === true;
+      setHistoryHasMore(push.hasMore === true);
+      pendingPrependRef.current = null;
+      historyItemsRef.current = push.items.slice();
       dispatch({ type: 'history', items: push.items });
+    };
+    const onHistoryPage = (push: ChatHistoryPageEvent): void => {
+      if (push.sessionId !== sessionId) return;
+      historyFetchingRef.current = false;
+      historyHasMoreRef.current = push.hasMore === true;
+      setHistoryHasMore(push.hasMore === true);
+      applyItems([...push.items, ...historyItemsRef.current]);
     };
     const onReady = (push: ChatSessionReadyPush): void => {
       if (push.sessionId !== sessionId) return;
@@ -792,17 +852,44 @@ export function AgentSessionPage() {
     };
     socket.on('chat:event', onEvent);
     socket.on('chat:history', onHistory);
+    socket.on('chat:history.page', onHistoryPage);
     socket.on('chat:session.ready', onReady);
     socket.on('chat:session.failed', onFailed);
     socket.on('chat:session.closed', onClosed);
     return () => {
       socket.off('chat:event', onEvent);
       socket.off('chat:history', onHistory);
+      socket.off('chat:history.page', onHistoryPage);
       socket.off('chat:session.ready', onReady);
       socket.off('chat:session.failed', onFailed);
       socket.off('chat:session.closed', onClosed);
     };
   }, [sessionId, refreshSessions]);
+
+  /**
+   * Page older history: asked by scroll-to-top (default page) and by the
+   * load-all control (huge limit — one round-trip). The response arrives as
+   * `chat:history.page` (prepended above); the fetching flag doubles as the
+   * in-flight guard and self-clears so a lost page doesn't wedge the button.
+   */
+  const fetchOlderHistory = useCallback(
+    (limit?: number) => {
+      if (sessionId === '' || historyFetchingRef.current || !historyHasMoreRef.current) return;
+      const first = historyItemsRef.current[0];
+      const beforeSeq = first?.seq;
+      if (beforeSeq === undefined) return;
+      historyFetchingRef.current = true;
+      appSocket().emit(
+        'chat:history.fetch',
+        { sessionId, beforeSeq, ...(limit !== undefined ? { limit } : {}) },
+        () => {},
+      );
+      window.setTimeout(() => {
+        historyFetchingRef.current = false;
+      }, 8000);
+    },
+    [sessionId],
+  );
 
   async function openChannel(
     rejoinId?: string,
@@ -1306,15 +1393,30 @@ export function AgentSessionPage() {
               ) : null}
               <span className="min-w-0 flex-1" />
               {phase === 'ready' || phase === 'connecting' ? (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => void disconnectChannel()}
-                  title={t('chat.disconnectHint')}
-                >
-                  <XIcon className="size-3.5" />
-                  <span className="hidden sm:inline">{t('chat.disconnect')}</span>
-                </Button>
+                <>
+                  {/* History paging — pull the WHOLE ring in (search-ready),
+                  versus the scroll-to-top one-page fetches. */}
+                  {historyHasMore ? (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => fetchOlderHistory(20_000)}
+                      title={t('chat.historyLoadAllHint')}
+                    >
+                      <HistoryIcon className="size-3.5" />
+                      <span className="hidden sm:inline">{t('chat.historyLoadAll')}</span>
+                    </Button>
+                  ) : null}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => void disconnectChannel()}
+                    title={t('chat.disconnectHint')}
+                  >
+                    <XIcon className="size-3.5" />
+                    <span className="hidden sm:inline">{t('chat.disconnect')}</span>
+                  </Button>
+                </>
               ) : null}
             </div>
 
@@ -1347,6 +1449,8 @@ export function AgentSessionPage() {
                 <ChatStream
                   state={conversation}
                   cwd={currentCwd}
+                  prependKey={prependKey}
+                  onTopReached={() => fetchOlderHistory()}
                   onCaptureStep={setCapture}
                   onPermissionRespond={(requestId, optionId) =>
                     void respondPermission(requestId, optionId)

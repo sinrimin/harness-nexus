@@ -90,6 +90,8 @@ const en = {
   turnMaxTokens: 'step limit reached',
   permissionsSettled: '{count} permission request(s) handled',
   approvalsSettledSummary: 'delegated {delegated} · allowed {allowed} · denied {denied}',
+  historyLoadAll: 'Full history',
+  historyLoadAllHint: 'Load the entire session history (for searching)',
   approvalsAdvisory: 'decision model leans {lean} ({confidence}) — advisory only',
   approvalsAdvisoryVerdict:
     'decision model: severity {severity} · intent {intent} → {lean} — advisory only',
@@ -285,6 +287,8 @@ const zh: typeof en = {
   turnMaxTokens: '达到步数上限',
   permissionsSettled: '已处理 {count} 个权限请求',
   approvalsSettledSummary: '代审 {delegated} · 放行 {allowed} · 拒绝 {denied}',
+  historyLoadAll: '完整历史',
+  historyLoadAllHint: '加载本会话全部历史（便于搜索）',
   approvalsAdvisory: '决策模型倾向{lean}（{confidence}）—— 仅供参考',
   approvalsAdvisoryVerdict:
     '决策模型：严重度 {severity} · 意图匹配 {intent} → 倾向{lean} —— 仅供参考',

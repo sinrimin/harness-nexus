@@ -907,14 +907,47 @@ export const chatSessionResyncEventSchema = z.object({
  * model) keeps live and history on ONE fold path in the browser.
  */
 export const historyItemSchema = z.discriminatedUnion('type', [
-  z.object({ type: z.literal('user'), blocks: z.array(promptBlockSchema).min(1).max(16) }),
-  z.object({ type: z.literal('event'), event: chatStreamEventSchema }),
+  z.object({
+    type: z.literal('user'),
+    blocks: z.array(promptBlockSchema).min(1).max(16),
+    /** Ring sequence number (monotonic per channel); the paging cursor. */
+    seq: z.number().int().min(1).optional(),
+  }),
+  z.object({
+    type: z.literal('event'),
+    event: chatStreamEventSchema,
+    seq: z.number().int().min(1).optional(),
+  }),
 ]);
 
-/** daemon → server (relayed to the channel room): the transcript batch for a (re)joined channel. */
+/**
+ * daemon → server (relayed to the channel room): the transcript batch for a
+ * (re)joined channel. `hasMore` — the ring holds older items beyond this
+ * batch (the initial sync ships a bounded window; the browser pages older
+ * with `chat:history.fetch`).
+ */
 export const chatHistoryEventSchema = z.object({
   sessionId: z.string().min(1).max(64),
   items: z.array(historyItemSchema).min(1).max(2000),
+  hasMore: z.boolean().optional(),
+});
+
+/**
+ * browser → server → daemon: page older history for a live channel. Absent
+ * `beforeSeq` = the oldest page; `limit` bounds the page (the "load
+ * everything" control passes a huge one).
+ */
+export const chatHistoryFetchRequestSchema = z.object({
+  sessionId: z.string().min(1).max(64),
+  beforeSeq: z.number().int().min(1).optional(),
+  limit: z.number().int().min(1).max(20_000).optional(),
+});
+
+/** daemon → server → browser: one older-than-loaded page (prepend-only). */
+export const chatHistoryPageEventSchema = z.object({
+  sessionId: z.string().min(1).max(64),
+  items: z.array(historyItemSchema).min(1).max(20_000),
+  hasMore: z.boolean().optional(),
 });
 
 /** browser → server: send a turn prompt. */
@@ -1325,6 +1358,8 @@ export type ChatSessionFailedPush = z.infer<typeof chatSessionFailedPushSchema>;
 export type ChatSessionClosedPush = z.infer<typeof chatSessionClosedPushSchema>;
 export type HistoryItem = z.infer<typeof historyItemSchema>;
 export type ChatHistoryEvent = z.infer<typeof chatHistoryEventSchema>;
+export type ChatHistoryFetchRequest = z.infer<typeof chatHistoryFetchRequestSchema>;
+export type ChatHistoryPageEvent = z.infer<typeof chatHistoryPageEventSchema>;
 export type NativeSessionView = z.infer<typeof nativeSessionViewSchema>;
 export type SessionsListRequest = z.infer<typeof sessionsListRequestSchema>;
 export type SessionsListResultEvent = z.infer<typeof sessionsListResultEventSchema>;

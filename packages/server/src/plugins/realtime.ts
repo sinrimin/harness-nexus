@@ -30,6 +30,8 @@ import {
   chatChannelsCloseAllRequestSchema,
   chatChannelsSyncRequestSchema,
   chatHistoryEventSchema,
+  chatHistoryPageEventSchema,
+  chatHistoryFetchRequestSchema,
   chatAdapterPrewarmRequestSchema,
   chatMessageSendRequestSchema,
   chatQueueCancelRequestSchema,
@@ -628,6 +630,18 @@ export async function registerRealtime(
       ack?.(accepted.ok ? { accepted: true } : { error: 'unknown-session' });
     });
 
+    // One older-history page (the browser prepends it) — same relay shape as
+    // chat:history above.
+    socket.on('chat:history.page', (payload: unknown, ack?: (res: unknown) => void) => {
+      const parsed = chatHistoryPageEventSchema.safeParse(payload);
+      if (!parsed.success) {
+        ack?.({ error: 'proto:invalid' });
+        return;
+      }
+      const accepted = realtime.chat.onHistoryPage(machineId, parsed.data);
+      ack?.(accepted.ok ? { accepted: true } : { error: 'unknown-session' });
+    });
+
     socket.on('chat:session.closed', (payload: unknown, ack?: (res: unknown) => void) => {
       const parsed = chatSessionClosedEventSchema.safeParse(payload);
       if (!parsed.success) {
@@ -792,6 +806,23 @@ export async function registerRealtime(
       // #10 — `queued` tells the Sender its message parked in the slot (the
       // queue_state event follows as the durable truth).
       ack?.(result.ok ? { accepted: true, queued: result.queued } : { error: result.code });
+    });
+
+    // Older-history paging: relay the browser's request to the daemon; the
+    // page comes back as a daemon `chat:history.page` (relayed below on /ctl).
+    socket.on('chat:history.fetch', (payload: unknown, ack?: (res: unknown) => void) => {
+      const parsed = chatHistoryFetchRequestSchema.safeParse(payload);
+      if (!parsed.success) {
+        ack?.({ error: 'proto:invalid' });
+        return;
+      }
+      const result = realtime.chat.onHistoryFetch(
+        socket.data.userId as string,
+        parsed.data.sessionId,
+        parsed.data.beforeSeq,
+        parsed.data.limit,
+      );
+      ack?.(result.ok ? { accepted: true } : { error: result.code });
     });
 
     // #10 — drop the parked send-queue entry (edit = cancel + re-draft).

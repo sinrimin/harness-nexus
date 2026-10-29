@@ -2,7 +2,7 @@
 //
 // SPDX-License-Identifier: MIT
 
-import { memo, useCallback, useEffect, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { ArrowDownIcon } from 'lucide-react';
 import { useI18n } from '@/i18n';
 import type { FoldState } from './fold.js';
@@ -28,6 +28,14 @@ const BOTTOM_THRESHOLD = 80;
 interface ChatStreamProps {
   state: FoldState;
   cwd?: string;
+  /**
+   * History paging: bumps when a page was PREPENDED — the scroller adds the
+   * height delta to scrollTop so the viewport stays put (otherwise the
+   * browser clamps to the top and the position jumps).
+   */
+  prependKey?: number;
+  /** Fired when the user scrolls within the top sliver — page older history. */
+  onTopReached?: () => void;
   onPermissionRespond: (requestId: string, optionId?: string) => void;
   onElicitationRespond: (
     requestId: string,
@@ -41,6 +49,8 @@ interface ChatStreamProps {
 export function ChatStream({
   state,
   cwd,
+  prependKey = 0,
+  onTopReached,
   onPermissionRespond,
   onElicitationRespond,
   onCaptureStep,
@@ -62,14 +72,41 @@ export function ChatStream({
     });
   }, []);
 
+  // Paging: fire once per approach to the top until the user leaves the
+  // sliver again (scroll events fire in bursts).
+  const topFiredRef = useRef(false);
   const handleScroll = useCallback(() => {
     if (programmaticRef.current) return;
     const el = containerRef.current;
     if (el === null) return;
+    if (el.scrollTop < 60) {
+      if (!topFiredRef.current) {
+        topFiredRef.current = true;
+        onTopReached?.();
+      }
+    } else {
+      topFiredRef.current = false;
+    }
     const bottom = el.scrollHeight - el.scrollTop - el.clientHeight < BOTTOM_THRESHOLD;
     atBottomRef.current = bottom;
     setAtBottom(bottom);
-  }, []);
+  }, [onTopReached]);
+
+  // Prepend viewport-hold: on a prependKey bump, grow scrollTop by the height
+  // the older rows added. prevHeightRef tracks every render's scrollHeight so
+  // the delta is exactly the prepended content's.
+  const prevHeightRef = useRef(0);
+  const prevKeyRef = useRef(prependKey);
+  useLayoutEffect(() => {
+    const el = containerRef.current;
+    if (el === null) return;
+    if (prependKey !== prevKeyRef.current) {
+      const delta = el.scrollHeight - prevHeightRef.current;
+      if (delta > 0) el.scrollTop += delta;
+      prevKeyRef.current = prependKey;
+    }
+    prevHeightRef.current = el.scrollHeight;
+  });
 
   useEffect(() => {
     if (atBottomRef.current) jumpToBottom();

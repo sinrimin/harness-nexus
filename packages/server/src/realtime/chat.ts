@@ -861,6 +861,43 @@ export class ChatService {
     return { ok: true };
   }
 
+  /**
+   * Daemon's `chat:history.page` — relay one older-history page to the room
+   * (the browser PREPENDS it; never a rebuild). Companion of onHistory.
+   */
+  onHistoryPage(
+    machineId: string,
+    payload: { sessionId: string; items: unknown[] },
+  ): {
+    ok: boolean;
+  } {
+    const session = this.live.get(payload.sessionId);
+    if (!session || session.machineId !== machineId) return { ok: false };
+    this.deps.io.toChannel(payload.sessionId, 'chat:history.page', payload);
+    return { ok: true };
+  }
+
+  /** Browser's `chat:history.fetch` — relay the paging request to the daemon. */
+  onHistoryFetch(
+    ownerId: string,
+    sessionId: string,
+    beforeSeq?: number,
+    limit?: number,
+  ): { ok: boolean; code?: string } {
+    const session = this.live.get(sessionId);
+    if (!session || session.ownerId !== ownerId) return { ok: false, code: 'SESSION_NOT_FOUND' };
+    if (session.phase !== 'ready') return { ok: false, code: 'SESSION_NOT_READY' };
+    if (!this.deps.isOnline(session.machineId)) {
+      return { ok: false, code: 'MACHINE_OFFLINE' };
+    }
+    this.deps.io.toCtl(session.machineId, 'chat:history.fetch', {
+      sessionId,
+      ...(beforeSeq !== undefined ? { beforeSeq } : {}),
+      ...(limit !== undefined ? { limit } : {}),
+    });
+    return { ok: true };
+  }
+
   /** Browser's `chat:message.send` — owner check, queue-on-busy, normalization. */
   onMessageSend(
     ownerId: string,

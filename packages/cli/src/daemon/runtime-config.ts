@@ -12,7 +12,6 @@ import {
   harnessResultDataSchema,
   OPENCODE_PROVIDER_ID,
   PI_PROVIDER_ID,
-  stripClaudeOneMarker,
   type JobView,
   type RuntimeConfigSpec,
 } from '@harness-nexus/shared';
@@ -178,14 +177,18 @@ function applyClaudeConfig(spec: RuntimeConfigSpec, secret: string, homeDir: str
   // 9 W13 — the picker allowlist. Written whenever a spec exists (even a
   // single model: under a gateway the built-in catalog is dead entries, same
   // policy as dsh/opencode). Platform-owned key: re-apply overwrites whatever
-  // the user had there. #60: the allowlist matches PLAIN ids — `[1m]` markers
-  // ride the model slots (settings `model` + the tier envs), not the list —
-  // and tier-pinned / subagent ids join so the locks never reject a pin.
+  // the user had there. #60 revision (rig-verified 2026-10-29): the `[1m]`
+  // ids STAY in the list — a plain-only allowlist made the CLI resolve the
+  // running `model: …[1m]` back onto the plain entry (the 200k gateway
+  // variant; auto-compact fired at 92k/200k with "1M configured"), and the
+  // adapter's option list could no longer represent the running model, which
+  // also fed the external-switch reconcile that wiped the model/effort
+  // selects mid-session. Both forms appear when they differ — they ARE
+  // different windows on the gateway. Tier-pinned / subagent ids join so the
+  // locks never reject a pin.
   const pinned = (cc?.tiers ?? []).map((t) => t.model);
   if (cc?.subagentModel !== undefined) pinned.push(cc.subagentModel);
-  const availableModels = [
-    ...new Set([spec.model, ...(spec.models ?? []), ...pinned].map(stripClaudeOneMarker)),
-  ];
+  const availableModels = [...new Set([spec.model, ...(spec.models ?? []), ...pinned])];
   const managed: Record<string, unknown> = { ...settings, env, model: spec.model, availableModels };
   if (sw?.attributionHidden === true) {
     managed.attribution = { commit: '', pr: '', sessionUrl: false };
