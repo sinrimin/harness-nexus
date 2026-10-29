@@ -5,6 +5,7 @@
 import { describe, expect, it } from 'vitest';
 import { createMemoryUnitOfWork } from '../src/infra/storage/memory/index.js';
 import { encryptSecret } from '../src/infra/crypto.js';
+import { deleteMcpServer } from '../src/services/mcp-servers.js';
 import {
   createAssistant,
   createAssistantSession,
@@ -187,5 +188,112 @@ describe('#52 assistant service', () => {
     });
     // The existing session stays fully readable.
     await expect(listAssistantMessages({ uow }, owner, s1.id)).resolves.toHaveLength(1);
+  });
+});
+
+describe('assistant service — dead references self-heal on save (bug 2026-10-29)', () => {
+  it('an MCP deleted after the config saved prunes instead of 404ing the save', async () => {
+    const { uow } = await seed();
+    await uow.mcpServers.save({
+      id: 'm-1',
+      name: 'up',
+      transport: { type: 'streamable-http', url: 'https://x.example.com/mcp' },
+      dialSite: 'client',
+      scope: 'personal',
+      ownerId: owner.userId,
+      createdAt: now,
+      updatedAt: now,
+    });
+    const a = await createAssistant({ uow }, owner, {
+      name: 'Ops',
+      providerId: 'prov-1',
+      defaultModel: 'chat-a',
+      mcpServerIds: ['m-1'],
+    });
+    expect(a.mcpServerIds).toEqual(['m-1']);
+
+    // The reported flow: delete the MCP directly, then edit the assistant —
+    // the form round-trips the stored (now dangling) id and the save died.
+    const del = await deleteMcpServer({ uow }, owner, 'm-1');
+    expect(del.mode).toBe('soft');
+    const healed = await updateAssistant({ uow }, owner, a.id, {
+      mcpServerIds: ['m-1'],
+    });
+    expect(healed.mcpServerIds).toEqual([]);
+
+    // A hard delete changes nothing for the config (the row is simply gone),
+    // and RE-sending the now-pruned id is a foreign ADD again — the honest
+    // 404, not another silent drop.
+    await deleteMcpServer({ uow }, owner, 'm-1'); // second stage: hard
+    await expect(
+      updateAssistant({ uow }, owner, a.id, { mcpServerIds: ['m-1'] }),
+    ).rejects.toMatchObject({ code: 'MCP_SERVER_NOT_FOUND' });
+  });
+
+  it('a NEW foreign MCP id still fails honestly (the guard is not softened)', async () => {
+    const { uow } = await seed();
+    const a = await createAssistant({ uow }, owner, {
+      name: 'Ops',
+      providerId: 'prov-1',
+      defaultModel: 'chat-a',
+    });
+    await expect(
+      updateAssistant({ uow }, owner, a.id, { mcpServerIds: ['never-existed'] }),
+    ).rejects.toMatchObject({ code: 'MCP_SERVER_NOT_FOUND' });
+  });
+
+  it('dead skill and api-tool references prune the same way', async () => {
+    const { uow } = await seed();
+    await uow.resources.save({
+      id: 'r-skill',
+      key: 'skill:demo',
+      kind: 'skill',
+      name: 'demo',
+      version: '1.0.0',
+      source: { type: 'inline', content: 'x' },
+      scope: 'personal',
+      ownerId: owner.userId,
+      targets: [],
+      createdAt: now,
+      updatedAt: now,
+    });
+    await uow.apiTools.save({
+      id: 'at-1',
+      scope: 'personal',
+      ownerId: owner.userId,
+      name: 'svc',
+      baseUrl: 'https://x.example.com',
+      headers: {},
+      tools: [],
+      createdAt: now,
+      updatedAt: now,
+    });
+    const a = await createAssistant({ uow }, owner, {
+      name: 'Ops',
+      providerId: 'prov-1',
+      defaultModel: 'chat-a',
+      skillResourceIds: ['r-skill'],
+      apiToolServiceIds: ['at-1'],
+    });
+
+    // Both targets vanish (soft-delete shape: deletedAt set)...
+    await uow.resources.save({
+      ...(await uow.resources.findById('r-skill'))!,
+      deletedAt: now,
+      updatedAt: now,
+    });
+    await uow.apiTools.save({
+      ...(await uow.apiTools.findById('at-1'))!,
+      deletedAt: now,
+      updatedAt: now,
+    });
+
+    // ...and the save carrying them round-trip still succeeds, pruned.
+    const healed = await updateAssistant({ uow }, owner, a.id, {
+      skillResourceIds: ['r-skill'],
+      apiToolServiceIds: ['at-1'],
+    });
+    expect(healed.skillResourceIds).toEqual([]);
+    expect(healed.apiToolServiceIds).toEqual([]);
   });
 });
