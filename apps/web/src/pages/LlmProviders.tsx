@@ -11,11 +11,13 @@ import {
   PlugZapIcon,
   PlusIcon,
   RefreshCwIcon,
+  ScrollTextIcon,
   Settings2Icon,
   TrashIcon,
   XIcon,
 } from 'lucide-react';
 import { api } from '@/api';
+import { DecisionRecordsDialog } from '@/components/decision-records-dialog';
 import { useAuth, withAuthGuard } from '@/auth';
 import { cn } from '@/lib/utils';
 import { useI18n } from '@/i18n';
@@ -1186,6 +1188,7 @@ function DefaultModelsDialog({
   const [loaded, setLoaded] = useState<UserDefaultModels | null>(null);
   const [loadFailed, setLoadFailed] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [recordsOpen, setRecordsOpen] = useState(false);
   const [decisionProviderId, setDecisionProviderId] = useState('');
   const [decisionModelId, setDecisionModelId] = useState('');
 
@@ -1285,7 +1288,20 @@ function DefaultModelsDialog({
             className="sm:col-span-2"
             label={t('llmProviders.decisionSlot')}
             htmlFor="llmp-default-provider"
-            hint={t('llmProviders.decisionHint')}
+            hint={
+              <span className="inline-flex items-center gap-1">
+                {t('llmProviders.decisionHint')}
+                <button
+                  type="button"
+                  className="text-muted-foreground hover:text-foreground ml-1 inline-flex cursor-pointer items-center gap-0.5 text-xs transition-colors"
+                  onClick={() => setRecordsOpen(true)}
+                >
+                  <ScrollTextIcon className="size-3" />
+                  {t('decisions.viewAll')}
+                </button>
+                <DecisionRecordsDialog open={recordsOpen} onClose={() => setRecordsOpen(false)} />
+              </span>
+            }
           >
             <div className="grid gap-2 sm:grid-cols-2">
               <Select

@@ -47,8 +47,12 @@ import type {
   NoteCategoryRepository,
   NoteRepository,
   NoteVersion,
+  DecisionHumanResponse,
+  DecisionRecord,
+  DecisionRecordListFilter,
+  DecisionRecordRepository,
 } from '@harness-nexus/core';
-import { DEFAULT_SYSTEM_SETTINGS } from '@harness-nexus/core';
+import { DEFAULT_SYSTEM_SETTINGS, DECISION_RECORDS_CAP } from '@harness-nexus/core';
 
 /**
  * In-memory storage driver — used by tests and `STORAGE_DRIVER=memory`.
@@ -680,6 +684,55 @@ export function createMemoryUnitOfWork(): UnitOfWork {
     },
   };
 
+  // #97 — delegated-decision audit: newest-last array; prune on write.
+  const decisionRecords: DecisionRecord[] = [];
+  const decisionRecordRepo: DecisionRecordRepository = {
+    async append(record) {
+      decisionRecords.push(record);
+      const owned = decisionRecords.filter((r) => r.ownerId === record.ownerId);
+      if (owned.length > DECISION_RECORDS_CAP) {
+        const keep = new Set(
+          owned
+            .sort((a, b) => b.createdAt.localeCompare(a.createdAt) || b.id.localeCompare(a.id))
+            .slice(0, DECISION_RECORDS_CAP),
+        );
+        for (let i = decisionRecords.length - 1; i >= 0; i--) {
+          if (!keep.has(decisionRecords[i]!)) decisionRecords.splice(i, 1);
+        }
+      }
+    },
+    async list(filter: DecisionRecordListFilter) {
+      return decisionRecords
+        .filter(
+          (r) =>
+            r.ownerId === filter.ownerId &&
+            (filter.sessionId === undefined || r.sessionId === filter.sessionId) &&
+            (filter.machineId === undefined || r.machineId === filter.machineId) &&
+            (filter.outcome === undefined || r.outcome === filter.outcome) &&
+            (filter.before === undefined || r.createdAt < filter.before),
+        )
+        .sort((a, b) => b.createdAt.localeCompare(a.createdAt) || b.id.localeCompare(a.id))
+        .slice(0, filter.limit ?? 50);
+    },
+    async markHumanResponse(
+      ownerId: string,
+      sessionId: string,
+      requestId: string,
+      response: DecisionHumanResponse,
+    ) {
+      const row = decisionRecords.find(
+        (r) =>
+          r.ownerId === ownerId &&
+          r.sessionId === sessionId &&
+          r.requestId === requestId &&
+          r.humanResponse === undefined,
+      );
+      if (row === undefined) return false;
+      row.humanResponse = response;
+      return true;
+    },
+  };
+
   return {
     users: userRepo,
     tokens: tokenRepo,
@@ -700,5 +753,6 @@ export function createMemoryUnitOfWork(): UnitOfWork {
     notes: noteRepo,
     noteAnnotations: noteAnnotationRepo,
     noteCategories: noteCategoryRepo,
+    decisionRecords: decisionRecordRepo,
   };
 }

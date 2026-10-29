@@ -29,6 +29,7 @@ import {
   sqliteNoteRepository,
   sqliteNoteAnnotationRepository,
   sqliteNoteCategoryRepository,
+  sqliteDecisionRecordRepository,
 } from './repos.js';
 
 /**
@@ -74,5 +75,6 @@ export function createSqliteUnitOfWork(dbPath: string): UnitOfWork {
     notes: sqliteNoteRepository(db),
     noteAnnotations: sqliteNoteAnnotationRepository(db),
     noteCategories: sqliteNoteCategoryRepository(db),
+    decisionRecords: sqliteDecisionRecordRepository(db),
   };
 }

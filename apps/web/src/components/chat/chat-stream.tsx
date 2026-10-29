@@ -3,8 +3,9 @@
 // SPDX-License-Identifier: MIT
 
 import { memo, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { ArrowDownIcon } from 'lucide-react';
+import { ArrowDownIcon, ScrollTextIcon } from 'lucide-react';
 import { useI18n } from '@/i18n';
+import { DecisionRecordsDialog } from '@/components/decision-records-dialog';
 import type { FoldState } from './fold.js';
 import { AssistantStepRow, SystemNote, TurnTail, UserMessage } from './rows.js';
 import { ToolCallRow } from './tool-card.js';
@@ -28,6 +29,8 @@ const BOTTOM_THRESHOLD = 80;
 interface ChatStreamProps {
   state: FoldState;
   cwd?: string;
+  /** #97 — the audit dialog's session filter (present once a channel is open). */
+  sessionId?: string;
   /**
    * History paging: bumps when a page was PREPENDED — the scroller adds the
    * height delta to scrollTop so the viewport stays put (otherwise the
@@ -49,6 +52,7 @@ interface ChatStreamProps {
 export function ChatStream({
   state,
   cwd,
+  sessionId,
   prependKey = 0,
   onTopReached,
   onPermissionRespond,
@@ -187,7 +191,9 @@ export function ChatStream({
           {unsettled.length > 0 ? (
             <PermissionCards permissions={unsettled} onRespond={onPermissionRespond} />
           ) : null}
-          {settled.length > 0 ? <SettledPermissions permissions={settled} /> : null}
+          {settled.length > 0 ? (
+            <SettledPermissions permissions={settled} sessionId={sessionId} />
+          ) : null}
           {openQuestions.length > 0 ? (
             <ElicitationCards elicitations={openQuestions} onRespond={onElicitationRespond} />
           ) : null}
@@ -223,10 +229,13 @@ export function ChatStream({
  */
 const SettledPermissions = memo(function SettledPermissions({
   permissions,
+  sessionId,
 }: {
   permissions: PermissionCardState[];
+  sessionId?: string;
 }) {
   const { t } = useI18n();
+  const [recordsOpen, setRecordsOpen] = useState(false);
   if (permissions.length === 0) return null;
   const delegated = permissions.filter((p) => p.resolution?.responder === 'delegated');
   const allowed = delegated.filter((p) => p.resolution?.denialReason === undefined);
@@ -241,6 +250,30 @@ const SettledPermissions = memo(function SettledPermissions({
             denied: denied.length,
           })}`
         : ''}
+      {/* #97 — the audit entry. Fold-local gate: only a fold that saw a
+          delegated settle can promise the dialog content; a human-only fold
+          hides it even when earlier folds decided (the providers entry
+          covers the full trail — plumbing session-wide state here isn't
+          worth a second entry's exactness). */}
+      {delegated.length > 0 && sessionId !== undefined ? (
+        <>
+          {' · '}
+          <button
+            type="button"
+            className="text-muted-foreground/60 hover:text-foreground -mx-1 inline-flex translate-y-0.5 cursor-pointer items-center rounded p-1 align-middle transition-colors"
+            title={t('decisions.openHint')}
+            aria-label={t('decisions.openHint')}
+            onClick={() => setRecordsOpen(true)}
+          >
+            <ScrollTextIcon className="size-3" />
+          </button>
+          <DecisionRecordsDialog
+            open={recordsOpen}
+            onClose={() => setRecordsOpen(false)}
+            sessionId={sessionId}
+          />
+        </>
+      ) : null}
     </span>
   );
 });

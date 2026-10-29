@@ -46,12 +46,15 @@ import type {
   NoteCategoryRepository,
   NoteRepository,
   NoteVersion,
+  DecisionRecord,
+  DecisionRecordListFilter,
+  DecisionRecordRepository,
   CredentialRepository,
   ProfileRepository,
   ResourceRepository,
   MachineRepository,
 } from '@harness-nexus/core';
-import { DEFAULT_SYSTEM_SETTINGS as DEFAULTS } from '@harness-nexus/core';
+import { DEFAULT_SYSTEM_SETTINGS as DEFAULTS, DECISION_RECORDS_CAP } from '@harness-nexus/core';
 
 // ---- row shapes ----
 interface UserRow {
@@ -1987,6 +1990,166 @@ export function sqliteNoteCategoryRepository(db: Database): NoteCategoryReposito
         db.prepare('UPDATE notes SET category_id = NULL WHERE category_id = ?').run(id);
         db.prepare('DELETE FROM note_categories WHERE id = ?').run(id);
       })();
+    },
+  };
+  return repo;
+}
+
+// ---- #97 — delegated-decision audit ----------------------------------------------
+
+interface DecisionRecordRow {
+  id: string;
+  owner_id: string;
+  created_at: string;
+  axis: string;
+  machine_id: string | null;
+  session_id: string | null;
+  request_id: string | null;
+  target: string | null;
+  tool_title: string;
+  tool_kind: string | null;
+  tool_input_preview: string | null;
+  outcome: string;
+  decided_by: string;
+  severity: number | null;
+  intent: number | null;
+  why: string | null;
+  sev_confidence: number | null;
+  intent_confidence: number | null;
+  provider_name: string | null;
+  model_id: string | null;
+  latency_ms: number | null;
+  denial_reason: string | null;
+  human_response: string | null;
+}
+
+function decisionRecordOf(r: DecisionRecordRow): DecisionRecord {
+  return {
+    id: r.id,
+    ownerId: r.owner_id,
+    createdAt: r.created_at,
+    axis: r.axis as DecisionRecord['axis'],
+    ...(r.machine_id !== null ? { machineId: r.machine_id } : {}),
+    ...(r.session_id !== null ? { sessionId: r.session_id } : {}),
+    ...(r.request_id !== null ? { requestId: r.request_id } : {}),
+    ...(r.target !== null ? { target: r.target } : {}),
+    toolTitle: r.tool_title,
+    ...(r.tool_kind !== null ? { toolKind: r.tool_kind } : {}),
+    ...(r.tool_input_preview !== null ? { toolInputPreview: r.tool_input_preview } : {}),
+    outcome: r.outcome as DecisionRecord['outcome'],
+    decidedBy: r.decided_by as DecisionRecord['decidedBy'],
+    ...(r.severity !== null ? { severity: r.severity } : {}),
+    ...(r.intent !== null ? { intent: r.intent } : {}),
+    ...(r.why !== null ? { why: r.why as NonNullable<DecisionRecord['why']> } : {}),
+    ...(r.sev_confidence !== null ? { sevConfidence: r.sev_confidence } : {}),
+    ...(r.intent_confidence !== null ? { intentConfidence: r.intent_confidence } : {}),
+    ...(r.provider_name !== null ? { providerName: r.provider_name } : {}),
+    ...(r.model_id !== null ? { modelId: r.model_id } : {}),
+    ...(r.latency_ms !== null ? { latencyMs: r.latency_ms } : {}),
+    ...(r.denial_reason !== null
+      ? { denialReason: r.denial_reason as NonNullable<DecisionRecord['denialReason']> }
+      : {}),
+    ...(r.human_response !== null
+      ? { humanResponse: r.human_response as NonNullable<DecisionRecord['humanResponse']> }
+      : {}),
+  };
+}
+
+export function sqliteDecisionRecordRepository(db: Database): DecisionRecordRepository {
+  const insert = db.prepare(`
+    INSERT INTO decision_records (
+      id, owner_id, created_at, axis, machine_id, session_id, request_id, target,
+      tool_title, tool_kind, tool_input_preview, outcome, decided_by,
+      severity, intent, why, sev_confidence, intent_confidence,
+      provider_name, model_id, latency_ms, denial_reason, human_response
+    ) VALUES (
+      @id, @owner_id, @created_at, @axis, @machine_id, @session_id, @request_id, @target,
+      @tool_title, @tool_kind, @tool_input_preview, @outcome, @decided_by,
+      @severity, @intent, @why, @sev_confidence, @intent_confidence,
+      @provider_name, @model_id, @latency_ms, @denial_reason, @human_response
+    )`);
+  const countFor = db.prepare('SELECT COUNT(*) AS n FROM decision_records WHERE owner_id = ?');
+  const pruneTo = db.prepare(`
+    DELETE FROM decision_records WHERE owner_id = ? AND id NOT IN (
+      SELECT id FROM decision_records WHERE owner_id = ?
+      ORDER BY created_at DESC, rowid DESC LIMIT ?
+    )`);
+
+  const repo: DecisionRecordRepository = {
+    async append(record) {
+      // Insert + on-write prune share one transaction: the cap is a hard
+      // ceiling, never cap-plus-slack (a sweeper's softness), and the
+      // whole check is an indexed count + (usually empty) delete —
+      // sub-millisecond even before it leaves the settle hot path.
+      db.transaction(() => {
+        insert.run({
+          id: record.id,
+          owner_id: record.ownerId,
+          created_at: record.createdAt,
+          axis: record.axis,
+          machine_id: record.machineId ?? null,
+          session_id: record.sessionId ?? null,
+          request_id: record.requestId ?? null,
+          target: record.target ?? null,
+          tool_title: record.toolTitle,
+          tool_kind: record.toolKind ?? null,
+          tool_input_preview: record.toolInputPreview ?? null,
+          outcome: record.outcome,
+          decided_by: record.decidedBy,
+          severity: record.severity ?? null,
+          intent: record.intent ?? null,
+          why: record.why ?? null,
+          sev_confidence: record.sevConfidence ?? null,
+          intent_confidence: record.intentConfidence ?? null,
+          provider_name: record.providerName ?? null,
+          model_id: record.modelId ?? null,
+          latency_ms: record.latencyMs ?? null,
+          denial_reason: record.denialReason ?? null,
+          human_response: record.humanResponse ?? null,
+        });
+        const { n } = countFor.get(record.ownerId) as { n: number };
+        if (n > DECISION_RECORDS_CAP) {
+          pruneTo.run(record.ownerId, record.ownerId, DECISION_RECORDS_CAP);
+        }
+      })();
+    },
+    async list(filter: DecisionRecordListFilter) {
+      const clauses = ['owner_id = @ownerId'];
+      const params: Record<string, string | number> = { ownerId: filter.ownerId };
+      if (filter.sessionId !== undefined) {
+        clauses.push('session_id = @sessionId');
+        params.sessionId = filter.sessionId;
+      }
+      if (filter.machineId !== undefined) {
+        clauses.push('machine_id = @machineId');
+        params.machineId = filter.machineId;
+      }
+      if (filter.outcome !== undefined) {
+        clauses.push('outcome = @outcome');
+        params.outcome = filter.outcome;
+      }
+      if (filter.before !== undefined) {
+        clauses.push('created_at < @before');
+        params.before = filter.before;
+      }
+      const rows = db
+        .prepare(
+          `SELECT * FROM decision_records WHERE ${clauses.join(' AND ')}
+           ORDER BY created_at DESC, rowid DESC LIMIT @limit`,
+        )
+        .all({ ...params, limit: filter.limit ?? 50 }) as DecisionRecordRow[];
+      return rows.map(decisionRecordOf);
+    },
+    async markHumanResponse(ownerId, sessionId, requestId, response) {
+      // First answer wins (human_response IS NULL guard): a re-answered or
+      // watchdog-then-human card must not rewrite the recorded pair.
+      const res = db
+        .prepare(
+          `UPDATE decision_records SET human_response = ?
+           WHERE owner_id = ? AND session_id = ? AND request_id = ? AND human_response IS NULL`,
+        )
+        .run(response, ownerId, sessionId, requestId);
+      return res.changes > 0;
     },
   };
   return repo;
