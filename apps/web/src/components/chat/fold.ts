@@ -118,9 +118,16 @@ export interface PermissionCardState {
   /**
    * #92 — the gate escalated to the human and attached its lean: advisory
    * ONLY (clearly marked on the card; never a decision). Absent = no gate
-   * or nothing to say.
+   * or nothing to say. v2: the severity (1..7) and intent (0..1) verdict
+   * inputs ride along when the model produced them.
    */
-  advisory?: { lean: 'allow' | 'reject'; confidence: number; reason?: string };
+  advisory?: {
+    lean: 'allow' | 'reject';
+    confidence: number;
+    reason?: string;
+    severity?: number;
+    intent?: number;
+  };
   /** #92 — how it settled (`undefined` on pre-#92 events = a human did). */
   resolution?: {
     responder: 'human' | 'delegated';
@@ -521,6 +528,8 @@ function applyEvent(state: FoldState, event: ChatStreamEvent): FoldState {
                   lean: event.lean,
                   confidence: event.confidence,
                   ...(event.reason !== undefined ? { reason: event.reason } : {}),
+                  ...(event.severity !== undefined ? { severity: event.severity } : {}),
+                  ...(event.intent !== undefined ? { intent: event.intent } : {}),
                 },
               }
             : p,

@@ -91,6 +91,8 @@ const en = {
   permissionsSettled: '{count} permission request(s) handled',
   approvalsSettledSummary: 'delegated {delegated} · allowed {allowed} · denied {denied}',
   approvalsAdvisory: 'decision model leans {lean} ({confidence}) — advisory only',
+  approvalsAdvisoryVerdict:
+    'decision model: severity {severity} · intent {intent} → {lean} — advisory only',
   approvalsLeanAllow: 'allow',
   approvalsLeanReject: 'reject',
   'approvalsReason.policy': 'never-allow floor',
@@ -284,6 +286,8 @@ const zh: typeof en = {
   permissionsSettled: '已处理 {count} 个权限请求',
   approvalsSettledSummary: '代审 {delegated} · 放行 {allowed} · 拒绝 {denied}',
   approvalsAdvisory: '决策模型倾向{lean}（{confidence}）—— 仅供参考',
+  approvalsAdvisoryVerdict:
+    '决策模型：严重度 {severity} · 意图匹配 {intent} → 倾向{lean} —— 仅供参考',
   approvalsLeanAllow: '放行',
   approvalsLeanReject: '拒绝',
   'approvalsReason.policy': '命中永不放行底线',

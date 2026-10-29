@@ -135,6 +135,11 @@ export async function registerRealtime(
     chatIdleTtlMs: number;
     chatViewerGraceMs: number;
     chatApprovalsTimeoutMs: number;
+    /** #92 v2 — the delegated-gate verdict bands (ENV constants, not knobs). */
+    approvalsIntentThreshold: number;
+    approvalsAnswerConfidenceFloor: number;
+    approvalsPromptWindow: number;
+    approvalsPromptCharCap: number;
     sessionsListTimeoutMs: number;
     adaptersReportTimeoutMs: number;
   },
@@ -164,6 +169,12 @@ export async function registerRealtime(
         credentialEncryptionKey: app.credentialEncryptionKey,
         timeoutMs: opts.chatApprovalsTimeoutMs,
         log: app.log,
+        bands: {
+          intentThreshold: opts.approvalsIntentThreshold,
+          answerConfidenceFloor: opts.approvalsAnswerConfidenceFloor,
+          promptWindow: opts.approvalsPromptWindow,
+          promptCharCap: opts.approvalsPromptCharCap,
+        },
       },
       io: {
         toCtl: (machineId, event, payload) => {
@@ -212,6 +223,12 @@ export async function registerRealtime(
       approvals: {
         timeoutMs: opts.chatApprovalsTimeoutMs,
         log: app.log,
+        bands: {
+          intentThreshold: opts.approvalsIntentThreshold,
+          answerConfidenceFloor: opts.approvalsAnswerConfidenceFloor,
+          promptWindow: opts.approvalsPromptWindow,
+          promptCharCap: opts.approvalsPromptCharCap,
+        },
       },
     },
     {

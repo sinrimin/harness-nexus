@@ -21,8 +21,9 @@ import { generateId } from '../infra/crypto.js';
 import type { SystemOneFetch } from '../infra/systemone.js';
 import {
   decideApproval,
-  GATE_PROMPT_CHAR_CAP,
-  GATE_PROMPT_WINDOW,
+  type ApprovalBands,
+  PROMPT_RETAIN_CHAR_CAP,
+  PROMPT_RETAIN_WINDOW,
   toolInputText,
 } from './approvals-gate.js';
 
@@ -75,6 +76,8 @@ export interface ChatServiceDeps {
     log?: { warn: (msg: string) => void };
     /** Injectable for tests. */
     fetchImpl?: SystemOneFetch;
+    /** v2 verdict bands (ENV constants; absent = the gate's defaults). */
+    bands?: ApprovalBands;
   };
 }
 
@@ -936,16 +939,18 @@ export class ChatService {
    * turn starts).
    */
   private emitUserMessage(session: LiveSession, blocks: PromptBlock[]): void {
-    // #92 — the bounded prompt window the decision model may see (context
-    // hygiene: user-authored text only, never agent output).
+    // #92 — the retained prompt window for the decision model (context
+    // hygiene: user-authored text only, never agent output). v2: retention
+    // is a generous MEMORY bound; the gate applies the real window and the
+    // head/tail cut, so an ENV-raised window needs no second storage path.
     const text = blocks
       .filter((b): b is Extract<PromptBlock, { type: 'text' }> => b.type === 'text')
       .map((b) => b.text.trim())
       .filter((t) => t !== '')
       .join(' ')
-      .slice(0, GATE_PROMPT_CHAR_CAP);
+      .slice(0, PROMPT_RETAIN_CHAR_CAP);
     if (text !== '') {
-      session.recentPrompts = [...session.recentPrompts, text].slice(-GATE_PROMPT_WINDOW);
+      session.recentPrompts = [...session.recentPrompts, text].slice(-PROMPT_RETAIN_WINDOW);
     }
     this.deps.io.toChannel(session.sessionId, 'chat:event', {
       sessionId: session.sessionId,
@@ -1140,6 +1145,7 @@ export class ChatService {
         timeoutMs: gate.timeoutMs,
         ...(gate.log !== undefined ? { log: gate.log } : {}),
         ...(gate.fetchImpl !== undefined ? { fetchImpl: gate.fetchImpl } : {}),
+        ...(gate.bands !== undefined ? { bands: gate.bands } : {}),
       },
       {
         ownerId: session.ownerId,
@@ -1163,10 +1169,16 @@ export class ChatService {
         toolCall: {
           title: toolCall.title,
           kind: toolCall.kind,
-          // #92 — the arguments the `covered` question judges; the daemon
-          // already bounds rawInput's fields, the gate bounds the text.
+          // #92 — the arguments the severity/intent questions judge; the
+          // daemon already bounds rawInput's fields, the gate bounds the text.
           input: toolInputText(toolCall.rawInput),
+          // v2 — the PARSED arguments feed the metadata pre-filter (the
+          // Bash verb pinning and the read-kind path checks read real
+          // fields, not the JSON text).
+          raw: toolCall.rawInput,
         },
+        // v2 — the pre-filter's "inside the working area" root.
+        workspaceRoot: session.cwd,
         options,
       },
     );
@@ -1183,6 +1195,8 @@ export class ChatService {
           lean: outcome.lean,
           confidence: outcome.confidence,
           ...(outcome.reason !== undefined ? { reason: outcome.reason } : {}),
+          ...(outcome.severity !== undefined ? { severity: outcome.severity } : {}),
+          ...(outcome.intent !== undefined ? { intent: outcome.intent } : {}),
         },
       });
       return;

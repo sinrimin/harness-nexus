@@ -657,13 +657,17 @@ export const chatStreamEventSchema = z.discriminatedUnion('kind', [
   }),
   // #92 — the gate could not decide and escalated to the human; the card
   // stays a normal pending card, this only attaches the model's lean as a
-  // clearly-advisory muted line (never a decision).
+  // clearly-advisory muted line (never a decision). v2: `severity` (1..7,
+  // the probability-weighted score) and `intent` (0..1, the outcome-match
+  // noul) ride along as context for the human's decision.
   z.object({
     kind: z.literal('permission_advisory'),
     requestId: z.string().min(1).max(128),
     lean: z.enum(['allow', 'reject']),
     confidence: z.number().min(0).max(1),
     reason: delegationDenialReasonSchema.optional(),
+    severity: z.number().min(1).max(7).optional(),
+    intent: z.number().min(0).max(1).optional(),
   }),
   // 9 W14.1 — the agent asked the user a structured question (ACP
   // `elicitation/create`, form mode; claude's AskUserQuestion and

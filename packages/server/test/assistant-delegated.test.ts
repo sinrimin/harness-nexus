@@ -36,9 +36,11 @@ function fakeSystemOne(answers: Record<string, unknown>, log: unknown[]): FetchI
   };
 }
 
+// v2 — severity 1–2 (a routine in-platform write) allows without consulting
+// intent; a flat severity answer escalates to the human card.
 const ALLOW = {
-  pick: { choice: 'allow_once', confidence: 0.99 },
-  covered: { noul: 0.99 },
+  severity: { score: 1.2, confidence: 0.97 },
+  intent: { noul: 0.98, confidence: 0.95 },
   why: { choice: 'fine' },
 };
 
@@ -232,8 +234,8 @@ describe('#95 — assistant delegated write policy', () => {
     const h = await setup({
       delegated: true,
       answers: {
-        pick: { choice: 'allow_once', confidence: 0.4 },
-        covered: { noul: 0.4 },
+        severity: { score: 1.2, confidence: 0.4 },
+        intent: { noul: 0.98, confidence: 0.9 },
         why: { choice: 'fine' },
       },
     });

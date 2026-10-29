@@ -184,7 +184,10 @@ function ApprovalsCard({
   const [defaultDecision, setDefaultDecision] = useState<
     { providerId: string; modelId: string } | null | undefined
   >(undefined);
-  const [threshold, setThreshold] = useState(String(saved?.confidenceThreshold ?? 0.9));
+  // v2 — the threshold is now the ANSWER-quality floor ("did the model
+  // understand the question"), default 0.6; the allow verdict itself is the
+  // severity × intent matrix, no longer a confidence number.
+  const [threshold, setThreshold] = useState(String(saved?.confidenceThreshold ?? 0.6));
   const [neverAllow, setNeverAllow] = useState((saved?.neverAllow ?? []).join('\n'));
   const [denyNote, setDenyNote] = useState(saved?.denyNote ?? true);
   const [busy, setBusy] = useState(false);

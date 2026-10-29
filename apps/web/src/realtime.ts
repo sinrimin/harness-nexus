@@ -111,6 +111,9 @@ export type ChatStreamEvent =
       lean: 'allow' | 'reject';
       confidence: number;
       reason?: string;
+      /** v2 — the model's raw verdict inputs, context for the decision. */
+      severity?: number;
+      intent?: number;
     }
   | {
       /** 9 W14.1 — the agent asked a structured question (ACP elicitation). */

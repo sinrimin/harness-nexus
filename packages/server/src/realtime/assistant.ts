@@ -30,10 +30,11 @@ import {
 import type { AssistantMcpDeps } from '../assistant/context.js';
 import type { SystemOneFetch } from '../infra/systemone.js';
 import {
+  type ApprovalBands,
   decideApproval,
   denyMessage,
-  GATE_PROMPT_CHAR_CAP,
-  GATE_PROMPT_WINDOW,
+  PROMPT_RETAIN_CHAR_CAP,
+  PROMPT_RETAIN_WINDOW,
   toolInputText,
 } from './approvals-gate.js';
 
@@ -111,10 +112,10 @@ function isRecord(v: unknown): v is Record<string, unknown> {
   return v !== null && typeof v === 'object' && !Array.isArray(v);
 }
 
-/** #92/#95 — the bounded "owner's own recent prompts" context for the gate. */
+/** #92/#95 — the retained "owner's own recent prompts" context for the gate. */
 function recentPromptsFrom(rows: readonly AssistantMessageRow[]): string[] {
   const texts: string[] = [];
-  for (let i = rows.length - 1; i >= 0 && texts.length < GATE_PROMPT_WINDOW; i -= 1) {
+  for (let i = rows.length - 1; i >= 0 && texts.length < PROMPT_RETAIN_WINDOW; i -= 1) {
     const row = rows[i];
     if (row === undefined || row.type !== 'user') continue;
     const text = row.blocks
@@ -122,7 +123,7 @@ function recentPromptsFrom(rows: readonly AssistantMessageRow[]): string[] {
       .map((b) => b.text)
       .join('\n')
       .trim();
-    if (text !== '') texts.unshift(text.slice(0, GATE_PROMPT_CHAR_CAP));
+    if (text !== '') texts.unshift(text.slice(0, PROMPT_RETAIN_CHAR_CAP));
   }
   return texts;
 }
@@ -151,6 +152,8 @@ export interface AssistantRealtimeDeps extends AssistantRunnerDeps {
     log?: { warn: (msg: string) => void };
     /** Injectable for tests. */
     fetchImpl?: SystemOneFetch;
+    /** v2 verdict bands (ENV constants; absent = the gate's defaults). */
+    bands?: ApprovalBands;
   };
 }
 
@@ -1100,12 +1103,18 @@ export class AssistantRealtimeService {
    * #95 follow-up — the assistant's half of the shared gate. Runs BESIDE the
    * human card (first responder wins). The platform assistant has no machine,
    * so there is no policy floor and no reason channel; the gate's eligibility
-   * (one-shot options only) and 0.9 confidence threshold still apply.
+   * (one-shot options only), the metadata pre-filter and the v2 severity ×
+   * intent verdict matrix still apply.
    */
   private async runDelegatedAnswer(
     ch: LiveChannel,
     requestId: string,
-    toolCall: { toolCallId: string; toolName: string; args: unknown; description?: string | undefined },
+    toolCall: {
+      toolCallId: string;
+      toolName: string;
+      args: unknown;
+      description?: string | undefined;
+    },
     options: readonly { optionId: string; name: string; kind: string }[],
     recentPrompts: readonly string[],
   ): Promise<void> {
@@ -1120,6 +1129,7 @@ export class AssistantRealtimeService {
         timeoutMs: gate.timeoutMs,
         ...(gate.log !== undefined ? { log: gate.log } : {}),
         ...(gate.fetchImpl !== undefined ? { fetchImpl: gate.fetchImpl } : {}),
+        ...(gate.bands !== undefined ? { bands: gate.bands } : {}),
       },
       {
         ownerId: ch.ownerId,
@@ -1129,13 +1139,16 @@ export class AssistantRealtimeService {
         toolCall: {
           title: toolCall.toolName,
           // #92 — the seam holds the full args; the gate bounds the text.
-          // Without it the `covered` question cannot be answered (the
+          // Without it the severity/intent questions cannot be answered (the
           // ds-web trial: a web_search call scored 0.16 with the query
           // invisible to the decision model).
           input: toolInputText(toolCall.args),
           // The tool's own description — an `api__x__y` name alone may not
           // tell the model what the call does.
           description: toolCall.description,
+          // v2 — parsed args feed the metadata pre-filter (platform tools
+          // never match its kind shapes, so this axis always sees the model).
+          raw: toolCall.args,
         },
         options,
       },
@@ -1151,6 +1164,8 @@ export class AssistantRealtimeService {
         lean: outcome.lean,
         confidence: outcome.confidence,
         ...(outcome.reason !== undefined ? { reason: outcome.reason } : {}),
+        ...(outcome.severity !== undefined ? { severity: outcome.severity } : {}),
+        ...(outcome.intent !== undefined ? { intent: outcome.intent } : {}),
       });
       return;
     }

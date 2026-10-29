@@ -60,8 +60,9 @@ const en = {
   approvalsPickProvider: 'pick a systemone provider…',
   approvalsModel: 'Decision model',
   approvalsPickModel: 'pick a decision model…',
-  approvalsThreshold: 'Confidence threshold',
-  approvalsThresholdDesc: 'Below it the request escalates back to the human card (0.5–1).',
+  approvalsThreshold: 'Answer-confidence floor',
+  approvalsThresholdDesc:
+    'Below it the model is treated as unsure and the request escalates to the human card (0.5–1).',
   approvalsNeverAllow: 'Never-allow floor',
   approvalsNeverPlaceholder: 'one pattern per line, matched against the tool title',
   approvalsNeverDesc:
@@ -459,8 +460,8 @@ const zh: typeof en = {
   approvalsPickProvider: '选择 systemone 供应商…',
   approvalsModel: '决策模型',
   approvalsPickModel: '选择决策模型…',
-  approvalsThreshold: '置信度阈值',
-  approvalsThresholdDesc: '低于阈值即转回人工卡片（0.5–1）。',
+  approvalsThreshold: '回答置信度底线',
+  approvalsThresholdDesc: '低于底线视为模型没看懂问题，转回人工卡片（0.5–1）。',
   approvalsNeverAllow: '永不放行底线',
   approvalsNeverPlaceholder: '每行一个模式，按工具标题匹配',
   approvalsNeverDesc: '大小写不敏感的子串；命中即在咨询模型前直接拒绝，任何目标都生效。',
