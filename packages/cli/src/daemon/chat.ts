@@ -30,6 +30,7 @@ import {
   chatSessionCloseEventSchema,
   chatSessionResyncEventSchema,
   chatSessionStartEventSchema,
+  chatApprovalsSetEventSchema,
   chatTurnCancelEventSchema,
   availableCommandViewSchema,
   planEntrySchema,
@@ -40,6 +41,7 @@ import {
   type AcpToolCallView,
   type AgentTarget,
   type AvailableCommandView,
+  type ChatApprovalsView,
   type ChatStreamEvent,
   type ElicitationField,
   type HistoryItem,
@@ -148,6 +150,8 @@ interface DaemonSession {
   config: {
     modes?: SessionModeState;
     options: SessionConfigOption[];
+    /** #92 — the synthesized delegated-approvals slice (server-owned truth). */
+    approvals?: ChatApprovalsView;
   };
   /**
    * 9 W13 — the configured model set from `chat:session.start`
@@ -437,6 +441,11 @@ export function attachChatHandlers(
       kind: 'session_config',
       ...(session.config.modes !== undefined ? { modes: { ...session.config.modes } } : {}),
       ...(session.config.options.length > 0 ? { configOptions: session.config.options } : {}),
+      // #92 — rides every config snapshot, so a resync restores the sender's
+      // switch exactly like the mode/options selectors.
+      ...(session.config.approvals !== undefined
+        ? { approvals: { ...session.config.approvals } }
+        : {}),
     });
   };
 
@@ -721,8 +730,17 @@ export function attachChatHandlers(
       return;
     }
     ack?.({ accepted: true });
-    const { sessionId, target, cwd, resume, modelOptions, defaultMode, prewarm, createDirectory } =
-      parsed.data;
+    const {
+      sessionId,
+      target,
+      cwd,
+      resume,
+      modelOptions,
+      defaultMode,
+      prewarm,
+      createDirectory,
+      approvals,
+    } = parsed.data;
     void (async () => {
       inFlightStarts.add(sessionId);
       // #70 — the cwd may be a brand-new project directory (the assistant
@@ -944,7 +962,10 @@ export function attachChatHandlers(
           busy: false,
           permissions: new Map(),
           elicitations: new Map(),
-          config: establishedConfig ?? { options: [] },
+          config:
+            establishedConfig !== null
+              ? { ...establishedConfig, ...(approvals !== undefined ? { approvals } : {}) }
+              : { options: [], ...(approvals !== undefined ? { approvals } : {}) },
           ...(modelOptions !== undefined ? { modelOptions } : {}),
           history: [],
           wireTextEmitted: false,
@@ -1134,6 +1155,24 @@ export function attachChatHandlers(
     void session.conn.request('session/cancel', {}, 5000).catch(() => {});
   });
 
+  // #92 — the server switched the live approvals responder; merge the view
+  // and re-emit the config snapshot (the sender's switch settles through it).
+  socket.on('chat:approvals.set', (payload: unknown, ack?: (res: unknown) => void) => {
+    const parsed = chatApprovalsSetEventSchema.safeParse(payload);
+    if (!parsed.success) {
+      ack?.({ error: 'proto:invalid' });
+      return;
+    }
+    const session = sessions.get(parsed.data.sessionId);
+    if (session === undefined) {
+      ack?.({ error: 'unknown-session' });
+      return;
+    }
+    ack?.({ accepted: true });
+    session.config.approvals = parsed.data.approvals;
+    emitConfig(session);
+  });
+
   // 9 W9 A — switch the live session's permission mode / one config option.
   // NOT busy-gated: dsh pins the selection per PROMPT (a mid-turn set applies
   // to the next turn) and the UI disables the selectors during a turn anyway.
@@ -1199,16 +1238,25 @@ export function attachChatHandlers(
     clearTimeout(pending.timer);
     session.permissions.delete(parsed.data.requestId);
     // optionId is forwarded VERBATIM (a rewritten id counts as a rejection).
+    // #92 — `meta.denyMessage` rides the ACP response's first-party `_meta`
+    // slot: old adapters ignore it, the patched claude adapter feeds it to
+    // the model as the deny feedback (same-turn, self-correcting).
     session.conn.respondPermission(
       pending.jsonrpcId,
       parsed.data.optionId !== undefined
-        ? { outcome: 'selected', optionId: parsed.data.optionId }
+        ? {
+            outcome: 'selected',
+            optionId: parsed.data.optionId,
+            ...(parsed.data.meta !== undefined ? { _meta: parsed.data.meta } : {}),
+          }
         : { outcome: 'cancelled' },
     );
     // Record the resolution in the history ring (record-only — the server
     // broadcasts the live event): without it, a resync (session switch back,
     // rejoin, ready re-push) replays the original `permission_request` and
-    // the answered card REAPPEARS as unsettled (#7 rig report).
+    // the answered card REAPPEARS as unsettled (#7 rig report). #92 — the
+    // gate's attribution rides along, so the replayed settled line keeps its
+    // provenance.
     pushHistory(session, {
       type: 'event',
       event: {
@@ -1216,6 +1264,22 @@ export function attachChatHandlers(
         requestId: parsed.data.requestId,
         outcome: parsed.data.optionId !== undefined ? 'selected' : 'cancelled',
         ...(parsed.data.optionId !== undefined ? { optionId: parsed.data.optionId } : {}),
+        ...(parsed.data.attribution !== undefined
+          ? {
+              responder: parsed.data.attribution.responder,
+              decidedBy: parsed.data.attribution.decidedBy,
+              delegated: {
+                providerName: parsed.data.attribution.providerName,
+                modelId: parsed.data.attribution.modelId,
+                ...(parsed.data.attribution.confidence !== undefined
+                  ? { confidence: parsed.data.attribution.confidence }
+                  : {}),
+                ...(parsed.data.attribution.denial !== undefined
+                  ? { denial: parsed.data.attribution.denial }
+                  : {}),
+              },
+            }
+          : {}),
       },
     });
   });

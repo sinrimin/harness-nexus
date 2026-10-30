@@ -918,6 +918,19 @@ export function AgentSessionPage() {
     }
   }
 
+  /** #92 — switch the approvals responder; the session_config approvals
+   *  slice settles the sender's switch (no browser-side optimism). */
+  async function approvalsSet(responder: 'manual' | 'delegated'): Promise<void> {
+    if (sessionId === '') return;
+    const ack = await emitWithAck<{ accepted?: boolean; error?: string }>('chat:approvals.set', {
+      sessionId,
+      responder,
+    });
+    if (ack.error !== undefined) {
+      toast.error(t('chat.approvalsSetFailed', { error: ack.error }));
+    }
+  }
+
   async function send(): Promise<void> {
     const text = draft.trim();
     const canSend = text !== '' || attachments.length > 0 || fileRefs.length > 0;
@@ -1352,6 +1365,7 @@ export function AgentSessionPage() {
                       imageSupported={imageSupported}
                       config={conversation.config satisfies ComposerConfig}
                       onConfigSet={(set) => void configSet(set)}
+                      onApprovalsSet={(responder) => void approvalsSet(responder)}
                       commands={conversation.commands}
                     />
                   </div>

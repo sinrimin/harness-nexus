@@ -11,7 +11,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
   ADAPTER_PATCHES,
@@ -60,6 +60,46 @@ function seedStore(dir: string, opts: { bins?: boolean; patched?: boolean } = {}
   );
 }
 
+/**
+ * #92 — the REAL claude-agent-acp 0.93.0 `dist/permissions/effects.js`
+ * excerpts (parse head + the plain-reject arm), vendored verbatim from the
+ * pinned install so anchor drift is a test failure, not a silent skip. The
+ * `**FILE**` separator keeps the path and the content in one constant.
+ */
+const CLAUDE_EFFECTS_0930 = `node_modules/@agentclientprotocol/claude-agent-acp/dist/permissions/effects.js
+**FILE**
+export function parseClaudePermissionSelection(response, toolName) {
+    if (response.outcome?.outcome !== "selected")
+        throw new Error("Tool use aborted");
+    const optionId = response.outcome.optionId;
+    const contextResetMode = toolName === "ExitPlanMode" ? exitPlanClearContextMode(optionId) : undefined;
+    return { optionId, ...(contextResetMode ? { contextResetMode } : {}) };
+}
+function deny(context, message = "User refused permission to run tool", interrupt = false) {
+    return {
+        behavior: "deny",
+        message,
+        ...(interrupt ? { interrupt: true } : {}),
+        toolUseID: context.toolUseID,
+        decisionClassification: "user_reject",
+    };
+}
+function applyCommonSelection(selection, context) {
+    switch (selection.optionId) {
+        case PERMISSION_OPTION_ID.allowOnce:
+            return allow(context);
+        case PERMISSION_OPTION_ID.allowWithUpdates:
+            if (!context.durableChangeSet)
+                throw new Error("Invalid durable permission selection");
+            return allow(context, context.durableChangeSet.updates, true);
+        case PERMISSION_OPTION_ID.reject:
+            return deny(context);
+        default:
+            throw new Error(\`Unknown permission option: \${selection.optionId}\`);
+    }
+}
+`;
+
 describe('applyAdapterPatches (issue #2)', () => {
   it('applies the anchor replace and becomes idempotent via the marker', () => {
     const dir = mkdtempSync(join(tmpdir(), 'hnx-provision-'));
@@ -90,8 +130,31 @@ describe('applyAdapterPatches (issue #2)', () => {
     expect(r.failed[0]!.reason).toContain('anchor not found');
   });
 
-  it('the production list is empty since #71 (setModel skip upstreamed in 0.93.0)', () => {
-    expect(ADAPTER_PATCHES).toEqual([]);
+  // #92 — the denyMessage patches ARE the production set now (the #71
+  // setModel patch retired at 0.93.0). What matters is that their anchors
+  // match the REAL pinned dist: apply them against the installed 0.93.0
+  // effects.js (vendored here so the test never depends on ~/.hnx state).
+  it('#92 denyMessage patches land on the real 0.93.0 effects.js and are idempotent', () => {
+    const home = mkdtempSync(join(tmpdir(), 'hnx-provision-home-'));
+    const store = join(home, '.hnx', 'acp-adapters');
+    const file = join(store, CLAUDE_EFFECTS_0930.split('**FILE**')[0]!.trim());
+    mkdirSync(dirname(file), { recursive: true });
+    writeFileSync(file, CLAUDE_EFFECTS_0930.split('**FILE**')[1]!.trimStart());
+    const first = applyAdapterPatches(store);
+    expect(first.applied).toHaveLength(2);
+    expect(first.failed).toEqual([]);
+    const patched = readFileSync(file, 'utf8');
+    expect(patched).toContain('selection.denyMessage ?? "User refused permission to run tool"');
+    const again = applyAdapterPatches(store);
+    expect(again.already).toHaveLength(2);
+    expect(again.applied).toEqual([]);
+  });
+
+  it('the production list is exactly the two #92 denyMessage patches', () => {
+    expect(ADAPTER_PATCHES.map((p) => p.id)).toEqual([
+      'claude-agent-acp-deny-message-parse',
+      'claude-agent-acp-deny-message-use',
+    ]);
   });
 });
 

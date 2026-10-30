@@ -98,6 +98,12 @@ export async function updateMachine(
   input: UpdateMachineInput,
 ): Promise<Machine> {
   const machine = await getMachine(deps, principal, id);
+  // Issue #92 — the approvals config points at a registry row; re-validate on
+  // every save so the gate can never be aimed at a chat provider or a stale
+  // model id (owner visibility mirrors the provider list: personal-or-global).
+  if (input.chatApprovals !== undefined) {
+    await validateChatApprovals(deps, principal, input.chatApprovals);
+  }
   return deps.uow.machines.save({
     ...machine,
     ...(input.name !== undefined ? { name: input.name } : {}),
@@ -109,7 +115,40 @@ export async function updateMachine(
     ...(input.chatPrewarm !== undefined ? { chatPrewarm: input.chatPrewarm } : {}),
     // Issue #49 — machine-scoped default chat permission modes (replace).
     ...(input.chatDefaultMode !== undefined ? { chatDefaultMode: input.chatDefaultMode } : {}),
+    // Issue #92 — machine-scoped delegated-approvals config (replace).
+    ...(input.chatApprovals !== undefined ? { chatApprovals: input.chatApprovals } : {}),
   });
+}
+
+/**
+ * #92 — a chatApprovals config is valid iff its provider row exists, is
+ * visible to this owner, speaks `systemone`, and carries the named model as a
+ * `type: 'decision'` registry entry. Kept here (not the zod layer) because it
+ * is a cross-row invariant only the service can see.
+ */
+async function validateChatApprovals(
+  deps: ServiceDeps,
+  principal: Principal,
+  approvals: { providerId: string; modelId: string },
+): Promise<void> {
+  const provider = await deps.uow.llmProviders.findById(approvals.providerId);
+  if (!provider || !(provider.scope === 'global' || provider.ownerId === principal.userId)) {
+    throw new AppError('Provider not found', 404, 'CHAT_APPROVALS_PROVIDER_NOT_FOUND');
+  }
+  if (provider.api !== 'systemone') {
+    throw new AppError(
+      'The delegated-approvals provider must speak the systemone api',
+      400,
+      'CHAT_APPROVALS_PROVIDER_NOT_DECISION',
+    );
+  }
+  if (!provider.models.some((m) => m.id === approvals.modelId && m.type === 'decision')) {
+    throw new AppError(
+      `Model "${approvals.modelId}" is not a decision model on that provider`,
+      400,
+      'CHAT_APPROVALS_MODEL_NOT_DECISION',
+    );
+  }
 }
 
 /**

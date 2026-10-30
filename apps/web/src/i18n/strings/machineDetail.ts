@@ -45,6 +45,30 @@ const en = {
   defaultModeDesc:
     'Applied once when a chat session opens; switch anytime mid-session. Auto falls back if the model lacks support.',
   defaultModeNone: 'Adapter default',
+  approvalsTitle: 'Delegated approvals',
+  approvalsDesc:
+    'Who answers a permission confirmation the Agent surfaces: the human card (default) or a decision model with a deterministic floor. Mid-session switching lives in the chat sender.',
+  approvalsResponder: 'Approval responder',
+  approvalsResponderDesc:
+    'The machine default; sessions switch it live from the sender. Manual = every confirmation waits for you.',
+  approvalsManual: 'Manual (human card)',
+  approvalsDelegated: 'Delegated (decision model)',
+  approvalsProvider: 'Decision provider',
+  approvalsPickProvider: 'pick a systemone provider…',
+  approvalsModel: 'Decision model',
+  approvalsPickModel: 'pick a decision model…',
+  approvalsThreshold: 'Confidence threshold',
+  approvalsThresholdDesc: 'Below it the request escalates back to the human card (0.5–1).',
+  approvalsNeverAllow: 'Never-allow floor',
+  approvalsNeverPlaceholder: 'one pattern per line, matched against the tool title',
+  approvalsNeverDesc:
+    'Case-insensitive substrings; a hit hard-denies everywhere before the model is consulted.',
+  approvalsDenyNote: 'Denial correction note',
+  approvalsDenyNoteDesc:
+    'On Agents whose reject cannot carry a reason, a floor denial injects a short platform note as the next prompt, so the Agent adjusts instead of stalling.',
+  approvalsSavedToast: 'Approval settings saved.',
+  approvalsNoProvider:
+    'No systemone provider configured yet — create one (api “systemone”, a decision model) on the LLM providers page first.',
   prewarmDesc:
     'Keep one warmed-up adapter for this Agent while a chat session page is open — clicking a session skips the adapter boot.',
   installButton: 'Install',
@@ -416,6 +440,28 @@ const zh: typeof en = {
   defaultMode: '默认权限模式',
   defaultModeDesc: '聊天会话建立时应用一次，会话中可随时切换；模型不支持 Auto 时会自动回落。',
   defaultModeNone: '跟随适配器',
+  approvalsTitle: '审批代答',
+  approvalsDesc:
+    'Agent 弹出的权限确认由谁回答：人工卡片（默认），或决策模型代答并带确定性底线。会话中切换入口在聊天发送区。',
+  approvalsResponder: '审批方式（默认）',
+  approvalsResponderDesc: '机器级默认值；会话里可在发送区随时切换。人工 = 每次确认都等你点击。',
+  approvalsManual: '人工确认',
+  approvalsDelegated: '模型代审',
+  approvalsProvider: '决策模型供应商',
+  approvalsPickProvider: '选择 systemone 供应商…',
+  approvalsModel: '决策模型',
+  approvalsPickModel: '选择决策模型…',
+  approvalsThreshold: '置信度阈值',
+  approvalsThresholdDesc: '低于阈值即转回人工卡片（0.5–1）。',
+  approvalsNeverAllow: '永不放行底线',
+  approvalsNeverPlaceholder: '每行一个模式，按工具标题匹配',
+  approvalsNeverDesc: '大小写不敏感的子串；命中即在咨询模型前直接拒绝，任何目标都生效。',
+  approvalsDenyNote: '拒绝纠偏说明',
+  approvalsDenyNoteDesc:
+    '对无法携带拒绝理由的 Agent，底线拒绝会以下一条输入注入一段平台署名说明，让 Agent 调整做法而不是卡住。',
+  approvalsSavedToast: '审批设置已保存。',
+  approvalsNoProvider:
+    '还没有 systemone 供应商——请先在 LLM 供应商页创建（api 选 systemone，登记一个 decision 模型）。',
   prewarmDesc: '会话页面打开期间为该代理常备一个预热适配器，点击会话时跳过适配器启动。',
   installButton: '安装',
   upgradeButton: '升级',

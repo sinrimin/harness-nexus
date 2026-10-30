@@ -49,6 +49,38 @@ export interface ChatDefaultModeSettings {
   'claude-code': string | null;
 }
 
+/**
+ * Issue #92 — delegated approvals, machine-scoped like `chatPrewarm` /
+ * `chatDefaultMode` but deliberately NOT per-target: the gate answers ACP
+ * `session/request_permission`, which is target-agnostic. `responder` is the
+ * machine DEFAULT (sessions override it live through the W9-style lane);
+ * `manual` (and an absent map) = every surfaced request goes to the human
+ * card, exactly as before. Mirrors the zod schema in `@harness-nexus/shared`
+ * (`schemas/machine.ts`).
+ */
+export interface ChatApprovalsSettings {
+  responder: 'manual' | 'delegated';
+  /** LlmProvider row with `api: 'systemone'` — resolved + validated at save. */
+  providerId: string;
+  /** A `models[]` entry of that row with `type: 'decision'`. */
+  modelId: string;
+  /** Both the choice confidence AND the `covered` noul must clear it. */
+  confidenceThreshold: number;
+  /**
+   * L3 floor: case-insensitive substrings matched against the toolCall title
+   * BEFORE the model is ever consulted — a hit hard-denies everywhere (safety
+   * outranks stalling). Kept deliberately dumb; patterns are owner-authored.
+   */
+  neverAllow: string[];
+  /**
+   * On targets with no deny-reason channel (everything but claude-code today),
+   * a floor deny injects a platform-authored correction note as the next
+   * prompt (the #10 queue lane) so the agent does not end its turn believing
+   * the user refused. Default on.
+   */
+  denyNote: boolean;
+}
+
 export interface Machine {
   id: string;
   ownerId: string;
@@ -77,6 +109,8 @@ export interface Machine {
   chatPrewarm?: ChatPrewarmSettings;
   /** Issue #49 — per-target default chat permission modes for this machine. */
   chatDefaultMode?: ChatDefaultModeSettings;
+  /** Issue #92 — delegated-approvals gate config for this machine. */
+  chatApprovals?: ChatApprovalsSettings;
   /**
    * The machine PAT issued once at enrollment. Deleting the machine (or this
    * PAT) revokes realtime access immediately.

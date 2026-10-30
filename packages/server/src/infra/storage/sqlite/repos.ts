@@ -702,6 +702,8 @@ interface MachineRow {
   chat_prewarm: string | null;
   /** Issue #49 — JSON per-target default-mode map, NULL on pre-feature rows. */
   chat_default_mode: string | null;
+  /** Issue #92 — JSON delegated-approvals config, NULL on pre-feature rows. */
+  chat_approvals: string | null;
   enrollment_pat_id: string;
   enrolled_at: string;
   last_seen_at: string | null;
@@ -743,9 +745,29 @@ function parseMachineDefaultMode(raw: string | null): Machine['chatDefaultMode']
   return undefined;
 }
 
+/** JSON column ↔ domain; invalid/legacy JSON null-normalizes (manual default). */
+function parseMachineApprovals(raw: string | null): Machine['chatApprovals'] | undefined {
+  if (raw === null) return undefined;
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (
+      parsed !== null &&
+      typeof parsed === 'object' &&
+      (typeof (parsed as Record<string, unknown>)['responder'] === 'string' ||
+        typeof (parsed as Record<string, unknown>)['providerId'] === 'string')
+    ) {
+      return parsed as Machine['chatApprovals'];
+    }
+  } catch {
+    // fall through
+  }
+  return undefined;
+}
+
 function mapMachine(row: MachineRow): Machine {
   const chatPrewarm = parseMachinePrewarm(row.chat_prewarm);
   const chatDefaultMode = parseMachineDefaultMode(row.chat_default_mode);
+  const chatApprovals = parseMachineApprovals(row.chat_approvals);
   return {
     id: row.id,
     ownerId: row.owner_id,
@@ -759,6 +781,7 @@ function mapMachine(row: MachineRow): Machine {
     baseWorkspace: row.base_workspace,
     ...(chatPrewarm !== undefined ? { chatPrewarm } : {}),
     ...(chatDefaultMode !== undefined ? { chatDefaultMode } : {}),
+    ...(chatApprovals !== undefined ? { chatApprovals } : {}),
     enrollmentPatId: row.enrollment_pat_id,
     enrolledAt: row.enrolled_at,
     lastSeenAt: row.last_seen_at,
@@ -795,10 +818,10 @@ export function sqliteMachineRepository(db: Database): MachineRepository {
         `INSERT INTO machines
            (id, owner_id, name, hostname, os, arch, daemon_version, capabilities,
             remote_chat_enabled, base_workspace, chat_prewarm, chat_default_mode,
-            enrollment_pat_id, enrolled_at, last_seen_at)
+            chat_approvals, enrollment_pat_id, enrolled_at, last_seen_at)
          VALUES (@id, @owner_id, @name, @hostname, @os, @arch, @daemon_version, @capabilities,
                  @remote_chat_enabled, @base_workspace, @chat_prewarm, @chat_default_mode,
-                 @enrollment_pat_id, @enrolled_at, @last_seen_at)
+                 @chat_approvals, @enrollment_pat_id, @enrolled_at, @last_seen_at)
          ON CONFLICT(id) DO UPDATE SET
            name                = excluded.name,
            hostname            = excluded.hostname,
@@ -810,6 +833,7 @@ export function sqliteMachineRepository(db: Database): MachineRepository {
            base_workspace      = excluded.base_workspace,
            chat_prewarm        = excluded.chat_prewarm,
            chat_default_mode   = excluded.chat_default_mode,
+           chat_approvals      = excluded.chat_approvals,
            last_seen_at        = excluded.last_seen_at`,
       ).run({
         id: machine.id,
@@ -826,6 +850,8 @@ export function sqliteMachineRepository(db: Database): MachineRepository {
           machine.chatPrewarm === undefined ? null : JSON.stringify(machine.chatPrewarm),
         chat_default_mode:
           machine.chatDefaultMode === undefined ? null : JSON.stringify(machine.chatDefaultMode),
+        chat_approvals:
+          machine.chatApprovals === undefined ? null : JSON.stringify(machine.chatApprovals),
         enrollment_pat_id: machine.enrollmentPatId,
         enrolled_at: machine.enrolledAt,
         last_seen_at: machine.lastSeenAt,

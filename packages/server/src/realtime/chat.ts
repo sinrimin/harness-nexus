@@ -10,12 +10,22 @@ import {
   isRuntimeTarget,
 } from '@harness-nexus/shared';
 import type {
+  ChatApprovalsView,
   ChatChannelView,
   ChatStreamEvent,
+  DelegationDenialReason,
   PromptBlock,
   PromptCapabilities,
 } from '@harness-nexus/shared';
 import { generateId } from '../infra/crypto.js';
+import { decryptSecret } from '../infra/crypto.js';
+import {
+  callSystemOne,
+  systemOneErrorMessage,
+  type SystemOneError,
+  type SystemOneFetch,
+} from '../infra/systemone.js';
+import { findCredentialForOwner } from '../infra/credential-scope.js';
 
 /**
  * Chat routing + gating (Phase 8 C5, reworked 9 W7). wiki design-phase-8-c5.md
@@ -55,7 +65,31 @@ export interface ChatServiceDeps {
   /** Is the machine's daemon connected right now? */
   isOnline: (machineId: string) => boolean;
   io: ChatIO;
+  /**
+   * #92 — the delegated-approvals gate's needs. Absent (unit tests, or a
+   * deployment with the feature off) = the gate never engages; permission
+   * cards behave exactly as before.
+   */
+  approvals?: {
+    credentialEncryptionKey: string;
+    timeoutMs: number;
+    log?: { warn: (msg: string) => void };
+    /** Injectable for tests. */
+    fetchImpl?: SystemOneFetch;
+  };
 }
+
+/**
+ * #92 — targets whose ACP reject can carry a REASON to the model (the patched
+ * claude adapter wires `_meta.denyMessage` into the CC SDK's deny feedback).
+ * Everywhere else the model's deny verdict escalates instead of hard-denying,
+ * and a FLOOR denial falls back to the next-prompt correction note.
+ */
+const REASON_CHANNEL_TARGETS = new Set(['claude-code']);
+
+/** #92 — how many of the user's own prompts the decision model may see. */
+const GATE_PROMPT_WINDOW = 3;
+const GATE_PROMPT_CHAR_CAP = 2_000;
 
 export type ChatOpenResult =
   | { ok: true; sessionId: string; joined: boolean; phase: 'starting' | 'ready'; cwd: string }
@@ -153,6 +187,15 @@ interface LiveSession {
   permissionTimers: Map<string, NodeJS.Timeout>;
   /** 9 W14.1 — elicitation watchdogs, same policy as permissions. */
   elicitationTimers: Map<string, NodeJS.Timeout>;
+  /** #92 — the session's approvals responder view (machine default + live switch). */
+  approvals: ChatApprovalsView;
+  /**
+   * #92 — the user's own prompts since open (bounded window), the ONLY
+   * free-text the decision model ever sees: context hygiene forbids file
+   * bodies and tool outputs, and an agent-controlled string must never be
+   * able to argue its way past the gate.
+   */
+  recentPrompts: string[];
 }
 
 export class ChatService {
@@ -340,6 +383,8 @@ export class ChatService {
       readyTimer: null,
       permissionTimers: new Map(),
       elicitationTimers: new Map(),
+      approvals: await this.resolveApprovalsView(machine),
+      recentPrompts: [],
     };
     session.readyTimer = setTimeout(() => {
       void this.closeInternal(session, 'spawn-timeout', { notifyDaemon: true, failed: true });
@@ -396,6 +441,8 @@ export class ChatService {
       ...(modelOptions !== undefined ? { modelOptions } : {}),
       ...(defaultMode !== undefined ? { defaultMode } : {}),
       ...(prewarm ? { prewarm: true } : {}),
+      // #92 — the approvals view for the daemon's session_config synthesis.
+      ...(session.approvals.responder === 'delegated' ? { approvals: session.approvals } : {}),
     });
     this.pushSnapshot(ownerId);
     return { ok: true, sessionId, joined: false, phase: 'starting', cwd };
@@ -670,6 +717,18 @@ export class ChatService {
           });
         }, this.opts.permissionTimeoutMs),
       );
+      // #92 — the delegated gate runs BESIDE the human card (the card stays
+      // visible and answerable; first responder wins). Every failure path
+      // inside leaves the card untouched = escalation to the human.
+      if (
+        this.deps.approvals !== undefined &&
+        session.approvals.responder === 'delegated' &&
+        session.phase === 'ready'
+      ) {
+        void this.runApprovalsGate(session, event.requestId, event.toolCall, event.options).catch(
+          () => {},
+        );
+      }
     } else if (event.kind === 'elicitation_request') {
       // 9 W14.1 — same policy and latency budget as permissions: an
       // unanswered question must not wedge the agent forever.
@@ -865,6 +924,17 @@ export class ChatService {
    * turn starts).
    */
   private emitUserMessage(session: LiveSession, blocks: PromptBlock[]): void {
+    // #92 — the bounded prompt window the decision model may see (context
+    // hygiene: user-authored text only, never agent output).
+    const text = blocks
+      .filter((b): b is Extract<PromptBlock, { type: 'text' }> => b.type === 'text')
+      .map((b) => b.text.trim())
+      .filter((t) => t !== '')
+      .join(' ')
+      .slice(0, GATE_PROMPT_CHAR_CAP);
+    if (text !== '') {
+      session.recentPrompts = [...session.recentPrompts, text].slice(-GATE_PROMPT_WINDOW);
+    }
     this.deps.io.toChannel(session.sessionId, 'chat:event', {
       sessionId: session.sessionId,
       event: { kind: 'user_message', blocks },
@@ -905,6 +975,317 @@ export class ChatService {
     if (!this.deps.isOnline(session.machineId)) return { ok: false, code: 'MACHINE_OFFLINE' };
     this.deps.io.toCtl(session.machineId, 'chat:config.set', { sessionId, ...set });
     return { ok: true };
+  }
+
+  /**
+   * #92 — the machine's approvals view (name/model for provenance). Best
+   * effort: an unreadable provider row reads as manual — the gate must never
+   * block or crash an open.
+   */
+  private async resolveApprovalsView(machine: {
+    chatApprovals?: { providerId: string; responder: 'manual' | 'delegated'; modelId: string };
+  }): Promise<ChatApprovalsView> {
+    const cfg = machine.chatApprovals;
+    if (cfg === undefined || cfg.responder !== 'delegated') return { responder: 'manual' };
+    try {
+      const provider = await this.deps.uow.llmProviders.findById(cfg.providerId);
+      if (provider === null) return { responder: 'manual' };
+      return { responder: 'delegated', providerName: provider.name, modelId: cfg.modelId };
+    } catch {
+      return { responder: 'manual' };
+    }
+  }
+
+  /**
+   * #92 — browser's `chat:approvals.set`: switch the LIVE session's responder
+   * (next-REQUEST effect). The server owns the truth; the daemon only
+   * re-synthesizes the session_config slice for the viewers.
+   */
+  async setApprovals(
+    ownerId: string,
+    sessionId: string,
+    responder: 'manual' | 'delegated',
+  ): Promise<ChatSimpleResult> {
+    const session = this.live.get(sessionId);
+    if (!session || session.ownerId !== ownerId) return { ok: false, code: 'SESSION_NOT_FOUND' };
+    if (session.phase !== 'ready') return { ok: false, code: 'SESSION_NOT_READY' };
+    if (responder === 'delegated') {
+      const machine = await this.deps.uow.machines.findById(session.machineId);
+      if (machine?.chatApprovals === undefined) {
+        return { ok: false, code: 'CHAT_APPROVALS_NO_PROVIDER' };
+      }
+    }
+    const view =
+      responder === 'delegated'
+        ? session.approvals.responder === 'delegated'
+          ? session.approvals
+          : await this.resolveApprovalsView(
+              (await this.deps.uow.machines.findById(session.machineId)) ?? {},
+            )
+        : { responder: 'manual' as const };
+    session.approvals = view;
+    if (this.deps.isOnline(session.machineId)) {
+      this.deps.io.toCtl(session.machineId, 'chat:approvals.set', {
+        sessionId,
+        approvals: view,
+      });
+    }
+    return { ok: true };
+  }
+
+  /**
+   * #92 — the delegated gate. Ordering is normative: L3 floor (deterministic,
+   * BEFORE the model) → eligible `*_once` options → the decision call →
+   * answer or escalate. Every thrown/rejected path = escalation (the card
+   * stays with the human); the gate NEVER fail-opens.
+   */
+  private async runApprovalsGate(
+    session: LiveSession,
+    requestId: string,
+    toolCall: { title?: string | undefined; kind?: string | undefined },
+    options: readonly { optionId: string; kind: string; name: string }[],
+  ): Promise<void> {
+    const gate = this.deps.approvals;
+    if (gate === undefined) return;
+    let machine;
+    try {
+      machine = await this.deps.uow.machines.findById(session.machineId);
+    } catch {
+      return; // unreadable config ⇒ human decides
+    }
+    const cfg = machine?.chatApprovals;
+    if (cfg === undefined) return;
+    const view = session.approvals;
+    const attribution = {
+      responder: 'delegated' as const,
+      decidedBy: 'floor' as 'floor' | 'model',
+      providerName: view.providerName ?? 'decision-model',
+      modelId: view.modelId ?? '',
+    };
+
+    // 1 — the floor. Safety outranks stalling: it hard-denies on EVERY
+    // target; the reason reaches the model where a channel exists, and via
+    // the correction note where it does not.
+    const title = toolCall.title ?? '';
+    const hit = cfg.neverAllow.find(
+      (p) => p !== '' && title.toLowerCase().includes(p.toLowerCase()),
+    );
+    if (hit !== undefined) {
+      const reject = pickRejectOption(options);
+      if (reject === undefined) return; // no reject option offered ⇒ human
+      await this.settleDelegated(session, requestId, reject.optionId, {
+        ...attribution,
+        decidedBy: 'floor',
+        denial: { reason: 'policy' },
+        ...(hasReasonChannel(session.target)
+          ? { meta: { denyMessage: denyMessage(view, 'policy') } }
+          : {}),
+        ...(cfg.denyNote && !hasReasonChannel(session.target)
+          ? { queueNote: correctionNote(title, 'policy') }
+          : {}),
+      });
+      return;
+    }
+
+    // 2 — eligible options: one-shot only. A delegation never grants
+    // persistence, so allow_always/reject_always are never chosen. Without
+    // an allow_once there is no answer we may safely give (only persistent
+    // allows or a deny we cannot justify) ⇒ the human decides.
+    const allowOnce = options.find((o) => o.kind === 'allow_once');
+    if (allowOnce === undefined) return;
+    const rejectOnce = options.find((o) => o.kind === 'reject_once');
+    const eligible =
+      rejectOnce === undefined ? [allowOnce] : [allowOnce, rejectOnce];
+
+    // 3 — resolve the provider + credential. Any miss ⇒ human.
+    const provider = await this.deps.uow.llmProviders.findById(cfg.providerId).catch(() => null);
+    if (provider === null || provider.api !== 'systemone' || provider.baseUrl === null) return;
+    const credential = await findCredentialForOwner(
+      this.deps.uow,
+      provider.credentialName,
+      session.ownerId,
+    ).catch(() => null);
+    if (credential === null) return;
+    const secret = decryptSecret(credential.secret, gate.credentialEncryptionKey);
+
+    // 4 — the call. State = the user's own recent prompts + the bounded tool
+    // view + the eligible options (context hygiene: no file bodies, no tool
+    // outputs — the supervised agent cannot talk its way past).
+    const state = {
+      userPrompts: session.recentPrompts,
+      toolCall: { title, kind: toolCall.kind ?? '' },
+      options: eligible.map((o) => ({ optionId: o.optionId, name: o.name, kind: o.kind })),
+    };
+    const questions = {
+      pick: {
+        type: 'choice' as const,
+        instructions:
+          'Which option should answer this permission request? Choose the reject option when the call is unsafe or outside what the user asked for.',
+        criteria: Object.fromEntries(eligible.map((o) => [o.optionId, o.name])),
+      },
+      covered: {
+        type: 'noul' as const,
+        instructions:
+          "Did the user's own requests plausibly call for this exact tool action (tool and arguments)?",
+      },
+      why: {
+        type: 'choice' as const,
+        instructions:
+          'If this call should NOT proceed, pick the closest reason; pick "fine" when it should proceed.',
+        criteria: {
+          fine: 'the call is fine',
+          not_covered: 'the user did not ask for this',
+          destructive: 'irreversible or destructive',
+          sensitive: 'touches credentials or secrets',
+          risky: 'dangerous command shape',
+          other: 'some other problem',
+        },
+      },
+    };
+    let answers;
+    try {
+      const result = await callSystemOne(
+        {
+          baseUrl: provider.baseUrl,
+          apiKey: secret,
+          model: cfg.modelId,
+          state,
+          questions,
+        },
+        {
+          timeoutMs: gate.timeoutMs,
+          ...(gate.fetchImpl !== undefined ? { fetchImpl: gate.fetchImpl } : {}),
+        },
+      );
+      answers = result.answers;
+    } catch (e) {
+      const msg =
+        e !== null && typeof e === 'object' && 'kind' in e
+          ? systemOneErrorMessage(e as SystemOneError)
+          : String(e);
+      gate.log?.warn(`approvals gate (#92) provider call failed: ${msg}`);
+      return; // uncertain ⇒ human
+    }
+    if (session.permissionTimers.get(requestId) === undefined) return; // raced: human/watchdog won
+
+    const pick = answers.pick;
+    const covered = answers.covered?.noul;
+    const why = normalizeWhy(answers.why?.choice);
+    const threshold = cfg.confidenceThreshold;
+
+    // 5 — the verdict. Allow needs BOTH confidences; a model DENY only
+    // hard-denies where the reason can reach the model (claude-code) —
+    // everywhere else it escalates (an inexplicable deny just stalls).
+    const allowId = allowOnce.optionId;
+    if (
+      pick?.choice !== undefined &&
+      pick.choice === allowId &&
+      pick.confidence !== undefined &&
+      pick.confidence >= threshold &&
+      covered !== undefined &&
+      covered >= threshold
+    ) {
+      await this.settleDelegated(session, requestId, pick.choice, {
+        ...attribution,
+        decidedBy: 'model',
+        confidence: pick.confidence,
+      });
+      return;
+    }
+    if (
+      pick?.choice !== undefined &&
+      pick.choice !== allowId &&
+      pick.confidence !== undefined &&
+      pick.confidence >= threshold &&
+      hasReasonChannel(session.target)
+    ) {
+      const reject = options.find((o) => o.optionId === pick.choice);
+      if (reject !== undefined && reject.kind === 'reject_once') {
+        await this.settleDelegated(session, requestId, pick.choice, {
+          ...attribution,
+          decidedBy: 'model',
+          confidence: pick.confidence,
+          denial: { reason: why },
+          meta: { denyMessage: denyMessage(view, why) },
+        });
+        return;
+      }
+    }
+
+    // 6 — escalate with the model's lean as an advisory (never a decision).
+    if (pick?.choice !== undefined && pick.confidence !== undefined) {
+      const lean = pick.choice === allowId ? 'allow' : 'reject';
+      this.deps.io.toChannel(session.sessionId, 'chat:event', {
+        sessionId: session.sessionId,
+        event: {
+          kind: 'permission_advisory',
+          requestId,
+          lean,
+          confidence: pick.confidence,
+          ...(why !== undefined && lean === 'reject' ? { reason: why } : {}),
+        },
+      });
+    }
+  }
+
+  /**
+   * #92 — settle a card the gate decided: answer the agent (optionId sacred,
+   * `_meta.denyMessage` where the channel exists), settle every viewer with
+   * the attribution, and optionally park the correction note. First
+   * responder wins — the permissionTimers map is the arbiter.
+   */
+  private async settleDelegated(
+    session: LiveSession,
+    requestId: string,
+    optionId: string,
+    info: {
+      responder: 'delegated';
+      decidedBy: 'floor' | 'model';
+      providerName: string;
+      modelId: string;
+      confidence?: number;
+      denial?: { reason: DelegationDenialReason };
+      meta?: { denyMessage: string };
+      queueNote?: string;
+    },
+  ): Promise<void> {
+    const timer = session.permissionTimers.get(requestId);
+    if (timer === undefined) return; // raced: the human or the watchdog won
+    clearTimeout(timer);
+    session.permissionTimers.delete(requestId);
+    const delegated = {
+      providerName: info.providerName,
+      modelId: info.modelId,
+      ...(info.confidence !== undefined ? { confidence: info.confidence } : {}),
+      ...(info.denial !== undefined ? { denial: info.denial } : {}),
+    };
+    this.deps.io.toCtl(session.machineId, 'chat:permission.respond', {
+      sessionId: session.sessionId,
+      requestId,
+      optionId,
+      ...(info.meta !== undefined ? { meta: info.meta } : {}),
+      attribution: { responder: 'delegated', decidedBy: info.decidedBy, ...delegated },
+    });
+    this.deps.io.toChannel(session.sessionId, 'chat:event', {
+      sessionId: session.sessionId,
+      event: {
+        kind: 'permission_resolved',
+        requestId,
+        outcome: 'selected',
+        optionId,
+        responder: 'delegated',
+        decidedBy: info.decidedBy,
+        delegated,
+      },
+    });
+    // The fallback explanation for targets with no deny-reason channel:
+    // parked as the next prompt (the #10 queue lane). A full slot drops it —
+    // the settled line and the audit keep the reason.
+    if (info.queueNote !== undefined && session.queuedPrompt === null) {
+      const blocks: PromptBlock[] = [{ type: 'text', text: info.queueNote }];
+      session.queuedPrompt = blocks;
+      this.emitQueueState(session, blocks, false);
+    }
   }
 
   /** Browser's `chat:permission.respond` — forward verbatim (optionId is sacred). */
@@ -1197,4 +1578,57 @@ export class ChatService {
     }
     this.pushSnapshot(session.ownerId);
   }
+}
+
+// ---- #92 gate helpers (module scope, unit-testable) ----
+
+function hasReasonChannel(target: string): boolean {
+  return REASON_CHANNEL_TARGETS.has(target);
+}
+
+function pickRejectOption(
+  options: readonly { optionId: string; kind: string }[],
+): { optionId: string; kind: string } | undefined {
+  return (
+    options.find((o) => o.kind === 'reject_once') ?? options.find((o) => o.kind === 'reject_always')
+  );
+}
+
+function normalizeWhy(choice: string | undefined): DelegationDenialReason {
+  switch (choice) {
+    case 'not_covered':
+    case 'destructive':
+    case 'sensitive':
+    case 'risky':
+    case 'other':
+      return choice;
+    default:
+      return 'other';
+  }
+}
+
+/**
+ * Platform-authored deny feedback — the model receives it IN THE SAME TURN
+ * (claude-code, via `_meta.denyMessage` + the dist patch). Deliberately
+ * states the delegation: the unpatched adapter would otherwise tell the
+ * model "User refused", which stalls the session on a question to an absent
+ * owner.
+ */
+export function denyMessage(view: ChatApprovalsView, reason: DelegationDenialReason): string {
+  const by =
+    view.providerName !== undefined && view.modelId !== undefined
+      ? ` (${view.providerName}/${view.modelId})`
+      : '';
+  return `[delegated approvals] rejected by the decision model${by}: ${reason}. This was NOT a manual user denial — adjust the approach, or ask the user.`.slice(
+    0,
+    512,
+  );
+}
+
+/** The fallback correction note (next-prompt lane, targets without a channel). */
+export function correctionNote(title: string, reason: DelegationDenialReason): string {
+  return `[delegated approvals] The tool call "${title.slice(0, 120)}" was rejected: ${reason} (never-allow floor). This was NOT a manual user denial — adjust the approach, or wait for the user.`.slice(
+    0,
+    512,
+  );
 }

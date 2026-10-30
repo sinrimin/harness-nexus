@@ -26,6 +26,7 @@ import type {
   Machine,
   ChatPrewarmSettings,
   ChatDefaultModeSettings,
+  ChatApprovalsSettings,
   Note,
   NoteAnnotation,
   NoteCategory,
@@ -115,6 +116,7 @@ export type {
   ApiToolDefInput,
   ChatPrewarmSettings,
   ChatDefaultModeSettings,
+  ChatApprovalsSettings,
   JobView,
   InventorySnapshot,
   InventoryDiff,
@@ -501,6 +503,8 @@ export class HarnessNexusClient {
       chatPrewarm?: ChatPrewarmSettings;
       /** Issue #49 — machine-scoped default chat permission modes (replace). */
       chatDefaultMode?: ChatDefaultModeSettings;
+      /** Issue #92 — machine-scoped delegated-approvals config (replace). */
+      chatApprovals?: ChatApprovalsSettings;
     },
   ): Promise<MachineView> {
     const res = await this.request('PATCH', `/api/machines/${id}`, input);

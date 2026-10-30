@@ -8,6 +8,26 @@ import type { PermissionCardState } from './fold.js';
 import { toolArgumentsPreview } from './tool-meta.js';
 
 /**
+ * #92 — the gate's escalated lean, rendered ONLY while the card is still
+ * pending: one muted line, explicitly advisory (the human decides — the
+ * model's opinion is context, never the verdict).
+ */
+function AdvisoryLine({ advisory }: { advisory: NonNullable<PermissionCardState['advisory']> }) {
+  const { t } = useI18n();
+  return (
+    <p className="text-muted-foreground mb-2 text-xs">
+      {t('chat.approvalsAdvisory', {
+        lean: t(advisory.lean === 'allow' ? 'chat.approvalsLeanAllow' : 'chat.approvalsLeanReject'),
+        confidence: advisory.confidence.toFixed(2),
+      })}
+      {advisory.reason !== undefined
+        ? ` · ${t(`chat.approvalsReason.${advisory.reason}` as never)}`
+        : ''}
+    </p>
+  );
+}
+
+/**
  * Inline permission cards (Phase 9 W6, unchanged C5 semantics): rendered
  * straight from the request's `options` — option ids pass through VERBATIM,
  * never hardcoded allow/deny. Warn tones (a pending tool permission is a
@@ -47,6 +67,7 @@ export function PermissionCards({
               <p className="text-muted-foreground mb-2 font-mono text-xs break-all">{preview}</p>
             ) : null;
           })()}
+          {p.advisory !== undefined ? <AdvisoryLine advisory={p.advisory} /> : null}
           <div className="flex flex-wrap gap-2">
             {p.options.map((o) => (
               <Button

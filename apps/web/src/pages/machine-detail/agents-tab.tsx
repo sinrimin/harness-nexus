@@ -28,6 +28,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import {
@@ -128,6 +129,8 @@ export function AgentsTab({
   return (
     <>
       <div className="flex flex-col gap-6">
+        {/* #92 — delegated approvals: machine-scoped, target-agnostic. */}
+        <ApprovalsCard machineId={machineId} machine={machine} onChanged={onChanged} />
         {inventory.map((entry) => (
           <AgentRuntimeCard
             key={entry.target}
@@ -142,7 +145,221 @@ export function AgentsTab({
   );
 }
 
+/**
+ * Issue #92 — delegated approvals, machine-scoped: who answers a surfaced
+ * permission request (human card vs decision model) plus the deterministic
+ * floor. Lives ABOVE the per-Agent cards because it is target-agnostic — the
+ * gate answers ACP `session/request_permission`, every target speaks it.
+ * Multi-field, so unlike the pre-warm toggle this is a small form with an
+ * explicit save (replace semantics, like every chatPrewarm/chatDefaultMode
+ * PATCH).
+ */
+function ApprovalsCard({
+  machineId,
+  machine,
+  onChanged,
+}: {
+  machineId: string;
+  machine: MachineView | null;
+  onChanged: () => void;
+}) {
+  const { logout } = useAuth();
+  const { t } = useI18n();
+  const [providers, setProviders] = useState<LlmProviderView[] | null>(null);
+  const saved = machine?.chatApprovals;
+  const [responder, setResponder] = useState<'manual' | 'delegated'>(saved?.responder ?? 'manual');
+  const [providerId, setProviderId] = useState(saved?.providerId ?? '');
+  const [modelId, setModelId] = useState(saved?.modelId ?? '');
+  const [threshold, setThreshold] = useState(String(saved?.confidenceThreshold ?? 0.9));
+  const [neverAllow, setNeverAllow] = useState((saved?.neverAllow ?? []).join('\n'));
+  const [denyNote, setDenyNote] = useState(saved?.denyNote ?? true);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const list = await withAuthGuard(() => api.listLlmProviders(), logout);
+        if (!cancelled) setProviders(list.filter((p) => p.api === 'systemone'));
+      } catch {
+        if (!cancelled) setProviders([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [logout]);
+
+  const provider = providers?.find((p) => p.id === providerId) ?? null;
+  const decisionModels = provider?.models.filter((m) => m.type === 'decision') ?? [];
+  const thresholdNum = Number(threshold);
+  const thresholdValid =
+    threshold.trim() !== '' &&
+    Number.isFinite(thresholdNum) &&
+    thresholdNum >= 0.5 &&
+    thresholdNum <= 1;
+  const patterns = neverAllow
+    .split('\n')
+    .map((l) => l.trim())
+    .filter((l) => l !== '');
+  const canSave =
+    providerId !== '' && modelId !== '' && thresholdValid && patterns.length <= 64 && !busy;
+
+  async function save(): Promise<void> {
+    if (!canSave) return;
+    setBusy(true);
+    try {
+      await withAuthGuard(
+        () =>
+          api.updateMachine(machineId, {
+            chatApprovals: {
+              responder,
+              providerId,
+              modelId,
+              confidenceThreshold: thresholdNum,
+              neverAllow: patterns,
+              denyNote,
+            },
+          }),
+        logout,
+      );
+      toast.success(t('machineDetail.approvalsSavedToast'));
+      onChanged();
+    } catch (e) {
+      toast.error(e instanceof HarnessNexusError ? e.message : t('common.updateFailed'));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const disabled = providers === null || providers.length === 0;
+
+  return (
+    <Panel>
+      <PanelHeader label={t('machineDetail.approvalsTitle')} />
+      <PanelBody className="flex flex-col gap-4">
+        <p className="text-muted-foreground -mt-1 text-xs">{t('machineDetail.approvalsDesc')}</p>
+        {providers !== null && providers.length === 0 ? (
+          <Well>{t('machineDetail.approvalsNoProvider')}</Well>
+        ) : null}
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div className="grid gap-2">
+            <Label htmlFor="approvals-responder">{t('machineDetail.approvalsResponder')}</Label>
+            <Select
+              value={responder}
+              onValueChange={(v) => setResponder(v as 'manual' | 'delegated')}
+              disabled={disabled}
+            >
+              <SelectTrigger id="approvals-responder">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="manual">{t('machineDetail.approvalsManual')}</SelectItem>
+                <SelectItem value="delegated">{t('machineDetail.approvalsDelegated')}</SelectItem>
+              </SelectContent>
+            </Select>
+            <p className="text-muted-foreground text-xs">
+              {t('machineDetail.approvalsResponderDesc')}
+            </p>
+          </div>
+          <div className="grid gap-2">
+            <Label htmlFor="approvals-provider">{t('machineDetail.approvalsProvider')}</Label>
+            <Select
+              value={providerId}
+              onValueChange={(v) => {
+                setProviderId(v);
+                setModelId('');
+              }}
+              disabled={disabled}
+            >
+              <SelectTrigger id="approvals-provider" className="font-mono text-xs">
+                <SelectValue placeholder={t('machineDetail.approvalsPickProvider')} />
+              </SelectTrigger>
+              <SelectContent>
+                {(providers ?? []).map((p) => (
+                  <SelectItem key={p.id} value={p.id} className="font-mono text-xs">
+                    {p.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="grid gap-2">
+            <Label htmlFor="approvals-model">{t('machineDetail.approvalsModel')}</Label>
+            <Select value={modelId} onValueChange={setModelId} disabled={provider === null}>
+              <SelectTrigger id="approvals-model" className="font-mono text-xs">
+                <SelectValue placeholder={t('machineDetail.approvalsPickModel')} />
+              </SelectTrigger>
+              <SelectContent>
+                {decisionModels.map((m) => (
+                  <SelectItem key={m.id} value={m.id} className="font-mono text-xs">
+                    {m.id}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="grid gap-2">
+            <Label htmlFor="approvals-threshold">{t('machineDetail.approvalsThreshold')}</Label>
+            <Input
+              id="approvals-threshold"
+              type="number"
+              step="0.05"
+              min="0.5"
+              max="1"
+              value={threshold}
+              onChange={(e) => setThreshold(e.target.value)}
+              className="font-mono text-xs"
+              autoComplete="off"
+              spellCheck={false}
+              aria-invalid={!thresholdValid}
+            />
+            <p className="text-muted-foreground text-xs">
+              {t('machineDetail.approvalsThresholdDesc')}
+            </p>
+          </div>
+        </div>
+        <div className="grid gap-2">
+          <Label htmlFor="approvals-never">{t('machineDetail.approvalsNeverAllow')}</Label>
+          <Textarea
+            id="approvals-never"
+            value={neverAllow}
+            onChange={(e) => setNeverAllow(e.target.value)}
+            placeholder={t('machineDetail.approvalsNeverPlaceholder')}
+            className="font-mono text-xs"
+            rows={3}
+            autoComplete="off"
+            spellCheck={false}
+          />
+          <p className="text-muted-foreground text-xs">{t('machineDetail.approvalsNeverDesc')}</p>
+        </div>
+        <div className="flex items-center justify-between gap-4">
+          <div>
+            <p className="text-sm font-medium">{t('machineDetail.approvalsDenyNote')}</p>
+            <p className="text-muted-foreground text-xs">
+              {t('machineDetail.approvalsDenyNoteDesc')}
+            </p>
+          </div>
+          <Switch
+            id="approvals-deny-note"
+            aria-label={t('machineDetail.approvalsDenyNote')}
+            checked={denyNote}
+            disabled={disabled}
+            onCheckedChange={setDenyNote}
+          />
+        </div>
+        <div className="flex justify-end">
+          <Button type="button" size="sm" disabled={!canSave} onClick={() => void save()}>
+            {t('common.save')}
+          </Button>
+        </div>
+      </PanelBody>
+    </Panel>
+  );
+}
+
 /** One runtime-managed Agent: status line + manage controls + provider form. */
+
 function AgentRuntimeCard({
   entry,
   machineId,

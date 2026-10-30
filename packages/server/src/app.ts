@@ -224,6 +224,7 @@ export async function buildApp(config: ServerConfig): Promise<FastifyInstance> {
     chatReconnectGraceMs: config.chatReconnectGraceMs,
     chatIdleTtlMs: config.chatIdleTtlMs,
     chatViewerGraceMs: config.chatViewerGraceMs,
+    chatApprovalsTimeoutMs: config.chatApprovalsTimeoutMs,
   });
   app.realtime.jobs.start();
   app.addHook('onClose', async () => {

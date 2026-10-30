@@ -600,6 +600,14 @@ CREATE TABLE IF NOT EXISTS note_annotations (
 CREATE INDEX IF NOT EXISTS idx_note_annotations_note ON note_annotations(note_id);
     `,
   },
+  {
+    version: 31,
+    description:
+      'issue #92 — delegated approvals: machine-scoped chat_approvals JSON (responder/providerId/modelId/threshold/neverAllow/denyNote); NULL on rows written before the feature (manual default)',
+    sql: `
+ALTER TABLE machines ADD COLUMN chat_approvals TEXT;
+    `,
+  },
 ] as const;
 
 /**

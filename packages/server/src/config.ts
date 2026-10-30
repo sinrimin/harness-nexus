@@ -115,6 +115,8 @@ export interface ServerConfig {
    * of chatReconnectGraceMs. 0 = legacy immediate reap on last-socket-gone.
    */
   chatViewerGraceMs: number;
+  /** #92 — delegated-approvals decision-model budget (ms). */
+  chatApprovalsTimeoutMs: number;
   /**
    * Phase 8 C2 — marketplace emitter `.mcp.json` shape. `client` (default):
    * one stdio `hnx mcp serve` entry per profile. `server`: the pre-C2
@@ -203,6 +205,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
     // legacy immediate reap. Presence-based, orthogonal to CHAT_IDLE_TTL_MS
     // (activity-based).
     chatViewerGraceMs: Number(env.CHAT_VIEWER_GRACE_MS ?? '300000'),
+    // #92 — the delegated-approvals decision-model budget. Far under the
+    // permission watchdog; a miss escalates to the human card.
+    chatApprovalsTimeoutMs: Number(env.CHAT_APPROVALS_TIMEOUT_MS ?? '4000'),
     emitterMode: (env.EMITTER_MODE as ServerConfig['emitterMode']) ?? 'client',
   };
 }

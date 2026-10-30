@@ -94,6 +94,23 @@ export type ChatStreamEvent =
       requestId: string;
       outcome: 'selected' | 'cancelled' | 'timeout';
       optionId?: string;
+      /** #92 — absent on every pre-#92 emit = a human (or watchdog) settled it. */
+      responder?: 'human' | 'delegated';
+      decidedBy?: 'floor' | 'model';
+      delegated?: {
+        providerName: string;
+        modelId: string;
+        confidence?: number;
+        denial?: { reason: string; note?: string };
+      };
+    }
+  | {
+      /** #92 — the gate escalated to the human; its lean rides as advisory. */
+      kind: 'permission_advisory';
+      requestId: string;
+      lean: 'allow' | 'reject';
+      confidence: number;
+      reason?: string;
     }
   | {
       /** 9 W14.1 — the agent asked a structured question (ACP elicitation). */
@@ -226,6 +243,8 @@ export interface SessionConfigOption {
 interface SessionConfigPatch {
   modes?: { currentModeId?: string; availableModes?: SessionMode[] };
   configOptions?: SessionConfigOption[];
+  /** #92 — the delegated-approvals slice (present = the machine has a provider). */
+  approvals?: { responder: 'manual' | 'delegated'; providerName?: string; modelId?: string };
 }
 
 /** 9 W9 A — the set payload (what the composer emits). */
