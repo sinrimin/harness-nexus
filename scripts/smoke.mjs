@@ -226,6 +226,18 @@ log('\n--- [3.1] list mcp-servers (2 personal) ---');
 r = await req('GET', '/api/mcp-servers', { token: userToken });
 expect('user lists own mcp-servers', r.json.mcpServers.length, 2);
 
+log('\n--- [106] built-in MCP service descriptor — notes tools, outside the row set ---');
+r = await req('GET', '/api/mcp-servers/builtin', { token: userToken });
+expect('builtin descriptor ok', r.status, 200);
+expect('builtin id', r.json.builtin.id, 'builtin');
+expect(
+  'builtin lists the notes tools',
+  r.json.builtin.tools.map((t) => t.name).join(','),
+  'notes__search,notes__get,notes__annotations,notes__create,notes__update',
+);
+r = await req('PATCH', '/api/mcp-servers/builtin', { token: userToken, body: { name: 'x' } });
+expect('builtin non-modifiable (404)', r.status, 404);
+
 log('\n--- [2.1] delete own mcp-server (200) ---');
 r = await req('DELETE', `/api/mcp-servers/${acmeId}`, { token: userToken });
 expect('delete own mcp-server', r.status, 200);

@@ -12,8 +12,9 @@
  *   2. dials every CLIENT-dialed upstream locally via `mcp-runtime` (stdio /
  *      SSE / HTTP; credential plaintext lives in this process's memory only);
  *   3. dials the platform `/mcp?profile=<id>` outlet as one PASSTHROUGH
- *      upstream when the profile has server-dialed entries (their tools are
- *      already namespaced server-side);
+ *      upstream (always armed, #106 — it carries the platform-native
+ *      `notes__`/`api__` namespaces alongside server-dialed upstreams' tools,
+ *      all already namespaced server-side);
  *   4. serves the merged, namespaced tool set over stdio until the tool
  *      closes our stdin.
  *
