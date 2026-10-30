@@ -90,7 +90,11 @@ const en = {
   turnMaxTokens: 'step limit reached',
   permissionsSettled: '{count} permission request(s) handled',
   approvalsSettledSummary: 'delegated {delegated} · allowed {allowed} · denied {denied}',
+  historyLoadAll: 'Full history',
+  historyLoadAllHint: 'Load the entire session history (for searching)',
   approvalsAdvisory: 'decision model leans {lean} ({confidence}) — advisory only',
+  approvalsAdvisoryVerdict:
+    'decision model: severity {severity} · intent {intent} → {lean} — advisory only',
   approvalsLeanAllow: 'allow',
   approvalsLeanReject: 'reject',
   'approvalsReason.policy': 'never-allow floor',
@@ -109,6 +113,10 @@ const en = {
     'The current mode rarely asks for confirmation — delegated will engage less.',
   approvalsConsequence:
     'A decision model will answer permission confirmations on your behalf (never-allow floor applies; uncertain calls still come to you).',
+  approvalsNoModel: 'No default decision model configured.',
+  approvalsConfigure: 'Configure on Providers',
+  permDelegatedConsequence:
+    'The default decision model will answer write and boundary-changing confirmations for this conversation (uncertain calls still come to you).',
   approvalsSetFailed: 'Switching approvals failed: {error}',
   // ---- composer / lifecycle ----
   connecting: 'connecting…',
@@ -279,7 +287,11 @@ const zh: typeof en = {
   turnMaxTokens: '达到步数上限',
   permissionsSettled: '已处理 {count} 个权限请求',
   approvalsSettledSummary: '代审 {delegated} · 放行 {allowed} · 拒绝 {denied}',
+  historyLoadAll: '完整历史',
+  historyLoadAllHint: '加载本会话全部历史（便于搜索）',
   approvalsAdvisory: '决策模型倾向{lean}（{confidence}）—— 仅供参考',
+  approvalsAdvisoryVerdict:
+    '决策模型：严重度 {severity} · 意图匹配 {intent} → 倾向{lean} —— 仅供参考',
   approvalsLeanAllow: '放行',
   approvalsLeanReject: '拒绝',
   'approvalsReason.policy': '命中永不放行底线',
@@ -296,6 +308,10 @@ const zh: typeof en = {
   approvalsQuietModeHint: '当前模式很少产生确认请求，代审作用有限。',
   approvalsConsequence:
     '决策模型将代你回答权限确认（永不放行底线始终生效；不确定的调用仍会转回给你）。',
+  approvalsNoModel: '尚未配置默认决策模型。',
+  approvalsConfigure: '去供应商页配置',
+  permDelegatedConsequence:
+    '本会话的写操作与边界变更确认将由默认决策模型代答（不确定的调用仍会转回给你）。',
   approvalsSetFailed: '切换审批方式失败：{error}',
   connecting: '连接中…',
   working: '处理中',

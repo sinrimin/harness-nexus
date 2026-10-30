@@ -53,16 +53,22 @@ export const chatDefaultModeSettingsSchema = z.object({
  * `core/domain/machine.ts`; keep the shapes in sync). NOT per-target: the
  * gate answers ACP `session/request_permission`, which is target-agnostic.
  * The service re-validates providerId/modelId against the provider registry
- * on every save (api 'systemone', model type 'decision').
+ * on every save (wire `systemone`, model `apiKind` systemone). #95 — both are
+ * OPTIONAL: omitting the pair follows the USER-level default decision model;
+ * the refine keeps them set-or-unset together.
  */
-export const chatApprovalsSettingsSchema = z.object({
-  responder: z.enum(['manual', 'delegated']),
-  providerId: z.string().min(1).max(64),
-  modelId: z.string().min(1).max(128),
-  confidenceThreshold: z.number().min(0.5).max(1),
-  neverAllow: z.array(z.string().min(1).max(256)).max(64),
-  denyNote: z.boolean().default(true),
-});
+export const chatApprovalsSettingsSchema = z
+  .object({
+    responder: z.enum(['manual', 'delegated']),
+    providerId: z.string().min(1).max(64).optional(),
+    modelId: z.string().min(1).max(128).optional(),
+    confidenceThreshold: z.number().min(0.5).max(1),
+    neverAllow: z.array(z.string().min(1).max(256)).max(64),
+    denyNote: z.boolean().default(true),
+  })
+  .refine((v) => (v.providerId === undefined) === (v.modelId === undefined), {
+    message: 'providerId and modelId are set or omitted together (omit = follow the user default)',
+  });
 
 export const updateMachineSchema = z
   .object({

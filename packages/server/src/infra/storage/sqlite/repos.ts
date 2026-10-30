@@ -61,6 +61,8 @@ interface UserRow {
   password_hash: string | null;
   role: string;
   status: string;
+  /** #95 — JSON of UserDefaultModels; NULL on pre-feature rows. */
+  default_models: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -142,6 +144,9 @@ const mapUser = (r: UserRow): User => ({
   passwordHash: r.password_hash,
   role: r.role as Role,
   status: r.status as User['status'],
+  ...(r.default_models
+    ? { defaultModels: JSON.parse(r.default_models) as User['defaultModels'] }
+    : {}),
   createdAt: r.created_at,
   updatedAt: r.updated_at,
 });
@@ -254,15 +259,16 @@ export function sqliteUserRepository(db: Database): UserRepository {
     },
     async save(user) {
       db.prepare(
-        `INSERT INTO users (id, username, email, password_hash, role, status, created_at, updated_at)
-         VALUES (@id, @username, @email, @password_hash, @role, @status, @created_at, @updated_at)
+        `INSERT INTO users (id, username, email, password_hash, role, status, default_models, created_at, updated_at)
+         VALUES (@id, @username, @email, @password_hash, @role, @status, @default_models, @created_at, @updated_at)
          ON CONFLICT(id) DO UPDATE SET
-           username      = excluded.username,
-           email         = excluded.email,
-           password_hash = excluded.password_hash,
-           role          = excluded.role,
-           status        = excluded.status,
-           updated_at    = excluded.updated_at`,
+           username        = excluded.username,
+           email           = excluded.email,
+           password_hash   = excluded.password_hash,
+           role            = excluded.role,
+           status          = excluded.status,
+           default_models  = excluded.default_models,
+           updated_at      = excluded.updated_at`,
       ).run({
         id: user.id,
         username: user.username,
@@ -270,6 +276,7 @@ export function sqliteUserRepository(db: Database): UserRepository {
         password_hash: user.passwordHash,
         role: user.role,
         status: user.status,
+        default_models: user.defaultModels ? JSON.stringify(user.defaultModels) : null,
         created_at: user.createdAt,
         updated_at: user.updatedAt,
       });
@@ -1191,7 +1198,8 @@ export function sqliteRuntimeConfigRepository(db: Database): RuntimeConfigReposi
 interface LlmProviderRow {
   id: string;
   name: string;
-  api: string;
+  /** #95 — JSON of ProviderApiEndpoint[] (was the single `api` TEXT pre-v32). */
+  apis: string;
   base_url: string | null;
   credential_name: string;
   scope: string;
@@ -1205,7 +1213,7 @@ interface LlmProviderRow {
 const mapLlmProvider = (r: LlmProviderRow): LlmProvider => ({
   id: r.id,
   name: r.name,
-  api: r.api as LlmProvider['api'],
+  apis: JSON.parse(r.apis) as LlmProvider['apis'],
   baseUrl: r.base_url,
   credentialName: r.credential_name,
   scope: r.scope as LlmProvider['scope'],
@@ -1250,11 +1258,11 @@ export function sqliteLlmProviderRepository(db: Database): LlmProviderRepository
     async save(provider) {
       db.prepare(
         `INSERT INTO llm_providers
-           (id, name, api, base_url, credential_name, scope, owner_id, models, created_at, updated_at)
-         VALUES (@id, @name, @api, @base_url, @credential_name, @scope, @owner_id, @models, @created_at, @updated_at)
+           (id, name, apis, base_url, credential_name, scope, owner_id, models, created_at, updated_at)
+         VALUES (@id, @name, @apis, @base_url, @credential_name, @scope, @owner_id, @models, @created_at, @updated_at)
          ON CONFLICT(id) DO UPDATE SET
            name            = excluded.name,
-           api             = excluded.api,
+           apis            = excluded.apis,
            base_url        = excluded.base_url,
            credential_name = excluded.credential_name,
            models          = excluded.models,
@@ -1262,7 +1270,7 @@ export function sqliteLlmProviderRepository(db: Database): LlmProviderRepository
       ).run({
         id: provider.id,
         name: provider.name,
-        api: provider.api,
+        apis: JSON.stringify(provider.apis),
         base_url: provider.baseUrl,
         credential_name: provider.credentialName,
         scope: provider.scope,
@@ -1340,7 +1348,12 @@ function mapAssistantConfig(r: AssistantConfigRow): AssistantConfig {
     ...(r.system_prompt_override !== null
       ? { systemPromptOverride: r.system_prompt_override }
       : {}),
-    permissionMode: r.permission_mode === 'autoWrite' ? 'autoWrite' : 'prompt',
+    permissionMode:
+      r.permission_mode === 'autoWrite'
+        ? 'autoWrite'
+        : r.permission_mode === 'delegated'
+          ? 'delegated'
+          : 'prompt',
     apiToolServiceIds:
       r.api_tool_service_ids === null ? [] : (JSON.parse(r.api_tool_service_ids) as string[]),
     enabledToolGroups: JSON.parse(r.enabled_tool_groups) as AssistantConfig['enabledToolGroups'],
@@ -1455,9 +1468,13 @@ function mapAssistantSession(r: AssistantSessionRow): AssistantSession {
     updatedAt: r.updated_at,
     lastMessageAt: r.last_message_at,
     permissionMode:
-      r.permission_mode === 'prompt' || r.permission_mode === 'autoWrite'
-        ? r.permission_mode
-        : undefined,
+      r.permission_mode === 'prompt'
+        ? 'prompt'
+        : r.permission_mode === 'autoWrite'
+          ? 'autoWrite'
+          : r.permission_mode === 'delegated'
+            ? 'delegated'
+            : undefined,
   };
 }
 

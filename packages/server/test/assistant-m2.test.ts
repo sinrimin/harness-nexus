@@ -80,12 +80,12 @@ async function setup(): Promise<Harness> {
   await uow.llmProviders.save({
     id: 'prov-1',
     name: 'Gateway',
-    api: 'openai-chat',
+    apis: [{ kind: 'openai-chat', path: null }],
     baseUrl: 'https://gw.example.com/v1',
     credentialName: 'gw-key',
     scope: 'personal',
     ownerId: owner.userId,
-    models: [{ id: 'gw-large', type: 'chat' }],
+    models: [{ id: 'gw-large', apiKind: 'openai-chat' }],
     createdAt: now,
     updatedAt: now,
   });

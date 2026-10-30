@@ -118,6 +118,19 @@ export interface ServerConfig {
   /** #92 — delegated-approvals decision-model budget (ms). */
   chatApprovalsTimeoutMs: number;
   /**
+   * #92 v2 — the verdict-matrix bands (severity × intent), server-wide ENV
+   * constants. Deliberately NOT machine-level knobs: bands mis-tuned
+   * per-machine degrade safety silently. See wiki
+   * design-delegated-approvals-v2.md §Configuration.
+   */
+  approvalsIntentThreshold: number;
+  /** Answer-quality floor ("did the model understand the question"). */
+  approvalsAnswerConfidenceFloor: number;
+  /** How many of the owner's prompts the decision model may see. */
+  approvalsPromptWindow: number;
+  /** Per-prompt character budget after the head/tail cut. */
+  approvalsPromptCharCap: number;
+  /**
    * Phase 8 C2 — marketplace emitter `.mcp.json` shape. `client` (default):
    * one stdio `hnx mcp serve` entry per profile. `server`: the pre-C2
    * aggregated-endpoint + PAT-env output (the no-`hnx` fallback).
@@ -208,6 +221,14 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
     // #92 — the delegated-approvals decision-model budget. Far under the
     // permission watchdog; a miss escalates to the human card.
     chatApprovalsTimeoutMs: Number(env.CHAT_APPROVALS_TIMEOUT_MS ?? '4000'),
+    // #92 v2 — verdict bands: intent ≥ threshold at severity 3–6 allows;
+    // any VERDICT-USED answer flatter than the floor escalates (fail-closed
+    // on uncertainty, never on policy). The window/char-cap bound the only
+    // free-text the model ever sees (8 prompts, 600 chars, head ¾ + tail ¼).
+    approvalsIntentThreshold: Number(env.APPROVALS_INTENT_THRESHOLD ?? '0.6'),
+    approvalsAnswerConfidenceFloor: Number(env.APPROVALS_ANSWER_CONFIDENCE_FLOOR ?? '0.6'),
+    approvalsPromptWindow: Number(env.APPROVALS_PROMPT_WINDOW ?? '8'),
+    approvalsPromptCharCap: Number(env.APPROVALS_PROMPT_CHAR_CAP ?? '600'),
     emitterMode: (env.EMITTER_MODE as ServerConfig['emitterMode']) ?? 'client',
   };
 }

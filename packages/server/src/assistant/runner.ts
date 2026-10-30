@@ -12,6 +12,7 @@ import type {
   AssistantPromptBlock,
   AssistantSession,
 } from '@harness-nexus/core';
+import { isChatApiKind } from '@harness-nexus/shared';
 import type { ChatStreamEvent, ProviderModelConfig } from '@harness-nexus/shared';
 import { decryptSecret, generateId } from '../infra/crypto.js';
 import { findCredentialForOwner } from '../infra/credential-scope.js';
@@ -76,7 +77,7 @@ export async function resolveTurnModel(
   provider: LlmProvider,
   modelId: string,
 ) {
-  const entry = provider.models.find((m) => m.id === modelId && m.type === 'chat');
+  const entry = provider.models.find((m) => m.id === modelId && isChatApiKind(m.apiKind));
   if (entry === undefined) {
     throw new TurnSetupError(
       `Model "${modelId}" is no longer configured on provider "${provider.name}"`,
@@ -89,13 +90,14 @@ export async function resolveTurnModel(
     );
   }
   const secret = decryptSecret(credential.secret, deps.credentialEncryptionKey);
-  // #92 — a systemone provider cannot reach here (the config service refuses
-  // it), but the runtime holds the line too: the gateway is chat-only.
-  if (provider.api === 'systemone') {
-    throw new TurnSetupError(`Provider "${provider.name}" is decision-only, not a chat gateway`);
+  // #92/#95 — a non-chat model cannot reach here (the config service refuses
+  // it), but the runtime holds the line too: the gateway is chat-only. The
+  // wire comes from the MODEL's apiKind — the row speaks several (#95).
+  if (!isChatApiKind(entry.apiKind)) {
+    throw new TurnSetupError(`Model "${modelId}" is not a chat model on "${provider.name}"`);
   }
   return buildGatewayModel({
-    kind: provider.api,
+    kind: entry.apiKind,
     baseUrl: provider.baseUrl,
     providerLabel: provider.name,
     secret,
@@ -165,13 +167,17 @@ export function startAssistantTurn(
     /**
      * M3 — the write-tool approval seam. Absent (tests, default) = writes run
      * ungated; the realtime layer supplies one that surfaces a
-     * `permission_request` card and resolves with the user's answer.
+     * `permission_request` card and resolves with the user's answer. #95
+     * follow-up — a delegated answer (decision model) may carry the denial
+     * reason the model should see; an empty answer keeps the human wording.
      */
     requestApproval?: (toolCall: {
       toolCallId: string;
       toolName: string;
       args: unknown;
-    }) => Promise<boolean>;
+      /** The tool's own description — the #92 decision-model view. */
+      description?: string | undefined;
+    }) => Promise<{ allowed: boolean; reason?: string }>;
   },
 ): RunningTurn {
   const { session, config, emit } = input;
@@ -361,6 +367,9 @@ export function startAssistantTurn(
     // The gate is the turn's ACTUAL toolset (static groups + dynamic MCP
     // names + read_skill) — belt-and-braces against rebind races.
     const allowed = new Set(tools.map((t) => t.name));
+    // #92 — the decision-model view: each tool's own description (the same
+    // text the model sees), so an `api__x__y` name need not speak for itself.
+    const descriptionOf = new Map(tools.map((t) => [t.name, t.description]));
 
     // #69 — ground truth at turn start: which of this session's dispatch
     // handles are still live. Appended AFTER the extras addendum and to
@@ -406,15 +415,16 @@ export function startAssistantTurn(
           ) &&
           input.requestApproval !== undefined
         ) {
-          const okToRun = await input.requestApproval({
+          const decision = await input.requestApproval({
             toolCallId: toolCall.id,
             toolName: toolCall.name,
             args,
+            description: descriptionOf.get(toolCall.name),
           });
-          if (!okToRun) {
+          if (!decision.allowed) {
             return {
               block: true,
-              reason: 'the user declined this write operation',
+              reason: decision.reason ?? 'the user declined this write operation',
             };
           }
         }

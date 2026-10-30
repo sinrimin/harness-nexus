@@ -2781,12 +2781,19 @@ r = await req('POST', '/api/llm-providers', {
   token: userToken,
   body: {
     name: 'w10-gw',
-    api: 'openai-responses',
+    apis: [
+      { kind: 'openai-responses', path: null },
+      { kind: 'systemone', path: null },
+    ],
     baseUrl: 'https://gw.example.com/v1',
     credentialName: 'w3-gw-key',
+    models: [
+      { id: 'resp-model', apiKind: 'openai-responses' },
+      { id: 'decision-model-preview', apiKind: 'systemone' },
+    ],
   },
 });
-expect('w10 provider created (scope defaults to personal)', r.status, 201);
+expect('w10 provider created (multi-wire, scope defaults to personal)', r.status, 201);
 const w10ProviderId = r.json.provider.id;
 
 r = await req('POST', '/api/llm-providers', {
@@ -2794,6 +2801,19 @@ r = await req('POST', '/api/llm-providers', {
   body: { name: 'w10-gw', api: 'anthropic', credentialName: 'w3-gw-key' },
 });
 expect('duplicate name in scope rejected', r.status, 409);
+
+// #95 — a model whose apiKind the row does not enable is refused.
+r = await req('POST', '/api/llm-providers', {
+  token: userToken,
+  body: {
+    name: 'w10-bad',
+    apis: [{ kind: 'openai-chat', path: null }],
+    credentialName: 'w3-gw-key',
+    models: [{ id: 'm', apiKind: 'anthropic' }],
+  },
+});
+expect('model with an un-enabled apiKind rejected', r.status, 400);
+expect('…code MODEL_KIND_NOT_ENABLED', r.json.error, 'MODEL_KIND_NOT_ENABLED');
 
 r = await req('GET', '/api/llm-providers', { token: userToken });
 expect(
@@ -2807,6 +2827,33 @@ expect(
   r.json.providers.some((p) => p.id === w10ProviderId),
   false,
 );
+
+log('\n--- [#95] user default models ---');
+r = await req('GET', '/api/users/me/default-models', { token: userToken });
+expect('default models start empty', r.json.defaultModels, {});
+
+r = await req('PATCH', '/api/users/me/default-models', {
+  token: userToken,
+  body: {
+    decision: { providerId: w10ProviderId, modelId: 'decision-model-preview' },
+  },
+});
+expect('decision slot set to the systemone model', r.status, 200);
+
+r = await req('PATCH', '/api/users/me/default-models', {
+  token: userToken,
+  body: { decision: { providerId: w10ProviderId, modelId: 'resp-model' } },
+});
+expect('wrong-kind model refused', r.json.error, 'DEFAULT_MODEL_KIND_MISMATCH');
+
+r = await req('PATCH', '/api/users/me/default-models', {
+  token: userToken,
+  body: { rerank: { providerId: w10ProviderId, modelId: 'resp-model' } },
+});
+expect('rerank slot reserved', r.json.error, 'DEFAULT_MODELS_RERANK_RESERVED');
+
+r = await req('PATCH', '/api/users/me/default-models', { token: userToken, body: {} });
+expect('empty object clears every slot', r.json.defaultModels, {});
 
 log('\n--- [9 W10] provider-mode runtime-config PUT (providerId + models) ---');
 const w10Machine = await req('POST', '/api/machines', {

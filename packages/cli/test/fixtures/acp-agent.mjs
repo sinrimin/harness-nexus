@@ -792,13 +792,28 @@ function runPrompt(id, text, deferred = false) {
       contentBlock: { type: 'text', text: 'thinking about it' },
     },
   });
-  notify('session/update', {
-    sessionId,
-    update: {
-      sessionUpdate: 'agent_message_chunk',
-      contentBlock: { type: 'text', text: `echo: ${text}` },
-    },
-  });
+  // 'chunked:<s>' — stream <s> as ONE message chunk PER CHARACTER (the ring
+  // compaction tests need bursts of consecutive deltas).
+  const chunked = /^chunked:(.*)$/s.exec(text);
+  if (chunked) {
+    for (const ch of chunked[1]) {
+      notify('session/update', {
+        sessionId,
+        update: {
+          sessionUpdate: 'agent_message_chunk',
+          contentBlock: { type: 'text', text: ch },
+        },
+      });
+    }
+  } else {
+    notify('session/update', {
+      sessionId,
+      update: {
+        sessionUpdate: 'agent_message_chunk',
+        contentBlock: { type: 'text', text: `echo: ${text}` },
+      },
+    });
+  }
   update(sessionId, 'usage_update');
   finish('end_turn');
 }
@@ -1053,6 +1068,32 @@ function handleRequest(msg) {
       respond(id, {});
       return;
     case 'session/set_config_option':
+      // configId 'degenerate': emulate the claude wrapper's external-switch
+      // rebuild gone wrong — a list with whole CATEGORIES missing (no model
+      // row). The daemon must drop it, not let it wipe the sender's selects.
+      if (params?.configId === 'degenerate') {
+        notify('session/update', {
+          sessionId: params?.sessionId ?? 'fx-session',
+          update: {
+            sessionUpdate: 'config_option_update',
+            configOptions: [
+              {
+                id: 'mode',
+                name: 'Mode',
+                category: 'mode',
+                type: 'select',
+                currentValue: 'default',
+                options: [
+                  { value: 'default', name: 'Manual' },
+                  { value: 'auto', name: 'Auto' },
+                ],
+              },
+            ],
+          },
+        });
+        respond(id, {});
+        return;
+      }
       notify('session/update', {
         sessionId: params?.sessionId ?? 'fx-session',
         update: {

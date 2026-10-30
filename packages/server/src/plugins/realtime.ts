@@ -30,6 +30,8 @@ import {
   chatChannelsCloseAllRequestSchema,
   chatChannelsSyncRequestSchema,
   chatHistoryEventSchema,
+  chatHistoryPageEventSchema,
+  chatHistoryFetchRequestSchema,
   chatAdapterPrewarmRequestSchema,
   chatMessageSendRequestSchema,
   chatQueueCancelRequestSchema,
@@ -135,6 +137,11 @@ export async function registerRealtime(
     chatIdleTtlMs: number;
     chatViewerGraceMs: number;
     chatApprovalsTimeoutMs: number;
+    /** #92 v2 — the delegated-gate verdict bands (ENV constants, not knobs). */
+    approvalsIntentThreshold: number;
+    approvalsAnswerConfidenceFloor: number;
+    approvalsPromptWindow: number;
+    approvalsPromptCharCap: number;
     sessionsListTimeoutMs: number;
     adaptersReportTimeoutMs: number;
   },
@@ -164,6 +171,12 @@ export async function registerRealtime(
         credentialEncryptionKey: app.credentialEncryptionKey,
         timeoutMs: opts.chatApprovalsTimeoutMs,
         log: app.log,
+        bands: {
+          intentThreshold: opts.approvalsIntentThreshold,
+          answerConfidenceFloor: opts.approvalsAnswerConfidenceFloor,
+          promptWindow: opts.approvalsPromptWindow,
+          promptCharCap: opts.approvalsPromptCharCap,
+        },
       },
       io: {
         toCtl: (machineId, event, payload) => {
@@ -206,6 +219,19 @@ export async function registerRealtime(
         allowlist: app.marketplaceAllowlist,
       },
       dispatch: assistantDispatch,
+      // #95 follow-up — the assistant's `permissionMode:'delegated'` rides
+      // the same decision gate as the machine chat axis (the user default is
+      // the whole resolution chain here; there is no machine).
+      approvals: {
+        timeoutMs: opts.chatApprovalsTimeoutMs,
+        log: app.log,
+        bands: {
+          intentThreshold: opts.approvalsIntentThreshold,
+          answerConfidenceFloor: opts.approvalsAnswerConfidenceFloor,
+          promptWindow: opts.approvalsPromptWindow,
+          promptCharCap: opts.approvalsPromptCharCap,
+        },
+      },
     },
     {
       toChannel: (sessionId, event, payload) => {
@@ -604,6 +630,18 @@ export async function registerRealtime(
       ack?.(accepted.ok ? { accepted: true } : { error: 'unknown-session' });
     });
 
+    // One older-history page (the browser prepends it) — same relay shape as
+    // chat:history above.
+    socket.on('chat:history.page', (payload: unknown, ack?: (res: unknown) => void) => {
+      const parsed = chatHistoryPageEventSchema.safeParse(payload);
+      if (!parsed.success) {
+        ack?.({ error: 'proto:invalid' });
+        return;
+      }
+      const accepted = realtime.chat.onHistoryPage(machineId, parsed.data);
+      ack?.(accepted.ok ? { accepted: true } : { error: 'unknown-session' });
+    });
+
     socket.on('chat:session.closed', (payload: unknown, ack?: (res: unknown) => void) => {
       const parsed = chatSessionClosedEventSchema.safeParse(payload);
       if (!parsed.success) {
@@ -768,6 +806,23 @@ export async function registerRealtime(
       // #10 — `queued` tells the Sender its message parked in the slot (the
       // queue_state event follows as the durable truth).
       ack?.(result.ok ? { accepted: true, queued: result.queued } : { error: result.code });
+    });
+
+    // Older-history paging: relay the browser's request to the daemon; the
+    // page comes back as a daemon `chat:history.page` (relayed below on /ctl).
+    socket.on('chat:history.fetch', (payload: unknown, ack?: (res: unknown) => void) => {
+      const parsed = chatHistoryFetchRequestSchema.safeParse(payload);
+      if (!parsed.success) {
+        ack?.({ error: 'proto:invalid' });
+        return;
+      }
+      const result = realtime.chat.onHistoryFetch(
+        socket.data.userId as string,
+        parsed.data.sessionId,
+        parsed.data.beforeSeq,
+        parsed.data.limit,
+      );
+      ack?.(result.ok ? { accepted: true } : { error: result.code });
     });
 
     // #10 — drop the parked send-queue entry (edit = cancel + re-draft).

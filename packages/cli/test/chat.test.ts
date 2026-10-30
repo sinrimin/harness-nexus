@@ -3200,3 +3200,236 @@ describe('native sub-agent sessions (#71)', () => {
     ]);
   }, 15000);
 });
+
+describe('history ring: compaction + paging', () => {
+  function waitFor<T>(fn: () => T | undefined, ms = 5000): Promise<T> {
+    const started = Date.now();
+    return new Promise((resolve, reject) => {
+      const tick = (): void => {
+        const v = fn();
+        if (v !== undefined) return resolve(v);
+        if (Date.now() - started > ms) return reject(new Error('waitFor: timeout'));
+        setTimeout(tick, 20);
+      };
+      tick();
+    });
+  }
+
+  type HistItem = {
+    type: string;
+    seq?: number;
+    event?: { kind: string; delta?: string };
+  };
+
+  async function boot(): Promise<FakeSocket> {
+    const socket = new FakeSocket();
+    attachChatHandlers(socket as never, {
+      env: { HN_ACP_COMMAND_HERMES: `node ${FIXTURE}`, PATH: process.env.PATH ?? '' },
+      homeDir: LEDGER_HOME,
+    });
+    socket.receive('chat:session.start', {
+      sessionId: 'sess-hist',
+      agentInstanceId: 'ag-1',
+      target: 'hermes',
+      cwd: '/tmp',
+    });
+    await waitFor(
+      () =>
+        socket.emitted.find(
+          (e) => e.event === 'chat:session.ready' && !('error' in (e.payload as object)),
+        ) as unknown,
+    );
+    return socket;
+  }
+
+  async function prompt(socket: FakeSocket, text: string): Promise<void> {
+    socket.receive('chat:message.send', {
+      sessionId: 'sess-hist',
+      prompt: [{ type: 'text', text }],
+    });
+    await waitFor(() =>
+      socket
+        .chatEvents()
+        .filter((e) => e.kind === 'turn_result')
+        .find(() => true),
+    );
+  }
+
+  it('consecutive deltas compact into ONE ring item (rebuild-equivalent)', async () => {
+    const socket = await boot();
+    await prompt(socket, 'chunked:abc');
+    // Live stream keeps every chunk (10 deltas: a,b,c… one per char).
+    const live = socket.chatEvents().filter((e) => e.kind === 'message_delta');
+    expect(live.length).toBe(3);
+    // The ring compacts: one merged delta item replays the same text.
+    socket.receive('chat:session.resync', { sessionId: 'sess-hist' });
+    const history = await waitFor(
+      () =>
+        socket.emitted.findLast((e) => e.event === 'chat:history')?.payload as
+          { items: HistItem[] } | undefined,
+    );
+    const merged = history.items.filter((i) => i.event?.kind === 'message_delta');
+    expect(merged).toHaveLength(1);
+    expect(merged[0]!.event!.delta).toBe('abc');
+    socket.receive('chat:session.close', { sessionId: 'sess-hist', reason: 'user' });
+  }, 15000);
+
+  it('resync windows at a user boundary and flags hasMore; fetch pages older', async () => {
+    const socket = await boot();
+    // Enough turns to overflow the 500-item sync window at user boundaries
+    // (compaction keeps each turn ~3 items, so a few hundred chars per prompt
+    // × several prompts is still small — instead force the window with many
+    // TURNS: 200 turns × ~3 items ≈ 600 > 500).
+    for (let i = 0; i < 200; i += 1) {
+      socket.receive('chat:message.send', {
+        sessionId: 'sess-hist',
+        prompt: [{ type: 'text', text: `t${i}` }],
+      });
+      await waitFor(() => {
+        const results = socket.chatEvents().filter((e) => e.kind === 'turn_result');
+        return results.length > i ? results : undefined;
+      });
+    }
+    socket.receive('chat:session.resync', { sessionId: 'sess-hist' });
+    const win = await waitFor(
+      () =>
+        socket.emitted.findLast((e) => e.event === 'chat:history')?.payload as
+          { items: HistItem[]; hasMore?: boolean } | undefined,
+    );
+    expect(win.items.length).toBeLessThanOrEqual(500);
+    expect(win.hasMore).toBe(true);
+    // The window STARTS at a user item (a turn boundary), never mid-turn.
+    expect(win.items[0]!.type).toBe('user');
+    const firstSeq = win.items[0]!.seq;
+    expect(firstSeq).toBeGreaterThan(1);
+
+    // Page older: the page ENDS at a user boundary and carries its own hasMore.
+    socket.receive('chat:history.fetch', {
+      sessionId: 'sess-hist',
+      beforeSeq: firstSeq,
+      limit: 60,
+    });
+    const page = await waitFor(
+      () =>
+        socket.emitted.findLast((e) => e.event === 'chat:history.page')?.payload as
+          { items: HistItem[]; hasMore?: boolean } | undefined,
+    );
+    expect(page.items.length).toBeGreaterThan(0);
+    // The page never SPLITS a turn: its last item is the older turn's tail
+    // (idle status), and the very next item — the window's first — is the
+    // user item that opens the following turn (asserted above).
+    const lastPage = page.items[page.items.length - 1]!;
+    expect(lastPage.type).toBe('event');
+    expect(['turn_result', 'session_status']).toContain(lastPage.event!.kind);
+    expect(page.items[0]!.seq!).toBeLessThan(firstSeq);
+    expect(page.hasMore).toBe(true);
+
+    // Full load: a huge limit drains the ring — hasMore goes false.
+    const oldest = page.items[0]!.seq!;
+    socket.receive('chat:history.fetch', {
+      sessionId: 'sess-hist',
+      beforeSeq: oldest,
+      limit: 20000,
+    });
+    const last = await waitFor(
+      () =>
+        socket.emitted.findLast((e) => e.event === 'chat:history.page')?.payload as
+          { items: HistItem[]; hasMore?: boolean } | undefined,
+    );
+    expect(last.items[0]!.seq).toBe(1);
+    expect(last.hasMore).toBe(false);
+    socket.receive('chat:session.close', { sessionId: 'sess-hist', reason: 'user' });
+  }, 120000);
+});
+
+describe('degenerate config_option_update guard', () => {
+  function waitFor<T>(fn: () => T | undefined, ms = 5000): Promise<T> {
+    const started = Date.now();
+    return new Promise((resolve, reject) => {
+      const tick = (): void => {
+        const v = fn();
+        if (v !== undefined) return resolve(v);
+        if (Date.now() - started > ms) return reject(new Error('waitFor: timeout'));
+        setTimeout(tick, 20);
+      };
+      tick();
+    });
+  }
+
+  it('an update that LOSES the model row is dropped; a legit full list passes', async () => {
+    const socket = new FakeSocket();
+    attachChatHandlers(socket as never, {
+      env: { HN_ACP_COMMAND_HERMES: `node ${FIXTURE}`, PATH: process.env.PATH ?? '' },
+      spawnEnv: { FIXTURE_SESSION_CONFIG: '1', FIXTURE_SESSION_ID: 'fx-degen' },
+      homeDir: LEDGER_HOME,
+    });
+    socket.receive('chat:session.start', {
+      sessionId: 'sess-cfg',
+      agentInstanceId: 'ag-1',
+      target: 'hermes',
+      cwd: '/tmp',
+    });
+    const ready = await waitFor(
+      () =>
+        socket.emitted.find((e) => e.event === 'chat:session.ready')?.payload as
+          { error?: string } | undefined,
+    );
+    expect(ready.error).toBeUndefined();
+
+    const configs = () =>
+      socket.chatEvents().filter((e) => e.kind === 'session_config') as {
+        kind: 'session_config';
+        configOptions?: { id: string; category?: string }[];
+      }[];
+    // The establishment's full-config emit lands right after ready.
+    await waitFor(() =>
+      configs().some((c) => c.configOptions?.some((o) => o.category === 'model'))
+        ? true
+        : undefined,
+    );
+    const before = configs().length;
+    expect(configs().some((c) => c.configOptions?.some((o) => o.category === 'model'))).toBe(true);
+
+    // Degenerate rebuild (configId 'degenerate' in the fixture): a list with
+    // the model row MISSING must be dropped — no event EVER carries an option
+    // list without the model row, and the snapshot's post-set emit keeps it.
+    const ack = vi.fn();
+    socket.receive(
+      'chat:config.set',
+      { sessionId: 'sess-cfg', kind: 'option', configId: 'degenerate', value: 'x' },
+      ack,
+    );
+    await waitFor(() => (ack.mock.calls.length > 0 ? ack : undefined));
+    expect(ack).toHaveBeenCalledWith({ accepted: true });
+    await waitFor(() => (configs().length > before ? configs() : undefined));
+    // No emitted list ever lost the model row (the degenerate push was
+    // dropped BEFORE it could replace the snapshot).
+    for (const c of configs()) {
+      if (c.configOptions === undefined) continue;
+      expect(
+        c.configOptions.some((o) => o.category === 'model'),
+        `config event without a model row: ${JSON.stringify(c.configOptions.map((o) => o.id))}`,
+      ).toBe(true);
+    }
+    expect(
+      configs()
+        .at(-1)!
+        .configOptions?.some((o) => o.category === 'model'),
+    ).toBe(true);
+
+    // A legit full-list re-emit still lands.
+    socket.receive('chat:config.set', {
+      sessionId: 'sess-cfg',
+      kind: 'option',
+      configId: 'model',
+      value: 'fx-opus',
+    });
+    await waitFor(() => (configs().length > before + 1 ? configs() : undefined));
+    expect(
+      configs()
+        .at(-1)!
+        .configOptions?.some((o) => o.category === 'model'),
+    ).toBe(true);
+    socket.receive('chat:session.close', { sessionId: 'sess-cfg', reason: 'user' });
+  }, 15000);
+});

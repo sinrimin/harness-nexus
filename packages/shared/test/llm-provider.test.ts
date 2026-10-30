@@ -9,6 +9,7 @@ import {
   PROVIDER_API_SUPPORT,
   providerApiKindSchema,
   providerApiToSpecApi,
+  providerEndpointUrl,
   providerModelsQuerySchema,
   providerModelsUrls,
   providerModelsResultSchema,
@@ -25,7 +26,7 @@ import {
 
 const validProvider = {
   name: 'team-gateway',
-  api: 'openai-responses',
+  apis: [{ kind: 'openai-responses', path: null }],
   baseUrl: 'https://gw.example.com/v1',
   credentialName: 'gw-key',
 };
@@ -56,10 +57,35 @@ describe('llmProviderCreateSchema / updateSchema', () => {
   it('defaults scope to personal and accepts a baseUrl-less provider', () => {
     const parsed = llmProviderCreateSchema.parse({
       name: 'official',
-      api: 'anthropic',
+      apis: [{ kind: 'anthropic', path: null }],
       credentialName: 'k',
     });
     expect(parsed.scope).toBe('personal');
+  });
+
+  it('#95 — requires >=1 unique-kind wire; a full-URL path overrides the base', () => {
+    expect(llmProviderCreateSchema.safeParse({ ...validProvider, apis: [] }).success).toBe(false);
+    expect(
+      llmProviderCreateSchema.safeParse({
+        ...validProvider,
+        apis: [
+          { kind: 'openai-chat', path: null },
+          { kind: 'openai-chat', path: '/x' },
+        ],
+      }).success,
+    ).toBe(false);
+    expect(
+      llmProviderCreateSchema.safeParse({
+        ...validProvider,
+        apis: [{ kind: 'systemone', path: 'https://root.example.com/v1/systemone' }],
+      }).success,
+    ).toBe(true);
+    expect(
+      llmProviderCreateSchema.safeParse({
+        ...validProvider,
+        apis: [{ kind: 'anthropic', path: 'v1/messages' }],
+      }).success,
+    ).toBe(false);
   });
 
   it('rejects a malformed baseUrl', () => {
@@ -95,6 +121,43 @@ describe('providerModelsUrls', () => {
     expect(providerModelsUrls('openai-chat', 'https://api.openai.com/v1///')).toEqual([
       'https://api.openai.com/v1/models',
     ]);
+  });
+});
+
+describe('providerEndpointUrl', () => {
+  it('appends the default path to a plain base', () => {
+    expect(providerEndpointUrl('systemone', { baseUrl: 'https://gw.example.com' })).toBe(
+      'https://gw.example.com/systemone',
+    );
+    expect(providerEndpointUrl('openai-chat', { baseUrl: 'https://gw.example.com/v1' })).toBe(
+      'https://gw.example.com/v1/chat/completions',
+    );
+  });
+
+  it('treats a baseUrl that already ends with the effective path as the whole endpoint', () => {
+    // The deployed report: Bailian's dedicated endpoint pasted verbatim got
+    // the default appended again (`…/systemone/systemone` → provider 400).
+    expect(
+      providerEndpointUrl('systemone', {
+        baseUrl: 'https://llm-x.maas.aliyuncs.com/compatible-mode/v1/systemone',
+      }),
+    ).toBe('https://llm-x.maas.aliyuncs.com/compatible-mode/v1/systemone');
+  });
+
+  it('dedupes an explicit path the base already carries, and keeps full-URL paths', () => {
+    expect(
+      providerEndpointUrl('openai-chat', { baseUrl: 'https://gw.example.com/v1', path: '/v1' }),
+    ).toBe('https://gw.example.com/v1');
+    expect(providerEndpointUrl('anthropic', { path: 'https://proxy.example.com/messages' })).toBe(
+      'https://proxy.example.com/messages',
+    );
+  });
+
+  it('returns null only for systemone without a base', () => {
+    expect(providerEndpointUrl('systemone', {})).toBeNull();
+    expect(providerEndpointUrl('openai-chat', {})).toBe(
+      'https://api.openai.com/v1/chat/completions',
+    );
   });
 });
 
@@ -146,21 +209,25 @@ describe('providerModelsSchema — #51 model registry', () => {
     ...over,
   });
 
-  it('defaults type to chat and rejects duplicate ids', () => {
-    const one = providerModelsSchema.parse([model()]);
-    expect(one[0]!.type).toBe('chat');
-    expect(one[0]!.type).not.toBe('embedding');
+  it('carries a required apiKind and rejects duplicate ids', () => {
+    const one = providerModelsSchema.parse([model({ apiKind: 'openai-chat' })]);
+    expect(one[0]!.apiKind).toBe('openai-chat');
+    expect(providerModelsSchema.safeParse([model()]).success).toBe(false);
 
-    const dup = providerModelsSchema.safeParse([model(), model({ id: 'gw-large' })]);
+    const dup = providerModelsSchema.safeParse([
+      model({ apiKind: 'openai-chat' }),
+      model({ id: 'gw-large', apiKind: 'openai-chat' }),
+    ]);
     expect(dup.success).toBe(false);
   });
 
   it('accepts the embedding reservation and the advanced fields', () => {
     expect(
       providerModelsSchema.safeParse([
-        model({ type: 'embedding' }),
+        model({ id: 'gw-emb', apiKind: 'openai-embedding' }),
         model({
           id: 'gw-r',
+          apiKind: 'openai-responses',
           temperature: 0.2,
           topP: 0.9,
           serverTools: ['web_search'],
@@ -178,30 +245,30 @@ describe('providerModelsSchema — #51 model registry', () => {
 });
 
 describe('providerModelConfigWarnings — warn, never reject (#51)', () => {
-  it('flags serverTools only on openai-chat; extraBody on anthropic (#56)', () => {
+  it('flags serverTools only off the responses/anthropic wires; extraBody on anthropic (#56/#95)', () => {
     expect(
-      providerModelConfigWarnings('openai-chat', [
-        { id: 'm1', type: 'chat', serverTools: ['enable_search'] },
+      providerModelConfigWarnings([
+        { id: 'm1', apiKind: 'openai-chat', serverTools: ['enable_search'] },
       ]),
     ).toEqual([{ code: 'serverToolsIrrelevant', modelId: 'm1' }]);
     expect(
-      providerModelConfigWarnings('anthropic', [{ id: 'm2', type: 'chat', extraBody: { x: 1 } }]),
+      providerModelConfigWarnings([{ id: 'm2', apiKind: 'anthropic', extraBody: { x: 1 } }]),
     ).toEqual([{ code: 'extraBodyIrrelevant', modelId: 'm2' }]);
   });
 
   it('stays silent when serverTools ride a wire that supports them (#56)', () => {
     expect(
       providerModelConfigWarnings('openai-responses', [
-        { id: 'm1', type: 'chat', serverTools: ['web_search'] },
+        { id: 'm1', apiKind: 'openai-chat', serverTools: ['web_search'] },
       ]),
     ).toEqual([]);
     // #56 — the anthropic wire now carries serverTools too (dated types).
     expect(
       providerModelConfigWarnings('anthropic', [
-        { id: 'm2', type: 'chat', serverTools: ['web_search_20250305'] },
+        { id: 'm2', apiKind: 'anthropic', serverTools: ['web_search_20250305'] },
       ]),
     ).toEqual([]);
-    expect(providerModelConfigWarnings('anthropic', [{ id: 'm3', type: 'chat' }])).toEqual([]);
+    expect(providerModelConfigWarnings([{ id: 'm3', apiKind: 'anthropic' }])).toEqual([]);
   });
 });
 

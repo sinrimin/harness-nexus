@@ -51,12 +51,12 @@ async function setup(opts: { tokensPerSecond?: number } = {}) {
   await uow.llmProviders.save({
     id: 'prov-1',
     name: 'Gateway',
-    api: 'openai-chat',
+    apis: [{ kind: 'openai-chat', path: null }],
     baseUrl: 'https://gw.example.com/v1',
     credentialName: 'gw-key',
     scope: 'personal',
     ownerId: owner.userId,
-    models: [{ id: 'gw-large', type: 'chat' }],
+    models: [{ id: 'gw-large', apiKind: 'openai-chat' }],
     createdAt: now,
     updatedAt: now,
   });
@@ -121,11 +121,14 @@ describe('#79 — the class × mode decision table', () => {
   const cases: [AssistantToolClass, AssistantPermissionMode | undefined, boolean][] = [
     ['read', 'prompt', false],
     ['read', 'autoWrite', false],
+    ['read', 'delegated', false],
     ['write', 'prompt', true],
     ['write', 'autoWrite', false],
+    ['write', 'delegated', true], // #95 — the gate answers, the card still exists
     ['write', undefined, true], // absent config field = prompt (pre-#79 rows)
     ['meta', 'prompt', true],
     ['meta', 'autoWrite', true], // no silent tier for boundary-changing ops
+    ['meta', 'delegated', true],
   ];
   for (const [cls, mode, expected] of cases) {
     it(`${cls} × ${mode ?? '(absent)'} → ${expected ? 'approval' : 'silent'}`, () => {
@@ -210,6 +213,51 @@ describe('#79 — write policy through a live turn', () => {
       permissionMode: undefined,
     });
     expect((await h.uow.assistants.findById(legacy.id))?.permissionMode).toBeUndefined();
+  });
+
+  it('#95 — sqlite round-trips the delegated write policy (config + session)', async (ctx) => {
+    let uow: ReturnType<typeof createSqliteUnitOfWork>;
+    try {
+      uow = createSqliteUnitOfWork(':memory:');
+    } catch {
+      return ctx.skip('better-sqlite3 native binding unavailable for this Node major');
+    }
+    await uow.users.save({
+      id: 'u-del',
+      username: 'delegated',
+      email: null,
+      passwordHash: null,
+      role: 'user',
+      status: 'active',
+      createdAt: now,
+      updatedAt: now,
+    });
+    await uow.assistants.save({
+      id: 'asst-del',
+      ownerId: 'u-del',
+      name: 'Delegated',
+      providerId: 'prov-1',
+      defaultModel: 'gw-large',
+      permissionMode: 'delegated',
+      enabledToolGroups: [],
+      mcpServerIds: [],
+      skillResourceIds: [],
+      apiToolServiceIds: [],
+      createdAt: now,
+      updatedAt: now,
+    });
+    expect((await uow.assistants.findById('asst-del'))?.permissionMode).toBe('delegated');
+    await uow.assistants.saveSession({
+      id: 'sess-del',
+      ownerId: 'u-del',
+      assistantId: 'asst-del',
+      title: '',
+      createdAt: now,
+      updatedAt: now,
+      lastMessageAt: null,
+      permissionMode: 'delegated',
+    });
+    expect((await uow.assistants.findSessionById('sess-del'))?.permissionMode).toBe('delegated');
   });
 
   it('#80 — a configured API tool joins the turn as api__<service>__<tool>, class from method', async () => {

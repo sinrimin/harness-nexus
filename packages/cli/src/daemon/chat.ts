@@ -23,6 +23,7 @@ import {
   chatAdapterPrewarmEventSchema,
   chatConfigSetEventSchema,
   chatElicitationRespondEventSchema,
+  chatHistoryFetchRequestSchema,
   chatPermissionRespondEventSchema,
   chatPromptEventSchema,
   chatReconcileEventSchema,
@@ -66,6 +67,7 @@ import {
 } from './adapter-ledger.js';
 import { PrewarmPool } from './prewarm.js';
 import { UsageLedger, hasTokenCounts, normalizeUsage, responseUsageMode } from './usage.js';
+import { logOp } from './logbook.js';
 import { rewriteHistoryItems, rewriteSessionConfigOptions } from './model-options.js';
 import {
   createDshLiveMapper,
@@ -137,6 +139,20 @@ interface DaemonSession {
   startedAt: number;
   conn: AgentConnection;
   busy: boolean;
+  /**
+   * #stop-during-execution — the ACP interrupt cannot kill a tool that is
+   * already running (the subprocess finishes on its own), and the adapter
+   * only force-settles some turn shapes. After a cancel, if the turn is
+   * still busy once the grace elapses, the daemon declares it cancelled for
+   * every viewer (`turn_result`), drops the orphan turn's further updates,
+   * and skips the eventual natural result. Cleared when the next turn
+   * starts.
+   */
+  cancelForce?: { gen: number; timer: NodeJS.Timeout } | undefined;
+  /** Generation counter — arms the force-settle against THIS turn only. */
+  turnGen: number;
+  /** True between the local force-settle and the next prompt: drop updates. */
+  locallyCancelled?: boolean;
   /** In-flight permission requests by our wire requestId. */
   permissions: Map<string, { jsonrpcId: JsonRpcId; timer: NodeJS.Timeout }>;
   /** 9 W14.1 — in-flight `elicitation/create` requests, same shape. */
@@ -161,6 +177,8 @@ interface DaemonSession {
   modelOptions?: readonly string[];
   /** 9 W7 — the history ring (user items + mapped events), newest last. */
   history: HistoryItem[];
+  /** Paging cursor source — monotonic per channel, stamped on every ring item. */
+  historySeq: number;
   /**
    * dsh only — whether the WIRE's committed text chunks ever rendered for
    * this session (true ⇒ the committed path owns bytes already shown, so a
@@ -202,7 +220,22 @@ interface DaemonSession {
   subagents: Set<string>;
 }
 
+/**
+ * The history ring's item cap (resync + paging source). Items are
+ * DELTA-COMPACTED before entering (see pushHistory): consecutive streaming
+ * deltas merge into one item, so the cap counts messages/tool calls, not
+ * wire chunks — a chatty day is a few hundred items, not the ~26k raw
+ * events a heavy turn emits.
+ */
 const HISTORY_MAX = 2000;
+/**
+ * The initial sync window (items shipped on join/resync/establish). Older
+ * ring content pages in via `chat:history.fetch`. Cut FORWARD to a user-item
+ * boundary when truncating so a page never starts mid-turn.
+ */
+const HISTORY_SYNC_MAX = 500;
+/** One merged ring item may hold at most this much delta text; past it a new item starts. */
+const HISTORY_MERGE_CHAR_CAP = 100_000;
 
 /**
  * How long the tap plugin may take to say hello AFTER the adapter start
@@ -415,18 +448,56 @@ export function attachChatHandlers(
   };
 
   const pushHistory = (session: DaemonSession, item: HistoryItem): void => {
-    session.history.push(item);
+    // Delta compaction: consecutive message/thought deltas from the same
+    // stream merge into ONE ring item (capped). Streaming emits thousands of
+    // chunk events per turn; without compaction the 2000-item ring is a
+    // quarter-turn and every resync truncates history mid-stream (the
+    // "history vanished" report: 26k raw events in a day). A merged item
+    // replays identically — the fold appends the concatenated delta.
+    const last = session.history[session.history.length - 1];
+    if (
+      last !== undefined &&
+      last.type === 'event' &&
+      item.type === 'event' &&
+      (last.event.kind === 'message_delta' || last.event.kind === 'thought_delta') &&
+      last.event.kind === item.event.kind &&
+      last.event.delta.length + item.event.delta.length <= HISTORY_MERGE_CHAR_CAP
+    ) {
+      last.event = {
+        ...last.event,
+        delta: last.event.delta + item.event.delta,
+      } as typeof last.event;
+      return;
+    }
+    session.historySeq += 1;
+    const stamped: HistoryItem = { ...item, seq: session.historySeq } as HistoryItem;
+    session.history.push(stamped);
     if (session.history.length > HISTORY_MAX) {
       session.history.splice(0, session.history.length - HISTORY_MAX);
     }
   };
 
+  /**
+   * The bounded sync window: the last `HISTORY_SYNC_MAX` items, with the cut
+   * advanced FORWARD to the next user item when truncating, so a page begins
+   * at a turn boundary (never mid-turn). `hasMore` = older ring items exist.
+   */
+  const historyWindow = (session: DaemonSession): { items: HistoryItem[]; hasMore: boolean } => {
+    const h = session.history;
+    if (h.length <= HISTORY_SYNC_MAX) return { items: h.slice(), hasMore: false };
+    let cut = h.length - HISTORY_SYNC_MAX;
+    while (cut < h.length && h[cut]?.type !== 'user') cut += 1;
+    return { items: h.slice(cut), hasMore: true };
+  };
+
   const emitHistory = (session: DaemonSession, items: HistoryItem[]): void => {
     if (items.length === 0) return;
     for (const item of items) pushHistory(session, item);
+    const window = historyWindow(session);
     socket.emit('chat:history', {
       sessionId: session.sessionId,
-      items: session.history.slice(-HISTORY_MAX),
+      items: window.items,
+      ...(window.hasMore ? { hasMore: true } : {}),
     });
   };
 
@@ -454,6 +525,8 @@ export function attachChatHandlers(
     sessions.delete(session.sessionId);
     session.tail?.stop();
     session.tap?.close();
+    clearTimeout(session.cancelForce?.timer);
+    session.cancelForce = undefined;
     for (const [, p] of session.permissions) clearTimeout(p.timer);
     session.permissions.clear();
     for (const [, e] of session.elicitations) clearTimeout(e.timer);
@@ -960,6 +1033,7 @@ export function attachChatHandlers(
           startedAt: ledgerStartedAt,
           conn,
           busy: false,
+          turnGen: 0,
           permissions: new Map(),
           elicitations: new Map(),
           config:
@@ -968,6 +1042,7 @@ export function attachChatHandlers(
               : { options: [], ...(approvals !== undefined ? { approvals } : {}) },
           ...(modelOptions !== undefined ? { modelOptions } : {}),
           history: [],
+          historySeq: 0,
           wireTextEmitted: false,
           tailReplayEligible: resume === undefined,
           tail: null,
@@ -1135,6 +1210,38 @@ export function attachChatHandlers(
       return;
     }
     ack?.({ accepted: true });
+    // Send the cancel BEFORE settling the cards: the adapter's cancel path
+    // aborts its pending user inputs itself (the permission bridge races the
+    // abort signal), and it must still SEE them pending when it arms its
+    // force-cancel floor — answering first lets the CC SDK decode our
+    // 'cancelled' as a plain denial and keep grinding the turn (the reported
+    // "stop = deny, session keeps running").
+    void session.conn.request('session/cancel', {}, 5000).catch(() => {});
+    // #stop-during-execution — a tool that is ALREADY running survives the
+    // ACP interrupt (the subprocess finishes on its own) and the adapter's
+    // force-settle does not reach every turn shape: the re-test had a long
+    // command run to natural completion 20s+ after Stop. Grace for the
+    // honest settle paths first, then the daemon declares the turn
+    // cancelled for every viewer and drops the orphan's further updates.
+    if (session.busy) {
+      const gen = session.turnGen;
+      clearTimeout(session.cancelForce?.timer);
+      session.cancelForce = {
+        gen,
+        timer: setTimeout(() => {
+          if (!session.busy || session.turnGen !== gen || session.cancelForce === undefined) {
+            return;
+          }
+          // Viewers see the turn end NOW; the session stays BUSY (no idle
+          // emit) so the server PARKS the next prompt instead of racing the
+          // orphan — the finally below emits idle when the orphan settles
+          // and the queue flushes onto a clean turn.
+          session.locallyCancelled = true;
+          session.cancelForce = undefined;
+          emitEvent(session, { kind: 'turn_result', stopReason: 'cancelled' });
+        }, 6000),
+      };
+    }
     // Settle every pending permission / elicitation card NOW: the adapter may
     // drop its outstanding requests when the turn aborts, and without this
     // the cards linger until the 75s backstop — with the turn dead they read
@@ -1151,8 +1258,6 @@ export function attachChatHandlers(
       session.conn.respondElicitation(pending.jsonrpcId, { action: 'cancel' });
       emitEvent(session, { kind: 'elicitation_resolved', requestId, outcome: 'cancelled' });
     }
-    // The pending session/prompt resolves as 'cancelled' → turn_result fires.
-    void session.conn.request('session/cancel', {}, 5000).catch(() => {});
   });
 
   // #92 — the server switched the live approvals responder; merge the view
@@ -1356,12 +1461,58 @@ export function attachChatHandlers(
     }
     const session = sessions.get(parsed.data.sessionId);
     if (session !== undefined && session.history.length > 0) {
+      // Paging window (bounded, cut at a user-item boundary) + hasMore —
+      // older ring content pages in via `chat:history.fetch`.
+      const window = historyWindow(session);
       socket.emit('chat:history', {
         sessionId: session.sessionId,
-        items: session.history.slice(-HISTORY_MAX),
+        items: window.items,
+        ...(window.hasMore ? { hasMore: true } : {}),
       });
     }
     ack?.({ accepted: true });
+  });
+
+  // Older-history paging (browser → server → here): ship the `limit` items
+  // immediately older than `beforeSeq` (or the ring's oldest page) back as a
+  // `chat:history.page` event the server relays to the channel room —
+  // push-based, no ack round-trip. The browser PREPENDS the page; it never
+  // re-rebuilds from it (a rebuild would close a running turn's rows).
+  socket.on('chat:history.fetch', (payload: unknown, ack?: (res: unknown) => void) => {
+    const parsed = chatHistoryFetchRequestSchema.safeParse(payload);
+    if (!parsed.success) {
+      ack?.({ error: 'proto:invalid' });
+      return;
+    }
+    const session = sessions.get(parsed.data.sessionId);
+    if (session === undefined) {
+      ack?.({ error: 'unknown-session' });
+      return;
+    }
+    ack?.({ accepted: true });
+    const h = session.history;
+    if (h.length === 0) return;
+    const before = parsed.data.beforeSeq;
+    const limit = Math.min(parsed.data.limit ?? 500, 20_000);
+    // Ring items without seq (should not exist — every push stamps one) read
+    // as older than everything, so a missing cursor degenerates to the oldest
+    // page, which is what an absent beforeSeq asks for anyway.
+    let end = before === undefined ? h.length : h.findIndex((it) => (it.seq ?? 0) >= before);
+    if (end === -1) end = h.length;
+    if (end <= 0) return; // nothing older — the browser's hasMore already said so
+    // Cut BACK to a user-item boundary so the page ENDS at a turn boundary
+    // (its last item is a user prompt; the next-newer item continues cleanly).
+    let start = Math.max(0, end - limit);
+    if (start > 0) {
+      while (start < end && h[start]?.type !== 'user') start += 1;
+    }
+    const items = h.slice(start, end);
+    if (items.length === 0) return;
+    socket.emit('chat:history.page', {
+      sessionId: session.sessionId,
+      items,
+      hasMore: start > 0,
+    });
   });
 
   // 9 W11 C — the adapter report: present-tense process truth from the live
@@ -1597,6 +1748,43 @@ function wireSession(
   const { conn } = session;
 
   conn.setNotificationHandler((method, params) => {
+    // #stop-during-execution — after the daemon force-settled a cancelled
+    // turn, the orphan's streamed updates would open post-turn bubbles;
+    // drop them until the next prompt clears the flag.
+    if (session.locallyCancelled && method === 'session/update') return;
+    // The adapter cancels one of ITS requests (interrupt/teardown withdraws
+    // an open permission or elicitation). Map the raw jsonrpc id back to our
+    // card and settle it as cancelled, or it lingers until the 75s backstop.
+    if (method === '$/cancel_request') {
+      const id = (params as { id?: unknown }).id;
+      if (typeof id === 'number' || typeof id === 'string') {
+        for (const [requestId, pending] of session.permissions) {
+          if (pending.jsonrpcId === id) {
+            clearTimeout(pending.timer);
+            session.permissions.delete(requestId);
+            // The bridge already released locally (it races the abort); the
+            // reply only closes the wire request it is still holding open.
+            session.conn.respondPermission(id, { outcome: 'cancelled' });
+            emitEvent(session, {
+              kind: 'permission_resolved',
+              requestId,
+              outcome: 'cancelled',
+            });
+            return;
+          }
+        }
+        for (const [requestId, pending] of session.elicitations) {
+          if (pending.jsonrpcId === id) {
+            clearTimeout(pending.timer);
+            session.elicitations.delete(requestId);
+            session.conn.respondElicitation(id, { action: 'cancel' });
+            emitEvent(session, { kind: 'elicitation_resolved', requestId, outcome: 'cancelled' });
+            return;
+          }
+        }
+      }
+      return;
+    }
     if (method !== 'session/update') return;
     // #71 — native sub-agent frames route BEFORE the root handling: child
     // sessions must never fold into the main transcript.
@@ -1631,7 +1819,27 @@ function wireSession(
         // 9 W13 — the adapter re-emits its FULL list after every set; the
         // rewrite must ride here too or the built-in noise comes back
         // mid-session. Idempotent by construction.
-        session.config.options = rewriteSessionConfigOptions(options, session);
+        const rewritten = rewriteSessionConfigOptions(options, session);
+        // Degenerate-rebuild guard (the "selects vanished mid-session"
+        // report): the adapter's external-switch reconcile can rebuild its
+        // list from a transient half-state and emit one with whole CATEGORIES
+        // missing — a full-replace of our snapshot then wipes the sender's
+        // model/effort dropdowns until a fresh establishment. An update that
+        // LOSES a model row the snapshot already had is never legitimate
+        // (only the effort row may legitimately drop — the adapter omits it
+        // while an effort sync failure stands), so it is dropped whole.
+        const hadModel = session.config.options.some((o) => o.category === 'model');
+        const hasModel = rewritten.some((o) => o.category === 'model');
+        if (hadModel && !hasModel) {
+          logOp({
+            op: 'chat.config-option-update',
+            target: session.target,
+            outcome: 'error',
+            detail: 'dropped degenerate rebuild (model row vanished)',
+          });
+          return;
+        }
+        session.config.options = rewritten;
         emitEvent(session, { kind: 'session_config', configOptions: session.config.options });
       }
       return;
@@ -1719,6 +1927,11 @@ async function runPrompt(
 ): Promise<void> {
   const promptStartedAt = Date.now();
   session.busy = true;
+  const gen = session.turnGen + 1;
+  session.turnGen = gen;
+  session.locallyCancelled = false;
+  clearTimeout(session.cancelForce?.timer);
+  session.cancelForce = undefined;
   emitEvent(session, { kind: 'session_status', state: 'active' });
   try {
     // No client-side timeout: a turn can legitimately run for minutes; the
@@ -1767,12 +1980,19 @@ async function runPrompt(
         await new Promise((r) => setTimeout(r, 25));
       }
     }
+    if (session.locallyCancelled && session.turnGen === gen) {
+      // The daemon already declared this turn cancelled (force-settle after
+      // a stop the adapter could not honor); the orphan's natural result is
+      // redundant — swallow it.
+      return;
+    }
     emitEvent(session, {
       kind: 'turn_result',
       stopReason,
       ...(turnUsage !== null && hasTokenCounts(turnUsage) ? { usage: turnUsage } : {}),
     });
   } catch (e) {
+    if (session.locallyCancelled && session.turnGen === gen) return;
     // A rejected prompt is a TURN error (adapters answer protocol failures —
     // "Authentication required", upstream API errors — through JSON-RPC
     // errors while staying alive), not a dead subprocess. Real process death
@@ -1786,6 +2006,13 @@ async function runPrompt(
     emitEvent(session, { kind: 'turn_result', stopReason: 'end_turn' });
   } finally {
     session.busy = false;
+    // The `as` sheds the head assignment's `undefined` narrowing — the
+    // cancel handler may have armed a NEW force between then and now.
+    const force = session.cancelForce as { gen: number; timer: NodeJS.Timeout } | undefined;
+    if (force !== undefined && force.gen === gen) session.cancelForce = undefined;
+    // ALWAYS idle here: when the force-settle parked the next prompt
+    // server-side, this transition is the flush hook (#10).
+    if (session.turnGen === gen) session.locallyCancelled = false;
     emitEvent(session, { kind: 'session_status', state: 'idle' });
   }
 }

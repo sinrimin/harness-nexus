@@ -10,7 +10,14 @@ import type {
   AssistantSession,
   LlmProvider,
 } from '@harness-nexus/core';
-import type { ChatStreamEvent, HistoryItem, PromptBlock } from '@harness-nexus/shared';
+import { isChatApiKind } from '@harness-nexus/shared';
+import type {
+  ChatApprovalsView,
+  ChatStreamEvent,
+  DelegationDenialReason,
+  HistoryItem,
+  PromptBlock,
+} from '@harness-nexus/shared';
 import { generateId } from '../infra/crypto.js';
 import { rowsToHistoryItems } from '../assistant/history.js';
 import { imageExpiryFrom } from '../services/settings.js';
@@ -21,6 +28,15 @@ import {
   type RunningTurn,
 } from '../assistant/runner.js';
 import type { AssistantMcpDeps } from '../assistant/context.js';
+import type { SystemOneFetch } from '../infra/systemone.js';
+import {
+  type ApprovalBands,
+  decideApproval,
+  denyMessage,
+  PROMPT_RETAIN_CHAR_CAP,
+  PROMPT_RETAIN_WINDOW,
+  toolInputText,
+} from './approvals-gate.js';
 
 /**
  * The assistant's realtime coordinator (#52 §7) — the LiveSender-flavored
@@ -96,15 +112,54 @@ function isRecord(v: unknown): v is Record<string, unknown> {
   return v !== null && typeof v === 'object' && !Array.isArray(v);
 }
 
+/** #92/#95 — the retained "owner's own recent prompts" context for the gate. */
+function recentPromptsFrom(rows: readonly AssistantMessageRow[]): string[] {
+  const texts: string[] = [];
+  for (let i = rows.length - 1; i >= 0 && texts.length < PROMPT_RETAIN_WINDOW; i -= 1) {
+    const row = rows[i];
+    if (row === undefined || row.type !== 'user') continue;
+    const text = row.blocks
+      .filter((b): b is Extract<AssistantPromptBlock, { type: 'text' }> => b.type === 'text')
+      .map((b) => b.text)
+      .join('\n')
+      .trim();
+    if (text !== '') texts.unshift(text.slice(0, PROMPT_RETAIN_CHAR_CAP));
+  }
+  return texts;
+}
+
 export type AssistantOpenResult =
   | { ok: true; sessionId: string; assistantId: string; assistantName: string }
   | { ok: false; code: 'ASSISTANT_NOT_FOUND' | 'ASSISTANT_DELETED' | 'SESSION_NOT_FOUND' };
 
 export type AssistantSendResult = { ok: true; queued?: boolean } | { ok: false; code: string };
 
+/** The answer the runner's approval seam resolves with (a gate denial may carry its reason). */
+export interface AssistantApprovalAnswer {
+  allowed: boolean;
+  reason?: string;
+}
+
+/**
+ * #95 follow-up — the realtime service's deps: the runner surface plus the
+ * delegated-approvals gate's needs. Absent `approvals` (tests, a deployment
+ * with the feature off) = `permissionMode:'delegated'` is refused and the
+ * gate never engages.
+ */
+export interface AssistantRealtimeDeps extends AssistantRunnerDeps {
+  approvals?: {
+    timeoutMs: number;
+    log?: { warn: (msg: string) => void };
+    /** Injectable for tests. */
+    fetchImpl?: SystemOneFetch;
+    /** v2 verdict bands (ENV constants; absent = the gate's defaults). */
+    bands?: ApprovalBands;
+  };
+}
+
 interface PendingApproval {
   sessionId: string;
-  resolve: (allowed: boolean) => void;
+  resolve: (answer: AssistantApprovalAnswer) => void;
   timer: NodeJS.Timeout;
 }
 
@@ -118,7 +173,7 @@ export class AssistantRealtimeService {
   private viewerGrace = new Map<string, NodeJS.Timeout>();
 
   constructor(
-    private readonly deps: AssistantRunnerDeps,
+    private readonly deps: AssistantRealtimeDeps,
     private readonly io: AssistantIO,
     /** M2 — the registry seam, resolved LAZILY (mountMcpProxy decorates after registerRealtime). */
     private readonly mcp?: AssistantMcpDeps,
@@ -187,7 +242,7 @@ export class AssistantRealtimeService {
     ]);
     const models = providers.flatMap((p) =>
       p.models
-        .filter((m) => m.type === 'chat')
+        .filter((m) => isChatApiKind(m.apiKind))
         .map((m) => ({ value: `${p.id}/${m.id}`, name: m.displayName ?? m.id, group: p.name })),
     );
     return {
@@ -208,7 +263,10 @@ export class AssistantRealtimeService {
         },
         // #79 — the sender's write-policy switch. The names are protocol-side
         // labels; the web renders this option by its `id` with localized
-        // strings, values stay the two declared modes.
+        // strings, values stay the declared modes. #95 follow-up — the third
+        // value hands answers to the owner's default decision model, so the
+        // option is advertised even when no model resolves (picking it then
+        // returns ASSISTANT_APPROVALS_NO_PROVIDER, the discoverable failure).
         {
           id: 'permissionMode',
           name: 'Write policy',
@@ -216,10 +274,34 @@ export class AssistantRealtimeService {
           options: [
             { value: 'prompt', name: 'Prompt per write' },
             { value: 'autoWrite', name: 'Auto-approve writes' },
+            { value: 'delegated', name: 'Model answers permissions' },
           ],
         },
       ],
     };
+  }
+
+  /**
+   * #95 follow-up — the owner's default decision model, verified end-to-end
+   * (a systemone wire on the provider, and the named model still carries
+   * `apiKind:'systemone'`). The platform assistant has no machine, so the
+   * user default is the WHOLE resolution chain (no machine override). Null =
+   * delegation unavailable: the card always goes to the human.
+   */
+  private async resolveDecisionView(ownerId: string): Promise<ChatApprovalsView | null> {
+    try {
+      const ref = (await this.deps.uow.users.findById(ownerId))?.defaultModels?.decision;
+      if (ref === undefined) return null;
+      const provider = await this.deps.uow.llmProviders.findById(ref.providerId);
+      if (provider === null) return null;
+      if (!provider.apis.some((a) => a.kind === 'systemone')) return null;
+      if (!provider.models.some((m) => m.id === ref.modelId && m.apiKind === 'systemone')) {
+        return null;
+      }
+      return { responder: 'delegated', providerName: provider.name, modelId: ref.modelId };
+    } catch {
+      return null;
+    }
   }
 
   /** The rail's truth: the owner's sessions + live busy flags. */
@@ -439,7 +521,7 @@ export class AssistantRealtimeService {
     this.viewerGrace.clear();
     for (const [, pending] of [...this.pendingApprovals.entries()]) {
       clearTimeout(pending.timer);
-      pending.resolve(false);
+      pending.resolve({ allowed: false });
     }
     this.pendingApprovals.clear();
     for (const ch of [...this.live.values()]) {
@@ -600,8 +682,14 @@ export class AssistantRealtimeService {
     if (ch === null) return { ok: false, code: 'SESSION_NOT_FOUND' };
 
     if (set.configId === 'permissionMode') {
-      if (set.value !== 'prompt' && set.value !== 'autoWrite') {
+      if (set.value !== 'prompt' && set.value !== 'autoWrite' && set.value !== 'delegated') {
         return { ok: false, code: 'ASSISTANT_BAD_PERMISSION_MODE' };
+      }
+      // #95 follow-up — delegation needs a resolvable decision model at the
+      // moment it is picked; the option stays advertised so the failure is
+      // discoverable (the web turns the code into a "configure one" toast).
+      if (set.value === 'delegated' && (await this.resolveDecisionView(ch.ownerId)) === null) {
+        return { ok: false, code: 'ASSISTANT_APPROVALS_NO_PROVIDER' };
       }
       if (ch.permissionMode !== set.value) {
         ch.permissionMode = set.value;
@@ -647,7 +735,9 @@ export class AssistantRealtimeService {
       const wantedProviderId = slash === -1 ? ch.providerId : set.value.slice(0, slash);
       const wantedModelId = slash === -1 ? set.value : set.value.slice(slash + 1);
       const provider = (await this.visibleProviders(userId)).find((p) => p.id === wantedProviderId);
-      const model = provider?.models.find((m) => m.id === wantedModelId && m.type === 'chat');
+      const model = provider?.models.find(
+        (m) => m.id === wantedModelId && isChatApiKind(m.apiKind),
+      );
       if (provider === undefined || model === undefined) {
         return { ok: false, code: 'ASSISTANT_MODEL_NOT_ON_PROVIDER' };
       }
@@ -713,7 +803,14 @@ export class AssistantRealtimeService {
         prompt,
         rows: rowsBefore,
         emit: (event) => this.emit(ch.sessionId, event),
-        requestApproval: this.makeApprovalSeam(ch),
+        // The seam's prompt window must include THIS turn's prompt:
+        // rowsBefore was read before the append above, so without the
+        // synthesized row a first-message session handed the decision model
+        // an EMPTY userPrompts (the ds-web trial: nothing but a tool name).
+        requestApproval: this.makeApprovalSeam(ch, [
+          ...rowsBefore,
+          { seq: rowsBefore.length + 1, type: 'user', blocks: prompt },
+        ]),
         append: async (row: AssistantMessageRow) => {
           // #68 — allocate from the LIVE tail (a mid-turn note may have
           // claimed this seq since the turn started).
@@ -887,23 +984,47 @@ export class AssistantRealtimeService {
   /**
    * M3 — settle one pending approval: clears the watchdog, resolves the
    * runner's wait, and settles every viewer's card. `optionId` undefined =
-   * cancelled (turn stopped / channel gone).
+   * cancelled (turn stopped / channel gone). #95 — a delegated settle also
+   * carries the attribution AND the denial reason the runner hands the model.
    */
   private settleApproval(
     requestId: string,
     outcome: 'selected' | 'cancelled' | 'timeout',
     optionId?: string,
+    extra?: {
+      attribution?: {
+        decidedBy: 'floor' | 'model';
+        delegated: {
+          providerName: string;
+          modelId: string;
+          confidence?: number;
+          denial?: { reason: DelegationDenialReason };
+        };
+      };
+      /** The runner's block reason (delegated denials only). */
+      reason?: string;
+    },
   ): void {
     const pending = this.pendingApprovals.get(requestId);
     if (pending === undefined) return;
     this.pendingApprovals.delete(requestId);
     clearTimeout(pending.timer);
-    pending.resolve(outcome === 'selected' && optionId === 'allow_once');
+    pending.resolve({
+      allowed: outcome === 'selected' && optionId === 'allow_once',
+      ...(extra?.reason !== undefined ? { reason: extra.reason } : {}),
+    });
     this.emit(pending.sessionId, {
       kind: 'permission_resolved',
       requestId,
       outcome,
       ...(optionId !== undefined ? { optionId } : {}),
+      ...(extra?.attribution !== undefined
+        ? {
+            responder: 'delegated' as const,
+            decidedBy: extra.attribution.decidedBy,
+            delegated: extra.attribution.delegated,
+          }
+        : {}),
     });
   }
 
@@ -934,12 +1055,23 @@ export class AssistantRealtimeService {
   /**
    * The runner's approval seam: surface the ACP-shaped card, arm the
    * watchdog, and wait. Timeout and turn-cancel both deny (the write never
-   * runs silently).
+   * runs silently). #95 follow-up — under `permissionMode:'delegated'` the
+   * shared decision gate runs BESIDE the card (first responder wins); a
+   * decisive verdict settles it, uncertainty leaves it to the human.
    */
-  private makeApprovalSeam(ch: LiveChannel) {
-    return (toolCall: { toolCallId: string; toolName: string; args: unknown }): Promise<boolean> =>
-      new Promise<boolean>((resolve) => {
+  private makeApprovalSeam(ch: LiveChannel, rows: readonly AssistantMessageRow[]) {
+    const recentPrompts = recentPromptsFrom(rows);
+    return (toolCall: {
+      toolCallId: string;
+      toolName: string;
+      args: unknown;
+    }): Promise<AssistantApprovalAnswer> =>
+      new Promise<AssistantApprovalAnswer>((resolve) => {
         const requestId = generateId();
+        const options = [
+          { optionId: 'allow_once', name: 'Allow once', kind: 'allow_once' as const },
+          { optionId: 'reject_once', name: 'Reject once', kind: 'reject_once' as const },
+        ];
         this.emit(ch.sessionId, {
           kind: 'permission_request',
           requestId,
@@ -949,10 +1081,7 @@ export class AssistantRealtimeService {
             status: 'pending',
             ...(isRecord(toolCall.args) ? { rawInput: toolCall.args } : {}),
           },
-          options: [
-            { optionId: 'allow_once', name: 'Allow once', kind: 'allow_once' as const },
-            { optionId: 'reject_once', name: 'Reject once', kind: 'reject_once' as const },
-          ],
+          options,
         });
         const timer = setTimeout(() => {
           this.settleApproval(requestId, 'timeout');
@@ -962,7 +1091,97 @@ export class AssistantRealtimeService {
           resolve,
           timer,
         });
+        if (ch.permissionMode === 'delegated' && this.deps.approvals !== undefined) {
+          void this.runDelegatedAnswer(ch, requestId, toolCall, options, recentPrompts).catch(
+            () => {},
+          );
+        }
       });
+  }
+
+  /**
+   * #95 follow-up — the assistant's half of the shared gate. Runs BESIDE the
+   * human card (first responder wins). The platform assistant has no machine,
+   * so there is no policy floor and no reason channel; the gate's eligibility
+   * (one-shot options only), the metadata pre-filter and the v2 severity ×
+   * intent verdict matrix still apply.
+   */
+  private async runDelegatedAnswer(
+    ch: LiveChannel,
+    requestId: string,
+    toolCall: {
+      toolCallId: string;
+      toolName: string;
+      args: unknown;
+      description?: string | undefined;
+    },
+    options: readonly { optionId: string; name: string; kind: string }[],
+    recentPrompts: readonly string[],
+  ): Promise<void> {
+    const gate = this.deps.approvals;
+    if (gate === undefined) return;
+    const view = await this.resolveDecisionView(ch.ownerId);
+    if (view === null) return; // nothing resolvable ⇒ human decides
+    const outcome = await decideApproval(
+      {
+        uow: this.deps.uow,
+        credentialEncryptionKey: this.deps.credentialEncryptionKey,
+        timeoutMs: gate.timeoutMs,
+        ...(gate.log !== undefined ? { log: gate.log } : {}),
+        ...(gate.fetchImpl !== undefined ? { fetchImpl: gate.fetchImpl } : {}),
+        ...(gate.bands !== undefined ? { bands: gate.bands } : {}),
+      },
+      {
+        ownerId: ch.ownerId,
+        target: 'assistant',
+        recentPrompts,
+        view,
+        toolCall: {
+          title: toolCall.toolName,
+          // #92 — the seam holds the full args; the gate bounds the text.
+          // Without it the severity/intent questions cannot be answered (the
+          // ds-web trial: a web_search call scored 0.16 with the query
+          // invisible to the decision model).
+          input: toolInputText(toolCall.args),
+          // The tool's own description — an `api__x__y` name alone may not
+          // tell the model what the call does.
+          description: toolCall.description,
+          // v2 — parsed args feed the metadata pre-filter (platform tools
+          // never match its kind shapes, so this axis always sees the model).
+          raw: toolCall.args,
+        },
+        options,
+      },
+    );
+    if (outcome.kind === 'escalate') return;
+    // First responder wins: the human or the watchdog may have settled the
+    // card while the decision model ran.
+    if (!this.pendingApprovals.has(requestId)) return;
+    if (outcome.kind === 'advisory') {
+      this.emit(ch.sessionId, {
+        kind: 'permission_advisory',
+        requestId,
+        lean: outcome.lean,
+        confidence: outcome.confidence,
+        ...(outcome.reason !== undefined ? { reason: outcome.reason } : {}),
+        ...(outcome.severity !== undefined ? { severity: outcome.severity } : {}),
+        ...(outcome.intent !== undefined ? { intent: outcome.intent } : {}),
+      });
+      return;
+    }
+    const denial = outcome.denial;
+    this.settleApproval(requestId, 'selected', outcome.optionId, {
+      attribution: {
+        decidedBy: outcome.decidedBy,
+        delegated: {
+          providerName: view.providerName ?? 'decision-model',
+          modelId: view.modelId ?? '',
+          ...(outcome.confidence !== undefined ? { confidence: outcome.confidence } : {}),
+          ...(denial !== undefined ? { denial } : {}),
+        },
+      },
+      ...(denial !== undefined ? { reason: denyMessage(view, denial.reason) } : {}),
+    });
   }
 
   /** History for a session (used by tests / future re-sync paths). */

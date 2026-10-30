@@ -57,7 +57,7 @@ async function seedCred(d: LlmProviderDeps, over: Partial<Credential> = {}): Pro
 const providerInput = (credentialName: string, over: Record<string, unknown> = {}) =>
   ({
     name: 'gw',
-    api: 'openai-chat',
+    apis: [{ kind: 'openai-chat', path: null }],
     baseUrl: 'https://gw.example.com/v1',
     credentialName,
     scope: 'personal',
@@ -166,5 +166,83 @@ describe('svc llm-providers — credential visibility gate', () => {
     await expect(
       queryProviderModels(d, stranger, { providerId: created.id }),
     ).rejects.toMatchObject({ statusCode: 404, code: 'PROVIDER_NOT_FOUND' });
+  });
+});
+
+describe('svc llm-providers — #95 multi-wire rows', () => {
+  it('rejects a model whose apiKind the row does not enable (MODEL_KIND_NOT_ENABLED)', async () => {
+    const d = deps();
+    const cred = await seedCred(d);
+    await expect(
+      createLlmProvider(d, owner, {
+        ...providerInput(cred.name),
+        apis: [{ kind: 'openai-chat', path: null }],
+        models: [{ id: 'm1', apiKind: 'anthropic' }],
+      }),
+    ).rejects.toMatchObject({ code: 'MODEL_KIND_NOT_ENABLED' });
+  });
+
+  it('systemone among the wires still demands a baseUrl', async () => {
+    const d = deps();
+    const cred = await seedCred(d);
+    const { baseUrl: _drop, ...noBase } = providerInput(cred.name) as Record<string, unknown>;
+    await expect(
+      createLlmProvider(d, owner, {
+        ...noBase,
+        apis: [
+          { kind: 'openai-chat', path: null },
+          { kind: 'systemone', path: null },
+        ],
+        models: [
+          { id: 'chat-m', apiKind: 'openai-chat' },
+          { id: 'dec-m', apiKind: 'systemone' },
+        ],
+      } as Parameters<typeof createLlmProvider>[2]),
+    ).rejects.toMatchObject({ code: 'SYSTEMONE_BASE_URL_REQUIRED' });
+    // …but a FULL-URL systemone path escapes the shared base and resolves alone.
+    const fullUrl = await createLlmProvider(d, owner, {
+      ...noBase,
+      apis: [{ kind: 'systemone', path: 'https://root.example.com/v1/systemone' }],
+      models: [{ id: 'dec-m', apiKind: 'systemone' }],
+    } as Parameters<typeof createLlmProvider>[2]);
+    expect(fullUrl.apis[0]!.path).toBe('https://root.example.com/v1/systemone');
+  });
+
+  it('one row carries chat + embedding + systemone wires; update keeps the invariant', async () => {
+    const d = deps();
+    const cred = await seedCred(d);
+    const created = await createLlmProvider(d, owner, {
+      ...providerInput(cred.name),
+      apis: [
+        { kind: 'openai-chat', path: null },
+        { kind: 'openai-embedding', path: '/embeddings/v2' },
+        { kind: 'systemone', path: null },
+      ],
+      models: [
+        { id: 'chat-m', apiKind: 'openai-chat' },
+        { id: 'emb-m', apiKind: 'openai-embedding' },
+        { id: 'dec-m', apiKind: 'systemone' },
+      ],
+    });
+    expect(created.apis).toHaveLength(3);
+    expect(created.apis[1]).toEqual({ kind: 'openai-embedding', path: '/embeddings/v2' });
+    // dropping a wire still used by a model is refused
+    await expect(
+      updateLlmProvider(d, owner, created.id, {
+        apis: [{ kind: 'openai-chat', path: null }],
+      }),
+    ).rejects.toMatchObject({ code: 'MODEL_KIND_NOT_ENABLED' });
+    // dropping it together with the models is fine
+    const next = await updateLlmProvider(d, owner, created.id, {
+      apis: [
+        { kind: 'openai-chat', path: null },
+        { kind: 'systemone', path: null },
+      ],
+      models: [
+        { id: 'chat-m', apiKind: 'openai-chat' },
+        { id: 'dec-m', apiKind: 'systemone' },
+      ],
+    });
+    expect(next.apis.map((a) => a.kind)).toEqual(['openai-chat', 'systemone']);
   });
 });

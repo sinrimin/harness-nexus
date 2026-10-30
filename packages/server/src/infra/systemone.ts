@@ -20,7 +20,8 @@ export interface SystemOneQuestion {
 }
 
 export interface SystemOneCall {
-  baseUrl: string;
+  /** #95 — the RESOLVED endpoint URL (baseUrl + systemone path). */
+  url: string;
   apiKey: string;
   model: string;
   state: Record<string, unknown>;
@@ -72,7 +73,7 @@ export async function callSystemOne(
   call: SystemOneCall,
   opts: { timeoutMs: number; fetchImpl?: SystemOneFetch },
 ): Promise<SystemOneResult> {
-  const url = `${call.baseUrl.replace(/\/+$/, '')}/systemone`;
+  const url = call.url;
   if (!url.startsWith('https://')) {
     return Promise.reject({ kind: 'insecure-url' } as SystemOneError);
   }

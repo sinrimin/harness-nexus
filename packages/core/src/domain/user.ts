@@ -10,6 +10,23 @@
  */
 export type Role = 'admin' | 'user';
 
+/** #95 — a default-model slot points at a provider row + one of its models. */
+export interface DefaultModelRef {
+  providerId: string;
+  modelId: string;
+}
+
+/**
+ * #95 — the USER-level default models (the provider page's 默认模型 dialog).
+ * `embedding` and `rerank` are reserved slots (schema accepts, UI disables);
+ * `decision` is the default decision model for delegated approvals (#92).
+ */
+export interface UserDefaultModels {
+  embedding?: DefaultModelRef | undefined;
+  rerank?: DefaultModelRef | undefined;
+  decision?: DefaultModelRef | undefined;
+}
+
 export interface User {
   id: string;
   username: string;
@@ -19,6 +36,8 @@ export interface User {
   /** Exactly one role per user (not an array). */
   role: Role;
   status: 'active' | 'disabled';
+  /** #95 — per-user default model slots (absent on rows written before). */
+  defaultModels?: UserDefaultModels | undefined;
   createdAt: string;
   updatedAt: string;
 }

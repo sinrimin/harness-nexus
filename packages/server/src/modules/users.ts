@@ -6,12 +6,21 @@ import type { FastifyInstance } from 'fastify';
 import {
   createUserSchema,
   updateRoleSchema,
+  userDefaultModelsSchema,
   type CreateUserInput,
   type UpdateRoleInput,
+  type UserDefaultModelsInput,
 } from '@harness-nexus/shared';
 import { publicUser } from './serialize.js';
 import { principalOf } from './principal.js';
-import { createUser, deleteUser, listUsers, updateUserRole } from '../services/users.js';
+import {
+  createUser,
+  deleteUser,
+  getUserDefaultModels,
+  listUsers,
+  setUserDefaultModels,
+  updateUserRole,
+} from '../services/users.js';
 
 /**
  * User administration routes — thin HTTP adapters over the domain service
@@ -41,6 +50,19 @@ export async function usersRoutes(app: FastifyInstance): Promise<void> {
   app.delete<{ Params: { id: string } }>('/api/users/:id', adminGuard, async (req) => {
     await deleteUser(deps(), principalOf(req), req.params.id);
     return { ok: true };
+  });
+
+  // ---- GET /api/users/me/default-models ---- (#95 — self-scoped, any user)
+  app.get('/api/users/me/default-models', async (req) => {
+    const defaultModels = await getUserDefaultModels(deps(), principalOf(req));
+    return { defaultModels };
+  });
+
+  // ---- PATCH /api/users/me/default-models ---- (full replace; {} clears)
+  app.patch('/api/users/me/default-models', async (req) => {
+    const input = userDefaultModelsSchema.parse(req.body) as UserDefaultModelsInput;
+    const defaultModels = await setUserDefaultModels(deps(), principalOf(req), input);
+    return { defaultModels };
   });
 
   // ---- PATCH /api/users/:id/role ----

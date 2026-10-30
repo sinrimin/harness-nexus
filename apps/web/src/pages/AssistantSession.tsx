@@ -473,7 +473,13 @@ export function AssistantSessionPage() {
       value: set.value,
     });
     if (ack.error !== undefined) {
-      toast.error(t('chat.configSetFailed', { error: ack.error }));
+      // #95 follow-up — delegation without a resolvable decision model is a
+      // configuration state, not a protocol failure: point at the fix.
+      toast.error(
+        ack.error === 'ASSISTANT_APPROVALS_NO_PROVIDER'
+          ? t('assistants.permNoModel')
+          : t('chat.configSetFailed', { error: ack.error }),
+      );
       return;
     }
     if (set.configId === 'agent') {

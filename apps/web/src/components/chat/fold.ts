@@ -118,9 +118,16 @@ export interface PermissionCardState {
   /**
    * #92 — the gate escalated to the human and attached its lean: advisory
    * ONLY (clearly marked on the card; never a decision). Absent = no gate
-   * or nothing to say.
+   * or nothing to say. v2: the severity (1..7) and intent (0..1) verdict
+   * inputs ride along when the model produced them.
    */
-  advisory?: { lean: 'allow' | 'reject'; confidence: number; reason?: string };
+  advisory?: {
+    lean: 'allow' | 'reject';
+    confidence: number;
+    reason?: string;
+    severity?: number;
+    intent?: number;
+  };
   /** #92 — how it settled (`undefined` on pre-#92 events = a human did). */
   resolution?: {
     responder: 'human' | 'delegated';
@@ -521,6 +528,8 @@ function applyEvent(state: FoldState, event: ChatStreamEvent): FoldState {
                   lean: event.lean,
                   confidence: event.confidence,
                   ...(event.reason !== undefined ? { reason: event.reason } : {}),
+                  ...(event.severity !== undefined ? { severity: event.severity } : {}),
+                  ...(event.intent !== undefined ? { intent: event.intent } : {}),
                 },
               }
             : p,
@@ -690,10 +699,16 @@ export function fold(state: FoldState, action: FoldAction): FoldState {
       return applyEvent(state, action.event);
 
     case 'history': {
-      // 9 W7 — (re)build from a transcript batch. Idempotent by construction:
-      // a resync re-ingest starts from a FRESH state, so every viewer ends up
-      // with the same rows regardless of what they saw before.
-      let next = createFoldState();
+      // 9 W7 — (re)build the ROWS from a transcript batch. Idempotent by
+      // construction: a resync re-ingest starts from a FRESH row state, so
+      // every viewer ends up with the same rows regardless of what they saw
+      // before. The session CONFIG is not transcript state: a pre-#92 daemon
+      // re-emits modes/options but never approvals, and the server's
+      // approvals push is not in the daemon's history ring — carrying it
+      // across the rebuild keeps the sender's switch from vanishing on the
+      // resync that follows every open. The batch's own session_config
+      // snapshots still merge on top.
+      let next = { ...createFoldState(), config: state.config };
       for (const item of action.items) {
         if (item.type === 'user') {
           // A user item is a turn BOUNDARY (#8): close whatever step is open

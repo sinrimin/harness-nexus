@@ -58,7 +58,7 @@ export const assistantConfigCreateSchema = z.object({
   defaultModel: z.string().min(1).max(128),
   systemPromptOverride: z.string().max(32_000).optional(),
   /** #79 — write-tool policy (read is always silent, meta always prompts). */
-  permissionMode: z.enum(['prompt', 'autoWrite']).default('prompt'),
+  permissionMode: z.enum(['prompt', 'autoWrite', 'delegated']).default('prompt'),
   enabledToolGroups: z
     .array(assistantToolGroupSchema)
     .max(16)
@@ -81,7 +81,7 @@ export const assistantConfigUpdateSchema = z
     providerId: z.string().min(1).max(64).optional(),
     defaultModel: z.string().min(1).max(128).optional(),
     systemPromptOverride: z.string().max(32_000).nullable().optional(),
-    permissionMode: z.enum(['prompt', 'autoWrite']).optional(),
+    permissionMode: z.enum(['prompt', 'autoWrite', 'delegated']).optional(),
     enabledToolGroups: z.array(assistantToolGroupSchema).max(16).optional(),
     mcpServerIds: z.array(z.string().min(1).max(64)).max(32).optional(),
     skillResourceIds: z.array(z.string().min(1).max(64)).max(64).optional(),
@@ -100,7 +100,7 @@ export const assistantConfigViewSchema = z.object({
   providerId: z.string().min(1),
   defaultModel: z.string().min(1).max(128),
   systemPromptOverride: z.string().max(32_000).optional(),
-  permissionMode: z.enum(['prompt', 'autoWrite']),
+  permissionMode: z.enum(['prompt', 'autoWrite', 'delegated']),
   enabledToolGroups: z.array(assistantToolGroupSchema),
   mcpServerIds: z.array(z.string()),
   skillResourceIds: z.array(z.string()),
@@ -225,7 +225,8 @@ export const assistantQueueCancelRequestSchema = z.object({
  * open) for the NEXT turn. OPAQUE values — `agent` is an assistant config id,
  * `model` a registry model id on the session's provider; the server validates
  * both at apply time, never trusts the browser's labels. `permissionMode` is
- * one of the two declared #79 modes.
+ * one of the declared #79/#95 modes (`delegated` is refused when the owner
+ * has no resolvable default decision model).
  */
 export const assistantConfigSetRequestSchema = z.object({
   sessionId: z.string().min(1).max(64),

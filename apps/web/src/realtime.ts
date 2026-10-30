@@ -111,6 +111,9 @@ export type ChatStreamEvent =
       lean: 'allow' | 'reject';
       confidence: number;
       reason?: string;
+      /** v2 — the model's raw verdict inputs, context for the decision. */
+      severity?: number;
+      intent?: number;
     }
   | {
       /** 9 W14.1 — the agent asked a structured question (ACP elicitation). */
@@ -355,11 +358,21 @@ export type PromptBlock =
 
 /** One item of a channel's history batch: a user turn, or an ordinary event. */
 export type HistoryItem =
-  { type: 'user'; blocks: PromptBlock[] } | { type: 'event'; event: ChatStreamEvent };
+  | { type: 'user'; blocks: PromptBlock[]; seq?: number }
+  | { type: 'event'; event: ChatStreamEvent; seq?: number };
 
 export interface ChatHistoryEvent {
   sessionId: string;
   items: HistoryItem[];
+  /** Older ring content exists beyond this batch — the pane can page up. */
+  hasMore?: boolean;
+}
+
+/** One older-than-loaded page (chat:history.page) — prepend-only. */
+export interface ChatHistoryPageEvent {
+  sessionId: string;
+  items: HistoryItem[];
+  hasMore?: boolean;
 }
 
 /** Emit with an ack callback; resolves the ack object (rejects on timeout). */

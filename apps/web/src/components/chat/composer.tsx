@@ -3,11 +3,13 @@
 // SPDX-License-Identifier: MIT
 
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { Link } from 'react-router-dom';
 import {
   ArrowUpIcon,
   BotIcon,
   BoxIcon,
   BrainIcon,
+  ChevronDownIcon,
   CircleStopIcon,
   ImageIcon,
   PaperclipIcon,
@@ -49,8 +51,10 @@ import type {
  * unchanged — DANGEROUS_MODES still confirms via the composer's held-pick),
  * the delegated-approvals switch below a divider. One control for one
  * concept ("everything about permissions lives under the shield"); the
- * Sender gains no new control. On phone the trigger is icon-only like every
- * ConfigSelect; the delegated state rides a dot on the shield.
+ * Sender gains no new control. The trigger rides the bare ConfigSelect
+ * contract — same `--control-h-sm` geometry, icon at every size, on phone
+ * the icon-only square (the delegated state rides a dot on the shield) —
+ * so the row of dropdowns stays one device in every skin.
  */
 function PermissionsControl({
   modeValue,
@@ -73,6 +77,10 @@ function PermissionsControl({
   const { t } = useI18n();
   const [open, setOpen] = useState(false);
   const delegated = approvals.responder === 'delegated';
+  // #95 — the axis is advertised even when no decision model resolves; the
+  // switch is then disabled and points at the provider defaults instead of
+  // hiding the capability entirely.
+  const delegateReady = approvals.modelId !== undefined;
   const modeName = modeChoices.find((c) => c.value === modeValue)?.name ?? modeValue;
   // Modes that rarely surface a permission request make delegated moot —
   // say so instead of enforcing anything (the axes stay orthogonal).
@@ -88,13 +96,19 @@ function PermissionsControl({
       <PopoverTrigger asChild>
         <button
           type="button"
+          data-slot="select-trigger"
+          data-size="sm"
+          data-variant="bare"
           aria-label={t('chat.permissionsControlLabel')}
           title={hint ?? t('chat.permissionsControlLabel')}
           disabled={disabled}
           className={cn(
-            'text-muted-foreground hover:text-foreground focus-visible:ring-ring/50',
-            'inline-flex min-w-0 items-center gap-1.5 rounded-sm px-1.5 py-1 text-xs font-normal',
-            'focus-visible:ring-[3px] focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50',
+            'text-muted-foreground hover:text-foreground',
+            'inline-flex h-(--control-h-sm) items-center gap-1 rounded-md px-1.5 text-xs font-normal',
+            'disabled:cursor-not-allowed disabled:opacity-50',
+            // Phone: the same icon-only square as every ConfigSelect — the
+            // label and chevron drop out, the dot keeps the delegated state.
+            'max-sm:min-w-(--control-h-sm) max-sm:justify-center max-sm:gap-0 max-sm:px-0',
           )}
         >
           <span className="relative shrink-0">
@@ -108,12 +122,16 @@ function PermissionsControl({
               />
             ) : null}
           </span>
-          <span className="max-w-32 truncate">
+          <span className="max-w-32 truncate max-sm:hidden">
             {label}
             {delegated ? (
               <span className="text-muted-foreground/80"> · {t('chat.approvalsBadge')}</span>
             ) : null}
           </span>
+          <ChevronDownIcon
+            aria-hidden="true"
+            className="size-4 shrink-0 opacity-50 max-sm:hidden"
+          />
         </button>
       </PopoverTrigger>
       <PopoverContent align="start" className="w-72 p-0">
@@ -177,11 +195,19 @@ function PermissionsControl({
           </div>
           <Switch
             aria-label={t('chat.approvalsSwitchTitle')}
-            disabled={disabled}
+            disabled={disabled || !delegateReady}
             checked={delegated}
             onCheckedChange={onApprovalsToggle}
           />
         </div>
+        {!delegateReady ? (
+          <p className="text-muted-foreground border-t px-3 pb-2.5 pt-2 text-[11px] leading-snug">
+            {t('chat.approvalsNoModel')}{' '}
+            <Link to="/llm-providers" className="text-signal underline underline-offset-2">
+              {t('chat.approvalsConfigure')}
+            </Link>
+          </p>
+        ) : null}
       </PopoverContent>
     </Popover>
   );
@@ -446,8 +472,10 @@ interface SelectChoice {
  * (dsh's per-provider model lists).
  *
  * Two shapes, because the phone has no room for three opaque values plus a
- * meter plus Send: from `sm` up it is the value and a chevron; below it is the
- * control's ICON (the picker is where the current value is read — the selected
+ * meter plus Send: the control's ICON rides at every size (one glyph per
+ * dropdown, so the row reads as controls, not words); from `sm` up the value
+ * and chevron join it, below it the icon is the whole square (the picker is
+ * where the current value is read — the selected
  * row carries the check) at the compact control's size, with the fingertip
  * supplied by an overlay hit area rather than a bigger box. Naming the three
  * with a label above each was tried and rejected in review: it made an
@@ -469,7 +497,7 @@ function ConfigSelect({
   onPick,
 }: {
   label: string;
-  /** Shown instead of the value on phones — the adapter's control as an icon. */
+  /** The adapter's control as an icon — always visible, the phone's whole trigger. */
   icon: ReactNode;
   value: string | undefined;
   choices: SelectChoice[];
@@ -516,7 +544,7 @@ function ConfigSelect({
           'max-sm:[&_[data-slot=select-value]]:hidden max-sm:[&_[data-slot=select-chevron]]:hidden',
         )}
       >
-        <span className="sm:hidden" aria-hidden="true">
+        <span className="shrink-0" aria-hidden="true">
           {icon}
         </span>
         <SelectValue placeholder={label} />
@@ -725,7 +753,9 @@ export function Composer({
       ? t('assistants.permPrompt')
       : value === 'autoWrite'
         ? t('assistants.permAutoWrite')
-        : wire;
+        : value === 'delegated'
+          ? t('assistants.permDelegated')
+          : wire;
   const permChoices: SelectChoice[] =
     permOption?.options?.map((o) => ({
       value: o.value,
@@ -751,7 +781,7 @@ export function Composer({
   // `confirmMode` writes it through. #79 — the assistant's `autoWrite` policy
   // weakens the same gate, so it rides the same held-pick confirm.
   const [pendingMode, setPendingMode] = useState<{
-    kind: 'mode' | 'permission' | 'approvals';
+    kind: 'mode' | 'permission' | 'approvals' | 'perm-delegated';
     value: string;
     name: string;
   } | null>(null);
@@ -769,6 +799,12 @@ export function Composer({
       setPendingMode({ kind: 'permission', value, name: permName(value, value) });
       return;
     }
+    // #95 follow-up — handing answers to a decision model delegates the
+    // owner's authority; same designed confirm as the chat switch.
+    if (value === 'delegated' && permOption.currentValue !== 'delegated') {
+      setPendingMode({ kind: 'perm-delegated', value, name: permName(value, value) });
+      return;
+    }
     onConfigSet({ kind: 'option', configId: permOption.id, value });
   };
   const confirmMode = (): void => {
@@ -781,6 +817,10 @@ export function Composer({
       // #92 — enabling delegated approvals delegates the owner's answering
       // authority; the same designed confirm as a weakening mode pick.
       onApprovalsSet('delegated');
+    } else if (next.kind === 'perm-delegated') {
+      // #95 follow-up — the assistant's third write policy: same authority
+      // hand-off, expressed on the sender's permissionMode option.
+      onConfigSet({ kind: 'option', configId: 'permissionMode', value: next.value });
     } else {
       onConfigSet({ kind: 'option', configId: 'permissionMode', value: next.value });
     }
@@ -963,7 +1003,8 @@ export function Composer({
               type="button"
               variant="ghost"
               size="icon"
-              className="text-muted-foreground hover:text-foreground size-7 shrink-0"
+              data-tool="attach"
+              className="text-muted-foreground hover:text-foreground size-(--control-h-sm) shrink-0"
               disabled={disabled}
               title={t('chat.addMenuAria')}
               aria-label={t('chat.addMenuAria')}
@@ -1150,7 +1191,9 @@ export function Composer({
               ? t('chat.modeConsequence', { name: pendingMode.name })
               : pendingMode.kind === 'approvals'
                 ? t('chat.approvalsConsequence')
-                : t('chat.permConsequence', { name: pendingMode.name })
+                : pendingMode.kind === 'perm-delegated'
+                  ? t('chat.permDelegatedConsequence')
+                  : t('chat.permConsequence', { name: pendingMode.name })
           }
           impact={[
             {

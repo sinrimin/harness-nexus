@@ -225,6 +225,10 @@ export async function buildApp(config: ServerConfig): Promise<FastifyInstance> {
     chatIdleTtlMs: config.chatIdleTtlMs,
     chatViewerGraceMs: config.chatViewerGraceMs,
     chatApprovalsTimeoutMs: config.chatApprovalsTimeoutMs,
+    approvalsIntentThreshold: config.approvalsIntentThreshold,
+    approvalsAnswerConfidenceFloor: config.approvalsAnswerConfidenceFloor,
+    approvalsPromptWindow: config.approvalsPromptWindow,
+    approvalsPromptCharCap: config.approvalsPromptCharCap,
   });
   app.realtime.jobs.start();
   app.addHook('onClose', async () => {

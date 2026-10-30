@@ -100,6 +100,24 @@ function applyCommonSelection(selection, context) {
 }
 `;
 
+/**
+ * Same doctrine, `dist/acp-agent.js`: the force-cancel floor arming block the
+ * stop-during-permission patch anchors on (vendored verbatim from 0.93.0).
+ */
+const CLAUDE_ACP_AGENT_0930 = `node_modules/@agentclientprotocol/claude-agent-acp/dist/acp-agent.js
+**FILE**
+        if (session.activeTurn &&
+            session.cancelController &&
+            !session.cancelController.signal.aborted &&
+            !session.forceCancelTimer) {
+            const cancelController = session.cancelController;
+            session.forceCancelTimer = setTimeout(() => {
+                this.logger.error(\`Session \${params.sessionId}: cancel floor elapsed without the SDK yielding; forcing "cancelled". The underlying query may still be wedged — a new session may be required.\`);
+                cancelController.abort();
+            }, this.forceCancelGraceMs);
+        }
+`;
+
 describe('applyAdapterPatches (issue #2)', () => {
   it('applies the anchor replace and becomes idempotent via the marker', () => {
     const dir = mkdtempSync(join(tmpdir(), 'hnx-provision-'));
@@ -133,27 +151,39 @@ describe('applyAdapterPatches (issue #2)', () => {
   // #92 — the denyMessage patches ARE the production set now (the #71
   // setModel patch retired at 0.93.0). What matters is that their anchors
   // match the REAL pinned dist: apply them against the installed 0.93.0
-  // effects.js (vendored here so the test never depends on ~/.hnx state).
-  it('#92 denyMessage patches land on the real 0.93.0 effects.js and are idempotent', () => {
+  // excerpts (vendored here so the test never depends on ~/.hnx state).
+  it('#92 denyMessage + cancel-floor patches land on the real 0.93.0 dist and are idempotent', () => {
     const home = mkdtempSync(join(tmpdir(), 'hnx-provision-home-'));
     const store = join(home, '.hnx', 'acp-adapters');
-    const file = join(store, CLAUDE_EFFECTS_0930.split('**FILE**')[0]!.trim());
-    mkdirSync(dirname(file), { recursive: true });
-    writeFileSync(file, CLAUDE_EFFECTS_0930.split('**FILE**')[1]!.trimStart());
+    for (const vendored of [CLAUDE_EFFECTS_0930, CLAUDE_ACP_AGENT_0930]) {
+      const [path, content] = vendored.split('**FILE**');
+      const file = join(store, path!.trim());
+      mkdirSync(dirname(file), { recursive: true });
+      writeFileSync(file, content!.trimStart());
+    }
     const first = applyAdapterPatches(store);
-    expect(first.applied).toHaveLength(2);
+    expect(first.applied).toHaveLength(3);
     expect(first.failed).toEqual([]);
-    const patched = readFileSync(file, 'utf8');
-    expect(patched).toContain('selection.denyMessage ?? "User refused permission to run tool"');
+    const effects = readFileSync(
+      join(store, CLAUDE_EFFECTS_0930.split('**FILE**')[0]!.trim()),
+      'utf8',
+    );
+    expect(effects).toContain('selection.denyMessage ?? "User refused permission to run tool"');
+    const agent = readFileSync(
+      join(store, CLAUDE_ACP_AGENT_0930.split('**FILE**')[0]!.trim()),
+      'utf8',
+    );
+    expect(agent).toContain('(session.openUserInputs?.size ?? 0) > 0 ? 1500 : 5000');
     const again = applyAdapterPatches(store);
-    expect(again.already).toHaveLength(2);
+    expect(again.already).toHaveLength(3);
     expect(again.applied).toEqual([]);
   });
 
-  it('the production list is exactly the two #92 denyMessage patches', () => {
+  it('the production list is exactly the three claude patches', () => {
     expect(ADAPTER_PATCHES.map((p) => p.id)).toEqual([
       'claude-agent-acp-deny-message-parse',
       'claude-agent-acp-deny-message-use',
+      'claude-agent-acp-cancel-floor',
     ]);
   });
 });

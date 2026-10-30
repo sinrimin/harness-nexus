@@ -279,8 +279,10 @@ describe('applyRuntimeConfig — claude-code', () => {
     expect(settings.env.DISABLE_AUTOUPDATER).toBe('1');
     expect(settings.env.CLAUDE_CODE_DISABLE_ARTIFACT).toBe('1');
     expect(settings.attribution).toEqual({ commit: '', pr: '', sessionUrl: false });
-    // allowlist: plain ids only (markers stripped), pins + subagent unioned in
-    expect(settings.availableModels).toEqual(['gw-large', 'gw-mini']);
+    // allowlist: marker'd ids STAY (a plain-only list made the CLI resolve
+    // the running [1m] model onto the plain 200k variant — rig-verified);
+    // pins + subagent unioned in
+    expect(settings.availableModels).toEqual(['gw-large[1m]', 'gw-mini', 'gw-mini[1m]']);
 
     // idempotent re-apply
     const first = readFileSync(path.join(home, '.claude/settings.json'), 'utf8');

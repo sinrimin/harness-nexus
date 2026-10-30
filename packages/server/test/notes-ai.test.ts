@@ -65,7 +65,7 @@ async function setup(withProvider = true): Promise<Harness> {
     await uow.llmProviders.save({
       id: 'prov-1',
       name: 'Gateway',
-      api: 'openai-chat',
+      apis: [{ kind: 'openai-chat', path: null }],
       baseUrl: 'https://gw.example.com/v1',
       credentialName: 'gw-key',
       scope: 'personal',
@@ -73,7 +73,7 @@ async function setup(withProvider = true): Promise<Harness> {
       models: [
         {
           id: 'gw-large',
-          type: 'chat',
+          apiKind: 'openai-chat',
           displayName: 'Gateway Large',
           contextWindow: 64_000,
           maxOutputTokens: 4_000,

@@ -10,16 +10,26 @@ import { toolArgumentsPreview } from './tool-meta.js';
 /**
  * #92 — the gate's escalated lean, rendered ONLY while the card is still
  * pending: one muted line, explicitly advisory (the human decides — the
- * model's opinion is context, never the verdict).
+ * model's opinion is context, never the verdict). v2: when the model
+ * produced them, its severity grade and intent match ride along.
  */
 function AdvisoryLine({ advisory }: { advisory: NonNullable<PermissionCardState['advisory']> }) {
   const { t } = useI18n();
+  const lean = t(
+    advisory.lean === 'allow' ? 'chat.approvalsLeanAllow' : 'chat.approvalsLeanReject',
+  );
   return (
     <p className="text-muted-foreground mb-2 text-xs">
-      {t('chat.approvalsAdvisory', {
-        lean: t(advisory.lean === 'allow' ? 'chat.approvalsLeanAllow' : 'chat.approvalsLeanReject'),
-        confidence: advisory.confidence.toFixed(2),
-      })}
+      {advisory.severity !== undefined && advisory.intent !== undefined
+        ? t('chat.approvalsAdvisoryVerdict', {
+            severity: advisory.severity.toFixed(1),
+            intent: advisory.intent.toFixed(2),
+            lean,
+          })
+        : t('chat.approvalsAdvisory', {
+            lean,
+            confidence: advisory.confidence.toFixed(2),
+          })}
       {advisory.reason !== undefined
         ? ` · ${t(`chat.approvalsReason.${advisory.reason}` as never)}`
         : ''}

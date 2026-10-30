@@ -824,12 +824,18 @@
      compact control's square (25px in BAY), because the reference row — and
      this Sender's whole point — is that four controls plus Send fit one line.
      A 2.5rem BOX would put the toolbar back to a two-row block, so the
-     fingertip is an overlay. */
-  [data-slot='composer-tools'] :is([data-slot='select-trigger'], [data-slot='meter-trigger']) {
+     fingertip is an overlay. `data-tool='attach'` is the "+" square, which
+     rides the same control height as the selects since the icon row. */
+  [data-slot='composer-tools']
+    :is([data-slot='select-trigger'], [data-slot='meter-trigger'], [data-tool='attach']) {
     position: relative;
   }
   [data-slot='composer-tools']
-    :is([data-slot='select-trigger'], [data-slot='meter-trigger'])::after {
+    :is(
+      [data-slot='select-trigger'],
+      [data-slot='meter-trigger'],
+      [data-tool='attach']
+    )::after {
     content: '';
     position: absolute;
     inset: 50%;
@@ -903,3 +909,12 @@
 
 /* The copies that are still `ui/table` outside the kit (unchanged pages) keep
  * their own look; nothing here reaches them. */
+
+/* #93 — mermaid parks its hover-tooltip div on <body> at ~100vh; inside the
+ * SPA it survives route changes and overflows the document (a global
+ * vertical scrollbar on every page). Diagrams are figures — the tooltip
+ * never shows. (The component also prunes the node.) */
+.mermaidTooltip,
+#mermaidTooltip {
+  display: none;
+}
