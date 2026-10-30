@@ -28,6 +28,7 @@ import {
   PROMPT_RETAIN_WINDOW,
   toolInputText,
 } from './approvals-gate.js';
+import type { ModelCapabilities } from '../services/model-capabilities.js';
 import type { DecisionHumanResponse } from '@harness-nexus/core';
 
 /**
@@ -73,6 +74,12 @@ export interface ChatServiceDeps {
    * deployment with the feature off) = the gate never engages; permission
    * cards behave exactly as before.
    */
+  /**
+   * #100 — the decision-model capability breaker. Present in production;
+   * absent in unit tests = unwrapped fetches and a delegation view that
+   * ignores breaker health.
+   */
+  capabilities?: ModelCapabilities;
   approvals?: {
     credentialEncryptionKey: string;
     timeoutMs: number;
@@ -1119,12 +1126,21 @@ export class ChatService {
   ): Promise<ChatApprovalsView> {
     const cfg = machine.chatApprovals;
     const resolved = await this.resolveDecisionModel(ownerId, machine);
+    // #100 — while the breaker holds the slot degraded, the honest
+    // open-time answer is manual: the gate would fail closed on every card
+    // anyway, and the sender's switch must not promise a delegation the
+    // model cannot deliver. Cooldown expiry restores it with no config
+    // change (the breaker is runtime state, never stored).
     // #95 — the axis is ALWAYS advertised. The sender renders the switch even
     // when nothing resolves (disabled + a "configure a default model" hint),
     // which is what makes the capability discoverable at all; delegation
     // itself still requires a resolvable model.
+    const degraded = this.deps.capabilities?.degraded(ownerId) ?? null;
     return {
-      responder: cfg?.responder === 'delegated' && resolved !== null ? 'delegated' : 'manual',
+      responder:
+        cfg?.responder === 'delegated' && resolved !== null && degraded === null
+          ? 'delegated'
+          : 'manual',
       ...(resolved ?? {}),
     };
   }
@@ -1215,7 +1231,15 @@ export class ChatService {
         credentialEncryptionKey: gate.credentialEncryptionKey,
         timeoutMs: gate.timeoutMs,
         ...(gate.log !== undefined ? { log: gate.log } : {}),
-        ...(gate.fetchImpl !== undefined ? { fetchImpl: gate.fetchImpl } : {}),
+        // #100 — the breaker rides the fetch seam: while degraded the
+        // wrapper rejects with the gate's own "uncertain" error shape
+        // (floor + pre-filter still settle locally), and real outcomes
+        // feed the breaker.
+        ...(this.deps.capabilities !== undefined
+          ? {
+              fetchImpl: this.deps.capabilities.wrapFetch(session.ownerId, gate.fetchImpl),
+            }
+          : { ...(gate.fetchImpl !== undefined ? { fetchImpl: gate.fetchImpl } : {}) }),
         ...(gate.bands !== undefined ? { bands: gate.bands } : {}),
       },
       {

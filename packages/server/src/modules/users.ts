@@ -5,6 +5,7 @@
 import type { FastifyInstance } from 'fastify';
 import {
   createUserSchema,
+  modelCapabilitySlotSchema,
   updateRoleSchema,
   userDefaultModelsSchema,
   type CreateUserInput,
@@ -21,6 +22,7 @@ import {
   setUserDefaultModels,
   updateUserRole,
 } from '../services/users.js';
+import { listModelCapabilities } from '../services/model-capabilities.js';
 
 /**
  * User administration routes — thin HTTP adapters over the domain service
@@ -52,11 +54,33 @@ export async function usersRoutes(app: FastifyInstance): Promise<void> {
     return { ok: true };
   });
 
-  // ---- GET /api/users/me/default-models ---- (#95 — self-scoped, any user)
+  // ---- GET /api/users/me/default-models ---- (#95 — self-scoped, any user;
+  // #100 — the response also carries the derived per-slot capability view)
   app.get('/api/users/me/default-models', async (req) => {
-    const defaultModels = await getUserDefaultModels(deps(), principalOf(req));
-    return { defaultModels };
+    const principal = principalOf(req);
+    const [defaultModels, capabilities] = await Promise.all([
+      getUserDefaultModels(deps(), principal),
+      listModelCapabilities(deps(), principal.userId, app.modelCapabilities),
+    ]);
+    return { defaultModels, capabilities };
   });
+
+  // ---- POST /api/users/me/default-models/:slot/retry ---- (#100 — manual
+  // breaker clear: resets the counter + cooldown; the next real use probes)
+  app.post<{ Params: { slot: string } }>(
+    '/api/users/me/default-models/:slot/retry',
+    async (req, reply) => {
+      const parsed = modelCapabilitySlotSchema.safeParse(req.params.slot);
+      if (!parsed.success) {
+        return reply.code(400).send({ error: 'VALIDATION_ERROR', message: 'unknown slot' });
+      }
+      const principal = principalOf(req);
+      app.modelCapabilities.reset(principal.userId);
+      return {
+        capabilities: await listModelCapabilities(deps(), principal.userId, app.modelCapabilities),
+      };
+    },
+  );
 
   // ---- PATCH /api/users/me/default-models ---- (full replace; {} clears)
   app.patch('/api/users/me/default-models', async (req) => {

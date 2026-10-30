@@ -17,6 +17,7 @@ import { registerRealtime } from './plugins/realtime.js';
 import { healthRoutes } from './modules/health.js';
 import { systemRoutes } from './modules/system.js';
 import { statusRoutes, PostureCache } from './modules/status.js';
+import { ModelCapabilities } from './services/model-capabilities.js';
 import { authRoutes } from './modules/auth.js';
 import { usersRoutes } from './modules/users.js';
 import { patsRoutes } from './modules/pats.js';
@@ -152,6 +153,14 @@ export async function buildApp(config: ServerConfig): Promise<FastifyInstance> {
   const marketplaceAllowlist: MarketplaceEntry[] = parseAllowlist(config.marketplaceAllowlist);
   app.decorate('skillCatalog', skillCatalog);
   app.decorate('marketplaceAllowlist', marketplaceAllowlist);
+  // #100 — the per-owner decision-model breaker (process memory by design).
+  app.decorate(
+    'modelCapabilities',
+    new ModelCapabilities({
+      threshold: config.capabilityBreakerThreshold,
+      cooldownMs: config.capabilityBreakerCooldownMs,
+    }),
+  );
 
   // Phase 7.4 — multi-source skill search. The same fetcher backs every
   // outbound source (fixture reader in test mode, globalThis.fetch in prod).

@@ -167,6 +167,7 @@ export async function registerRealtime(
       isOnline: (machineId) => presence.isOnline(machineId),
       // #92 — the delegated-approvals gate: credential decrypt + the
       // decision-model budget, threaded app-decorated like every service dep.
+      capabilities: app.modelCapabilities,
       approvals: {
         credentialEncryptionKey: app.credentialEncryptionKey,
         timeoutMs: opts.chatApprovalsTimeoutMs,
@@ -222,6 +223,7 @@ export async function registerRealtime(
       // #95 follow-up — the assistant's `permissionMode:'delegated'` rides
       // the same decision gate as the machine chat axis (the user default is
       // the whole resolution chain here; there is no machine).
+      capabilities: app.modelCapabilities,
       approvals: {
         timeoutMs: opts.chatApprovalsTimeoutMs,
         log: app.log,

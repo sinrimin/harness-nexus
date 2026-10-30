@@ -70,6 +70,8 @@ import type {
   ProviderModelsQueryInput,
   UserDefaultModels,
   UserDefaultModelsInput,
+  ModelCapabilitiesView,
+  ModelCapabilitySlot,
   AssistantConfigView,
   AssistantSessionView,
   AssistantToolGroup,
@@ -155,6 +157,8 @@ export type {
   ProviderModelConfigWarningCode,
   UserDefaultModels,
   UserDefaultModelsInput,
+  ModelCapabilitiesView,
+  ModelCapabilitySlot,
   AssistantConfigView,
   AssistantSessionView,
   AssistantToolGroup,
@@ -782,6 +786,18 @@ export class HarnessNexusClient {
   async setUserDefaultModels(input: UserDefaultModelsInput): Promise<UserDefaultModels> {
     const res = await this.request('PATCH', '/api/users/me/default-models', input);
     return res.defaultModels;
+  }
+
+  /** #100 — the derived per-slot capability view (config re-validated + breaker health). */
+  async getModelCapabilities(): Promise<ModelCapabilitiesView> {
+    const res = await this.request('GET', '/api/users/me/default-models');
+    return res.capabilities;
+  }
+
+  /** #100 — clear a slot's breaker; the next real use is the probe. Returns the refreshed view. */
+  async retryModelCapability(slot: ModelCapabilitySlot): Promise<ModelCapabilitiesView> {
+    const res = await this.request('POST', `/api/users/me/default-models/${slot}/retry`, {});
+    return res.capabilities;
   }
 
   async deleteLlmProvider(id: string): Promise<void> {

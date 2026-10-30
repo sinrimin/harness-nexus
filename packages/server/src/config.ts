@@ -130,6 +130,9 @@ export interface ServerConfig {
   approvalsPromptWindow: number;
   /** Per-prompt character budget after the head/tail cut. */
   approvalsPromptCharCap: number;
+  /** #100 — the model-capability breaker knobs (see config for defaults). */
+  capabilityBreakerThreshold: number;
+  capabilityBreakerCooldownMs: number;
   /**
    * Phase 8 C2 — marketplace emitter `.mcp.json` shape. `client` (default):
    * one stdio `hnx mcp serve` entry per profile. `server`: the pre-C2
@@ -221,6 +224,10 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
     // #92 — the delegated-approvals decision-model budget. Far under the
     // permission watchdog; a miss escalates to the human card.
     chatApprovalsTimeoutMs: Number(env.CHAT_APPROVALS_TIMEOUT_MS ?? '4000'),
+    // #100 — the decision-model capability breaker: consecutive transient
+    // failures that degrade the slot, and how long the degradation lasts.
+    capabilityBreakerThreshold: Number(env.CAPABILITY_BREAKER_THRESHOLD ?? '3'),
+    capabilityBreakerCooldownMs: Number(env.CAPABILITY_BREAKER_COOLDOWN_MS ?? '600000'),
     // #92 v2 — verdict bands: intent ≥ threshold at severity 3–6 allows;
     // any VERDICT-USED answer flatter than the floor escalates (fail-closed
     // on uncertainty, never on policy). The window/char-cap bound the only

@@ -14,13 +14,15 @@ import {
   ScrollTextIcon,
   Settings2Icon,
   TrashIcon,
+  RotateCcwIcon,
   XIcon,
 } from 'lucide-react';
 import { api } from '@/api';
+import { StateSignal } from '@/components/state-signal';
 import { DecisionRecordsDialog } from '@/components/decision-records-dialog';
 import { useAuth, withAuthGuard } from '@/auth';
 import { cn } from '@/lib/utils';
-import { useI18n } from '@/i18n';
+import { useI18n, dateLocale } from '@/i18n';
 import {
   ConfirmDialog,
   DataTable,
@@ -93,6 +95,7 @@ import {
   type ProviderApiKind,
   type ProviderModelConfig,
   type ProviderModelConfigInput,
+  type ModelCapabilitiesView,
   type UserDefaultModels,
 } from '@harness-nexus/sdk';
 
@@ -1187,13 +1190,16 @@ function DefaultModelsDialog({
   onClose: () => void;
 }) {
   const { logout } = useAuth();
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
   const [loaded, setLoaded] = useState<UserDefaultModels | null>(null);
   const [loadFailed, setLoadFailed] = useState(false);
   const [saving, setSaving] = useState(false);
   const [recordsOpen, setRecordsOpen] = useState(false);
   const [decisionProviderId, setDecisionProviderId] = useState('');
   const [decisionModelId, setDecisionModelId] = useState('');
+  /** #100 — the derived per-slot capability view (breaker health). */
+  const [caps, setCaps] = useState<ModelCapabilitiesView | null>(null);
+  const [retrying, setRetrying] = useState(false);
 
   const decisionProviders = useMemo(
     () => providers.filter((p) => p.models.some((m) => m.apiKind === 'systemone')),
@@ -1206,9 +1212,13 @@ function DefaultModelsDialog({
     let cancelled = false;
     void (async () => {
       try {
-        const defaults = await withAuthGuard(() => api.getUserDefaultModels(), logout);
+        const [defaults, capabilities] = await Promise.all([
+          withAuthGuard(() => api.getUserDefaultModels(), logout),
+          withAuthGuard(() => api.getModelCapabilities(), logout),
+        ]);
         if (cancelled) return;
         setLoaded(defaults);
+        setCaps(capabilities);
         // Only preselect a decision ref that still resolves to a listed
         // provider/model; a deleted provider reads as "未设置" rather than
         // leaving a hidden stale value the save would echo back.
@@ -1232,6 +1242,19 @@ function DefaultModelsDialog({
     // Load once on open — the action is disabled until the page's list exists.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [logout]);
+
+  async function clearDecisionBreaker(): Promise<void> {
+    if (retrying) return;
+    setRetrying(true);
+    try {
+      setCaps(await withAuthGuard(() => api.retryModelCapability('decision'), logout));
+      toast.success(t('llmProviders.capabilityRetryDone'));
+    } catch {
+      toast.error(t('llmProviders.capabilityRetryFailed'));
+    } finally {
+      setRetrying(false);
+    }
+  }
 
   async function save(): Promise<void> {
     if (loaded === null || saving) return;
@@ -1354,6 +1377,34 @@ function DefaultModelsDialog({
               <p className="text-muted-foreground text-xs">
                 {t('llmProviders.noDecisionProviders')}
               </p>
+            ) : null}
+            {caps?.decision.health === 'degraded' ? (
+              // #100 — the breaker lamp: quiet while healthy, one warn line
+              // with the reason + a manual clear while degraded. The button
+              // only resets runtime state; the next real use is the probe.
+              <div className="border-warn/40 bg-warn/5 flex flex-wrap items-center gap-2 rounded-md border px-2.5 py-2 text-xs">
+                <StateSignal state="warn" className="shrink-0" />
+                <span className="text-muted-foreground min-w-0 flex-1">
+                  {t('llmProviders.capabilityDegraded', {
+                    count: caps.decision.consecutiveFailures ?? 0,
+                    time: new Date(caps.decision.degradedUntil ?? Date.now()).toLocaleTimeString(
+                      dateLocale(lang),
+                      { hour: '2-digit', minute: '2-digit' },
+                    ),
+                  })}
+                </span>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="h-(--control-h-sm) shrink-0 px-2 text-xs"
+                  disabled={retrying}
+                  onClick={() => void clearDecisionBreaker()}
+                >
+                  <RotateCcwIcon className="size-3" />
+                  {t('llmProviders.capabilityRetry')}
+                </Button>
+              </div>
             ) : null}
           </Field>
         </div>
