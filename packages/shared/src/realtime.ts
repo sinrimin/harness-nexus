@@ -669,6 +669,16 @@ export const chatStreamEventSchema = z.discriminatedUnion('kind', [
     severity: z.number().min(1).max(7).optional(),
     intent: z.number().min(0).max(1).optional(),
   }),
+  // #104 — delegation was ON but the gate could not conclude (no resolvable
+  // decision model, or the call timed out / errored / returned a shape we
+  // cannot use). The card stays pending for the human; this muted line says
+  // WHY the delegated review did not happen (the old silent fallback read as
+  // "the second card was never delegated"). Server → room only.
+  z.object({
+    kind: z.literal('permission_escalated'),
+    requestId: z.string().min(1).max(128),
+    reason: z.enum(['no-model', 'timeout', 'http', 'shape']),
+  }),
   // 9 W14.1 — the agent asked the user a structured question (ACP
   // `elicitation/create`, form mode; claude's AskUserQuestion and
   // MCP-server elicitations both arrive here). `fields` may be EMPTY: the

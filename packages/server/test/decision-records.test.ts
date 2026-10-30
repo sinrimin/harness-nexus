@@ -43,6 +43,10 @@ async function setup(opts: {
   answers?: Record<string, unknown>;
   neverAllow?: string[];
   permissionTimeoutMs?: number;
+  /** #104 — override the decision-call budget / fetch to force a timeout. */
+  timeoutMs?: number;
+  fetchImpl?: FetchImpl;
+  events?: { kind: string; reason?: string }[];
 }): Promise<{
   svc: ChatService;
   uow: UnitOfWork;
@@ -120,30 +124,44 @@ async function setup(opts: {
 
   const io: ChatIO = {
     toCtl: () => undefined,
-    toChannel: () => undefined,
+    toChannel: (_sessionId, event, payload) => {
+      if (event !== 'chat:event' || opts.events === undefined) return;
+      const stream = (payload as { event?: { kind?: string; reason?: string } }).event;
+      if (stream?.kind === undefined) return;
+      opts.events.push({
+        kind: stream.kind,
+        ...(stream.reason !== undefined ? { reason: stream.reason } : {}),
+      });
+    },
     toUser: () => undefined,
     joinChannel: () => undefined,
     isAppSocketLive: () => true,
     userSockets: async () => ['sock-1'],
   };
-  const fetchImpl: FetchImpl = async (_url, init) => {
-    const body = JSON.parse(init.body) as { state: { toolCall: { title?: string } } };
-    // The never-allow floor card still gets "asked" — the floor answers
-    // BEFORE the call, so any request proves the model path ran.
-    void body;
-    return {
-      ok: true,
-      status: 200,
-      text: async () =>
-        JSON.stringify({ answers: opts.answers ?? answers({ severity: 1.5, intent: 0.9 }) }),
-    };
-  };
+  const fetchImpl: FetchImpl =
+    opts.fetchImpl ??
+    (async (_url, init) => {
+      const body = JSON.parse(init.body) as { state: { toolCall: { title?: string } } };
+      // The never-allow floor card still gets "asked" — the floor answers
+      // BEFORE the call, so any request proves the model path ran.
+      void body;
+      return {
+        ok: true,
+        status: 200,
+        text: async () =>
+          JSON.stringify({ answers: opts.answers ?? answers({ severity: 1.5, intent: 0.9 }) }),
+      };
+    });
   const svc = new ChatService(
     {
       uow,
       isOnline: () => true,
       io,
-      approvals: { credentialEncryptionKey: KEY, timeoutMs: 1_000, fetchImpl },
+      approvals: {
+        credentialEncryptionKey: KEY,
+        timeoutMs: opts.timeoutMs ?? 1_000,
+        fetchImpl,
+      },
     },
     {
       maxSessionsPerMachine: 4,
@@ -268,6 +286,44 @@ describe('decision records (#97) — rows land per verdict', () => {
     t.svc.onPermissionRespond('u97', t.sessionId, 'r-rej', 'no-once');
     await new Promise((r) => setTimeout(r, 20));
     expect((await rows(t.uow))[0]!.humanResponse).toBe('reject');
+  });
+
+  it('a timed-out delegation is named on the card and audited (#104)', async () => {
+    const events: { kind: string; reason?: string }[] = [];
+    const t = await setup({
+      target: 'codex',
+      timeoutMs: 25,
+      events,
+      fetchImpl: (_url, init) =>
+        new Promise((_resolve, reject) => {
+          init.signal.addEventListener('abort', () => {
+            const err = new Error('aborted');
+            err.name = 'AbortError';
+            reject(err);
+          });
+        }),
+    });
+    await fire(t.svc, t.sessionId, 'r-unavail', {
+      toolCallId: 'tc6',
+      title: 'api__ds_web__web_search',
+      rawInput: { query: 'market close' },
+    });
+    // The budget aborts the fake call at 25ms; let the rejection settle.
+    await new Promise((r) => setTimeout(r, 80));
+
+    const row = (await rows(t.uow))[0]!;
+    expect(row.outcome).toBe('escalate');
+    expect(row.decidedBy).toBe('model');
+    expect(row.providerName).toBe('bailian-decision');
+    expect(row.modelId).toBe('decision-model-preview');
+    expect(row.latencyMs).toBeGreaterThanOrEqual(20);
+    expect(row.humanResponse).toBeUndefined();
+    expect(events).toContainEqual({ kind: 'permission_escalated', reason: 'timeout' });
+
+    // The card is still the human's: the watchdog has not fired.
+    expect(t.svc.onPermissionRespond('u97', t.sessionId, 'r-unavail', 'yes-once')).toEqual({
+      ok: true,
+    });
   });
 
   it('the permission watchdog backfills timeout', async () => {

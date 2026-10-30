@@ -222,8 +222,11 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
     // (activity-based).
     chatViewerGraceMs: Number(env.CHAT_VIEWER_GRACE_MS ?? '300000'),
     // #92 — the delegated-approvals decision-model budget. Far under the
-    // permission watchdog; a miss escalates to the human card.
-    chatApprovalsTimeoutMs: Number(env.CHAT_APPROVALS_TIMEOUT_MS ?? '4000'),
+    // permission watchdog; a miss escalates to the human card. #104: 4s was
+    // tight enough that a normally-fast provider (>90th-percentile stalls)
+    // silently dropped a card to manual; 8s keeps the card answerable the
+    // whole time while giving a slow call room to conclude.
+    chatApprovalsTimeoutMs: Number(env.CHAT_APPROVALS_TIMEOUT_MS ?? '8000'),
     // #100 — the decision-model capability breaker: consecutive transient
     // failures that degrade the slot, and how long the degradation lasts.
     capabilityBreakerThreshold: Number(env.CAPABILITY_BREAKER_THRESHOLD ?? '3'),

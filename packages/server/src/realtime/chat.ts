@@ -1294,11 +1294,24 @@ export class ChatService {
         options,
       },
     );
-    // #97 — the audit row rides every outcome the gate produced (pre-model
-    // escalates — no verdict — are the one silent kind: the human decided
-    // alone, participation is that record). Fire-and-forget by contract.
+    // #97 — the audit row rides every outcome the gate produced. #104 — a
+    // pre-model escalate is silent ONLY when the gate was never applicable
+    // (no one-shot options); an unavailable delegation (no model / timeout /
+    // provider error / unusable answer) is named on the card and audited.
     this.recordDecision(session, requestId, toolCall, outcome, Date.now() - startedAt);
-    if (outcome.kind === 'escalate') return;
+    if (outcome.kind === 'escalate') {
+      if (outcome.unavailable !== undefined) {
+        this.deps.io.toChannel(session.sessionId, 'chat:event', {
+          sessionId: session.sessionId,
+          event: {
+            kind: 'permission_escalated',
+            requestId,
+            reason: outcome.unavailable,
+          },
+        });
+      }
+      return;
+    }
     // First responder wins: a human answer or the watchdog may have settled
     // the card while the model ran.
     if (session.permissionTimers.get(requestId) === undefined) return;
@@ -1346,7 +1359,10 @@ export class ChatService {
     outcome: ApprovalGateOutcome,
     latencyMs: number,
   ): void {
-    if (outcome.kind === 'escalate' && outcome.verdict === undefined) return;
+    const unavailable = outcome.kind === 'escalate' ? outcome.unavailable : undefined;
+    if (outcome.kind === 'escalate' && outcome.verdict === undefined && unavailable === undefined) {
+      return;
+    }
     const preview = toolInputText(toolCall.rawInput)?.slice(0, GATE_TOOL_INPUT_CHAR_CAP);
     const v = outcome.verdict;
     void this.deps.uow.decisionRecords
@@ -1376,6 +1392,13 @@ export class ChatService {
               ...(v.why !== undefined ? { why: v.why } : {}),
               ...(v.sevConfidence !== undefined ? { sevConfidence: v.sevConfidence } : {}),
               ...(v.intentConfidence !== undefined ? { intentConfidence: v.intentConfidence } : {}),
+            }
+          : {}),
+        // #104 — an unavailable escalate carries the configured provenance
+        // and the failed call's latency even without a verdict, so the audit
+        // shows WHAT was attempted.
+        ...(v !== undefined || unavailable !== undefined
+          ? {
               ...(session.approvals.providerName !== undefined
                 ? { providerName: session.approvals.providerName }
                 : {}),
