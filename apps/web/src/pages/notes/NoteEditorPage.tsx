@@ -236,7 +236,7 @@ export function NoteEditorPage() {
 
   if (!loaded) {
     return (
-      <div className="flex h-full min-h-0 flex-col gap-[18px] px-[18px] pt-[18px] pb-11 max-[640px]:px-3">
+      <div className="flex h-full min-h-0 flex-col gap-[18px] px-[18px] pt-[18px] pb-11 max-[640px]:px-0">
         <Skeleton className="h-8 w-64" />
         <div className="flex min-h-0 flex-1 flex-col gap-3 min-[900px]:flex-row">
           <Skeleton className="min-h-0 flex-1" />
@@ -273,7 +273,7 @@ export function NoteEditorPage() {
         </div>
       </PageSlot>
 
-      <div className="flex h-full min-h-0 flex-col gap-[18px] px-[18px] pt-[18px] pb-11 max-[640px]:px-3">
+      <div className="flex h-full min-h-0 flex-col gap-[18px] px-[18px] pt-[18px] pb-11 max-[640px]:px-0">
         {/* Below 900px the whole column scrolls and both panels take their
          * natural height (a flex-1 card under a fixed page height squeezed
          * the textarea to a sliver under the metadata panel). */}
