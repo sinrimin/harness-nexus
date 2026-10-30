@@ -35,6 +35,8 @@ import { McpRegistry } from './registry.js';
 import { hashToken, PAT_PREFIX } from '../infra/crypto.js';
 import { listApiToolServices } from '../services/api-tools.js';
 import { executeApiTool } from '../api-tools/runtime.js';
+import { NOTES_TOOL_DEFS, NOTES_TOOL_PREFIX, executeNotesTool } from './notes-tools.js';
+import type { Principal } from '../services/principal.js';
 
 /** #80 — one API-tool entry flattened for the /mcp session surface. */
 interface ApiToolEntry {
@@ -219,7 +221,7 @@ export async function mountMcpProxy(app: FastifyInstance): Promise<void> {
           registry,
           transport,
           (req as FastifyRequest & ResolvedProfileRequest).resolvedServerIds,
-          req.user!.id,
+          { userId: req.user!.id, role: req.user!.role },
           await apiToolsForUser(app.uow, req.user!.id),
           { uow: app.uow, credentialEncryptionKey: app.credentialEncryptionKey },
         );
@@ -253,7 +255,7 @@ export async function mountMcpProxy(app: FastifyInstance): Promise<void> {
         registry,
         transport,
         (req as FastifyRequest & ResolvedProfileRequest).resolvedServerIds,
-        req.user!.id,
+        { userId: req.user!.id, role: req.user!.role },
         await apiToolsForUser(app.uow, req.user!.id),
         { uow: app.uow, credentialEncryptionKey: app.credentialEncryptionKey },
       );
@@ -304,7 +306,7 @@ async function buildSession(
   registry: McpRegistry,
   transport: StreamableHTTPServerTransport | SSEServerTransport,
   serverIds: string[],
-  userId: string,
+  principal: Principal,
   apiTools: ApiToolEntry[],
   execDeps: { uow: Parameters<typeof executeApiTool>[0]['uow']; credentialEncryptionKey: string },
 ): Promise<Session> {
@@ -333,6 +335,13 @@ async function buildSession(
         ...(t.description !== undefined ? { description: t.description } : {}),
         inputSchema: t.inputSchema,
       })),
+      // #88 — the caller's own notes library, same read-set stance: search,
+      // full body, annotations. Reads only.
+      ...NOTES_TOOL_DEFS.map((t) => ({
+        name: t.name,
+        description: t.description,
+        inputSchema: t.inputSchema,
+      })),
     ],
   }));
   server.setRequestHandler(CallToolRequestSchema, async (req) => {
@@ -340,6 +349,20 @@ async function buildSession(
     // #80 — the virtual api__ namespace routes to the runtime (same
     // allowlist/envelope/caps path the assistant uses); everything else
     // stays a pooled upstream call.
+    // #88 — the virtual notes__ namespace routes to the #53 services with
+    // the session owner as principal (owner-only reads, 404 hiding).
+    if (req.params.name.startsWith(NOTES_TOOL_PREFIX)) {
+      const result = await executeNotesTool(
+        { uow: execDeps.uow },
+        principal,
+        req.params.name,
+        args ?? {},
+      );
+      return {
+        content: [{ type: 'text', text: result.text }],
+        ...(result.isError ? { isError: true } : {}),
+      } as CallToolResult;
+    }
     if (req.params.name.startsWith(API_TOOL_PREFIX)) {
       const entry = apiTools.find((t) => t.name === req.params.name);
       if (entry === undefined) {
@@ -364,7 +387,7 @@ async function buildSession(
     return result as CallToolResult;
   });
   await server.connect(transport as Parameters<Server['connect']>[0]);
-  return { server, transport, userId, lastUsedAt: Date.now() };
+  return { server, transport, userId: principal.userId, lastUsedAt: Date.now() };
 }
 
 // ---- Fastify type augmentation for the decorated registry ----

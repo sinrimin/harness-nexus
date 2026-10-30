@@ -5,6 +5,7 @@
 import {
   HomeIcon,
   MessageSquareIcon,
+  NotebookPenIcon,
   Wand2Icon,
   LaptopIcon,
   SparklesIcon,
@@ -89,6 +90,10 @@ export type RouteId =
   | 'apiTools'
   | 'machines'
   | 'machineDetail'
+  | 'notes'
+  | 'noteNew'
+  | 'noteDetail'
+  | 'noteEdit'
   | 'skills'
   | 'subAgents'
   | 'rules'
@@ -153,6 +158,41 @@ export const ROUTES: RouteDef[] = [
     group: 'nav',
     titleKey: 'chat.title',
     parent: 'chat',
+    layout: 'panes',
+  },
+  {
+    // #88 — notes: capture, organize, annotate. Three in-page tabs (mine /
+    // square / board); only the landing takes a nav slot.
+    id: 'notes',
+    path: '/notes',
+    group: 'nav',
+    titleKey: 'notes.title',
+    nav: { icon: NotebookPenIcon },
+    layout: 'panes',
+  },
+  {
+    // `/notes/new` before `/notes/:id` — matchRoute takes the first pattern.
+    id: 'noteNew',
+    path: '/notes/new',
+    group: 'nav',
+    titleKey: 'notes.newTitle',
+    parent: 'notes',
+    layout: 'panes',
+  },
+  {
+    id: 'noteDetail',
+    path: '/notes/:id',
+    group: 'nav',
+    titleKey: 'notes.title',
+    parent: 'notes',
+    layout: 'panes',
+  },
+  {
+    id: 'noteEdit',
+    path: '/notes/:id/edit',
+    group: 'nav',
+    titleKey: 'notes.editTitle',
+    parent: 'noteDetail',
     layout: 'panes',
   },
   {
@@ -320,6 +360,22 @@ const MATCHERS = ROUTES.map((route) => ({ route, re: patternToRegExp(route.path)
 /** The route a pathname belongs to (`/machines/abc` → machineDetail). */
 export function matchRoute(pathname: string): RouteDef | undefined {
   return MATCHERS.find((m) => m.re.test(pathname))?.route;
+}
+
+/**
+ * The NAV destination a route belongs to — itself when it is one, else the
+ * nearest nav-bearing ancestor (noteDetail/edit → notes, machineDetail →
+ * machines, chatSession → chat). The plate and the mobile strip highlight
+ * THIS id, so a detail page keeps its section's menu item lit instead of
+ * dropping the active state entirely.
+ */
+export function navRouteFor(route: RouteDef | undefined): RouteDef | undefined {
+  let current: RouteDef | undefined = route;
+  while (current !== undefined) {
+    if (current.nav !== undefined) return current;
+    current = current.parent !== undefined ? byId.get(current.parent) : undefined;
+  }
+  return undefined;
 }
 
 /** Ancestor chain, nearest last (breadcrumb order: section first). */

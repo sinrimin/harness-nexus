@@ -108,6 +108,7 @@ export function ConfirmDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
+        closeLabel={t('common.close')}
         showCloseButton={false}
         data-surface="panel"
         data-slot="confirm-dialog"
@@ -131,7 +132,7 @@ export function ConfirmDialog({
           {impact !== undefined && impact.length > 0 ? (
             <div className="flex flex-wrap items-center gap-1.5">
               {impact.map((item, i) => (
-                <span key={i} className="inline-flex items-baseline gap-1.5">
+                <span key={i} className="inline-flex max-w-full items-baseline gap-1.5">
                   {item.label !== undefined ? <LabelText size="sm">{item.label}</LabelText> : null}
                   <Well
                     variant="chip"

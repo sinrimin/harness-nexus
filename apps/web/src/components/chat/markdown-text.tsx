@@ -31,7 +31,11 @@ function nodeText(node: ReactNode): string {
   return '';
 }
 
-function PreBlock({ children }: { children?: ReactNode }) {
+/**
+ * Fenced-code wrapper — the app's one code block (language tag + copy). Shared
+ * by the chat stream and the notes detail view so both render code identically.
+ */
+export function CodeBlock({ children }: { children?: ReactNode }) {
   const { copied, onCopy } = useCopyFeedback();
   const { t } = useI18n();
   const child = Array.isArray(children) ? children[0] : children;
@@ -83,7 +87,7 @@ export const MarkdownText = memo(function MarkdownText({ text, streaming }: Mark
         remarkPlugins={[remarkGfm]}
         rehypePlugins={[rehypeHighlight]}
         components={{
-          pre: ({ children }) => <PreBlock>{children}</PreBlock>,
+          pre: ({ children }) => <CodeBlock>{children}</CodeBlock>,
           code: ({ className, children, ...props }) => {
             const isBlock = typeof className === 'string' && className.includes('language-');
             if (!isBlock) {

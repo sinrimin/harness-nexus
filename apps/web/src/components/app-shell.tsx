@@ -17,7 +17,7 @@ import { NavStrip } from '@/components/shell/nav-strip';
 import { ReadoutStrip } from '@/components/shell/readout-strip';
 import { PageSlotsProvider, usePageSlots } from '@/components/shell/page-slots';
 import { usePosture } from '@/components/shell/use-posture';
-import { matchRoute } from '@/nav';
+import { matchRoute, navRouteFor } from '@/nav';
 import { cn } from '@/lib/utils';
 
 /**
@@ -46,6 +46,9 @@ export function AppShell({ children }: { children: ReactNode }) {
   const location = useLocation();
   const isAdmin = user?.role === 'admin';
   const route = matchRoute(location.pathname);
+  // Menu highlight = the matched route's NAV destination (a detail page lights
+  // its section's entry: noteDetail → 笔记, machineDetail → 机器…).
+  const activeNav = navRouteFor(route);
   const { posture } = usePosture();
   const { value: slots, actionsRef, marginRef } = usePageSlots();
   // `panes` hands scrolling to the page (chat: rail + stream + composer);
@@ -65,7 +68,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       {/* Chrome (desktop ≥900) — full height, brand at the top: spine (section
           addresses) + plate (entries with counts, account block). */}
       <div data-region="chrome" className="hidden shrink-0 min-[900px]:flex">
-        <Spine activeGroup={route?.group ?? 'nav'} isAdmin={isAdmin} />
+        <Spine activeGroup={activeNav?.group ?? route?.group ?? 'nav'} isAdmin={isAdmin} />
 
         <aside
           data-region="plate"
@@ -79,7 +82,7 @@ export function AppShell({ children }: { children: ReactNode }) {
               <Brand size={20} />
             </Link>
           </div>
-          <Plate activeRouteId={route?.id} isAdmin={isAdmin} posture={posture} />
+          <Plate activeRouteId={activeNav?.id} isAdmin={isAdmin} posture={posture} />
           <div className="shrink-0 p-2.5">
             {/* #37 — build version, the plate foot's quiet first line. */}
             <VersionLine />
@@ -110,7 +113,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         />
         {/* Nav strip (mobile): every destination one tap away — the plate's
             job, done where the plate is hidden. */}
-        <NavStrip activeRouteId={route?.id} isAdmin={isAdmin} />
+        <NavStrip activeRouteId={activeNav?.id} isAdmin={isAdmin} />
         {/* Readout strip: its own band so the topbar is not asked to hold a
             page identity AND four figures AND the toggles in 56px. */}
         <ReadoutStrip posture={posture} />

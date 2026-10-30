@@ -544,6 +544,62 @@ UPDATE system_settings SET api_tool_outbound = CASE WHEN api_tool_outbound = 're
 ALTER TABLE system_settings DROP COLUMN api_tool_allowlist;
     `,
   },
+  {
+    version: 30,
+    description: 'issue #88 — notes: notes / note_versions / note_annotations / note_categories',
+    sql: `
+CREATE TABLE IF NOT EXISTS note_categories (
+  id         TEXT PRIMARY KEY,
+  owner_id   TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  parent_id  TEXT REFERENCES note_categories(id),
+  name       TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_note_categories_owner ON note_categories(owner_id);
+
+CREATE TABLE IF NOT EXISTS notes (
+  id              TEXT PRIMARY KEY,
+  owner_id        TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  title           TEXT NOT NULL,
+  summary         TEXT,
+  content_md      TEXT NOT NULL,
+  content_version INTEGER NOT NULL DEFAULT 1,
+  category_id     TEXT REFERENCES note_categories(id) ON DELETE SET NULL,
+  tags            TEXT NOT NULL DEFAULT '[]',
+  status          TEXT NOT NULL DEFAULT 'inbox',
+  visibility      TEXT NOT NULL DEFAULT 'private',
+  source          TEXT NOT NULL DEFAULT '{}',
+  created_at      TEXT NOT NULL,
+  updated_at      TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_notes_owner ON notes(owner_id);
+CREATE INDEX IF NOT EXISTS idx_notes_owner_status ON notes(owner_id, status);
+CREATE INDEX IF NOT EXISTS idx_notes_visibility ON notes(visibility);
+
+CREATE TABLE IF NOT EXISTS note_versions (
+  note_id    TEXT NOT NULL REFERENCES notes(id) ON DELETE CASCADE,
+  version    INTEGER NOT NULL,
+  content_md TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  PRIMARY KEY (note_id, version)
+);
+
+CREATE TABLE IF NOT EXISTS note_annotations (
+  id             TEXT PRIMARY KEY,
+  note_id        TEXT NOT NULL REFERENCES notes(id) ON DELETE CASCADE,
+  note_version   INTEGER NOT NULL,
+  quote          TEXT NOT NULL,
+  context_prefix TEXT NOT NULL,
+  context_suffix TEXT NOT NULL,
+  comment        TEXT NOT NULL,
+  state          TEXT NOT NULL DEFAULT 'open',
+  author_id      TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  created_at     TEXT NOT NULL,
+  resolved_at    TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_note_annotations_note ON note_annotations(note_id);
+    `,
+  },
 ] as const;
 
 /**

@@ -26,6 +26,7 @@ export type AssistantToolGroup =
   | 'profiles'
   | 'mcp'
   | 'skills-hub'
+  | 'notes'
   | 'machines'
   | 'agent-dispatch'
   | 'api-tools'

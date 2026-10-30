@@ -26,6 +26,11 @@ import type {
   Machine,
   ChatPrewarmSettings,
   ChatDefaultModeSettings,
+  Note,
+  NoteAnnotation,
+  NoteCategory,
+  NoteStatus,
+  NoteVisibility,
 } from '@harness-nexus/core';
 import type {
   JobView,
@@ -65,6 +70,14 @@ import type {
   ApiToolServiceView,
   ApiToolServiceBundle,
   ApiToolDefInput,
+  CreateNoteInput,
+  UpdateNoteInput,
+  ListNotesQuery,
+  ListSquareQuery,
+  CreateAnnotationInput,
+  UpdateAnnotationInput,
+  CreateCategoryInput,
+  UpdateCategoryInput,
 } from '@harness-nexus/shared';
 export {
   SCANNABLE_TARGETS,
@@ -273,6 +286,30 @@ export interface CredentialView {
   createdAt: string;
   updatedAt: string;
 }
+
+// ---- notes (#88) ----
+
+/** A square card carries its author's name (enriched server-side). */
+export interface SquareNoteView extends Note {
+  ownerName: string;
+}
+
+/** A feed/board card carries its annotation counts (owner-only figures). */
+export interface FeedNoteView extends Note {
+  annotationCount: number;
+  openAnnotationCount: number;
+}
+
+export type {
+  CreateNoteInput,
+  UpdateNoteInput,
+  ListNotesQuery,
+  ListSquareQuery,
+  CreateAnnotationInput,
+  UpdateAnnotationInput,
+  CreateCategoryInput,
+  UpdateCategoryInput,
+};
 // McpServer is re-exported directly from core (it carries no secret fields).
 // McpTransport likewise, so callers can build typed transport objects.
 // Profile is re-exported from core too (its entries reference McpServer ids).
@@ -867,6 +904,107 @@ export class HarnessNexusClient {
   async deleteApiToolService(id: string): Promise<void> {
     await this.request('DELETE', `/api/api-tools/${id}`);
   }
+  // ---- notes (#88 — capture, organize, annotate) ----
+
+  async listNotes(query?: Partial<ListNotesQuery>): Promise<{ notes: FeedNoteView[] }> {
+    const qs = new URLSearchParams();
+    if (query?.categoryId !== undefined) qs.set('categoryId', query.categoryId);
+    if (query?.category !== undefined) qs.set('category', query.category);
+    if (query?.status !== undefined) qs.set('status', query.status);
+    if (query?.visibility !== undefined) qs.set('visibility', query.visibility);
+    if (query?.tag !== undefined) qs.set('tag', query.tag);
+    if (query?.search !== undefined) qs.set('search', query.search);
+    if (query?.limit !== undefined) qs.set('limit', String(query.limit));
+    if (query?.offset !== undefined) qs.set('offset', String(query.offset));
+    const suffix = qs.toString();
+    return this.request('GET', `/api/notes${suffix ? `?${suffix}` : ''}`);
+  }
+
+  async listSquareNotes(query?: Partial<ListSquareQuery>): Promise<{ notes: SquareNoteView[] }> {
+    const qs = new URLSearchParams();
+    if (query?.tag !== undefined) qs.set('tag', query.tag);
+    if (query?.search !== undefined) qs.set('search', query.search);
+    if (query?.limit !== undefined) qs.set('limit', String(query.limit));
+    if (query?.offset !== undefined) qs.set('offset', String(query.offset));
+    const suffix = qs.toString();
+    return this.request('GET', `/api/notes/square${suffix ? `?${suffix}` : ''}`);
+  }
+
+  async createNote(input: CreateNoteInput): Promise<{ note: Note }> {
+    return this.request('POST', '/api/notes', input);
+  }
+
+  async getNote(id: string): Promise<{ note: Note }> {
+    return this.request('GET', `/api/notes/${id}`);
+  }
+
+  async updateNote(id: string, input: UpdateNoteInput): Promise<{ note: Note }> {
+    return this.request('PATCH', `/api/notes/${id}`, input);
+  }
+
+  async deleteNote(id: string): Promise<void> {
+    await this.request('DELETE', `/api/notes/${id}`);
+  }
+
+  async listNoteAnnotations(noteId: string): Promise<{ annotations: NoteAnnotation[] }> {
+    return this.request('GET', `/api/notes/${noteId}/annotations`);
+  }
+
+  async createNoteAnnotation(
+    noteId: string,
+    input: CreateAnnotationInput,
+  ): Promise<{ annotation: NoteAnnotation }> {
+    return this.request('POST', `/api/notes/${noteId}/annotations`, input);
+  }
+
+  async updateNoteAnnotation(
+    noteId: string,
+    annotationId: string,
+    input: UpdateAnnotationInput,
+  ): Promise<{ annotation: NoteAnnotation }> {
+    return this.request('PATCH', `/api/notes/${noteId}/annotations/${annotationId}`, input);
+  }
+
+  async deleteNoteAnnotation(noteId: string, annotationId: string): Promise<void> {
+    await this.request('DELETE', `/api/notes/${noteId}/annotations/${annotationId}`);
+  }
+
+  async listNoteCategories(): Promise<{ categories: NoteCategory[] }> {
+    return this.request('GET', '/api/notes/categories');
+  }
+
+  async createNoteCategory(input: CreateCategoryInput): Promise<{ category: NoteCategory }> {
+    return this.request('POST', '/api/notes/categories', input);
+  }
+
+  async updateNoteCategory(
+    id: string,
+    input: UpdateCategoryInput,
+  ): Promise<{ category: NoteCategory }> {
+    return this.request('PATCH', `/api/notes/categories/${id}`, input);
+  }
+
+  async deleteNoteCategory(id: string): Promise<void> {
+    await this.request('DELETE', `/api/notes/categories/${id}`);
+  }
+
+  /** #88 AI pass — one-shot LLM summary of (possibly unsaved) note content. */
+  async summarizeNote(input: { title?: string; contentMd: string }): Promise<{ summary: string }> {
+    return this.request('POST', '/api/notes/summarize', input);
+  }
+
+  /**
+   * #88 revision loop — every open annotation + the current body go to the
+   * model; the rewritten markdown saves as the next immutable version and
+   * the addressed annotations flip to done. Long-running by LLM standards.
+   */
+  async reviseNote(id: string): Promise<{
+    note: Note;
+    resolved: NoteAnnotation[];
+  }> {
+    return this.request('POST', `/api/notes/${id}/revise`);
+  }
+
   // ---- settings ----
   async getRegistration(): Promise<{ allowRegistration: boolean }> {
     return this.request('GET', '/api/settings/registration', undefined, true);
@@ -1162,4 +1300,10 @@ export type {
   TrustTier,
   SkillMeta,
   SkillBundle,
+  // #88 — notes domain types.
+  Note,
+  NoteAnnotation,
+  NoteCategory,
+  NoteStatus,
+  NoteVisibility,
 };

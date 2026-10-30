@@ -7,7 +7,15 @@ import type { ReactNode } from 'react';
 import { afterEach, describe, expect, it } from 'vitest';
 import { cleanup, render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
-import { ROUTES, groupRoutes, groupLanding, matchRoute, routeTrail, visibleGroups } from '@/nav';
+import {
+  ROUTES,
+  groupRoutes,
+  groupLanding,
+  matchRoute,
+  navRouteFor,
+  routeTrail,
+  visibleGroups,
+} from '@/nav';
 import {
   PageSlot,
   PageSlotsProvider,
@@ -63,6 +71,17 @@ describe('route manifest', () => {
         expect(ancestor.group).toBe(route.group); // a crumb never crosses sections
       }
     }
+  });
+
+  it('every route resolves to a nav destination (menu highlight on detail pages)', () => {
+    for (const route of ROUTES) {
+      expect(navRouteFor(route), route.id).toBeDefined();
+    }
+    expect(navRouteFor(matchRoute('/notes/abc'))?.id).toBe('notes');
+    expect(navRouteFor(matchRoute('/notes/abc/edit'))?.id).toBe('notes');
+    expect(navRouteFor(matchRoute('/machines/abc'))?.id).toBe('machines');
+    expect(navRouteFor(matchRoute('/chat/agents/a1'))?.id).toBe('chat');
+    expect(navRouteFor(undefined)).toBeUndefined();
   });
 });
 

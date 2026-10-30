@@ -3,7 +3,7 @@
 // SPDX-License-Identifier: MIT
 
 import { memo, useEffect, useRef, useState } from 'react';
-import { BrainIcon, ChevronDownIcon, FileTextIcon } from 'lucide-react';
+import { BrainIcon, ChevronDownIcon, FileTextIcon, NotebookPenIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useI18n } from '@/i18n';
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
@@ -209,19 +209,31 @@ function ReasoningRow({ text, running }: { text: string; running: boolean }) {
   );
 }
 
-/** One assistant step: ordered blocks + the interrupted marker. */
+/**
+ * One assistant step: ordered blocks + the interrupted marker. A settled
+ * step with text carries the #88 capture action (保存为笔记) — the parent
+ * owns the dialog; this row only hands the step's markdown up.
+ */
 export const AssistantStepRow = memo(function AssistantStepRow({
   step,
+  onCapture,
 }: {
   step: {
     status: 'running' | 'settled' | 'interrupted';
     blocks: { type: 'text' | 'reasoning'; text: string }[];
   };
+  /** Present only where the surface supports capture (both chat rails). */
+  onCapture?: (markdown: string) => void;
 }) {
   const { t } = useI18n();
   const streaming = step.status === 'running';
   const last = step.blocks.length - 1;
   if (step.blocks.length === 0 && !streaming) return null;
+  const text = step.blocks
+    .filter((b) => b.type === 'text')
+    .map((b) => b.text)
+    .join('\n');
+  const capturable = onCapture !== undefined && step.status === 'settled' && text.trim() !== '';
   return (
     <div className="flex min-w-0 flex-col gap-2">
       {step.blocks.map((b, i) =>
@@ -236,6 +248,16 @@ export const AssistantStepRow = memo(function AssistantStepRow({
         <span className="bg-muted text-muted-foreground w-fit rounded px-1.5 text-[11px] leading-5">
           {t('chat.stopped')}
         </span>
+      ) : null}
+      {capturable ? (
+        <button
+          type="button"
+          onClick={() => onCapture?.(text)}
+          className="text-muted-foreground hover:text-foreground mr-auto inline-flex items-center gap-1 rounded px-1.5 py-1 text-[11px] transition-colors"
+        >
+          <NotebookPenIcon className="size-3" />
+          {t('chat.captureToNote')}
+        </button>
       ) : null}
     </div>
   );

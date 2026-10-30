@@ -12,6 +12,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
+import { useI18n } from '@/i18n';
 
 /**
  * FormDialog — the shared MODAL CONTAINER for create/edit flows (Phase 9 W5).
@@ -63,6 +64,7 @@ export function FormDialog({
   return (
     <Dialog open={open} onOpenChange={(o) => (o ? null : onClose())}>
       <DialogContent
+        closeLabel={useI18n().t('common.close')}
         className={cn(SIZES[size], 'max-h-[calc(100svh-4rem)] gap-4 overflow-y-auto')}
         onEscapeKeyDown={(e) => {
           // A raw combobox listbox (TagCombobox / the provider dialog's model

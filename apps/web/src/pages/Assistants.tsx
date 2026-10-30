@@ -61,6 +61,7 @@ const ASSISTANT_TOOL_GROUPS = [
   'profiles',
   'mcp',
   'skills-hub',
+  'notes',
   'machines',
   'agent-dispatch',
   'api-tools',
@@ -562,6 +563,11 @@ export function AssistantsPage() {
                               checked === true
                                 ? [...d.mcpServerIds, s.id]
                                 : d.mcpServerIds.filter((x) => x !== s.id),
+                            // Attaching a server is intent to use — turn the
+                            // group on too (it gates whether the tools join).
+                            ...(checked === true && !d.enabledToolGroups.includes('mcp')
+                              ? { enabledToolGroups: [...d.enabledToolGroups, 'mcp'] }
+                              : {}),
                           }))
                         }
                       />
@@ -576,6 +582,11 @@ export function AssistantsPage() {
                 })}
               </div>
             )}
+            {draft.mcpServerIds.length > 0 && !draft.enabledToolGroups.includes('mcp') ? (
+              <p className="text-state-warn-ink mt-1.5 text-[11px] leading-relaxed">
+                {t('assistants.mcpGroupOff')}
+              </p>
+            ) : null}
           </Field>
           <Field label={t('apiTools.servicesLabel')} hint={t('apiTools.servicesHint')}>
             {apiServices.length === 0 ? (
@@ -593,6 +604,12 @@ export function AssistantsPage() {
                             checked === true
                               ? [...d.apiToolServiceIds, svc.id]
                               : d.apiToolServiceIds.filter((x) => x !== svc.id),
+                          // Attaching a service is intent to use it — the
+                          // api-tools group is opt-in (#80) and its runner
+                          // gate ignores attached services while it is off.
+                          ...(checked === true && !d.enabledToolGroups.includes('api-tools')
+                            ? { enabledToolGroups: [...d.enabledToolGroups, 'api-tools'] }
+                            : {}),
                         }))
                       }
                     />
@@ -601,6 +618,12 @@ export function AssistantsPage() {
                 ))}
               </div>
             )}
+            {draft.apiToolServiceIds.length > 0 &&
+            !draft.enabledToolGroups.includes('api-tools') ? (
+              <p className="text-state-warn-ink mt-1.5 text-[11px] leading-relaxed">
+                {t('assistants.apiToolsGroupOff')}
+              </p>
+            ) : null}
           </Field>
           <Field label={t('assistants.skillsLabel')} hint={t('assistants.skillsHint')}>
             {skillResources.length === 0 ? (

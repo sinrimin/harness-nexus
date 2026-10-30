@@ -31,6 +31,9 @@ import { AgentSessionPage } from '@/pages/AgentSession';
 import { AssistantSessionPage } from '@/pages/AssistantSession';
 import { AssistantsPage } from '@/pages/Assistants';
 import { ApiToolsPage } from '@/pages/ApiTools';
+import { NotesPage } from '@/pages/notes/NotesPage';
+import { NoteEditorPage } from '@/pages/notes/NoteEditorPage';
+import { NoteDetailPage } from '@/pages/notes/NoteDetailPage';
 
 /** The chrome every protected page renders inside (nav.ts holds the manifest). */
 function ShellLayout() {
@@ -53,6 +56,10 @@ const PAGES: Record<RouteId, ReactNode> = {
   assistantSession: <AssistantSessionPage />,
   assistants: <AssistantsPage />,
   apiTools: <ApiToolsPage />,
+  notes: <NotesPage />,
+  noteNew: <NoteEditorPage />,
+  noteDetail: <NoteDetailPage />,
+  noteEdit: <NoteEditorPage />,
   machines: <MachinesPage />,
   machineDetail: <MachineDetailPage />,
   skills: <SkillsPage />,

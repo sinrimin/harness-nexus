@@ -40,10 +40,13 @@ function DialogContent({
   className,
   children,
   showCloseButton = true,
+  closeLabel,
   onCloseAutoFocus,
   ...props
 }: React.ComponentProps<typeof DialogPrimitive.Content> & {
   showCloseButton?: boolean;
+  /** Accessible name for the built-in × (default English "Close"). */
+  closeLabel?: string;
 }) {
   // P6 — Radix restores focus on close only when the dialog was opened by a
   // `DialogTrigger`; every dialog in this app is opened programmatically (a
@@ -82,7 +85,7 @@ function DialogContent({
             className="text-muted-foreground hover:text-foreground focus-visible:ring-ring absolute top-4 right-4 rounded-xs opacity-70 transition-opacity outline-none focus-visible:ring-[3px] disabled:pointer-events-none [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4"
           >
             <XIcon />
-            <span className="sr-only">Close</span>
+            <span className="sr-only">{closeLabel ?? 'Close'}</span>
           </DialogPrimitive.Close>
         ) : null}
       </DialogPrimitive.Content>

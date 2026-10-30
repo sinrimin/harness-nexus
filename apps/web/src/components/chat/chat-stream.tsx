@@ -33,6 +33,8 @@ interface ChatStreamProps {
     action: 'accept' | 'decline' | 'cancel',
     values?: Record<string, string | number | boolean | string[]>,
   ) => void;
+  /** #88 — present when the surface offers 保存为笔记 on settled steps. */
+  onCaptureStep?: (markdown: string) => void;
 }
 
 export function ChatStream({
@@ -40,6 +42,7 @@ export function ChatStream({
   cwd,
   onPermissionRespond,
   onElicitationRespond,
+  onCaptureStep,
 }: ChatStreamProps) {
   const { t } = useI18n();
   const containerRef = useRef<HTMLDivElement>(null);
@@ -123,7 +126,13 @@ export function ChatStream({
               case 'user':
                 return <UserMessage key={row.key} blocks={row.blocks} />;
               case 'assistant':
-                return <AssistantStepRow key={row.key} step={row.step} />;
+                return (
+                  <AssistantStepRow
+                    key={row.key}
+                    step={row.step}
+                    {...(onCaptureStep !== undefined ? { onCapture: onCaptureStep } : {})}
+                  />
+                );
               case 'tool':
                 return <ToolCallRow key={row.key} node={row.root} cwd={cwd} />;
               case 'subagent':

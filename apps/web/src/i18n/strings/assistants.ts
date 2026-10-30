@@ -44,6 +44,9 @@ const en = {
   budgetPlaceholder: 'unlimited',
   mcpLabel: 'MCP servers',
   mcpHint: 'Server-dialed servers only — client-dialed rows cannot be called by the assistant.',
+  mcpGroupOff: 'The mcp group is OFF — attached servers contribute no tools until it is enabled.',
+  apiToolsGroupOff:
+    'The api-tools group is OFF — attached services stay inert until it is enabled; checking a service turns it on.',
   mcpClientDial: 'client-dialed',
   skillsLabel: 'Skills',
   skillsHint:
@@ -121,6 +124,8 @@ const zh: typeof en = {
   budgetPlaceholder: '不限',
   mcpLabel: 'MCP 服务器',
   mcpHint: '仅服务端拨号的服务器可用——客户端拨号的行助理无法调用。',
+  mcpGroupOff: 'mcp 工具组未启用——已挂载的服务器不会提供任何工具。',
+  apiToolsGroupOff: 'api-tools 工具组未启用——已挂载的服务不会生效；勾选任一服务会自动开启该组。',
   mcpClientDial: '客户端拨号',
   skillsLabel: '技能',
   skillsHint: '仅 inline / inline-bundle 技能资源；外部来源无法在进程内读取。',

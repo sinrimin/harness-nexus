@@ -26,6 +26,9 @@ import {
   sqliteLlmProviderRepository,
   sqliteAssistantRepository,
   sqliteApiToolRepository,
+  sqliteNoteRepository,
+  sqliteNoteAnnotationRepository,
+  sqliteNoteCategoryRepository,
 } from './repos.js';
 
 /**
@@ -68,5 +71,8 @@ export function createSqliteUnitOfWork(dbPath: string): UnitOfWork {
     assistants: sqliteAssistantRepository(db),
     fileBlobs: sqliteFileBlobRepository(db, filesDir),
     apiTools: sqliteApiToolRepository(db),
+    notes: sqliteNoteRepository(db),
+    noteAnnotations: sqliteNoteAnnotationRepository(db),
+    noteCategories: sqliteNoteCategoryRepository(db),
   };
 }

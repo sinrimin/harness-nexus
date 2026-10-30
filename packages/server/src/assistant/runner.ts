@@ -28,6 +28,7 @@ import { buildAssistantTools, tool, toolNeedsApproval, type AssistantToolDeps } 
 import { executeApiTool } from '../api-tools/runtime.js';
 import { buildTurnExtras, type AssistantMcpDeps } from './context.js';
 import { DEFAULT_ASSISTANT_SYSTEM_PROMPT } from './prompt.js';
+import { notesContextFor } from '../services/notes.js';
 
 /**
  * The assistant turn runner (#52 §2/§4). One call = one user prompt = one
@@ -65,9 +66,12 @@ export interface RunningTurn {
   done: Promise<void>;
 }
 
+/** What resolveTurnModel actually reads — in-process one-shot callers (#88) pass exactly this. */
+export type TurnModelDeps = Pick<AssistantRunnerDeps, 'uow' | 'credentialEncryptionKey'>;
+
 /** Resolve the provider row + registry entry the (possibly rebound) config points at. */
 export async function resolveTurnModel(
-  deps: AssistantRunnerDeps,
+  deps: TurnModelDeps,
   ownerId: string,
   provider: LlmProvider,
   modelId: string,
@@ -275,6 +279,19 @@ export function startAssistantTurn(
     // today) defaults to write — the conservative class for foreign tools.
     for (const t of extras.tools) {
       if (!classOf.has(t.name)) classOf.set(t.name, 'write');
+    }
+
+    // #88 — the per-turn <system_context>: top keyword-matched note summaries
+    // from the owner's library ride the system prompt when the notes group is
+    // on (summaries only; bodies stay behind the notes_get tool).
+    if (config.enabledToolGroups.includes('notes')) {
+      const promptText = input.prompt
+        .filter((b): b is Extract<AssistantPromptBlock, { type: 'text' }> => b.type === 'text')
+        .map((b) => b.text)
+        .join(' ');
+      const notesContext = await notesContextFor(deps, principal, promptText);
+      if (notesContext !== '')
+        extras.promptAddendum = `${extras.promptAddendum}\n\n${notesContext}`.trim();
     }
 
     // #80 — the config's API tool services join as DYNAMIC tools
