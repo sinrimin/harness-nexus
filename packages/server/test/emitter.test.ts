@@ -4,6 +4,7 @@
 
 import { describe, expect, it } from 'vitest';
 import JSZip from 'jszip';
+import { BUILTIN_MCP_SERVICE_ID } from '@harness-nexus/shared';
 import { createMemoryUnitOfWork } from '../src/infra/storage/memory/index.js';
 import { MarketplaceEmitter, marketplaceNameFor } from '../src/marketplace/emitter.js';
 
@@ -203,6 +204,34 @@ describe('MarketplaceEmitter.buildPluginZip', () => {
     // Emission limitations ride the description (the only post-install channel).
     expect(plugin.description).toContain('hnx client');
     expect(plugin.description).toContain('hook event(s)');
+  });
+
+  it('#107 a builtin-only profile still emits the .mcp.json shim entry', async () => {
+    const uow = createMemoryUnitOfWork();
+    const emitter = new MarketplaceEmitter({
+      uow,
+      publicBaseUrl: 'https://hn.example',
+      logger: fakeLogger,
+      emitMode: 'client',
+    });
+    await seed(uow);
+    const now = new Date().toISOString();
+    await uow.profiles.save({
+      id: 'p-builtin',
+      name: 'Builtin Only',
+      version: '1.0.0',
+      target: 'claude-code',
+      scope: 'personal',
+      ownerId: 'u1',
+      entries: [{ resourceId: BUILTIN_MCP_SERVICE_ID, kind: 'mcp' }],
+      createdAt: now,
+      updatedAt: now,
+    });
+    const profile = (await uow.profiles.findById('p-builtin'))!;
+    const zip = await JSZip.loadAsync(await emitter.buildPluginZip(profile));
+    const mcp = JSON.parse(await zip.file('builtin-only/.mcp.json')!.async('string'));
+    expect(mcp.mcpServers['harness-nexus'].command).toBe('hnx');
+    expect(mcp.mcpServers['harness-nexus'].args).toContain('serve');
   });
 
   it("emitMode 'server' keeps the pre-C2 output (the no-hnx fallback)", async () => {

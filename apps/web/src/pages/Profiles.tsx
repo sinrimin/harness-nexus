@@ -60,6 +60,7 @@ import {
 } from '@/lib/list-query';
 import { MoreHorizontalIcon } from 'lucide-react';
 import {
+  BUILTIN_MCP_SERVICE_ID,
   HarnessNexusError,
   type Profile,
   type ProfileEntryInput,
@@ -142,7 +143,8 @@ function buildEntries(
   };
   return [
     ...[...selectedServers]
-      .filter((id) => liveServers.has(id))
+      // #107 — the built-in service has no row but is always a live pick.
+      .filter((id) => id === BUILTIN_MCP_SERVICE_ID || liveServers.has(id))
       .map((mcpServerId) => ({ mcpServerId, ...extrasFor(mcpServerId) })),
     ...[...selectedResources]
       .filter((id) => liveResources.has(id))
@@ -177,10 +179,21 @@ function EntryPickers({
         <legend className="text-sm font-medium">{t('profiles.serversLegend')}</legend>
         {servers === null ? (
           <p className="text-muted-foreground text-sm">{t('profiles.loadingServers')}</p>
-        ) : servers.length === 0 ? (
-          <p className="text-muted-foreground text-sm">{t('profiles.noServers')}</p>
         ) : (
           <div className="grid gap-2 sm:grid-cols-2">
+            {/* #107 — the built-in service: pinned first, always available
+             * (no row, never soft-deleted); opting in is what exposes the
+             * platform's native tools to this profile's agents. */}
+            <label className="border-border flex items-center gap-2.5 rounded-md border px-3 py-2 text-sm">
+              <input
+                type="checkbox"
+                checked={selectedServers.has(BUILTIN_MCP_SERVICE_ID)}
+                onChange={() => onToggleServer(BUILTIN_MCP_SERVICE_ID)}
+                className="size-4"
+              />
+              <span className="min-w-0 flex-1 truncate">{t('mcp.builtinName')}</span>
+              <span className="text-muted-foreground font-mono text-[10px]">built-in</span>
+            </label>
             {servers.map((s) => (
               <label
                 key={s.id}
@@ -205,6 +218,11 @@ function EntryPickers({
                 )}
               </label>
             ))}
+            {servers.length === 0 ? (
+              <p className="text-muted-foreground text-sm sm:col-span-2">
+                {t('profiles.noServers')}
+              </p>
+            ) : null}
           </div>
         )}
       </fieldset>

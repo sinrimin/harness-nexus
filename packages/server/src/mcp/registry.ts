@@ -22,6 +22,7 @@
 import type { FastifyBaseLogger } from 'fastify';
 import type { McpServer, McpTransport, Profile, UnitOfWork } from '@harness-nexus/core';
 import {
+  BUILTIN_MCP_SERVICE_ID,
   resolveDialSite,
   resolvePlaceholders,
   transportPlaceholderNames,
@@ -167,18 +168,29 @@ export class McpRegistry {
   }
 
   /**
-   * Resolve a profile into the set of outlet server ids it exposes, after an
-   * accessibility check. Throws if the profile references an MCP server the
-   * caller cannot see. Returns `{ serverIds }` for use as a `listTools` filter.
+   * Resolve a profile into the outlet exposure set, after an accessibility
+   * check. Throws if the profile references an MCP server the caller cannot
+   * see. Returns `{ serverIds, builtin }` — the ids are the `listTools` filter
+   * (pooled server-dialed rows), `builtin` says the profile references the
+   * built-in service (#107: its virtual namespaces ride the session only then).
    */
-  async profileEntriesFor(profileId: string, userId: string): Promise<{ serverIds: string[] }> {
+  async profileEntriesFor(
+    profileId: string,
+    userId: string,
+  ): Promise<{ serverIds: string[]; builtin: boolean }> {
     const profile = await this.uow.profiles.findById(profileId);
     if (!profile || !profileVisibleBy(profile, userId)) {
       throw new Error(`profile ${profileId} not accessible`);
     }
     const serverIds: string[] = [];
+    let builtin = false;
     for (const entry of profile.entries) {
       if (entry.kind !== 'mcp') continue;
+      // #107 — the built-in service has no row; its flag is the exposure gate.
+      if (entry.resourceId === BUILTIN_MCP_SERVICE_ID) {
+        builtin = true;
+        continue;
+      }
       const server = await this.uow.mcpServers.findById(entry.resourceId);
       // Soft-deleted rows are skipped (two-stage delete), not fatal.
       if (!server || server.deletedAt !== undefined) continue;
@@ -187,7 +199,7 @@ export class McpRegistry {
       }
       serverIds.push(server.id);
     }
-    return { serverIds };
+    return { serverIds, builtin };
   }
 
   /** Aggregated (namespaced) tools of the pooled server-dialed set. */

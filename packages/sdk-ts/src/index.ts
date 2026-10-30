@@ -95,6 +95,7 @@ export {
   PREWARM_ADAPTER_TARGETS,
   DEFAULT_CHAT_PREWARM_SETTINGS,
   DEFAULT_ASSISTANT_SYSTEM_PROMPT,
+  BUILTIN_MCP_SERVICE_ID,
   providerApiToSpecApi,
   providerModelConfigWarnings,
   isChatApiKind,

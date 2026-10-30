@@ -4,6 +4,7 @@
 
 import { describe, expect, it } from 'vitest';
 import type { McpServer, Resource } from '@harness-nexus/core';
+import { BUILTIN_MCP_SERVICE_ID } from '@harness-nexus/shared';
 import { createMemoryUnitOfWork } from '../src/infra/storage/memory/index.js';
 import type { Principal, ServiceDeps } from '../src/services/principal.js';
 import {
@@ -119,6 +120,17 @@ describe('svc profiles — scope rules (#36, no HTTP)', () => {
 });
 
 describe('svc profiles — entry resolution gates', () => {
+  it('#107 accepts the built-in service as an mcp entry (no row, always visible)', async () => {
+    const d = deps();
+    const profile = await createProfile(d, owner, {
+      name: 'P-builtin',
+      target: 'claude-code',
+      scope: 'personal',
+      entries: [{ mcpServerId: BUILTIN_MCP_SERVICE_ID }],
+    });
+    expect(profile.entries).toEqual([{ resourceId: BUILTIN_MCP_SERVICE_ID, kind: 'mcp' }]);
+  });
+
   it('rejects another user’s personal MCP server and soft-deleted rows', async () => {
     const d = deps();
     const foreign = await seedServer(d, { ownerId: stranger.userId });

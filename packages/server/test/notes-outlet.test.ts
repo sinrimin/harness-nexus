@@ -4,20 +4,23 @@
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { FastifyInstance } from 'fastify';
+import { BUILTIN_MCP_SERVICE_ID } from '@harness-nexus/shared';
 import { buildApp } from '../src/app.js';
 import { testConfig } from './helpers.js';
 
 /**
  * #88 — the /mcp outlet exposes the caller's own notes library as the
- * `notes__` virtual namespace (the #80 api-tools pattern): listed on every
- * profile session, called through the #53 services with the PAT owner as
- * principal, and strictly per-owner (a foreign private note 404-hides).
+ * `notes__` virtual namespace (the #80 api-tools pattern): listed on profile
+ * sessions whose profile references the built-in service (#107), called
+ * through the #53 services with the PAT owner as principal, and strictly
+ * per-owner (a foreign private note 404-hides).
  */
 
 let app: FastifyInstance;
 let aliceJwt: string;
 let bobJwt: string;
 let aliceProfileId: string;
+let alicePlainProfileId: string;
 let aliceNoteId: string;
 
 const authed = (token: string) => ({ authorization: `Bearer ${token}` });
@@ -79,7 +82,22 @@ beforeAll(async () => {
       method: 'POST',
       url: '/api/profiles',
       headers: authed(aliceJwt),
-      payload: { name: 'alice-notes-kit', target: 'generic', scope: 'personal', entries: [] },
+      payload: {
+        name: 'alice-notes-kit',
+        target: 'generic',
+        scope: 'personal',
+        entries: [{ mcpServerId: BUILTIN_MCP_SERVICE_ID }],
+      },
+    })
+  ).json().profile.id as string;
+
+  // #107 — a profile WITHOUT the built-in entry: the namespace must not ride.
+  alicePlainProfileId = (
+    await app.inject({
+      method: 'POST',
+      url: '/api/profiles',
+      headers: authed(aliceJwt),
+      payload: { name: 'alice-plain-kit', target: 'generic', scope: 'personal', entries: [] },
     })
   ).json().profile.id as string;
 
@@ -126,7 +144,7 @@ beforeAll(async () => {
 type ToolResult = { result?: { content?: { type: string; text: string }[]; isError?: boolean } };
 
 describe('notes__ tools on the /mcp outlet (#88)', () => {
-  it('lists the notes__ namespace on a plain profile session', async () => {
+  it('lists the notes__ namespace when the profile references the built-in service', async () => {
     const init = await rpc(aliceJwt, aliceProfileId, 'initialize', {
       protocolVersion: '2025-06-18',
       capabilities: {},
@@ -140,6 +158,31 @@ describe('notes__ tools on the /mcp outlet (#88)', () => {
     expect(tools.map((t) => t.name)).toEqual(
       expect.arrayContaining(['notes__search', 'notes__get', 'notes__annotations']),
     );
+  });
+
+  it('#107 hides the namespace from a profile without the built-in entry', async () => {
+    const init = await rpc(aliceJwt, alicePlainProfileId, 'initialize', {
+      protocolVersion: '2025-06-18',
+      capabilities: {},
+      clientInfo: { name: 'notes-outlet-test-gate', version: '0' },
+    });
+    expect(init.status).toBe(200);
+    const sessionId = init.sessionId!;
+
+    const listed = await rpc(aliceJwt, alicePlainProfileId, 'tools/list', {}, sessionId);
+    const tools = (listed.body as { result?: { tools?: { name: string }[] } }).result?.tools ?? [];
+    expect(tools.some((t) => t.name.startsWith('notes__'))).toBe(false);
+
+    // Calling it anyway answers unknown-tool, mirroring the api__ branch.
+    const called = await rpc(
+      aliceJwt,
+      alicePlainProfileId,
+      'tools/call',
+      { name: 'notes__search', arguments: { query: 'x' } },
+      sessionId,
+    );
+    const call = called.body as ToolResult;
+    expect(call.result?.isError).toBe(true);
   });
 
   it('searches and fetches the caller\u2019s own notes over the wire', async () => {
