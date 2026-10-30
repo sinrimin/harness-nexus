@@ -336,12 +336,18 @@ export function buildAssistantTools(
         class: 'write',
         label: 'Dispatch client agent',
         description:
-          "Send a prompt to a client agent (AgentInstance) on one of the user's machines and return a handle immediately — the agent runs ASYNC; poll the outcome with agent_dispatch_poll. To CONTINUE a previous dispatch's native session, pass resume = { sessionId, cwd } exactly as that dispatch's poll result reported them. The channel shows in the user's web chat tabs; permission prompts the driven agent raises are answerable there, and anything the USER does on it (stopping it, interjecting, closing it) comes back via poll notices.",
+          "Send a prompt to a client agent (AgentInstance) on one of the user's machines and return a handle immediately — the agent runs ASYNC; poll the outcome with agent_dispatch_poll. To CONTINUE a previous dispatch's native session, pass resume = { sessionId, cwd } exactly as that dispatch's poll result reported them. The channel shows in the user's web chat tabs; permission prompts the driven agent raises are answerable there, and anything the USER does on it (stopping it, interjecting, closing it) comes back via poll notices. Pass approvals: 'delegated' to declare an UNATTENDED run (the decision model clears the driven agent's cards — the dispatch refuses up front when no decision model resolves or its breaker is degraded) or approvals: 'manual' to force human answers regardless of the machine default.",
         parameters: Type.Object({
           agentInstanceId: Type.String({
             description: 'The agent instance to drive (machine_agents_list).',
           }),
           prompt: Type.String({ description: 'The prompt for the agent.' }),
+          approvals: Type.Optional(
+            Type.Union([Type.Literal('manual'), Type.Literal('delegated')], {
+              description:
+                "Per-dispatch stance for the driven agent's permission cards. 'delegated' = the decision model answers (fails fast when unavailable); 'manual' = the user answers; omit = the machine default.",
+            }),
+          ),
           directory: Type.Optional(
             Type.String({
               description:
@@ -365,6 +371,7 @@ export function buildAssistantTools(
               ...(session !== undefined ? { assistantSessionId: session.sessionId } : {}),
               ...(params.directory !== undefined ? { directory: params.directory } : {}),
               ...(params.resume !== undefined ? { resume: params.resume } : {}),
+              ...(params.approvals !== undefined ? { approvals: params.approvals } : {}),
             }),
           ),
       }),

@@ -102,6 +102,8 @@ interface DispatchRecord {
   agentInstanceId: string;
   cwd: string;
   prompt: string;
+  /** #103 — the declared stance; undefined = machine default (never switched). */
+  stance: 'manual' | 'delegated' | undefined;
   status: AssistantDispatchPollResult['status'];
   busy: boolean;
   openPermissions: Set<string>;
@@ -164,6 +166,11 @@ export class AssistantDispatchService {
    * is ready. Returns the handle immediately — the async arm; poll for the
    * outcome. `resume` continues the agent's OWN native session (the handle
    * a previous dispatch returned).
+   *
+   * #103 — `approvals` declares this dispatch's stance: absent = the machine
+   * default, `manual` always engages, `delegated` REFUSES up front (before
+   * any spawn) when delegation cannot engage — an unattended run must fail
+   * fast, not watchdog-cancel card by card.
    */
   async dispatch(
     ownerId: string,
@@ -174,8 +181,16 @@ export class AssistantDispatchService {
       assistantSessionId?: string | undefined;
       directory?: string | undefined;
       resume?: ChatResumeArm | undefined;
+      /** #103 — per-dispatch approvals stance; absent = machine default. */
+      approvals?: 'manual' | 'delegated' | undefined;
     },
   ): Promise<AssistantDispatchOpen | { ok: false; code: string }> {
+    if (
+      input.approvals === 'delegated' &&
+      !(await this.chat.delegatedStanceOfferable(ownerId, input.agentInstanceId))
+    ) {
+      return { ok: false, code: 'DISPATCH_APPROVALS_UNAVAILABLE' };
+    }
     const opened = await this.chat.open(
       ownerId,
       input.agentInstanceId,
@@ -197,6 +212,7 @@ export class AssistantDispatchService {
       agentInstanceId: input.agentInstanceId,
       cwd: opened.cwd,
       prompt: input.prompt,
+      stance: input.approvals,
       status: 'starting',
       busy: false,
       openPermissions: new Set(),
@@ -415,12 +431,38 @@ export class AssistantDispatchService {
     switch (e.kind) {
       case 'ready': {
         if (e.nativeSessionId !== undefined) record.nativeSessionId = e.nativeSessionId;
-        // The agent is up — the prompt goes out through the SAME door a
-        // browser send uses (#66 presence gate, active budget, queue).
-        const sent = this.chat.onMessageSend(record.ownerId, record.channelId, record.prompt);
-        if (!sent.ok) {
-          this.finalize(record, 'failed', { error: `prompt rejected: ${sent.code}` });
+        // The agent is up. #103 — a declared stance switches BEFORE the
+        // prompt, through the same door the browser switch uses (it
+        // re-validates delegated against the resolver). A refusal here means
+        // the world moved between the entry probe and ready (e.g. the
+        // provider was deleted): fail the run and hand the budget back —
+        // never silently run an unattended dispatch on manual cards.
+        const sendPrompt = () => {
+          const sent = this.chat.onMessageSend(record.ownerId, record.channelId, record.prompt);
+          if (!sent.ok) {
+            this.finalize(record, 'failed', { error: `prompt rejected: ${sent.code}` });
+          }
+        };
+        if (record.stance === undefined) {
+          sendPrompt();
+          return;
         }
+        void this.chat
+          .setApprovals(record.ownerId, record.channelId, record.stance)
+          .then((applied) => {
+            if (!applied.ok) {
+              this.finalize(record, 'failed', {
+                error: `approvals stance ${record.stance} unavailable (${applied.code})`,
+              });
+              void this.chat.close(record.ownerId, record.channelId, 'dispatch');
+              return;
+            }
+            sendPrompt();
+          })
+          .catch(() => {
+            this.finalize(record, 'failed', { error: 'approvals stance switch threw' });
+            void this.chat.close(record.ownerId, record.channelId, 'dispatch');
+          });
         return;
       }
       case 'event': {

@@ -268,7 +268,11 @@ function SessionRail({
   const { t, lang } = useI18n();
   return (
     <>
-      <div className="flex items-center gap-1 border-b px-2 py-2.5">
+      {/* The rail's header band pins to the stream header's h-12 so the two
+      columns' bottom borders read as one line — a hugging height rides the
+      skin-scaled control tokens (52px Signal / 45px BAY) and misaligns per
+      skin against the fixed 48px stream band. */}
+      <div className="flex h-12 items-center gap-1 border-b px-2">
         {end !== undefined && end !== null ? (
           <EndSwitcher current={end} fromDrawer={endInDrawer} />
         ) : null}
@@ -293,9 +297,6 @@ function SessionRail({
           <PlusIcon className="size-4" />
           {t('chat.newSession')}
         </Button>
-        <p className="text-muted-foreground mt-1.5 text-center text-[11px]">
-          {t('chat.disconnectHint')}
-        </p>
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto">
         {rail.state === 'loading' ? (

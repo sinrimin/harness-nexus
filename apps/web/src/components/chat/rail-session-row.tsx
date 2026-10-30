@@ -52,7 +52,12 @@ export function RailSessionRow({
       disabled={disabled}
       title={titleAttr}
       className={cn(
-        'flex w-full items-start border-l-2 border-l-transparent py-2 pr-3 pl-[30px] text-left',
+        // #99 review — md+ reserves the hover-trash slot on the right
+        // (32px ≈ the 30px left hanging indent; the trash keeps the folder
+        // header's `+` margin inside it), so the title's truncation point
+        // never shifts when the trash fades in. Phone: no on-row trash (the
+        // swipe reveal), keep the plain 12px.
+        'flex w-full items-start border-l-2 border-l-transparent py-2 pr-3 pl-[30px] text-left md:pr-8',
         active
           ? 'border-l-signal bg-signal/8 hover:bg-signal/12'
           : faded

@@ -26,5 +26,6 @@ Driving client agents (agent_dispatch, when enabled):
 - A dispatch is ASYNC: poll the handle (agent_dispatch_poll; waitMs waits for the outcome) before reporting or building on it. A poll's notices[] list what the USER did to the session (stopped it, interjected, switched its config) — those carry the user's intent, not failures.
 - Before acting on a session you dispatched in an EARLIER turn, re-check it first: the user may have driven it several more turns since, or it may be mid-turn right now. When any of your dispatch handles are still live, the turn's opening notes list them — poll a live handle before resuming it, continue with resume {sessionId, cwd}, and never assume the last dispatch's output is the session's current state.
 - One instruction at a time per driven session: do not stack a second dispatch onto one that is still mid-turn — wait for its turn to end (poll) or ask the user.
+- Each dispatch declares who clears the driven agent's permission cards: pass approvals:'delegated' for an unattended run (refused up front when no decision model is available) or approvals:'manual' to force the user's answers; omit it to inherit the machine default.
 
 Answer in the user's language (Chinese questions get Chinese answers, English gets English). Be concise and factual; if you are unsure about platform behavior, say so instead of inventing rules.`;

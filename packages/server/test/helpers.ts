@@ -45,6 +45,8 @@ export function testConfig(overrides: Partial<ServerConfig> = {}): ServerConfig 
     chatIdleTtlMs: 0,
     chatViewerGraceMs: 0,
     adaptersReportTimeoutMs: 400,
+    capabilityBreakerThreshold: 3,
+    capabilityBreakerCooldownMs: 600_000,
     ...overrides,
   };
 }
