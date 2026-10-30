@@ -635,6 +635,40 @@ UPDATE llm_providers SET
 ALTER TABLE llm_providers DROP COLUMN api;
     `,
   },
+  {
+    version: 33,
+    description:
+      'issue #97 — delegated-decision audit rows (append-only, owner-capped on write): one row per gate verdict on either axis; request_id is the humanResponse backfill key, created_at walks pages',
+    sql: `
+CREATE TABLE decision_records (
+  id                 TEXT PRIMARY KEY,
+  owner_id           TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  created_at         TEXT NOT NULL,
+  axis               TEXT NOT NULL,
+  machine_id         TEXT,
+  session_id         TEXT,
+  request_id         TEXT,
+  target             TEXT,
+  tool_title         TEXT NOT NULL,
+  tool_kind          TEXT,
+  tool_input_preview TEXT,
+  outcome            TEXT NOT NULL,
+  decided_by         TEXT NOT NULL,
+  severity           REAL,
+  intent             REAL,
+  why                TEXT,
+  sev_confidence     REAL,
+  intent_confidence  REAL,
+  provider_name      TEXT,
+  model_id           TEXT,
+  latency_ms         INTEGER,
+  denial_reason      TEXT,
+  human_response     TEXT
+);
+CREATE INDEX idx_decision_records_owner_created ON decision_records(owner_id, created_at);
+CREATE INDEX idx_decision_records_session_req ON decision_records(session_id, request_id);
+    `,
+  },
 ] as const;
 
 /**

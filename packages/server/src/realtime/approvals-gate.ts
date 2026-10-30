@@ -150,6 +150,19 @@ export interface ApprovalGateInput {
   options: readonly { optionId: string; kind: string; name: string }[];
 }
 
+/**
+ * #97 — the raw answers behind a verdict, riding every post-call outcome so
+ * the audit row records what the model actually said (not just the settle).
+ * Absent on pre-model outcomes (floor / eligibility escalates): nothing ran.
+ */
+export interface ApprovalVerdictContext {
+  severity?: number;
+  intent?: number;
+  why?: DelegationDenialReason;
+  sevConfidence?: number;
+  intentConfidence?: number;
+}
+
 export type ApprovalGateOutcome =
   | {
       kind: 'decide';
@@ -162,6 +175,7 @@ export type ApprovalGateOutcome =
       denyMessage?: string;
       /** Fallback correction note for targets without a reason channel. */
       queueNote?: string;
+      verdict?: ApprovalVerdictContext;
     }
   | {
       kind: 'advisory';
@@ -171,8 +185,9 @@ export type ApprovalGateOutcome =
       /** v2 — the model's raw verdict inputs, context for the human's card. */
       severity?: number;
       intent?: number;
+      verdict?: ApprovalVerdictContext;
     }
-  | { kind: 'escalate' };
+  | { kind: 'escalate'; verdict?: ApprovalVerdictContext };
 
 /**
  * #92 — targets whose ACP reject can carry a REASON to the model (the patched
@@ -425,7 +440,16 @@ export async function decideApproval(
   const severity = answers.severity?.score;
   const intent = answers.intent?.noul;
   const why = normalizeWhy(answers.why?.choice);
+  const sevConfidence = answers.severity?.confidence;
+  const intentConfidence = answers.intent?.confidence;
   const answerFloor = policy?.confidenceThreshold ?? bands.answerConfidenceFloor;
+  const verdict: ApprovalVerdictContext = {
+    ...(severity !== undefined ? { severity } : {}),
+    ...(intent !== undefined ? { intent } : {}),
+    ...(answers.why?.choice !== undefined ? { why } : {}),
+    ...(sevConfidence !== undefined ? { sevConfidence } : {}),
+    ...(intentConfidence !== undefined ? { intentConfidence } : {}),
+  };
 
   // 6 — the verdict matrix, enforced by OUR code (the model never applies
   // free-form rules). Missing answers ⇒ escalate with whatever lean the
@@ -443,14 +467,12 @@ export async function decideApproval(
   // tag, never a verdict input; escalating a crisp exfiltration denial
   // because its reason tag sat on a flat distribution would weaken it.
   if (severity === undefined || intent === undefined) {
-    if (severity !== undefined && answers.severity?.confidence !== undefined) {
-      return advisory('reject', answers.severity.confidence, why, severity, intent);
+    if (severity !== undefined && sevConfidence !== undefined) {
+      return advisory('reject', sevConfidence, why, severity, intent, verdict);
     }
-    return { kind: 'escalate' };
+    return { kind: 'escalate', verdict };
   }
 
-  const sevConfidence = answers.severity?.confidence;
-  const intentConfidence = answers.intent?.confidence;
   const sevConfident = (sevConfidence ?? 0) >= answerFloor;
   // Calibration finding (Bailian decision-model-preview): noul answers carry
   // NO confidence on this wire — the value itself is the probability, its
@@ -461,18 +483,18 @@ export async function decideApproval(
 
   if (severity >= 6.5) {
     if (!sevConfident) {
-      return advisory('reject', sevConfidence ?? 0, why, severity, intent);
+      return advisory('reject', sevConfidence ?? 0, why, severity, intent, verdict);
     }
     const reject = rejectOnce;
     if (reject === undefined) {
       // No one-shot reject to answer with (a delegation never grants or
       // imposes persistence) — escalate with the strongest possible lean.
-      return advisory('reject', sevConfidence ?? 0, why, severity, intent);
+      return advisory('reject', sevConfidence ?? 0, why, severity, intent, verdict);
     }
     if (!hasReasonChannel(input.target)) {
       // An unexplained deny just stalls: everywhere but claude-code the
       // human card decides, with the model's exfiltration verdict beside it.
-      return advisory('reject', sevConfidence ?? 0, why, severity, intent);
+      return advisory('reject', sevConfidence ?? 0, why, severity, intent, verdict);
     }
     return {
       kind: 'decide',
@@ -481,18 +503,20 @@ export async function decideApproval(
       ...(sevConfidence !== undefined ? { confidence: sevConfidence } : {}),
       denial: { reason: why },
       denyMessage: denyMessage(input.view, why),
+      verdict,
     };
   }
 
   if (severity <= 2.5) {
     if (!sevConfident) {
-      return advisory('allow', sevConfidence ?? 0, undefined, severity, intent);
+      return advisory('allow', sevConfidence ?? 0, undefined, severity, intent, verdict);
     }
     return {
       kind: 'decide',
       optionId: allowOnce.optionId,
       decidedBy: 'model',
       ...(sevConfidence !== undefined ? { confidence: sevConfidence } : {}),
+      verdict,
     };
   }
 
@@ -504,6 +528,7 @@ export async function decideApproval(
       why,
       severity,
       intent,
+      verdict,
     );
   }
   if (intent >= bands.intentThreshold) {
@@ -512,9 +537,10 @@ export async function decideApproval(
       optionId: allowOnce.optionId,
       decidedBy: 'model',
       confidence: Math.min(sevConfidence ?? 1, intentConfidence ?? 1),
+      verdict,
     };
   }
-  return advisory('reject', intentConfidence ?? 0, why, severity, intent);
+  return advisory('reject', intentConfidence ?? 0, why, severity, intent, verdict);
 }
 
 /** The escalated lean — context for the human's card, never a decision. */
@@ -524,6 +550,7 @@ function advisory(
   reason: DelegationDenialReason | undefined,
   severity: number | undefined,
   intent: number | undefined,
+  verdict: ApprovalVerdictContext,
 ): ApprovalGateOutcome {
   return {
     kind: 'advisory',
@@ -532,5 +559,6 @@ function advisory(
     ...(reason !== undefined && lean === 'reject' ? { reason } : {}),
     ...(severity !== undefined ? { severity } : {}),
     ...(intent !== undefined ? { intent } : {}),
+    verdict,
   };
 }

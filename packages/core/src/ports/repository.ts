@@ -13,6 +13,9 @@
 
 import type {
   Credential,
+  DecisionHumanResponse,
+  DecisionRecord,
+  DecisionRecordListFilter,
   AgentInstance,
   AssistantConfig,
   AssistantMessageRow,
@@ -335,6 +338,29 @@ export interface NoteCategoryRepository {
   delete(id: string): Promise<void>;
 }
 
+/**
+ * Issue #97 — delegated-decision audit rows. Personal-scope by construction
+ * (`ownerId` is a required filter on every read); `append` prunes the owner
+ * to `DECISION_RECORDS_CAP` newest rows on-write (no sweeper timer).
+ */
+export interface DecisionRecordRepository {
+  /** Append + on-write prune (both drivers own the cap equally). */
+  append(record: DecisionRecord): Promise<void>;
+  /** Newest-first, filtered; `limit` caps the page. */
+  list(filter: DecisionRecordListFilter): Promise<DecisionRecord[]>;
+  /**
+   * Backfill the human's answer on an escalated card — by (owner, session,
+   * request): the realtime settle path never holds row ids. False when no
+   * pending row matched (pruned away, or never escalated).
+   */
+  markHumanResponse(
+    ownerId: string,
+    sessionId: string,
+    requestId: string,
+    response: DecisionHumanResponse,
+  ): Promise<boolean>;
+}
+
 export interface UnitOfWork {
   resources: ResourceRepository;
   profiles: ProfileRepository;
@@ -355,4 +381,5 @@ export interface UnitOfWork {
   notes: NoteRepository;
   noteAnnotations: NoteAnnotationRepository;
   noteCategories: NoteCategoryRepository;
+  decisionRecords: DecisionRecordRepository;
 }

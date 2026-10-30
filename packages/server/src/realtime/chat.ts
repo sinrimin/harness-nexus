@@ -22,10 +22,13 @@ import type { SystemOneFetch } from '../infra/systemone.js';
 import {
   decideApproval,
   type ApprovalBands,
+  type ApprovalGateOutcome,
+  GATE_TOOL_INPUT_CHAR_CAP,
   PROMPT_RETAIN_CHAR_CAP,
   PROMPT_RETAIN_WINDOW,
   toolInputText,
 } from './approvals-gate.js';
+import type { DecisionHumanResponse } from '@harness-nexus/core';
 
 /**
  * Chat routing + gating (Phase 8 C5, reworked 9 W7). wiki design-phase-8-c5.md
@@ -175,6 +178,12 @@ interface LiveSession {
   dispatch: boolean;
   readyTimer: NodeJS.Timeout | null;
   permissionTimers: Map<string, NodeJS.Timeout>;
+  /**
+   * #97 — the pending card's allow-option ids (requestId → ids), so a HUMAN
+   * settle can be classified allow/reject for the audit backfill. Cleared
+   * wherever `permissionTimers` is.
+   */
+  permissionAllowOptions: Map<string, Set<string>>;
   /** 9 W14.1 — elicitation watchdogs, same policy as permissions. */
   elicitationTimers: Map<string, NodeJS.Timeout>;
   /** #92 — the session's approvals responder view (machine default + live switch). */
@@ -372,6 +381,7 @@ export class ChatService {
       dispatch: openerSocketId === null,
       readyTimer: null,
       permissionTimers: new Map(),
+      permissionAllowOptions: new Map(),
       elicitationTimers: new Map(),
       approvals: await this.resolveApprovalsView(ownerId, machine),
       recentPrompts: [],
@@ -706,6 +716,23 @@ export class ChatService {
       if (timer !== undefined) {
         clearTimeout(timer);
         session.permissionTimers.delete(event.requestId);
+        // #97 — a daemon-initiated settle of a still-armed card (cancel /
+        // backstop): the human's side of the pair, for the audit row. Our
+        // own delegated settles already cleared the timer, so they never
+        // reach this backfill.
+        const allowIds = session.permissionAllowOptions.get(event.requestId);
+        this.backfillHumanResponse(
+          session,
+          event.requestId,
+          event.outcome === 'cancelled'
+            ? 'cancel'
+            : event.outcome === 'timeout'
+              ? 'timeout'
+              : (event.optionId !== undefined && allowIds?.has(event.optionId)) === true
+                ? 'allow'
+                : 'reject',
+        );
+        session.permissionAllowOptions.delete(event.requestId);
       }
     } else if (event.kind === 'elicitation_resolved') {
       const timer = session.elicitationTimers.get(event.requestId);
@@ -717,10 +744,16 @@ export class ChatService {
 
     if (event.kind === 'permission_request') {
       const { requestId } = event;
+      session.permissionAllowOptions.set(
+        requestId,
+        new Set(event.options.filter((o) => o.kind.startsWith('allow')).map((o) => o.optionId)),
+      );
       session.permissionTimers.set(
         requestId,
         setTimeout(() => {
           session.permissionTimers.delete(requestId);
+          session.permissionAllowOptions.delete(requestId);
+          this.backfillHumanResponse(session, requestId, 'timeout');
           // Timeout ⇒ answer the agent with cancelled and settle every viewer's card.
           this.deps.io.toCtl(session.machineId, 'chat:permission.respond', {
             sessionId,
@@ -1175,6 +1208,7 @@ export class ChatService {
       return; // unreadable config ⇒ human decides
     }
     const cfg = machine?.chatApprovals;
+    const startedAt = Date.now();
     const outcome = await decideApproval(
       {
         uow: this.deps.uow,
@@ -1219,6 +1253,10 @@ export class ChatService {
         options,
       },
     );
+    // #97 — the audit row rides every outcome the gate produced (pre-model
+    // escalates — no verdict — are the one silent kind: the human decided
+    // alone, participation is that record). Fire-and-forget by contract.
+    this.recordDecision(session, requestId, toolCall, outcome, Date.now() - startedAt);
     if (outcome.kind === 'escalate') return;
     // First responder wins: a human answer or the watchdog may have settled
     // the card while the model ran.
@@ -1251,6 +1289,83 @@ export class ChatService {
   }
 
   /**
+   * #97 — one audit row per gate verdict, fire-and-forget (a failed audit
+   * write must never break the settle). Floor rows stay lean (no model
+   * fields); a model-ran row carries the raw verdict, the configured
+   * decision model, and the call latency.
+   */
+  private recordDecision(
+    session: LiveSession,
+    requestId: string,
+    toolCall: {
+      title?: string | undefined;
+      kind?: string | undefined;
+      rawInput?: Record<string, unknown> | undefined;
+    },
+    outcome: ApprovalGateOutcome,
+    latencyMs: number,
+  ): void {
+    if (outcome.kind === 'escalate' && outcome.verdict === undefined) return;
+    const preview = toolInputText(toolCall.rawInput)?.slice(0, GATE_TOOL_INPUT_CHAR_CAP);
+    const v = outcome.verdict;
+    void this.deps.uow.decisionRecords
+      .append({
+        id: generateId(),
+        ownerId: session.ownerId,
+        createdAt: new Date().toISOString(),
+        axis: 'chat',
+        machineId: session.machineId,
+        sessionId: session.sessionId,
+        requestId,
+        target: session.target,
+        toolTitle: toolCall.title ?? '',
+        ...(toolCall.kind !== undefined ? { toolKind: toolCall.kind } : {}),
+        ...(preview !== undefined ? { toolInputPreview: preview } : {}),
+        outcome:
+          outcome.kind === 'decide'
+            ? outcome.denial !== undefined
+              ? 'deny'
+              : 'allow'
+            : 'escalate',
+        decidedBy: outcome.kind === 'decide' ? outcome.decidedBy : 'model',
+        ...(v !== undefined
+          ? {
+              ...(v.severity !== undefined ? { severity: v.severity } : {}),
+              ...(v.intent !== undefined ? { intent: v.intent } : {}),
+              ...(v.why !== undefined ? { why: v.why } : {}),
+              ...(v.sevConfidence !== undefined ? { sevConfidence: v.sevConfidence } : {}),
+              ...(v.intentConfidence !== undefined ? { intentConfidence: v.intentConfidence } : {}),
+              ...(session.approvals.providerName !== undefined
+                ? { providerName: session.approvals.providerName }
+                : {}),
+              ...(session.approvals.modelId !== undefined
+                ? { modelId: session.approvals.modelId }
+                : {}),
+              latencyMs,
+            }
+          : {}),
+        ...(outcome.kind === 'decide' && outcome.denial !== undefined
+          ? { denialReason: outcome.denial.reason }
+          : {}),
+        ...(outcome.kind === 'advisory' && outcome.reason !== undefined
+          ? { denialReason: outcome.reason }
+          : {}),
+      })
+      .catch(() => {});
+  }
+
+  /** #97 — backfill the human's answer onto the escalated row (no row = no-op). */
+  private backfillHumanResponse(
+    session: LiveSession,
+    requestId: string,
+    response: DecisionHumanResponse,
+  ): void {
+    void this.deps.uow.decisionRecords
+      .markHumanResponse(session.ownerId, session.sessionId, requestId, response)
+      .catch(() => {});
+  }
+
+  /**
    * #92 — settle a card the gate decided: answer the agent (optionId sacred,
    * `_meta.denyMessage` where the channel exists), settle every viewer with
    * the attribution, and optionally park the correction note. First
@@ -1275,6 +1390,7 @@ export class ChatService {
     if (timer === undefined) return; // raced: the human or the watchdog won
     clearTimeout(timer);
     session.permissionTimers.delete(requestId);
+    session.permissionAllowOptions.delete(requestId);
     const delegated = {
       providerName: info.providerName,
       modelId: info.modelId,
@@ -1327,6 +1443,19 @@ export class ChatService {
     if (!this.deps.isOnline(session.machineId)) return { ok: false, code: 'MACHINE_OFFLINE' };
     clearTimeout(timer);
     session.permissionTimers.delete(requestId);
+    const allowIds = session.permissionAllowOptions.get(requestId);
+    session.permissionAllowOptions.delete(requestId);
+    // #97 — the human's side of the labeled pair (the model's lean is
+    // already on the escalated row).
+    this.backfillHumanResponse(
+      session,
+      requestId,
+      optionId === undefined
+        ? 'cancel'
+        : (allowIds !== undefined && allowIds.has(optionId)) === true
+          ? 'allow'
+          : 'reject',
+    );
     this.deps.io.toCtl(session.machineId, 'chat:permission.respond', {
       sessionId,
       requestId,
@@ -1579,6 +1708,7 @@ export class ChatService {
     if (session.readyTimer !== null) clearTimeout(session.readyTimer);
     for (const timer of session.permissionTimers.values()) clearTimeout(timer);
     session.permissionTimers.clear();
+    session.permissionAllowOptions.clear();
     for (const timer of session.elicitationTimers.values()) clearTimeout(timer);
     session.elicitationTimers.clear();
 

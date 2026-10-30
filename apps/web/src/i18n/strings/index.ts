@@ -29,6 +29,7 @@ import { chatStrings } from './chat.js';
 import { assistantsStrings } from './assistants.js';
 import { apiToolsStrings } from './apiTools.js';
 import { notesStrings } from './notes.js';
+import { decisionsStrings } from './decisions.js';
 import { kitStrings } from './kit.js';
 
 export const en = {
@@ -52,6 +53,7 @@ export const en = {
   assistants: assistantsStrings.en,
   apiTools: apiToolsStrings.en,
   notes: notesStrings.en,
+  decisions: decisionsStrings.en,
   kit: kitStrings.en,
 };
 
@@ -76,6 +78,7 @@ export const zh: typeof en = {
   assistants: assistantsStrings.zh,
   apiTools: apiToolsStrings.zh,
   notes: notesStrings.zh,
+  decisions: decisionsStrings.zh,
   kit: kitStrings.zh,
 };
 

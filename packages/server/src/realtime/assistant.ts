@@ -36,6 +36,8 @@ import {
   PROMPT_RETAIN_CHAR_CAP,
   PROMPT_RETAIN_WINDOW,
   toolInputText,
+  type ApprovalGateOutcome,
+  GATE_TOOL_INPUT_CHAR_CAP,
 } from './approvals-gate.js';
 
 /**
@@ -159,6 +161,8 @@ export interface AssistantRealtimeDeps extends AssistantRunnerDeps {
 
 interface PendingApproval {
   sessionId: string;
+  /** #97 — the audit backfill's owner half (markHumanResponse key). */
+  ownerId: string;
   resolve: (answer: AssistantApprovalAnswer) => void;
   timer: NodeJS.Timeout;
 }
@@ -1009,6 +1013,26 @@ export class AssistantRealtimeService {
     if (pending === undefined) return;
     this.pendingApprovals.delete(requestId);
     clearTimeout(pending.timer);
+    // #97 — every settlement funnels here; the ones WITHOUT an attribution
+    // are the human/watchdog side of the pair (the gate's own settle already
+    // recorded its verdict). This axis normalizes option ids, so 'allow_once'
+    // IS the classification.
+    if (extra?.attribution === undefined) {
+      void this.deps.uow.decisionRecords
+        .markHumanResponse(
+          pending.ownerId,
+          pending.sessionId,
+          requestId,
+          outcome === 'timeout'
+            ? 'timeout'
+            : outcome === 'cancelled'
+              ? 'cancel'
+              : optionId === 'allow_once'
+                ? 'allow'
+                : 'reject',
+        )
+        .catch(() => {});
+    }
     pending.resolve({
       allowed: outcome === 'selected' && optionId === 'allow_once',
       ...(extra?.reason !== undefined ? { reason: extra.reason } : {}),
@@ -1088,6 +1112,7 @@ export class AssistantRealtimeService {
         }, this.opts.permissionTimeoutMs);
         this.pendingApprovals.set(requestId, {
           sessionId: ch.sessionId,
+          ownerId: ch.ownerId,
           resolve,
           timer,
         });
@@ -1122,6 +1147,7 @@ export class AssistantRealtimeService {
     if (gate === undefined) return;
     const view = await this.resolveDecisionView(ch.ownerId);
     if (view === null) return; // nothing resolvable ⇒ human decides
+    const startedAt = Date.now();
     const outcome = await decideApproval(
       {
         uow: this.deps.uow,
@@ -1153,6 +1179,9 @@ export class AssistantRealtimeService {
         options,
       },
     );
+    // #97 — the audit row (same contract as the chat axis: fire-and-forget,
+    // pre-model escalates silent, lean floor rows).
+    this.recordDecision(ch, requestId, toolCall, view, outcome, Date.now() - startedAt);
     if (outcome.kind === 'escalate') return;
     // First responder wins: the human or the watchdog may have settled the
     // card while the decision model ran.
@@ -1182,6 +1211,66 @@ export class AssistantRealtimeService {
       },
       ...(denial !== undefined ? { reason: denyMessage(view, denial.reason) } : {}),
     });
+  }
+
+  /**
+   * #97 — one audit row per gate verdict on the assistant axis
+   * (no machine; the session is the persisted assistant session).
+   */
+  private recordDecision(
+    ch: LiveChannel,
+    requestId: string,
+    toolCall: {
+      toolCallId: string;
+      toolName: string;
+      args: unknown;
+      description?: string | undefined;
+    },
+    view: { providerName?: string | undefined; modelId?: string | undefined },
+    outcome: ApprovalGateOutcome,
+    latencyMs: number,
+  ): void {
+    if (outcome.kind === 'escalate' && outcome.verdict === undefined) return;
+    const preview = toolInputText(toolCall.args)?.slice(0, GATE_TOOL_INPUT_CHAR_CAP);
+    const v = outcome.verdict;
+    void this.deps.uow.decisionRecords
+      .append({
+        id: generateId(),
+        ownerId: ch.ownerId,
+        createdAt: new Date().toISOString(),
+        axis: 'assistant',
+        sessionId: ch.sessionId,
+        requestId,
+        target: 'assistant',
+        toolTitle: toolCall.toolName,
+        ...(preview !== undefined ? { toolInputPreview: preview } : {}),
+        outcome:
+          outcome.kind === 'decide'
+            ? outcome.denial !== undefined
+              ? 'deny'
+              : 'allow'
+            : 'escalate',
+        decidedBy: outcome.kind === 'decide' ? outcome.decidedBy : 'model',
+        ...(v !== undefined
+          ? {
+              ...(v.severity !== undefined ? { severity: v.severity } : {}),
+              ...(v.intent !== undefined ? { intent: v.intent } : {}),
+              ...(v.why !== undefined ? { why: v.why } : {}),
+              ...(v.sevConfidence !== undefined ? { sevConfidence: v.sevConfidence } : {}),
+              ...(v.intentConfidence !== undefined ? { intentConfidence: v.intentConfidence } : {}),
+              ...(view.providerName !== undefined ? { providerName: view.providerName } : {}),
+              ...(view.modelId !== undefined ? { modelId: view.modelId } : {}),
+              latencyMs,
+            }
+          : {}),
+        ...(outcome.kind === 'decide' && outcome.denial !== undefined
+          ? { denialReason: outcome.denial.reason }
+          : {}),
+        ...(outcome.kind === 'advisory' && outcome.reason !== undefined
+          ? { denialReason: outcome.reason }
+          : {}),
+      })
+      .catch(() => {});
   }
 
   /** History for a session (used by tests / future re-sync paths). */

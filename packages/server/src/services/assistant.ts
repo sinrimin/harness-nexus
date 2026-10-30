@@ -183,12 +183,28 @@ export async function updateAssistant(
     ...(input.enabledToolGroups !== undefined
       ? { enabledToolGroups: input.enabledToolGroups as AssistantToolGroup[] }
       : {}),
+    // Dead references self-heal here: an id ALREADY stored on the config
+    // whose target has since been deleted/invisible PRUNES instead of 404ing
+    // (otherwise a save can never succeed — the edit form round-trips the
+    // stored ids it got, dangling ones included). A NEW foreign id still 404s.
     ...(input.mcpServerIds !== undefined
-      ? { mcpServerIds: await visibleMcpServerIds(deps, principal, input.mcpServerIds) }
+      ? {
+          mcpServerIds: await visibleMcpServerIds(
+            deps,
+            principal,
+            input.mcpServerIds,
+            existing.mcpServerIds ?? [],
+          ),
+        }
       : {}),
     ...(input.skillResourceIds !== undefined
       ? {
-          skillResourceIds: await readableSkillResourceIds(deps, principal, input.skillResourceIds),
+          skillResourceIds: await readableSkillResourceIds(
+            deps,
+            principal,
+            input.skillResourceIds,
+            existing.skillResourceIds ?? [],
+          ),
         }
       : {}),
     ...(input.apiToolServiceIds !== undefined
@@ -197,6 +213,7 @@ export async function updateAssistant(
             deps,
             principal,
             input.apiToolServiceIds,
+            existing.apiToolServiceIds ?? [],
           ),
         }
       : {}),
@@ -223,6 +240,7 @@ async function visibleApiToolServiceIds(
   deps: ServiceDeps,
   principal: Principal,
   ids: string[],
+  existing: readonly string[] = [],
 ): Promise<string[]> {
   const out: string[] = [];
   for (const id of ids) {
@@ -232,6 +250,7 @@ async function visibleApiToolServiceIds(
       service.deletedAt !== undefined ||
       (service.scope === 'personal' && service.ownerId !== principal.userId)
     ) {
+      if (existing.includes(id)) continue; // dead reference self-heals (see MCP)
       throw new AppError(`API tool service ${id} not found`, 404, 'API_TOOL_NOT_FOUND');
     }
     if (!out.includes(id)) out.push(id);
@@ -243,6 +262,7 @@ async function visibleMcpServerIds(
   deps: ServiceDeps,
   principal: Principal,
   ids: string[],
+  existing: readonly string[] = [],
 ): Promise<string[]> {
   const out: string[] = [];
   for (const id of ids) {
@@ -252,6 +272,11 @@ async function visibleMcpServerIds(
       server.deletedAt !== undefined ||
       (server.scope === 'personal' && server.ownerId !== principal.userId)
     ) {
+      // A reference that died AFTER the config saved prunes — the config
+      // must stay savable (bug report: delete an MCP, the assistant edit
+      // could never save again). Anything not already stored is a foreign
+      // ADD and still fails honestly.
+      if (existing.includes(id)) continue;
       throw new AppError(`MCP server ${id} not found`, 404, 'MCP_SERVER_NOT_FOUND');
     }
     if (!out.includes(id)) out.push(id);
@@ -268,6 +293,7 @@ async function readableSkillResourceIds(
   deps: ServiceDeps,
   principal: Principal,
   ids: string[],
+  existing: readonly string[] = [],
 ): Promise<string[]> {
   const out: string[] = [];
   for (const id of ids) {
@@ -277,6 +303,7 @@ async function readableSkillResourceIds(
       resource.deletedAt !== undefined ||
       (resource.scope === 'personal' && resource.ownerId !== principal.userId)
     ) {
+      if (existing.includes(id)) continue; // dead reference self-heals (see MCP)
       throw new AppError(`Skill resource ${id} not found`, 404, 'RESOURCE_NOT_FOUND');
     }
     if (resource.kind !== 'skill') {

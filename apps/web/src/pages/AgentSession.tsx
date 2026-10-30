@@ -1449,6 +1449,7 @@ export function AgentSessionPage() {
                 <ChatStream
                   state={conversation}
                   cwd={currentCwd}
+                  sessionId={sessionId === '' ? undefined : sessionId}
                   prependKey={prependKey}
                   onTopReached={() => fetchOlderHistory()}
                   onCaptureStep={setCapture}

@@ -58,6 +58,7 @@ import type {
   PiModelDetail,
   RuntimeConfigView,
   LlmProviderView,
+  DecisionRecordView,
   LlmModelInfo,
   ProviderApiEndpoint,
   ProviderApiEndpointInput,
@@ -122,6 +123,7 @@ export type {
   ApiToolServiceView,
   ApiToolServiceBundle,
   ApiToolDefInput,
+  DecisionRecordView,
   ChatPrewarmSettings,
   ChatDefaultModeSettings,
   ChatApprovalsSettings,
@@ -1033,6 +1035,28 @@ export class HarnessNexusClient {
     resolved: NoteAnnotation[];
   }> {
     return this.request('POST', `/api/notes/${id}/revise`);
+  }
+
+  // ---- delegated-decision audit (#97) ----
+
+  async listDecisionRecords(
+    query?: Partial<{
+      sessionId: string;
+      machineId: string;
+      outcome: string;
+      before: string;
+      limit: number;
+    }>,
+  ): Promise<DecisionRecordView[]> {
+    const qs = new URLSearchParams();
+    if (query?.sessionId !== undefined) qs.set('sessionId', query.sessionId);
+    if (query?.machineId !== undefined) qs.set('machineId', query.machineId);
+    if (query?.outcome !== undefined) qs.set('outcome', query.outcome);
+    if (query?.before !== undefined) qs.set('before', query.before);
+    if (query?.limit !== undefined) qs.set('limit', String(query.limit));
+    const suffix = qs.toString();
+    const res = await this.request('GET', `/api/decision-records${suffix ? `?${suffix}` : ''}`);
+    return res.records;
   }
 
   // ---- settings ----

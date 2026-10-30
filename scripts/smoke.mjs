@@ -3588,5 +3588,10 @@ r = await req('PATCH', `/api/assistants/${asstM2Id}`, {
 });
 expect('foreign mcp id 404', r.status, 404);
 
+// #97 — the delegated-decision audit list (owner-scoped; empty is fine here).
+r = await req('GET', '/api/decision-records?limit=10', { token: userToken });
+expect('decision records list', r.status, 200);
+expect('decision records shape', Array.isArray(r.json.records), true);
+
 log(`\n=== ${pass} passed, ${fail} failed ===`);
 process.exit(fail ? 1 : 0);
