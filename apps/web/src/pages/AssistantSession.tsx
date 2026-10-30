@@ -544,7 +544,10 @@ export function AssistantSessionPage() {
   // only the drawer's picks carry the ?rail hand-off.
   const rail = (inDrawer: boolean) => (
     <>
-      <div className="flex items-center gap-1 border-b px-2 py-2.5">
+      {/* Same contract as the machine rail's band: h-12 pinned to the stream
+      header so both columns' borders align in every skin (a hugging height
+      rides --control-h-sm: 52px Signal / 45px BAY vs the fixed 48px band). */}
+      <div className="flex h-12 items-center gap-1 border-b px-2">
         <EndSwitcher current="assistant" fromDrawer={inDrawer} />
         <span className="min-w-0 flex-1" />
         <Button
