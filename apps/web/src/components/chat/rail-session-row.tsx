@@ -59,11 +59,10 @@ export function RailSessionRow({
         // header's `+` margin inside it), so the title's truncation point
         // never shifts when the trash fades in. Phone: no on-row trash (the
         // swipe reveal), keep the plain 12px.
-        // #104 — the free (right) corners take the skin radius; the signal
-        // edge stays anchored at x=0. Full-bleed rows otherwise read square
-        // beside the plate's rounded current key (Signal 6px, BAY 2px — the
-        // token keeps each skin's own language).
-        'flex w-full items-start rounded-r-(--radius-well) border-l-2 border-l-transparent py-2 pr-3 pl-[30px] text-left md:pr-8',
+        // #104 — the row stays SQUARE: the full-bleed ledger and the inset
+        // rounded plate key are different scopes by design; rounding only the
+        // free corners read as a defect, not a reconciliation.
+        'flex w-full items-start border-l-2 border-l-transparent py-2 pr-3 pl-[30px] text-left md:pr-8',
         active
           ? 'border-l-signal bg-signal/8 hover:bg-signal/12'
           : faded

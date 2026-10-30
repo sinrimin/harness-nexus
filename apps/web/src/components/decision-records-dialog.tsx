@@ -5,7 +5,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { ChevronDownIcon } from 'lucide-react';
 import { api } from '@/api';
-import { DataText, EmptyState, LabelText, Note, Skeleton, Well } from '@/components/kit';
+import { DataText, EmptyState, Note, Skeleton, Well } from '@/components/kit';
 import { StateSignal, type SignalState } from '@/components/state-signal';
 import { Button } from '@/components/ui/button';
 import { FormDialog } from '@/components/ui/form-dialog';
@@ -138,9 +138,6 @@ export function DecisionRecordsDialog({ open, onClose, sessionId }: DecisionReco
     >
       {sessionId === undefined ? (
         <div className="flex flex-wrap items-center gap-2">
-          <LabelText size="sm" className="shrink-0">
-            {t('decisions.filterLabel')}
-          </LabelText>
           <Select
             value={outcome === '' ? 'all' : outcome}
             onValueChange={(v) => setOutcome(v === 'all' ? '' : (v as OutcomeFilter))}
