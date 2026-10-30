@@ -27,10 +27,13 @@ export function SessionRow({
   if (onDelete === undefined) return <>{children}</>;
   return (
     <div className="group/row relative">
-      {/* Desktop hover trash (the phone's is the swipe reveal). */}
+      {/* Desktop hover trash (the phone's is the swipe reveal). #99 review —
+      the icon rides the row's vertical center and keeps the SAME right
+      margin as the folder header's `+` (12px), inside the slot the row's
+      `md:pr-8` reserve holds for it. */}
       <button
         type="button"
-        className="text-muted-foreground hover:text-destructive absolute right-1.5 top-2 z-10 hidden opacity-0 transition-opacity group-hover/row:opacity-100 focus-visible:opacity-100 md:flex"
+        className="text-muted-foreground hover:text-destructive absolute top-1/2 right-3 z-10 hidden -translate-y-1/2 opacity-0 transition-opacity group-hover/row:opacity-100 focus-visible:opacity-100 md:flex"
         aria-label={deleteLabel}
         title={deleteLabel}
         onClick={(e) => {
