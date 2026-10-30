@@ -5,6 +5,8 @@
 /** #97 — the delegated-decision audit dialogs (session entry + providers entry). */
 const en = {
   title: 'Delegated decisions',
+  /** The header/trigger label (short: it sits in a dense chat toolbar). */
+  openLabel: 'Records',
   openHint: 'Delegated decision records',
   viewAll: 'View delegated records',
   verdictAllow: 'Allowed',
@@ -20,7 +22,6 @@ const en = {
   severity: 'severity',
   intent: 'intent',
   showArgs: 'Arguments',
-  hideArgs: 'Hide arguments',
   emptyFull: 'No delegated decisions yet.',
   emptySession: 'No delegated decisions in this session yet.',
   loadMore: 'Load more',
@@ -29,9 +30,10 @@ const en = {
 };
 
 const zh: typeof en = {
-  title: '委托审批记录',
-  openHint: '委托审批记录',
-  viewAll: '查看委托审批记录',
+  title: '代审记录',
+  openLabel: '代审记录',
+  openHint: '代审记录',
+  viewAll: '查看代审记录',
   verdictAllow: '放行',
   verdictDeny: '拒绝',
   verdictEscalate: '转人工',
@@ -45,12 +47,11 @@ const zh: typeof en = {
   severity: '严重度',
   intent: '意图',
   showArgs: '调用参数',
-  hideArgs: '收起参数',
-  emptyFull: '暂无委托审批记录。',
+  emptyFull: '暂无代审记录。',
   emptySession: '本会话暂无代审记录。',
   loadMore: '加载更多',
   allOutcomes: '全部结果',
-  errorLoad: '委托审批记录加载失败。',
+  errorLoad: '代审记录加载失败。',
 };
 
 export const decisionsStrings = { en, zh };

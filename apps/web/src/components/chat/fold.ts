@@ -128,6 +128,12 @@ export interface PermissionCardState {
     severity?: number;
     intent?: number;
   };
+  /**
+   * #104 — delegation was on but could not conclude; the card is the
+   * human's to answer. Rendered as one muted reason line (never an error:
+   * the fallback is safe, it was just silent before).
+   */
+  escalation?: { reason: 'no-model' | 'timeout' | 'http' | 'shape' };
   /** #92 — how it settled (`undefined` on pre-#92 events = a human did). */
   resolution?: {
     responder: 'human' | 'delegated';
@@ -532,6 +538,16 @@ function applyEvent(state: FoldState, event: ChatStreamEvent): FoldState {
                   ...(event.intent !== undefined ? { intent: event.intent } : {}),
                 },
               }
+            : p,
+        ),
+      };
+    case 'permission_escalated':
+      // #104 — name the failed delegation on the still-pending card.
+      return {
+        ...state,
+        permissions: state.permissions.map((p) =>
+          p.requestId === event.requestId
+            ? { ...p, escalation: { reason: event.reason } }
             : p,
         ),
       };

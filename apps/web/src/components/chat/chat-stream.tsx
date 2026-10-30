@@ -241,31 +241,35 @@ const SettledPermissions = memo(function SettledPermissions({
   const allowed = delegated.filter((p) => p.resolution?.denialReason === undefined);
   const denied = delegated.filter((p) => p.resolution?.denialReason !== undefined);
   return (
-    <span className="text-muted-foreground/60 text-[11px]">
-      {t('chat.permissionsSettled', { count: permissions.length })}
-      {delegated.length > 0
-        ? ` · ${t('chat.approvalsSettledSummary', {
-            delegated: delegated.length,
-            allowed: allowed.length,
-            denied: denied.length,
-          })}`
-        : ''}
+    <div className="role-data-sm text-muted-foreground/70 flex flex-wrap items-baseline gap-x-1 gap-y-0.5">
+      <span>
+        {t('chat.permissionsSettled', { count: permissions.length })}
+        {delegated.length > 0
+          ? ` · ${t('chat.approvalsSettledSummary', {
+              delegated: delegated.length,
+              allowed: allowed.length,
+              denied: denied.length,
+            })}`
+          : ''}
+      </span>
       {/* #97 — the audit entry. Fold-local gate: only a fold that saw a
           delegated settle can promise the dialog content; a human-only fold
           hides it even when earlier folds decided (the providers entry
           covers the full trail — plumbing session-wide state here isn't
-          worth a second entry's exactness). */}
+          worth a second entry's exactness). #104 — a labelled button, not a
+          12px icon in the sentence: the entry existed but could not be
+          found. The chat header carries the session-wide entry. */}
       {delegated.length > 0 && sessionId !== undefined ? (
         <>
-          {' · '}
+          <span aria-hidden="true">·</span>
           <button
             type="button"
-            className="text-muted-foreground/60 hover:text-foreground -mx-1 inline-flex translate-y-0.5 cursor-pointer items-center rounded p-1 align-middle transition-colors"
+            className="text-muted-foreground hover:text-foreground hover:bg-tray -ml-0.5 inline-flex cursor-pointer items-center gap-1 rounded-(--radius-well) px-1 py-0.5 transition-colors"
             title={t('decisions.openHint')}
-            aria-label={t('decisions.openHint')}
             onClick={() => setRecordsOpen(true)}
           >
-            <ScrollTextIcon className="size-3" />
+            <ScrollTextIcon className="size-3" aria-hidden="true" />
+            {t('decisions.openLabel')}
           </button>
           <DecisionRecordsDialog
             open={recordsOpen}
@@ -274,6 +278,6 @@ const SettledPermissions = memo(function SettledPermissions({
           />
         </>
       ) : null}
-    </span>
+    </div>
   );
 });

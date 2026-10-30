@@ -163,6 +163,15 @@ export interface ApprovalVerdictContext {
   intentConfidence?: number;
 }
 
+/**
+ * Why the gate could not answer and left the card to the human. `no-model` is
+ * the configuration miss (no resolvable provider/credential); the rest mirror
+ * the SystemOne failure kinds. An unavailable escalate is NOT a verdict — the
+ * card must still be answered manually — but it is visible and audited (a
+ * silent fallback looked like delegated review simply not happening).
+ */
+export type ApprovalUnavailableReason = 'no-model' | 'timeout' | 'http' | 'shape';
+
 export type ApprovalGateOutcome =
   | {
       kind: 'decide';
@@ -187,7 +196,12 @@ export type ApprovalGateOutcome =
       intent?: number;
       verdict?: ApprovalVerdictContext;
     }
-  | { kind: 'escalate'; verdict?: ApprovalVerdictContext };
+  | {
+      kind: 'escalate';
+      verdict?: ApprovalVerdictContext;
+      /** Present when delegation was ATTEMPTED but could not conclude. */
+      unavailable?: ApprovalUnavailableReason;
+    };
 
 /**
  * #92 — targets whose ACP reject can carry a REASON to the model (the patched
@@ -220,6 +234,15 @@ function normalizeWhy(choice: string | undefined): DelegationDenialReason {
     default:
       return 'other';
   }
+}
+
+/** SystemOne failure kind → the notice's reason (anything else = config). */
+function unavailableReason(e: unknown): ApprovalUnavailableReason {
+  if (e !== null && typeof e === 'object' && 'kind' in e) {
+    const kind = (e as { kind: unknown }).kind;
+    if (kind === 'timeout' || kind === 'http' || kind === 'shape') return kind;
+  }
+  return 'no-model';
 }
 
 /**
@@ -342,29 +365,31 @@ export async function decideApproval(
   }
 
   // 4 — resolve the decision model (machine override, else the user's
-  // default slot) + its provider + credential. Any miss ⇒ human.
+  // default slot) + its provider + credential. Any miss ⇒ human, and the
+  // miss is NAMED (an unavailable delegation must not look like a silent
+  // manual card).
   const ref =
     policy?.decision ??
     (await deps.uow.users.findById(input.ownerId).catch(() => null))?.defaultModels?.decision;
-  if (ref === undefined) return { kind: 'escalate' };
+  if (ref === undefined) return { kind: 'escalate', unavailable: 'no-model' };
   const provider = await deps.uow.llmProviders.findById(ref.providerId).catch(() => null);
-  if (provider === null) return { kind: 'escalate' };
+  if (provider === null) return { kind: 'escalate', unavailable: 'no-model' };
   const systemoneApi = provider.apis.find((a) => a.kind === 'systemone');
-  if (systemoneApi === undefined) return { kind: 'escalate' };
+  if (systemoneApi === undefined) return { kind: 'escalate', unavailable: 'no-model' };
   if (!provider.models.some((m) => m.id === ref.modelId && m.apiKind === 'systemone')) {
-    return { kind: 'escalate' };
+    return { kind: 'escalate', unavailable: 'no-model' };
   }
   const endpoint = providerEndpointUrl('systemone', {
     baseUrl: provider.baseUrl,
     path: systemoneApi.path,
   });
-  if (endpoint === null) return { kind: 'escalate' };
+  if (endpoint === null) return { kind: 'escalate', unavailable: 'no-model' };
   const credential = await findCredentialForOwner(
     deps.uow,
     provider.credentialName,
     input.ownerId,
   ).catch(() => null);
-  if (credential === null) return { kind: 'escalate' };
+  if (credential === null) return { kind: 'escalate', unavailable: 'no-model' };
   const secret = decryptSecret(credential.secret, deps.credentialEncryptionKey);
 
   // 5 — the call. State = the user's own recent prompts (v2: window ×
@@ -434,7 +459,7 @@ export async function decideApproval(
         ? systemOneErrorMessage(e as SystemOneError)
         : String(e);
     deps.log?.warn(`approvals gate (#92) provider call failed: ${msg}`);
-    return { kind: 'escalate' }; // uncertain ⇒ human
+    return { kind: 'escalate', unavailable: unavailableReason(e) }; // uncertain ⇒ human
   }
 
   const severity = answers.severity?.score;
@@ -470,7 +495,9 @@ export async function decideApproval(
     if (severity !== undefined && sevConfidence !== undefined) {
       return advisory('reject', sevConfidence, why, severity, intent, verdict);
     }
-    return { kind: 'escalate', verdict };
+    // A partial/absent answer is a model-shape failure, not a policy call;
+    // name it so the card does not look like delegated review was never on.
+    return { kind: 'escalate', verdict, unavailable: 'shape' };
   }
 
   const sevConfident = (sevConfidence ?? 0) >= answerFloor;

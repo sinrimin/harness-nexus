@@ -3,9 +3,9 @@
 // SPDX-License-Identifier: MIT
 
 import { useCallback, useEffect, useState } from 'react';
-import { ChevronDownIcon, ChevronUpIcon } from 'lucide-react';
+import { ChevronDownIcon } from 'lucide-react';
 import { api } from '@/api';
-import { Note, Skeleton, Well } from '@/components/kit';
+import { DataText, EmptyState, Note, Skeleton, Well } from '@/components/kit';
 import { StateSignal, type SignalState } from '@/components/state-signal';
 import { Button } from '@/components/ui/button';
 import { FormDialog } from '@/components/ui/form-dialog';
@@ -16,17 +16,23 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { cn } from '@/lib/utils';
 import { dateLocale, useI18n } from '@/i18n';
 import type { TranslationKey } from '@/i18n';
 import type { DecisionRecordView } from '@harness-nexus/sdk';
 
 /**
  * #97 — the delegated-decision audit trail, one read-only dialog with two
- * entry modes: session-scoped (the chat settled-line button) and full (the
+ * entry modes: session-scoped (the chat header / settled line) and full (the
  * LLM providers defaults dialog). Verdict truth renders through StateSignal
  * (`data-state`); the arguments preview is protocol material, so it lives in
  * a Well; every figure column is tabular. Pages walk backward on an
  * exclusive createdAt cursor — newest-first, the same order the port pins.
+ *
+ * #104 — the redesign: the Arguments toggle is a stable disclosure ABOVE the
+ * well (the old show/hide pair swapped sides on expand, so the button jumped
+ * below the JSON), the metadata line uses the kit's data role, the filter is
+ * a labelled toolbar control, and the empty state is the kit's device.
  */
 
 const PAGE = 50;
@@ -131,7 +137,7 @@ export function DecisionRecordsDialog({ open, onClose, sessionId }: DecisionReco
       description={sessionId !== undefined ? undefined : t('llmProviders.decisionHint')}
     >
       {sessionId === undefined ? (
-        <div className="mb-3 flex items-center justify-end">
+        <div className="flex flex-wrap items-center gap-2">
           <Select
             value={outcome === '' ? 'all' : outcome}
             onValueChange={(v) => setOutcome(v === 'all' ? '' : (v as OutcomeFilter))}
@@ -163,9 +169,9 @@ export function DecisionRecordsDialog({ open, onClose, sessionId }: DecisionReco
           ))}
         </div>
       ) : records.length === 0 ? (
-        <p className="text-muted-foreground py-8 text-center text-xs">
-          {sessionId !== undefined ? t('decisions.emptySession') : t('decisions.emptyFull')}
-        </p>
+        <EmptyState
+          title={sessionId !== undefined ? t('decisions.emptySession') : t('decisions.emptyFull')}
+        />
       ) : (
         <>
           <div className="min-w-0">
@@ -196,15 +202,16 @@ function DecisionRow({ record }: { record: DecisionRecordView }) {
   const { t, lang } = useI18n();
   const [expanded, setExpanded] = useState(false);
   const verdict = VERDICT_KEY[record.outcome];
+  const preview = record.toolInputPreview;
   return (
-    <div className="border-border/60 py-2.5 first:pt-0 last:border-b-0 border-b">
+    <div className="border-border/60 py-3 first:pt-0 last:border-b-0 border-b">
       <div className="flex min-w-0 items-center gap-2">
         <StateSignal state={verdictState(record.outcome)} label={t(verdict)} />
         <span className="text-xs font-medium">{t(verdict)}</span>
-        <span className="text-foreground/80 font-mono m-0 min-w-0 flex-1 truncate text-xs">
+        <DataText size="sm" className="min-w-0 flex-1 truncate">
           {record.toolTitle}
-        </span>
-        <time className="text-muted-foreground nums shrink-0 text-[11px]">
+        </DataText>
+        <DataText as="time" size="sm" tone="dim" className="shrink-0">
           {new Date(record.createdAt).toLocaleString(dateLocale(lang), {
             month: 'short',
             day: 'numeric',
@@ -212,15 +219,13 @@ function DecisionRow({ record }: { record: DecisionRecordView }) {
             minute: '2-digit',
             hour12: false,
           })}
-        </time>
+        </DataText>
       </div>
-      <div className="text-muted-foreground mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px]">
-        <span>
-          {record.decidedBy === 'floor' ? t('decisions.byFloor') : t('decisions.byModel')}
-        </span>
-        {record.target !== undefined ? <span className="font-mono">{record.target}</span> : null}
+      <div className="text-muted-foreground role-data-sm mt-1 flex flex-wrap items-baseline gap-x-3 gap-y-1">
+        <span>{record.decidedBy === 'floor' ? t('decisions.byFloor') : t('decisions.byModel')}</span>
+        {record.target !== undefined ? <span>{record.target}</span> : null}
         {record.severity !== undefined ? (
-          <span className="nums">
+          <span>
             {t('decisions.severity')} {record.severity.toFixed(2)}
             {record.sevConfidence !== undefined
               ? ` (${Math.round(record.sevConfidence * 100)}%)`
@@ -228,7 +233,7 @@ function DecisionRow({ record }: { record: DecisionRecordView }) {
           </span>
         ) : null}
         {record.intent !== undefined ? (
-          <span className="nums">
+          <span>
             {t('decisions.intent')} {record.intent.toFixed(2)}
             {record.intentConfidence !== undefined
               ? ` (${Math.round(record.intentConfidence * 100)}%)`
@@ -242,43 +247,39 @@ function DecisionRow({ record }: { record: DecisionRecordView }) {
           <span>{t(`chat.approvalsReason.${record.why}` as TranslationKey)}</span>
         ) : null}
         {record.providerName !== undefined ? (
-          <span className="font-mono truncate">
+          <span>
             {record.providerName}
             {record.modelId !== undefined ? `/${record.modelId}` : ''}
           </span>
         ) : null}
-        {record.latencyMs !== undefined ? <span className="nums">{record.latencyMs}ms</span> : null}
+        {record.latencyMs !== undefined ? <span>{record.latencyMs}ms</span> : null}
         {record.humanResponse !== undefined ? (
           <span>
             {t('decisions.humanLabel')}: {t(humanResponseKey(record.humanResponse))}
           </span>
         ) : null}
       </div>
-      {record.toolInputPreview !== undefined ? (
-        expanded ? (
-          <div className="mt-2 space-y-1">
-            <Well className="max-h-40 overflow-y-auto font-mono text-[11px] break-all whitespace-pre-wrap">
-              {record.toolInputPreview}
-            </Well>
-            <button
-              type="button"
-              className="text-muted-foreground hover:text-foreground inline-flex items-center gap-1 text-[11px]"
-              onClick={() => setExpanded(false)}
-            >
-              <ChevronUpIcon className="size-3" />
-              {t('decisions.hideArgs')}
-            </button>
-          </div>
-        ) : (
+      {preview !== undefined ? (
+        <div className="mt-2">
+          {/* #104 — the disclosure stays ABOVE the well in both states. */}
           <button
             type="button"
-            className="text-muted-foreground hover:text-foreground mt-1 inline-flex items-center gap-1 text-[11px]"
-            onClick={() => setExpanded(true)}
+            aria-expanded={expanded}
+            className="text-muted-foreground hover:text-foreground hover:bg-tray role-label-sm inline-flex items-center gap-1 rounded-(--radius-well) px-1 py-0.5 transition-colors"
+            onClick={() => setExpanded((v) => !v)}
           >
-            <ChevronDownIcon className="size-3" />
+            <ChevronDownIcon
+              className={cn('size-3 transition-transform', expanded && 'rotate-180')}
+              aria-hidden="true"
+            />
             {t('decisions.showArgs')}
           </button>
-        )
+          {expanded ? (
+            <Well variant="block" truncate={false} className="mt-1 max-h-40 overflow-y-auto">
+              {preview}
+            </Well>
+          ) : null}
+        </div>
       ) : null}
     </div>
   );

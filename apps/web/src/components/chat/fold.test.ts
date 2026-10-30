@@ -345,3 +345,46 @@ describe('fold history ingestion (#95: session config survives a row rebuild)', 
     expect(state.config.currentModeId).toBe('auto');
   });
 });
+
+describe('delegated permission fallbacks (#104)', () => {
+  const request = {
+    kind: 'permission_request' as const,
+    requestId: 'perm-1',
+    toolCall: { toolCallId: 'tc-1', title: 'Bash(sleep 1)', kind: 'execute' },
+    options: [
+      { optionId: 'allow_once', name: 'Allow once', kind: 'allow_once' },
+      { optionId: 'reject_once', name: 'Deny', kind: 'reject_once' },
+    ],
+  };
+
+  it('names the unavailable reason on the pending card, without settling it', () => {
+    let state = fold(createFoldState(), { type: 'event', event: request });
+    state = fold(state, {
+      type: 'event',
+      event: { kind: 'permission_escalated', requestId: 'perm-1', reason: 'timeout' },
+    });
+    expect(state.permissions).toHaveLength(1);
+    expect(state.permissions[0]?.settled).toBe(false);
+    expect(state.permissions[0]?.escalation).toEqual({ reason: 'timeout' });
+  });
+
+  it('a later human settle keeps the escalation note on the settled card', () => {
+    let state = fold(createFoldState(), { type: 'event', event: request });
+    state = fold(state, {
+      type: 'event',
+      event: { kind: 'permission_escalated', requestId: 'perm-1', reason: 'no-model' },
+    });
+    state = fold(state, {
+      type: 'event',
+      event: {
+        kind: 'permission_resolved',
+        requestId: 'perm-1',
+        outcome: 'selected',
+        optionId: 'allow_once',
+      },
+    });
+    expect(state.permissions[0]?.settled).toBe(true);
+    expect(state.permissions[0]?.escalation).toEqual({ reason: 'no-model' });
+    expect(state.permissions[0]?.resolution).toBeUndefined();
+  });
+});

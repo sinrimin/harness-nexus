@@ -5,7 +5,15 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
-import { BotIcon, ListIcon, PencilIcon, PlusIcon, RefreshCwIcon, XIcon } from 'lucide-react';
+import {
+  BotIcon,
+  ListIcon,
+  PencilIcon,
+  PlusIcon,
+  RefreshCwIcon,
+  ScrollTextIcon,
+  XIcon,
+} from 'lucide-react';
 import { api } from '@/api';
 import { useAuth, withAuthGuard } from '@/auth';
 import { useI18n, dateLocale } from '@/i18n';
@@ -35,6 +43,7 @@ import { WelcomePane, type WelcomeCard } from '@/components/chat/welcome-pane.js
 import { ChannelTabs } from '@/components/chat/channel-tabs.js';
 import { SessionRow } from '@/components/chat/session-row.js';
 import { RailSessionRow } from '@/components/chat/rail-session-row.js';
+import { DecisionRecordsDialog } from '@/components/decision-records-dialog';
 import { useChatChannels } from '@/components/chat/use-chat-channels.js';
 import { useAssistantSessions } from '@/components/chat/use-assistant-sessions.js';
 import { Composer, type ComposerConfig } from '@/components/chat/composer.js';
@@ -101,6 +110,8 @@ export function AssistantSessionPage() {
   const [assistants, setAssistants] = useState<AssistantConfigView[] | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [sessionId, setSessionId] = useState('');
+  /** #104 — the session-scoped delegated-records dialog (header action). */
+  const [recordsOpen, setRecordsOpen] = useState(false);
   const [phase, setPhase] = useState<Phase>('idle');
   const [error, setError] = useState<string | null>(null);
   const [draft, setDraft] = useState('');
@@ -684,6 +695,19 @@ export function AssistantSessionPage() {
                 </span>
               ) : null}
               <span className="min-w-0 flex-1" />
+              {/* #104 — the stable entry to this session's delegated audit. */}
+              {sessionId !== '' ? (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="gap-1.5"
+                  onClick={() => setRecordsOpen(true)}
+                  title={t('decisions.openHint')}
+                >
+                  <ScrollTextIcon className="size-3.5" />
+                  <span className="hidden sm:inline">{t('decisions.openLabel')}</span>
+                </Button>
+              ) : null}
               {phase === 'ready' ? (
                 <Button
                   variant="outline"
@@ -696,6 +720,13 @@ export function AssistantSessionPage() {
                 </Button>
               ) : null}
             </div>
+            {sessionId !== '' ? (
+              <DecisionRecordsDialog
+                open={recordsOpen}
+                onClose={() => setRecordsOpen(false)}
+                sessionId={sessionId}
+              />
+            ) : null}
 
             {noAssistants ? (
               <div className="flex min-h-0 flex-1 items-center justify-center p-6">

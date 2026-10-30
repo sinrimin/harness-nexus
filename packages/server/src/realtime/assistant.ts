@@ -1149,7 +1149,16 @@ export class AssistantRealtimeService {
     const gate = this.deps.approvals;
     if (gate === undefined) return;
     const view = await this.resolveDecisionView(ch.ownerId);
-    if (view === null) return; // nothing resolvable ⇒ human decides
+    if (view === null) {
+      // #104 — the session asked for delegated but nothing resolves: say so
+      // on the card instead of leaving a silent manual fallback.
+      this.emit(ch.sessionId, {
+        kind: 'permission_escalated',
+        requestId,
+        reason: 'no-model',
+      });
+      return;
+    }
     const startedAt = Date.now();
     const outcome = await decideApproval(
       {
@@ -1185,9 +1194,19 @@ export class AssistantRealtimeService {
       },
     );
     // #97 — the audit row (same contract as the chat axis: fire-and-forget,
-    // pre-model escalates silent, lean floor rows).
+    // lean floor rows). #104 — an unavailable delegation is named and
+    // audited, not silent.
     this.recordDecision(ch, requestId, toolCall, view, outcome, Date.now() - startedAt);
-    if (outcome.kind === 'escalate') return;
+    if (outcome.kind === 'escalate') {
+      if (outcome.unavailable !== undefined) {
+        this.emit(ch.sessionId, {
+          kind: 'permission_escalated',
+          requestId,
+          reason: outcome.unavailable,
+        });
+      }
+      return;
+    }
     // First responder wins: the human or the watchdog may have settled the
     // card while the decision model ran.
     if (!this.pendingApprovals.has(requestId)) return;
@@ -1235,7 +1254,10 @@ export class AssistantRealtimeService {
     outcome: ApprovalGateOutcome,
     latencyMs: number,
   ): void {
-    if (outcome.kind === 'escalate' && outcome.verdict === undefined) return;
+    const unavailable = outcome.kind === 'escalate' ? outcome.unavailable : undefined;
+    if (outcome.kind === 'escalate' && outcome.verdict === undefined && unavailable === undefined) {
+      return;
+    }
     const preview = toolInputText(toolCall.args)?.slice(0, GATE_TOOL_INPUT_CHAR_CAP);
     const v = outcome.verdict;
     void this.deps.uow.decisionRecords
@@ -1263,6 +1285,11 @@ export class AssistantRealtimeService {
               ...(v.why !== undefined ? { why: v.why } : {}),
               ...(v.sevConfidence !== undefined ? { sevConfidence: v.sevConfidence } : {}),
               ...(v.intentConfidence !== undefined ? { intentConfidence: v.intentConfidence } : {}),
+            }
+          : {}),
+        // #104 — unavailable escalates carry the attempted provenance.
+        ...(v !== undefined || unavailable !== undefined
+          ? {
               ...(view.providerName !== undefined ? { providerName: view.providerName } : {}),
               ...(view.modelId !== undefined ? { modelId: view.modelId } : {}),
               latencyMs,

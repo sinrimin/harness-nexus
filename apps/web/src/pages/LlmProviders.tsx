@@ -1159,19 +1159,33 @@ function ProviderApisEditor({
 /** Radix Select forbids an empty item value; this sentinel means "未设置". */
 const NO_DEFAULT = '__none__';
 
-/** A reserved default-model slot: visible, disabled, and honest about why. */
+/**
+ * A reserved default-model slot. Every slot has the SAME device — a provider
+ * select beside a model select — so a reserved slot reserves both boxes (the
+ * single wide placeholder read as a different control than the wired slot).
+ */
 function ReservedModelSlot({ id, label }: { id: string; label: string }) {
   const { t } = useI18n();
   return (
-    <Field label={label} htmlFor={id} hint={t('llmProviders.reservedHint')}>
-      <Select value={NO_DEFAULT} disabled>
-        <SelectTrigger id={id}>
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value={NO_DEFAULT}>{t('llmProviders.reserved')}</SelectItem>
-        </SelectContent>
-      </Select>
+    <Field label={label} htmlFor={`${id}-provider`} hint={t('llmProviders.reservedHint')}>
+      <div className="grid gap-2 sm:grid-cols-2">
+        <Select value={NO_DEFAULT} disabled>
+          <SelectTrigger id={`${id}-provider`} className="w-full">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value={NO_DEFAULT}>{t('llmProviders.reservedProvider')}</SelectItem>
+          </SelectContent>
+        </Select>
+        <Select value={NO_DEFAULT} disabled>
+          <SelectTrigger id={`${id}-model`} className="w-full">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value={NO_DEFAULT}>{t('llmProviders.reservedModel')}</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
     </Field>
   );
 }
@@ -1291,6 +1305,7 @@ function DefaultModelsDialog({
       onClose={onClose}
       title={t('llmProviders.defaultsTitle')}
       description={t('llmProviders.defaultsDesc')}
+      size="lg"
       footer={
         <>
           <Button type="button" variant="ghost" onClick={onClose} disabled={saving}>
@@ -1307,26 +1322,24 @@ function DefaultModelsDialog({
       ) : loaded === null ? (
         <p className="text-muted-foreground text-xs">{t('common.loading')}</p>
       ) : (
-        <div className="grid gap-4 sm:grid-cols-2">
+        <div className="flex flex-col gap-5">
           <ReservedModelSlot id="llmp-default-embedding" label={t('llmProviders.embeddingSlot')} />
           <ReservedModelSlot id="llmp-default-rerank" label={t('llmProviders.rerankSlot')} />
           <Field
-            className="sm:col-span-2"
             label={t('llmProviders.decisionSlot')}
             htmlFor="llmp-default-provider"
-            hint={
-              <span className="inline-flex items-center gap-1">
-                {t('llmProviders.decisionHint')}
-                <button
-                  type="button"
-                  className="text-muted-foreground hover:text-foreground ml-1 inline-flex cursor-pointer items-center gap-0.5 text-xs transition-colors"
-                  onClick={() => setRecordsOpen(true)}
-                >
-                  <ScrollTextIcon className="size-3" />
-                  {t('decisions.viewAll')}
-                </button>
-                <DecisionRecordsDialog open={recordsOpen} onClose={() => setRecordsOpen(false)} />
-              </span>
+            hint={t('llmProviders.decisionHint')}
+            aside={
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="gap-1.5"
+                onClick={() => setRecordsOpen(true)}
+              >
+                <ScrollTextIcon className="size-3.5" />
+                {t('decisions.viewAll')}
+              </Button>
             }
           >
             <div className="grid gap-2 sm:grid-cols-2">
@@ -1343,11 +1356,11 @@ function DefaultModelsDialog({
                 }}
                 disabled={decisionProviders.length === 0}
               >
-                <SelectTrigger id="llmp-default-provider">
+                <SelectTrigger id="llmp-default-provider" className="w-full">
                   <SelectValue placeholder={t('llmProviders.defaultsPickProvider')} />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value={NO_DEFAULT}>{t('llmProviders.unset')}</SelectItem>
+                  <SelectItem value={NO_DEFAULT}>{t('llmProviders.unsetProvider')}</SelectItem>
                   {decisionProviders.map((p) => (
                     <SelectItem key={p.id} value={p.id}>
                       {p.name}
@@ -1360,11 +1373,11 @@ function DefaultModelsDialog({
                 onValueChange={(v) => setDecisionModelId(v === NO_DEFAULT ? '' : v)}
                 disabled={decisionProviderId === '' || decisionModels.length === 0}
               >
-                <SelectTrigger id="llmp-default-model">
+                <SelectTrigger id="llmp-default-model" className="w-full">
                   <SelectValue placeholder={t('llmProviders.defaultsPickModel')} />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value={NO_DEFAULT}>{t('llmProviders.unset')}</SelectItem>
+                  <SelectItem value={NO_DEFAULT}>{t('llmProviders.unsetModel')}</SelectItem>
                   {decisionModels.map((m) => (
                     <SelectItem key={m.id} value={m.id} className="font-mono text-xs">
                       {m.id}
@@ -1407,6 +1420,7 @@ function DefaultModelsDialog({
               </div>
             ) : null}
           </Field>
+          <DecisionRecordsDialog open={recordsOpen} onClose={() => setRecordsOpen(false)} />
         </div>
       )}
     </FormDialog>
