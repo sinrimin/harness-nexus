@@ -171,7 +171,7 @@ export function NotesPage() {
       </PageSlot>
 
       <div className="flex h-full min-h-0 flex-col">
-        <div className="shrink-0 px-[18px] max-[640px]:px-3">
+        <div className="shrink-0 px-[18px] max-[640px]:px-0">
           <Tabs value={tab} onValueChange={(v) => selectTab(v as 'mine' | 'square' | 'board')}>
             <TabsList aria-label={t('notes.title')}>
               <TabsTrigger value="mine">{t('notes.tabMine')}</TabsTrigger>
@@ -181,7 +181,7 @@ export function NotesPage() {
           </Tabs>
         </div>
 
-        <div className="flex min-h-0 flex-1 flex-col gap-[18px] overflow-y-auto px-[18px] pt-[18px] pb-11 min-[900px]:flex-row min-[900px]:overflow-hidden max-[640px]:px-3">
+        <div className="flex min-h-0 flex-1 flex-col gap-[18px] overflow-y-auto px-[18px] pt-[18px] pb-11 min-[900px]:flex-row min-[900px]:overflow-hidden max-[640px]:px-0">
           {tab === 'mine' ? (
             <>
               <MineFeed
