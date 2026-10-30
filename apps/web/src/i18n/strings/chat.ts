@@ -70,6 +70,9 @@ const en = {
   stopped: 'Stopped',
   captureToNote: 'Save as note',
   running: 'running…',
+  // #99 — the session-rail status words (no ellipsis: they sit beside a title).
+  sessionRunning: 'running',
+  sessionOpen: 'open',
   collapse: 'Show less',
   moreLines: '… {count} more lines',
   todoTitle: 'To-do plan',
@@ -269,6 +272,8 @@ const zh: typeof en = {
   stopped: '已停止',
   captureToNote: '保存为笔记',
   running: '运行中…',
+  sessionRunning: '运行中',
+  sessionOpen: '已打开',
   collapse: '收起',
   moreLines: '… 其余 {count} 行',
   todoTitle: '待办计划',

@@ -8,8 +8,8 @@ import { toast } from 'sonner';
 import {
   ListIcon,
   BotIcon,
-  ChevronRightIcon,
   ClockIcon,
+  FolderIcon,
   PencilIcon,
   PlusIcon,
   RefreshCwIcon,
@@ -20,7 +20,7 @@ import { api } from '@/api';
 import { useAuth, withAuthGuard } from '@/auth';
 import { useI18n, dateLocale } from '@/i18n';
 import { StateSignal } from '@/components/state-signal';
-import { DataText, LabelText, Well, ConfirmDialog } from '@/components/kit';
+import { ConfirmDialog } from '@/components/kit';
 import {
   appSocket,
   emitWithAck,
@@ -50,6 +50,8 @@ import { WelcomePane, type WelcomeCard } from '@/components/chat/welcome-pane.js
 import { ChannelTabs } from '@/components/chat/channel-tabs.js';
 import { EndSwitcher } from '@/components/chat/end-switcher.js';
 import { SessionRow } from '@/components/chat/session-row.js';
+import { RailSessionRow } from '@/components/chat/rail-session-row.js';
+import { cwdBasename, cwdParent } from '@/lib/cwd.js';
 import { useChatChannels } from '@/components/chat/use-chat-channels.js';
 import { useAssistantSessions } from '@/components/chat/use-assistant-sessions.js';
 import {
@@ -140,12 +142,6 @@ function groupSessions(sessions: NativeSessionView[]): SessionGroup[] {
   }
   groups.sort((a, b) => b.newest - a.newest);
   return groups;
-}
-
-function cwdBasename(cwd: string): string {
-  const trimmed = cwd.replace(/\/+$/, '');
-  const last = trimmed.split('/').pop();
-  return last === undefined || last === '' ? cwd : last;
 }
 
 function relativeTime(iso: string | null | undefined, locale: string): string {
@@ -301,75 +297,73 @@ function SessionRail({
           {t('chat.disconnectHint')}
         </p>
       </div>
-      <div className="min-h-0 flex-1 overflow-y-auto p-2">
+      <div className="min-h-0 flex-1 overflow-y-auto">
         {rail.state === 'loading' ? (
-          <p className="text-muted-foreground px-2 py-4 text-xs">{t('common.loading')}</p>
+          <p className="text-muted-foreground px-3 py-4 text-xs">{t('common.loading')}</p>
         ) : rail.state === 'offline' ? (
-          <p className="text-muted-foreground px-2 py-4 text-xs">{t('chat.sessionsOffline')}</p>
+          <p className="text-muted-foreground px-3 py-4 text-xs">{t('chat.sessionsOffline')}</p>
         ) : rail.state === 'daemon-old' ? (
-          <p className="text-muted-foreground px-2 py-4 text-xs">{t('chat.sessionsDaemonOld')}</p>
+          <p className="text-muted-foreground px-3 py-4 text-xs">{t('chat.sessionsDaemonOld')}</p>
         ) : rail.state === 'error' ? (
-          <p className="text-muted-foreground px-2 py-4 text-xs">{rail.message}</p>
+          <p className="text-muted-foreground px-3 py-4 text-xs">{rail.message}</p>
         ) : !rail.supported && rail.sessions.length === 0 ? (
-          <p className="text-muted-foreground px-2 py-4 text-xs">{t('chat.sessionsUnsupported')}</p>
+          <p className="text-muted-foreground px-3 py-4 text-xs">{t('chat.sessionsUnsupported')}</p>
         ) : (
           <>
             {/* 9 W13 — even where the agent keeps no listable native
                       history (opencode), live channels are real, rejoinable
                       rows: render them instead of hiding the rail. */}
             {!rail.supported ? (
-              <p className="text-muted-foreground px-2 pt-2 text-[11px]">
+              <p className="text-muted-foreground px-3 pt-2 text-[11px]">
                 {t('chat.sessionsUnsupportedPartial')}
               </p>
             ) : null}
             {groups.length === 0 ? (
-              <p className="text-muted-foreground px-2 py-4 text-xs">{t('chat.noSessions')}</p>
+              <p className="text-muted-foreground px-3 py-4 text-xs">{t('chat.noSessions')}</p>
             ) : (
               groups.map((group) => {
                 // #13 — folders COLLAPSE (ZCode-style); per-cwd state,
                 // default open.
                 const collapsed = collapsedCwds.has(group.cwd);
                 return (
-                  <div key={group.cwd} className="border-b last:border-b-0">
-                    {/* The group header is the comp's `.sgroup-h`: a tray strip
-                            carrying the label AND the directory itself as a
-                            Well. It used to print a basename and keep the path
-                            in a tooltip — a rail that cannot tell two projects
-                            apart, and hand-rolled chrome on a page whose every
-                            other band is a designed device ("会话列表的样式感觉
-                            游离于设计之外", #23). Click the strip to collapse;
-                            hover reveals the new-session-in-this-cwd button. */}
-                    <div className="bg-tray group/folder border-b px-3 py-2">
-                      <div className="text-muted-foreground flex items-center gap-1">
-                        <button
-                          type="button"
-                          className="hover:text-foreground flex min-w-0 flex-1 items-center gap-1.5 text-left"
-                          title={group.cwd}
-                          aria-label={`${t('chat.workingDirectory')} ${group.cwd}`}
-                          aria-expanded={!collapsed}
-                          onClick={() => onToggleCwd(group.cwd)}
-                        >
-                          <ChevronRightIcon
-                            className={cn(
-                              'size-3 shrink-0 transition-transform',
-                              !collapsed && 'rotate-90',
-                            )}
-                          />
-                          <LabelText size="sm">{t('chat.workingDirectory')}</LabelText>
-                        </button>
-                        <button
-                          type="button"
-                          className="hover:text-foreground shrink-0 opacity-0 group-hover/folder:opacity-100"
-                          title={t('chat.newSessionHere', { dir: cwdBasename(group.cwd) })}
-                          aria-label={t('chat.newSessionHere', { dir: group.cwd })}
-                          onClick={() => void onOpenChannel(undefined, group.cwd)}
-                        >
-                          <PlusIcon className="size-3.5" />
-                        </button>
-                      </div>
-                      <Well variant="chip" copy={group.cwd} className="mt-1.5 max-w-full">
-                        {group.cwd}
-                      </Well>
+                  <div key={group.cwd} className="border-t first:border-t-0">
+                    {/* #99 D3 — the folder header: the icon + name + parent
+                            path line is the collapse control (the 14px icon
+                            alone is too small a target), the `+` is a SIBLING
+                            button so it creates without collapsing. Rows hang
+                            at the name's left edge; groups, not rows, carry
+                            the separators. */}
+                    <div className="bg-tray group/folder relative flex items-center border-b px-3 py-2 max-md:min-h-11 max-md:py-3 [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:py-3">
+                      <button
+                        type="button"
+                        className="hover:text-foreground flex min-w-0 flex-1 items-baseline gap-1.5 text-left max-md:pr-8 [@media(hover:none)]:pr-8"
+                        title={group.cwd}
+                        aria-label={`${t('chat.workingDirectory')}: ${group.cwd}`}
+                        aria-expanded={!collapsed}
+                        onClick={() => onToggleCwd(group.cwd)}
+                      >
+                        <FolderIcon
+                          className="text-muted-foreground size-3.5 shrink-0 self-center"
+                          aria-hidden="true"
+                        />
+                        <span className="text-foreground min-w-0 truncate text-[13px] leading-[19px] font-semibold">
+                          {cwdBasename(group.cwd)}
+                        </span>
+                        {cwdParent(group.cwd) !== null ? (
+                          <span className="text-muted-foreground ml-auto max-w-[132px] shrink-0 truncate font-mono text-[10.5px] leading-[15px] transition-opacity group-hover/folder:opacity-0 max-md:max-w-[100px] max-md:opacity-100 [@media(hover:none)]:max-w-[100px] [@media(hover:none)]:opacity-100">
+                            {cwdParent(group.cwd)}
+                          </span>
+                        ) : null}
+                      </button>
+                      <button
+                        type="button"
+                        className="text-muted-foreground hover:text-foreground absolute top-1/2 right-2.5 -translate-y-1/2 p-1 opacity-0 transition-opacity group-hover/folder:opacity-100 focus-visible:opacity-100 max-md:right-2 max-md:p-1.5 max-md:opacity-100 [@media(pointer:coarse)]:p-1.5 [@media(hover:none)]:opacity-100"
+                        title={t('chat.newSessionHere', { dir: cwdBasename(group.cwd) })}
+                        aria-label={t('chat.newSessionHere', { dir: group.cwd })}
+                        onClick={() => void onOpenChannel(undefined, group.cwd)}
+                      >
+                        <PlusIcon className="size-3" />
+                      </button>
                     </div>
                     {!collapsed
                       ? group.sessions.map((s) => {
@@ -384,9 +378,15 @@ function SessionRail({
                           // The channel map IS the open state.
                           const attached = channelByNative.get(s.sessionId);
                           // #12 — RUNNING is the attached channel's live busy
-                          // flag: a green dot, never gated on the row merely
-                          // being viewed.
+                          // flag, shown even on the row being viewed; #99 —
+                          // `open` is a WORD now and only on non-current rows
+                          // (the edge + tint already mark the current one).
                           const running = attached?.busy === true;
+                          const word = running
+                            ? ('running' as const)
+                            : attached !== undefined && !active
+                              ? ('open' as const)
+                              : null;
                           return (
                             <SessionRow
                               key={s.sessionId}
@@ -398,9 +398,24 @@ function SessionRail({
                                   : undefined
                               }
                             >
-                              <button
-                                type="button"
+                              <RailSessionRow
+                                title={
+                                  s.title ??
+                                  (s.sessionId === nativeSessionId ? firstPromptText : undefined) ??
+                                  t('chat.untitled')
+                                }
+                                meta={`${relativeTime(s.updatedAt, dateLocale(lang))} · ${s.sessionId.slice(0, 8)}`}
+                                active={active}
+                                word={word}
+                                faded={stale}
                                 disabled={stale && !active}
+                                titleAttr={
+                                  stale
+                                    ? t('chat.staleModel', { model: s.model ?? '?' })
+                                    : attached !== undefined && !active
+                                      ? t('chat.channelOpenHint')
+                                      : (s.title ?? s.cwd)
+                                }
                                 onClick={() => {
                                   if (active || stale) return;
                                   // With a live channel this is a REJOIN;
@@ -423,58 +438,7 @@ function SessionRail({
                                     });
                                   }
                                 }}
-                                className={cn(
-                                  'flex w-full items-start gap-2 border-b px-3 py-2 text-left last:border-b-0',
-                                  active
-                                    ? 'bg-tray'
-                                    : stale
-                                      ? 'cursor-default'
-                                      : 'hover:bg-tray/60',
-                                  stale && !active && 'opacity-50',
-                                )}
-                                title={
-                                  stale
-                                    ? t('chat.staleModel', { model: s.model ?? '?' })
-                                    : attached !== undefined && !active
-                                      ? t('chat.channelOpenHint')
-                                      : (s.title ?? s.cwd)
-                                }
-                              >
-                                {/* The status gutter: green running, blue
-                                      opened, empty otherwise (#12/#13). Top-
-                                      aligned, the way the comp's `.sess` lamp
-                                      sits beside a two-line row. */}
-                                <span className="mt-1 flex w-2 shrink-0 justify-center">
-                                  <StateSignal
-                                    state={
-                                      running ? 'busy' : attached !== undefined ? 'live' : 'idle'
-                                    }
-                                    className="size-1.5"
-                                  />
-                                </span>
-                                <span className="min-w-0 flex-1">
-                                  <span
-                                    className={cn(
-                                      'block truncate text-xs',
-                                      active && 'text-foreground font-semibold',
-                                    )}
-                                  >
-                                    {s.title ??
-                                      (s.sessionId === nativeSessionId
-                                        ? firstPromptText
-                                        : undefined) ??
-                                      t('chat.untitled')}
-                                  </span>
-                                  {/* When + WHICH: the comp prints the age and the
-                                    short id, and the id is what a session can
-                                    be resumed by. Data role, so the column of
-                                    times stays tabular. */}
-                                  <DataText size="sm" tone="dim" className="mt-0.5 block truncate">
-                                    {relativeTime(s.updatedAt, dateLocale(lang))} ·{' '}
-                                    {s.sessionId.slice(0, 8)}
-                                  </DataText>
-                                </span>
-                              </button>
+                              />
                             </SessionRow>
                           );
                         })

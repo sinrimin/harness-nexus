@@ -181,6 +181,17 @@
   background: var(--card);
 }
 
+/* ---------- Chat session rail: the current session is paper ---------- */
+
+/* The active session row keeps the 2px accent edge the base drew, but not its
+   8% orange tint — that mix goes grey-pink on aluminium (#d7d0d1) and drops
+   the status word to 4.06. BAY's own active material is paper (the current
+   bay above, the active tab underline), so the row goes to --card (#99). */
+[data-skin='bay'] [data-slot='session-row'][aria-current='true'],
+[data-skin='bay'] [data-slot='session-row'][aria-current='true']:hover {
+  background: var(--card);
+}
+
 /* ---------- Mesh panel: the graticule ---------- */
 
 /* A faint 8px measurement grid behind the constellation drawing. */
