@@ -16,6 +16,7 @@
  */
 import { HarnessNexusClient, HarnessNexusError } from '@harness-nexus/sdk';
 import type { Profile, McpServer } from '@harness-nexus/core';
+import { BUILTIN_MCP_SERVICE_ID } from '@harness-nexus/shared';
 import { InstallError } from '../errors.js';
 import type { ResolvedArtifact, ResolvedProfile } from './types.js';
 
@@ -52,6 +53,26 @@ export async function resolveProfile(opts: ResolveOptions): Promise<ResolvedProf
       if (entry.kind === 'mcp') {
         // MCP entries reference a McpServer.id. Fetch the full server list once
         // and find by id (there is no single-get MCP endpoint in the SDK today).
+        // #107 — the built-in service has no row: it rides as a synthetic
+        // server-dialed row so the adapters' `kind === 'mcp'` plan logic emits
+        // the shim entry; the shim fetches the real config from the server.
+        if (entry.resourceId === BUILTIN_MCP_SERVICE_ID) {
+          artifacts.push({
+            entryId: BUILTIN_MCP_SERVICE_ID,
+            kind: 'mcp',
+            mcpServer: {
+              id: BUILTIN_MCP_SERVICE_ID,
+              name: 'Built-in tools',
+              transport: { type: 'streamable-http', url: `${opts.server}/mcp` },
+              dialSite: 'server',
+              scope: 'global',
+              ownerId: null,
+              createdAt: '1970-01-01T00:00:00.000Z',
+              updatedAt: '1970-01-01T00:00:00.000Z',
+            },
+          });
+          continue;
+        }
         const servers = await client.listMcpServers();
         const server = servers.find((s: McpServer) => s.id === entry.resourceId);
         if (!server) {

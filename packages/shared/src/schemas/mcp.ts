@@ -167,15 +167,18 @@ export const mcpToolInfoSchema = z.object({
 
 export type McpToolInfo = z.infer<typeof mcpToolInfoSchema>;
 
-// ---- built-in MCP service (#106) ----
+// ---- built-in MCP service (#106, #107) ----
 // The platform's OWN toolset, served in-process on the `/mcp` outlet as
 // virtual namespaces (`notes__` today) and presented on the MCP management
 // page as ONE global, non-modifiable service. Display-only descriptor: it is
 // NOT a McpServer DB row (no CRUD route can target it) and NOT part of the
 // `GET /api/mcp-servers` array (whose consumers treat entries as pickable,
-// profile-referencable rows).
+// profile-referencable rows). Visibility is PROFILE-GATED (#107): the tools
+// reach an agent only via a profile entry `{ mcpServerId: BUILTIN_MCP_SERVICE_ID }`.
+export const BUILTIN_MCP_SERVICE_ID = 'builtin';
+
 export const builtinMcpServiceSchema = z.object({
-  id: z.literal('builtin'),
+  id: z.literal(BUILTIN_MCP_SERVICE_ID),
   tools: z.array(mcpToolInfoSchema),
 });
 

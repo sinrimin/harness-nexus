@@ -127,9 +127,10 @@ function capSessionsForUser(
   }
 }
 
-/** Request-scoped: the resolved upstream server ids for the chosen profile. */
+/** Request-scoped: the resolved upstream server ids + built-in flag for the chosen profile. */
 interface ResolvedProfileRequest {
   resolvedServerIds: string[];
+  builtinIncluded: boolean;
 }
 
 export async function mountMcpProxy(app: FastifyInstance): Promise<void> {
@@ -164,8 +165,10 @@ export async function mountMcpProxy(app: FastifyInstance): Promise<void> {
       throw new AppError('A profile query parameter is required', 400, 'PROFILE_REQUIRED');
     }
     try {
-      const { serverIds } = await registry.profileEntriesFor(profileId, req.user.id);
-      (req as FastifyRequest & ResolvedProfileRequest).resolvedServerIds = serverIds;
+      const { serverIds, builtin } = await registry.profileEntriesFor(profileId, req.user.id);
+      const scoped = req as FastifyRequest & ResolvedProfileRequest;
+      scoped.resolvedServerIds = serverIds;
+      scoped.builtinIncluded = builtin;
     } catch {
       throw new AppError(
         'Profile not found or references inaccessible MCP servers',
@@ -221,6 +224,7 @@ export async function mountMcpProxy(app: FastifyInstance): Promise<void> {
           registry,
           transport,
           (req as FastifyRequest & ResolvedProfileRequest).resolvedServerIds,
+          (req as FastifyRequest & ResolvedProfileRequest).builtinIncluded,
           { userId: req.user!.id, role: req.user!.role },
           await apiToolsForUser(app.uow, req.user!.id),
           { uow: app.uow, credentialEncryptionKey: app.credentialEncryptionKey },
@@ -255,6 +259,7 @@ export async function mountMcpProxy(app: FastifyInstance): Promise<void> {
         registry,
         transport,
         (req as FastifyRequest & ResolvedProfileRequest).resolvedServerIds,
+        (req as FastifyRequest & ResolvedProfileRequest).builtinIncluded,
         { userId: req.user!.id, role: req.user!.role },
         await apiToolsForUser(app.uow, req.user!.id),
         { uow: app.uow, credentialEncryptionKey: app.credentialEncryptionKey },
@@ -300,12 +305,14 @@ export async function mountMcpProxy(app: FastifyInstance): Promise<void> {
  * Build a per-session SDK server wired to a transport, registering every
  * aggregated tool (filtered to the profile's MCP entries) with a forwarding
  * callback — plus the user's visible API tools (#80) under the `api__`
- * virtual namespace. Returns once the server has connected to the transport.
+ * virtual namespace, and the `notes__` namespace when the profile references
+ * the built-in service (#107). Returns once the server has connected.
  */
 async function buildSession(
   registry: McpRegistry,
   transport: StreamableHTTPServerTransport | SSEServerTransport,
   serverIds: string[],
+  builtinIncluded: boolean,
   principal: Principal,
   apiTools: ApiToolEntry[],
   execDeps: { uow: Parameters<typeof executeApiTool>[0]['uow']; credentialEncryptionKey: string },
@@ -335,13 +342,16 @@ async function buildSession(
         ...(t.description !== undefined ? { description: t.description } : {}),
         inputSchema: t.inputSchema,
       })),
-      // #88 — the caller's own notes library, same read-set stance: search,
-      // full body, annotations. Reads only.
-      ...NOTES_TOOL_DEFS.map((t) => ({
-        name: t.name,
-        description: t.description,
-        inputSchema: t.inputSchema,
-      })),
+      // #88/#107 — the caller's own notes library, same read-set stance, but
+      // PROFILE-GATED: listed (and callable) only when the profile references
+      // the built-in service. Reads only.
+      ...(builtinIncluded
+        ? NOTES_TOOL_DEFS.map((t) => ({
+            name: t.name,
+            description: t.description,
+            inputSchema: t.inputSchema,
+          }))
+        : []),
     ],
   }));
   server.setRequestHandler(CallToolRequestSchema, async (req) => {
@@ -349,9 +359,16 @@ async function buildSession(
     // #80 — the virtual api__ namespace routes to the runtime (same
     // allowlist/envelope/caps path the assistant uses); everything else
     // stays a pooled upstream call.
-    // #88 — the virtual notes__ namespace routes to the #53 services with
-    // the session owner as principal (owner-only reads, 404 hiding).
+    // #88/#107 — the virtual notes__ namespace routes to the #53 services with
+    // the session owner as principal (owner-only reads, 404 hiding) — only on
+    // sessions whose profile references the built-in service.
     if (req.params.name.startsWith(NOTES_TOOL_PREFIX)) {
+      if (!builtinIncluded) {
+        return {
+          content: [{ type: 'text', text: `error: unknown tool ${req.params.name}` }],
+          isError: true,
+        } as CallToolResult;
+      }
       const result = await executeNotesTool(
         { uow: execDeps.uow },
         principal,

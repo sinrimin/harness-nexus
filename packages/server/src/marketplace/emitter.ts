@@ -28,7 +28,12 @@ import JSZip from 'jszip';
 import type { FastifyBaseLogger } from 'fastify';
 import type { McpServer, Profile, Resource } from '@harness-nexus/core';
 import type { UnitOfWork } from '@harness-nexus/core';
-import { HOOK_SUPPORT, isUnsafeRelativePath, type HookEvent } from '@harness-nexus/shared';
+import {
+  BUILTIN_MCP_SERVICE_ID,
+  HOOK_SUPPORT,
+  isUnsafeRelativePath,
+  type HookEvent,
+} from '@harness-nexus/shared';
 
 export interface MarketplaceEmitterOptions {
   uow: UnitOfWork;
@@ -142,11 +147,19 @@ export class MarketplaceEmitter {
     // ---- resolve entries → artifacts ----
     const resources: Resource[] = [];
     const mcpServers: McpServer[] = [];
+    let builtinEntry = false;
     for (const entry of profile.entries) {
       // Soft-deleted rows are skipped (two-stage delete).
       if (entry.kind === 'mcp') {
+        // #107 — the built-in service has no row, but its entry means the
+        // profile's agents dial the outlet: it counts toward .mcp.json.
+        if (entry.resourceId === BUILTIN_MCP_SERVICE_ID) {
+          builtinEntry = true;
+          continue;
+        }
         const server = await this.uow.mcpServers.findById(entry.resourceId);
-        if (server && server.deletedAt === undefined) mcpServers.push(server);
+        if (server && server.deletedAt !== undefined) continue;
+        if (server) mcpServers.push(server);
       } else {
         const resource = await this.uow.resources.findById(entry.resourceId);
         if (resource && resource.deletedAt === undefined) resources.push(resource);
@@ -159,7 +172,7 @@ export class MarketplaceEmitter {
     }
 
     // ---- .mcp.json ----
-    if (mcpServers.length > 0) {
+    if (mcpServers.length > 0 || builtinEntry) {
       const block: Record<string, unknown> = {};
       if (this.emitMode === 'client') {
         // Phase 8 C2: one stdio shim entry per profile — no PAT env var, no
