@@ -1199,6 +1199,23 @@ export class ChatService {
   }
 
   /**
+   * #103 — can a FORCED delegated stance engage for a dispatch to this agent?
+   * Answers the stance question ONLY: a missing/foreign instance or machine
+   * returns `true` so `open()` still reports its own honest code. The
+   * coordinator refuses BEFORE opening a channel when this answers false —
+   * fail fast, never spawn an unattended run whose cards would
+   * watchdog-cancel one by one.
+   */
+  async delegatedStanceOfferable(ownerId: string, agentInstanceId: string): Promise<boolean> {
+    const agent = await this.deps.uow.agentInstances.findById(agentInstanceId);
+    if (agent === null || agent.ownerId !== ownerId) return true;
+    const machine = await this.deps.uow.machines.findById(agent.machineId);
+    if (machine === null) return true;
+    if ((this.deps.capabilities?.degraded(ownerId) ?? null) !== null) return false;
+    return (await this.resolveDecisionModel(ownerId, machine)) !== null;
+  }
+
+  /**
    * #92 — the delegated gate. The decision core (floor → eligibility →
    * decision call → verdict/advisory) lives in `approvals-gate.ts`, shared
    * with the platform assistant (#95 follow-up); this method owns the
