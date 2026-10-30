@@ -13,6 +13,7 @@ import {
 } from '@harness-nexus/shared';
 import { principalOf } from './principal.js';
 import { RegistryError } from '../mcp/registry.js';
+import { builtinMcpService } from '../mcp/builtin.js';
 import {
   assertServerDialedOwned,
   createMcpServer,
@@ -52,6 +53,16 @@ export async function mcpServersRoutes(app: FastifyInstance): Promise<void> {
     const includeDeleted = (req.query as { includeDeleted?: string }).includeDeleted === '1';
     const mcpServers = await listMcpServers(deps(), principalOf(req), { includeDeleted });
     return { mcpServers };
+  });
+
+  // ---- GET /api/mcp-servers/builtin ----
+  // The platform's own toolset as ONE service descriptor (#106) — global and
+  // non-modifiable by construction: no DB row exists, and the id-based routes
+  // below (connect/tools/refresh/PATCH/DELETE) 404 on `builtin`. Deliberately
+  // separate from the list above — that array feeds pickers (profile editor,
+  // assistants, CLI resolver) that must only ever see referencable rows.
+  app.get('/api/mcp-servers/builtin', guard, async () => {
+    return { builtin: builtinMcpService() };
   });
 
   // ---- GET /api/mcp-servers/status ----

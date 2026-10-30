@@ -113,10 +113,13 @@ export type UpdateMcpServerInput = z.infer<typeof updateMcpServerSchema>;
 // shim's entire world model. Resolved transports (placeholders substituted with
 // plaintext) appear for CLIENT-dialed servers ONLY; server-dialed servers are
 // listed by name without a transport (the shim reaches them through the
-// platform /mcp outlet, addressed by `platform.baseUrl`).
+// platform /mcp outlet, addressed by `platform.baseUrl`). The outlet arm is
+// ALWAYS present (#106): it is the identity-carrying channel for the
+// platform-native namespaces (`notes__`, `api__`), so the built-in tools reach
+// every profile that has an MCP surface, not just server-dialed ones.
 export const clientMcpConfigSchema = z.object({
   profileId: z.string(),
-  /** Present iff any entry resolves to a server dial — dial `${baseUrl}/mcp?profile=<id>`. */
+  /** Always present — dial `${baseUrl}/mcp?profile=<id>` for server-dialed upstreams + platform-native tools. */
   platform: z.object({ baseUrl: z.string().url() }).nullable(),
   servers: z.array(
     z.union([
@@ -163,3 +166,17 @@ export const mcpToolInfoSchema = z.object({
 });
 
 export type McpToolInfo = z.infer<typeof mcpToolInfoSchema>;
+
+// ---- built-in MCP service (#106) ----
+// The platform's OWN toolset, served in-process on the `/mcp` outlet as
+// virtual namespaces (`notes__` today) and presented on the MCP management
+// page as ONE global, non-modifiable service. Display-only descriptor: it is
+// NOT a McpServer DB row (no CRUD route can target it) and NOT part of the
+// `GET /api/mcp-servers` array (whose consumers treat entries as pickable,
+// profile-referencable rows).
+export const builtinMcpServiceSchema = z.object({
+  id: z.literal('builtin'),
+  tools: z.array(mcpToolInfoSchema),
+});
+
+export type BuiltinMcpService = z.infer<typeof builtinMcpServiceSchema>;

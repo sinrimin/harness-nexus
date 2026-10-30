@@ -55,6 +55,10 @@ const en = {
   dialClient: 'client',
   dialServer: 'server',
   dialedByShim: 'dialed by hnx shim',
+  // Built-in service row (#106).
+  builtinName: 'Built-in tools',
+  builtinHint:
+    'Platform-native tools served in-process on the /mcp outlet — global, always available, not editable.',
   // Status badge tool count.
   toolOne: '{count} tool',
   toolMany: '{count} tools',
@@ -165,6 +169,9 @@ const zh: typeof en = {
   dialClient: '客户端',
   dialServer: '服务端',
   dialedByShim: '由 hnx shim 拨号',
+  // 内置服务行（#106）。
+  builtinName: '内置工具',
+  builtinHint: '由平台在 /mcp 出口上直接提供的内置工具——全局、恒可用、不可修改。',
   // 状态徽章工具计数。
   toolOne: '{count} 个工具',
   toolMany: '{count} 个工具',

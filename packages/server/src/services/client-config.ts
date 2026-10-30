@@ -120,8 +120,9 @@ async function getVisibleProfile(
 /**
  * `GET /api/client/mcp-config?profile=` — the world model a `hnx mcp serve`
  * shim boots from: client-dialed servers with RESOLVED transports (plaintext
- * included), server-dialed servers by name only, plus the outlet arm when any
- * server is server-dialed.
+ * included), server-dialed servers by name only, plus the outlet arm — always
+ * present (#106): it carries the platform-native namespaces (`notes__`,
+ * `api__`), so built-in tools reach every profile that has an MCP surface.
  */
 export async function buildClientMcpConfig(
   deps: ClientConfigDeps,
@@ -166,7 +167,6 @@ export async function buildClientMcpConfig(
     });
 
   const servers: ClientMcpConfig['servers'] = [];
-  let anyServerDialed = false;
   for (const entry of profile.entries) {
     if (entry.kind !== 'mcp') continue;
     const server = await deps.uow.mcpServers.findById(entry.resourceId);
@@ -182,7 +182,6 @@ export async function buildClientMcpConfig(
     }
     const site = await dialSiteFor(server);
     if (site === 'server') {
-      anyServerDialed = true;
       servers.push({ id: server.id, name: server.name, dialSite: 'server' });
       continue;
     }
@@ -196,9 +195,14 @@ export async function buildClientMcpConfig(
     });
   }
 
+  // #106: the outlet arm is ALWAYS armed — it is the identity-carrying
+  // channel for the platform-native namespaces (`notes__`, `api__`), not just
+  // the delivery path for server-dialed upstreams. A client-only profile gets
+  // the built-in tools too; an unreachable outlet degrades in the shim exactly
+  // like a failed upstream (warned + skipped), so offline setups keep working.
   return {
     profileId: profile.id,
-    platform: anyServerDialed ? { baseUrl: deps.publicBaseUrl } : null,
+    platform: { baseUrl: deps.publicBaseUrl },
     servers,
   };
 }

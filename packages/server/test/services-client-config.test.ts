@@ -97,7 +97,7 @@ describe('svc client-config — mcp-config shape + dial-site filtering', () => {
     expect(JSON.stringify(config)).not.toContain('CORP-LOCKED-SECRET');
   });
 
-  it('no outlet arm when every entry is client-dialed', async () => {
+  it('outlet arm present even when every entry is client-dialed (built-in tools ride it)', async () => {
     const d = deps();
     const { stdio } = await seedWorld(d);
     const profile = await createProfile(d, alice, {
@@ -107,7 +107,7 @@ describe('svc client-config — mcp-config shape + dial-site filtering', () => {
       entries: [{ mcpServerId: stdio.id }],
     });
     const config = await buildClientMcpConfig(d, asCaller(alice), profile.id);
-    expect(config.platform).toBeNull();
+    expect(config.platform).toEqual({ baseUrl: BASE });
   });
 
   it('400s a missing profile param; hides foreign personal profiles as 404', async () => {
@@ -163,7 +163,7 @@ describe('svc client-config — mcp-config shape + dial-site filtering', () => {
     expect((await deleteMcpServer(d, alice, corpHttp.id)).mode).toBe('soft');
     const config = await buildClientMcpConfig(d, asCaller(alice), profile.id);
     expect(config.servers.map((s) => s.name)).toEqual(['local echo']);
-    expect(config.platform).toBeNull();
+    expect(config.platform).toEqual({ baseUrl: BASE });
   });
 });
 

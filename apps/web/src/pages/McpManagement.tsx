@@ -85,6 +85,7 @@ import {
   type DialSite,
   type McpServerStatus,
   type McpToolInfo,
+  type BuiltinMcpService,
   type CredentialView,
 } from '@harness-nexus/sdk';
 
@@ -130,6 +131,9 @@ export function McpManagementPage() {
   const { logout, user } = useAuth();
   const { t } = useI18n();
   const [items, setItems] = useState<McpServer[] | null>(null);
+  // The platform's own toolset (#106) — a pinned fixture row, not a McpServer
+  // row; null until fetched (or if the fetch fails — the row simply hides).
+  const [builtin, setBuiltin] = useState<BuiltinMcpService | null>(null);
   const [error, setError] = useState<unknown>(null);
   const [statuses, setStatuses] = useState<Map<string, McpServerStatus>>(new Map());
   // name → distributable, for deriving `auto` dial sites client-side (display
@@ -148,11 +152,13 @@ export function McpManagementPage() {
 
   const refresh = useCallback(async () => {
     try {
-      const [servers, creds] = await Promise.all([
+      const [servers, creds, builtinService] = await Promise.all([
         withAuthGuard(() => api.listMcpServers(), logout),
         api.listCredentials().catch(() => [] as CredentialView[]),
+        api.getBuiltinMcpService().catch(() => null),
       ]);
       setItems(servers);
+      setBuiltin(builtinService);
       setError(null);
       const map = new Map<string, boolean>();
       for (const c of creds) if (!map.has(c.name)) map.set(c.name, c.distributable);
@@ -250,6 +256,14 @@ export function McpManagementPage() {
     [],
   );
 
+  // The built-in service is a pinned fixture, not a managed asset: it ignores
+  // the transport/dial/scope filters (vocabulary mismatch — it has no
+  // upstream, no dial decision, no owner) and only the search query can hide
+  // it. It is deliberately not counted in the filter bar's shown/total.
+  const builtinVisible =
+    builtin !== null &&
+    matchesQuery(query.q, [t('mcp.builtinName'), ...builtin.tools.map((tool) => tool.name)]);
+
   return (
     <>
       <PageSlot slot="actions">
@@ -337,6 +351,7 @@ export function McpManagementPage() {
           </TableRow>
         </TableHeader>
         <TableBody>
+          {builtinVisible && builtin !== null ? <BuiltinServiceRow service={builtin} /> : null}
           {visible?.map((s) => (
             <ServerRow
               key={s.id}
@@ -651,6 +666,81 @@ function ServerRow({
         </>
       </Collapsible>
     </>
+  );
+}
+
+/**
+ * The platform's built-in MCP service (#106) — pinned first row of the table.
+ * Global and non-modifiable: no connect/edit/delete actions, always available
+ * (the tools are served in-process on the /mcp outlet). The tool panel expands
+ * straight from the descriptor — no registry round-trip, no refresh.
+ *
+ * Defined at module scope (React perf rule — never nest component definitions).
+ */
+function BuiltinServiceRow({ service }: { service: BuiltinMcpService }) {
+  const { t } = useI18n();
+  const [open, setOpen] = useState(false);
+  return (
+    <Collapsible asChild open={open} onOpenChange={setOpen}>
+      <>
+        <TableRow data-state={open ? 'open' : 'closed'}>
+          <TableCell className="pl-6 font-medium">
+            <div className="flex items-center gap-2">
+              <CollapsibleTrigger asChild>
+                <button
+                  type="button"
+                  className="text-muted-foreground hover:text-foreground flex items-center gap-1"
+                  aria-label={open ? t('mcp.collapseTools') : t('mcp.expandTools')}
+                >
+                  <ChevronRightIcon
+                    className={`size-4 transition-transform ${open ? 'rotate-90' : ''}`}
+                  />
+                </button>
+              </CollapsibleTrigger>
+              <span>{t('mcp.builtinName')}</span>
+            </div>
+          </TableCell>
+          <TableCell>
+            <Badge variant="default">server</Badge>
+          </TableCell>
+          <TableCell>
+            <div className="flex items-center gap-2">
+              {/* Status words stay English (wire vocabulary, like every other
+               * row); the service is in-process, so "built-in" IS its state. */}
+              <Lamp state="connected" word="built-in" />
+              <span className="text-muted-foreground nums text-xs">
+                {service.tools.length === 1
+                  ? t('mcp.toolOne', { count: 1 })
+                  : t('mcp.toolMany', { count: service.tools.length })}
+              </span>
+            </div>
+          </TableCell>
+          <TableCell>
+            <Badge variant="secondary" className="role-data-sm">
+              built-in
+            </Badge>
+          </TableCell>
+          <TableCell>
+            <ScopeBadge scope="global" />
+          </TableCell>
+          <TableCell className="pr-6" />
+        </TableRow>
+        <CollapsibleContent asChild>
+          <TableRow className="hover:bg-transparent">
+            <TableCell colSpan={6} className="bg-muted/30 px-6 py-4">
+              <div>
+                <p className="text-muted-foreground mb-2 text-xs">{t('mcp.builtinHint')}</p>
+                <ul className="flex flex-col gap-1">
+                  {service.tools.map((tool) => (
+                    <ToolRow key={tool.name} tool={tool} />
+                  ))}
+                </ul>
+              </div>
+            </TableCell>
+          </TableRow>
+        </CollapsibleContent>
+      </>
+    </Collapsible>
   );
 }
 

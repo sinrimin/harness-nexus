@@ -40,6 +40,7 @@ import type {
   MarketplaceSource,
   PluginResourceSource,
   McpToolInfo,
+  BuiltinMcpService,
   ClientMcpConfig,
   InventorySnapshot,
   InventoryDiff,
@@ -167,6 +168,7 @@ export type {
   MarketplaceSource,
   PluginResourceSource,
   McpToolInfo,
+  BuiltinMcpService,
   ClientMcpConfig,
 };
 
@@ -1134,6 +1136,17 @@ export class HarnessNexusClient {
     const q = opts?.includeDeleted ? '?includeDeleted=1' : '';
     const res = await this.request('GET', `/api/mcp-servers${q}`);
     return res.mcpServers;
+  }
+
+  /**
+   * The platform's built-in toolset as ONE service descriptor (#106) — global,
+   * non-modifiable, served in-process on the `/mcp` outlet (first group: the
+   * `notes__` tools). Separate from `listMcpServers` on purpose: that array is
+   * pickable/referencable rows, this never is.
+   */
+  async getBuiltinMcpService(): Promise<BuiltinMcpService> {
+    const res = await this.request('GET', '/api/mcp-servers/builtin');
+    return res.builtin;
   }
 
   async updateMcpServer(
