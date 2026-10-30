@@ -100,6 +100,11 @@ const en = {
     'decision model: severity {severity} · intent {intent} → {lean} — advisory only',
   approvalsLeanAllow: 'allow',
   approvalsLeanReject: 'reject',
+  delegationUnavailable: 'Delegated review unavailable: {reason}. Answer this one manually.',
+  delegationReasonNoModel: 'no decision model is configured',
+  delegationReasonTimeout: 'the decision model timed out',
+  delegationReasonHttp: 'the decision-model provider returned an error',
+  delegationReasonShape: 'the decision model returned an unusable answer',
   approvalsReason: {
     policy: 'never-allow floor',
     not_covered: 'not covered by your request',
@@ -301,6 +306,11 @@ const zh: typeof en = {
     '决策模型：严重度 {severity} · 意图匹配 {intent} → 倾向{lean} —— 仅供参考',
   approvalsLeanAllow: '放行',
   approvalsLeanReject: '拒绝',
+  delegationUnavailable: '代审未生效：{reason}。这一次请手动放行。',
+  delegationReasonNoModel: '未配置决策模型',
+  delegationReasonTimeout: '决策模型超时',
+  delegationReasonHttp: '决策模型供应商报错',
+  delegationReasonShape: '决策模型返回了无法使用的结果',
   approvalsReason: {
     policy: '命中永不放行底线',
     not_covered: '不在你的请求范围内',

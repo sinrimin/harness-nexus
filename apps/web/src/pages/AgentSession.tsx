@@ -14,6 +14,7 @@ import {
   PlusIcon,
   RefreshCwIcon,
   HistoryIcon,
+  ScrollTextIcon,
   XIcon,
 } from 'lucide-react';
 import { api } from '@/api';
@@ -51,6 +52,7 @@ import { ChannelTabs } from '@/components/chat/channel-tabs.js';
 import { EndSwitcher } from '@/components/chat/end-switcher.js';
 import { SessionRow } from '@/components/chat/session-row.js';
 import { RailSessionRow } from '@/components/chat/rail-session-row.js';
+import { DecisionRecordsDialog } from '@/components/decision-records-dialog';
 import { cwdBasename, cwdParent } from '@/lib/cwd.js';
 import { useChatChannels } from '@/components/chat/use-chat-channels.js';
 import { useAssistantSessions } from '@/components/chat/use-assistant-sessions.js';
@@ -471,6 +473,8 @@ export function AgentSessionPage() {
   const [loadFailed, setLoadFailed] = useState(false);
   const [rail, setRail] = useState<RailState>({ state: 'loading' });
   const [sessionId, setSessionId] = useState('');
+  /** #104 — the session-scoped delegated-records dialog (header action). */
+  const [recordsOpen, setRecordsOpen] = useState(false);
   const [nativeSessionId, setNativeSessionId] = useState<string | null>(null);
   const [phase, setPhase] = useState<Phase>('idle');
   const [error, setError] = useState<string | null>(null);
@@ -1357,6 +1361,21 @@ export function AgentSessionPage() {
                 </span>
               ) : null}
               <span className="min-w-0 flex-1" />
+              {/* #104 — the stable entry to this session's delegated audit.
+                  The in-stream entry only exists in a fold that saw a
+                  delegated settle, so long sessions lost the door. */}
+              {sessionId !== '' ? (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="gap-1.5"
+                  onClick={() => setRecordsOpen(true)}
+                  title={t('decisions.openHint')}
+                >
+                  <ScrollTextIcon className="size-3.5" />
+                  <span className="hidden sm:inline">{t('decisions.openLabel')}</span>
+                </Button>
+              ) : null}
               {phase === 'ready' || phase === 'connecting' ? (
                 <>
                   {/* History paging — pull the WHOLE ring in (search-ready),
@@ -1384,6 +1403,13 @@ export function AgentSessionPage() {
                 </>
               ) : null}
             </div>
+            {sessionId !== '' ? (
+              <DecisionRecordsDialog
+                open={recordsOpen}
+                onClose={() => setRecordsOpen(false)}
+                sessionId={sessionId}
+              />
+            ) : null}
 
             {error !== null && phase !== 'closed' ? (
               <p className="text-destructive border-destructive/30 bg-destructive/5 border-b px-4 py-2 text-xs">

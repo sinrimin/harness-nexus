@@ -1314,20 +1314,7 @@ function DefaultModelsDialog({
             className="sm:col-span-2"
             label={t('llmProviders.decisionSlot')}
             htmlFor="llmp-default-provider"
-            hint={
-              <span className="inline-flex items-center gap-1">
-                {t('llmProviders.decisionHint')}
-                <button
-                  type="button"
-                  className="text-muted-foreground hover:text-foreground ml-1 inline-flex cursor-pointer items-center gap-0.5 text-xs transition-colors"
-                  onClick={() => setRecordsOpen(true)}
-                >
-                  <ScrollTextIcon className="size-3" />
-                  {t('decisions.viewAll')}
-                </button>
-                <DecisionRecordsDialog open={recordsOpen} onClose={() => setRecordsOpen(false)} />
-              </span>
-            }
+            hint={t('llmProviders.decisionHint')}
           >
             <div className="grid gap-2 sm:grid-cols-2">
               <Select
@@ -1378,6 +1365,22 @@ function DefaultModelsDialog({
                 {t('llmProviders.noDecisionProviders')}
               </p>
             ) : null}
+            {/* #104 — the audit is its own action, not a link tucked inside a
+                hint sentence (the old 12px inline text was easy to miss and
+                read as part of the explanation). */}
+            <div className="mt-2 flex justify-end">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="gap-1.5"
+                onClick={() => setRecordsOpen(true)}
+              >
+                <ScrollTextIcon className="size-3.5" />
+                {t('decisions.viewAll')}
+              </Button>
+            </div>
+            <DecisionRecordsDialog open={recordsOpen} onClose={() => setRecordsOpen(false)} />
             {caps?.decision.health === 'degraded' ? (
               // #100 — the breaker lamp: quiet while healthy, one warn line
               // with the reason + a manual clear while degraded. The button

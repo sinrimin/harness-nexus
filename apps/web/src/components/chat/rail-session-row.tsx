@@ -11,8 +11,10 @@ import { DataText } from '@/components/kit';
  * assistant, desktop column and phone drawer). One device so the active
  * language cannot drift again: 2px `--signal` left edge at x=0 + 8% signal
  * tint (BAY swaps the tint for paper via `[data-skin]`), a status WORD at the
- * title line's right end, and no per-row borders — the machine rail separates
- * groups, not rows.
+ * meta line's right end, and no per-row borders — the machine rail separates
+ * groups, not rows. #104 — the word moved off the title line: a long title
+ * and a status word competing for one 288px line truncated the thing the row
+ * exists to show.
  *
  * State truth: `aria-current="true"` on the current row; `word` is real text
  * (`running` shows on the current row too; `open` is for NON-current attached
@@ -57,7 +59,11 @@ export function RailSessionRow({
         // header's `+` margin inside it), so the title's truncation point
         // never shifts when the trash fades in. Phone: no on-row trash (the
         // swipe reveal), keep the plain 12px.
-        'flex w-full items-start border-l-2 border-l-transparent py-2 pr-3 pl-[30px] text-left md:pr-8',
+        // #104 — the free (right) corners take the skin radius; the signal
+        // edge stays anchored at x=0. Full-bleed rows otherwise read square
+        // beside the plate's rounded current key (Signal 6px, BAY 2px — the
+        // token keeps each skin's own language).
+        'flex w-full items-start rounded-r-(--radius-well) border-l-2 border-l-transparent py-2 pr-3 pl-[30px] text-left md:pr-8',
         active
           ? 'border-l-signal bg-signal/8 hover:bg-signal/12'
           : faded
@@ -67,15 +73,18 @@ export function RailSessionRow({
       )}
     >
       <span className="min-w-0 flex-1">
-        <span className="flex items-baseline gap-1.5">
-          <span
-            className={cn(
-              'min-w-0 flex-1 truncate text-xs',
-              active && 'text-foreground font-semibold',
-            )}
-          >
-            {title}
-          </span>
+        <span
+          className={cn(
+            'block truncate text-xs',
+            active && 'text-foreground font-semibold',
+          )}
+        >
+          {title}
+        </span>
+        <span className="mt-0.5 flex items-baseline gap-1.5">
+          <DataText size="sm" tone="dim" className="min-w-0 flex-1 truncate">
+            {meta}
+          </DataText>
           {word !== null ? (
             <span
               className={cn(
@@ -87,9 +96,6 @@ export function RailSessionRow({
             </span>
           ) : null}
         </span>
-        <DataText size="sm" tone="dim" className="mt-0.5 block truncate">
-          {meta}
-        </DataText>
       </span>
     </button>
   );
