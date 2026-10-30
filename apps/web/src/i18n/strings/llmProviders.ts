@@ -103,6 +103,12 @@ const en = {
   defaultsPickModel: 'Pick a model…',
   noDecisionProviders: 'No provider offers a systemone model yet.',
   decisionHint: 'Used by delegated approvals when a machine does not override it.',
+  // #100 — the breaker lamp in the defaults dialog (quiet while healthy).
+  capabilityDegraded:
+    'Decision model failed {count} times in a row — delegated approvals fell back to manual; auto-retry at {time}.',
+  capabilityRetry: 'Clear and retry',
+  capabilityRetryDone: 'Circuit cleared — the next use probes the model.',
+  capabilityRetryFailed: 'Failed to clear the circuit.',
   defaultsSavedToast: 'Default models updated',
   defaultsLoadFailed: 'Failed to load default models',
   defaultSaveFailed: 'Failed to update default models',
@@ -206,6 +212,10 @@ const zh: typeof en = {
   defaultsPickModel: '选择模型…',
   noDecisionProviders: '还没有供应商提供 systemone 模型。',
   decisionHint: '当机器未单独设置时，委托审批使用此模型。',
+  capabilityDegraded: '决策模型连续失败 {count} 次——委托审批已回退人工；{time} 自动重试。',
+  capabilityRetry: '清除重试',
+  capabilityRetryDone: '断路已清除——下次使用时自动探测模型。',
+  capabilityRetryFailed: '清除断路失败。',
   defaultsSavedToast: '默认模型已更新',
   defaultsLoadFailed: '加载默认模型失败',
   defaultSaveFailed: '更新默认模型失败',

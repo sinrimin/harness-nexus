@@ -376,6 +376,33 @@ export const userDefaultModelsSchema = z.object({
 export type UserDefaultModelsInput = z.input<typeof userDefaultModelsSchema>;
 export type UserDefaultModels = z.infer<typeof userDefaultModelsSchema>;
 
+/**
+ * #100 — one default-model slot's DERIVED capability state (never stored):
+ * `configured` re-validates the stored ref against the live provider
+ * registry; `health` merges the decision-model circuit breaker (degraded
+ * while it holds, with the epoch-ms `degradedUntil`, the last error and the
+ * consecutive-failure count). Reserved slots report `ok` while unused.
+ */
+export const modelCapabilityStateSchema = z.object({
+  configured: z.boolean(),
+  health: z.enum(['ok', 'degraded']),
+  degradedUntil: z.number().int().nonnegative().optional(),
+  lastError: z.string().max(512).optional(),
+  consecutiveFailures: z.number().int().nonnegative().optional(),
+});
+export type ModelCapabilityState = z.infer<typeof modelCapabilityStateSchema>;
+
+/** The per-owner capability view — rides `GET /api/users/me/default-models`. */
+export const modelCapabilitiesViewSchema = z.object({
+  decision: modelCapabilityStateSchema,
+  embedding: modelCapabilityStateSchema,
+  rerank: modelCapabilityStateSchema,
+});
+export type ModelCapabilitiesView = z.infer<typeof modelCapabilitiesViewSchema>;
+
+export const modelCapabilitySlotSchema = z.enum(['decision', 'embedding', 'rerank']);
+export type ModelCapabilitySlot = z.infer<typeof modelCapabilitySlotSchema>;
+
 /** One discovered model id (cc-switch 获取模型). `name` is the display name when the endpoint offers one. */
 export const llmModelInfoSchema = z.object({
   id: z.string().min(1).max(256),

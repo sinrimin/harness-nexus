@@ -14,5 +14,7 @@ declare module 'fastify' {
     publicBaseUrl: string;
     /** W10 — fetch budget for provider model-list discovery. See config.ts. */
     providerModelsTimeoutMs: number;
+    /** #100 — the per-owner decision-model breaker, attached in buildApp. */
+    modelCapabilities: import('../../services/model-capabilities.js').ModelCapabilities;
   }
 }

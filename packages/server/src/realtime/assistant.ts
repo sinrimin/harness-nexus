@@ -39,6 +39,7 @@ import {
   type ApprovalGateOutcome,
   GATE_TOOL_INPUT_CHAR_CAP,
 } from './approvals-gate.js';
+import type { ModelCapabilities } from '../services/model-capabilities.js';
 
 /**
  * The assistant's realtime coordinator (#52 §7) — the LiveSender-flavored
@@ -149,6 +150,8 @@ export interface AssistantApprovalAnswer {
  * gate never engages.
  */
 export interface AssistantRealtimeDeps extends AssistantRunnerDeps {
+  /** #100 — the decision-model breaker, shared with the machine axis. */
+  capabilities?: ModelCapabilities;
   approvals?: {
     timeoutMs: number;
     log?: { warn: (msg: string) => void };
@@ -1154,7 +1157,9 @@ export class AssistantRealtimeService {
         credentialEncryptionKey: this.deps.credentialEncryptionKey,
         timeoutMs: gate.timeoutMs,
         ...(gate.log !== undefined ? { log: gate.log } : {}),
-        ...(gate.fetchImpl !== undefined ? { fetchImpl: gate.fetchImpl } : {}),
+        ...(this.deps.capabilities !== undefined
+          ? { fetchImpl: this.deps.capabilities.wrapFetch(ch.ownerId, gate.fetchImpl) }
+          : { ...(gate.fetchImpl !== undefined ? { fetchImpl: gate.fetchImpl } : {}) }),
         ...(gate.bands !== undefined ? { bands: gate.bands } : {}),
       },
       {
