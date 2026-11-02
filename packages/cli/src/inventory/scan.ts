@@ -10,6 +10,7 @@ import { codexScanner } from './scanners/codex.js';
 import { hermesScanner } from './scanners/hermes.js';
 import { deepseekScanner } from './scanners/deepseek.js';
 import { opencodeScanner } from './scanners/opencode.js';
+import { roderScanner } from './scanners/roder.js';
 import { piScanner } from './scanners/pi.js';
 import type { PayloadItem, TargetScanner } from './types.js';
 
@@ -27,6 +28,7 @@ export const SCANNERS: TargetScanner[] = [
   deepseekScanner,
   opencodeScanner,
   piScanner,
+  roderScanner,
 ];
 
 export function scannerFor(target: AgentTarget): TargetScanner | undefined {

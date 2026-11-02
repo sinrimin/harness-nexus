@@ -4,7 +4,7 @@
 
 import { existsSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { join } from 'node:path';
+import { delimiter, join } from 'node:path';
 import type { AgentTarget } from '@harness-nexus/shared';
 
 /**
@@ -95,6 +95,7 @@ const DEFAULT_ACP_COMMANDS: Record<AgentTarget, AcpAdapterSpec | null> = {
   // This null row only keeps the record exhaustive — resolveAcpCommand is
   // never consulted for pi (and would answer null anyway).
   pi: null,
+  roder: { command: ['roder', 'acp'] },
   zcode: null, // no adapter exists (also no install adapter — 3.x)
   generic: null,
 };
@@ -158,6 +159,14 @@ export function resolveAcpCommand(
           command: def.command[0]!,
           args: def.command.slice(1),
         });
+  // The native installer writes ~/.local/bin, which a daemon PATH may omit.
+  if (target === 'roder' && (override === undefined || override.trim() === '')) {
+    const onPath = (env.PATH ?? '')
+      .split(delimiter)
+      .some((dir) => dir !== '' && existsSync(join(dir, 'roder')));
+    const native = join(opts.homeDir ?? homedir(), '.local', 'bin', 'roder');
+    if (!onPath && existsSync(native)) base.command = native;
+  }
   return { ...base, ...(def.env !== undefined ? { env: { ...def.env } } : {}) };
 }
 

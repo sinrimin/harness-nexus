@@ -177,7 +177,7 @@ export interface RuntimeConfig {
   machineId: string;
   ownerId: string;
   /** Runtime-managed target only (claude-code | codex | deepseek | opencode | pi). */
-  target: 'claude-code' | 'codex' | 'deepseek' | 'opencode' | 'pi';
+  target: 'claude-code' | 'codex' | 'deepseek' | 'opencode' | 'pi' | 'roder';
   spec: RuntimeConfigSpecData;
   createdAt: string;
   updatedAt: string;

@@ -30,6 +30,7 @@ export type ProviderApi = z.infer<typeof providerApiSchema>;
 export const RUNTIME_API_SUPPORT: Record<RuntimeTarget, readonly ProviderApi[]> = {
   'claude-code': ['anthropic-messages'],
   codex: ['openai'],
+  roder: ['openai'],
   deepseek: ['anthropic-messages', 'openai'],
   // 9 W12 — the provider's `npm` AI-SDK key covers both wires
   // (@ai-sdk/openai[-compatible] / @ai-sdk/anthropic).
@@ -453,6 +454,9 @@ export function runtimeSpecUnsupportedReason(
     return `target '${target}' cannot speak the '${spec.api}' API (supported: ${RUNTIME_API_SUPPORT[
       target
     ].join(', ')})`;
+  }
+  if (target === 'roder' && spec.baseUrl === undefined) {
+    return 'roder provider routes must set a baseUrl (custom providers require an endpoint)';
   }
   if (target === 'deepseek' && spec.baseUrl === undefined) {
     return "deepseek provider routes must set a baseUrl (dsh's route is not in the installed catalog, so it has no default endpoint)";

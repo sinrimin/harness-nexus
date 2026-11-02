@@ -433,6 +433,7 @@ describe('scanAllTargets', () => {
       'hermes',
       'opencode',
       'pi',
+      'roder',
     ]);
     const { inventorySnapshotSchema } = await import('@harness-nexus/shared');
     for (const snap of snapshots) {
