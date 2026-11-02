@@ -158,6 +158,26 @@ export function AssistantSessionPage() {
     };
   }, [logout]);
 
+  // #108 — decision-model availability for the 写操作策略 模型代审 choice
+  // (#100 capabilities, registry-revalidated). null = not loaded yet (the
+  // choice renders enabled — the server refusal is the backstop); a failed
+  // load stays null for the same reason.
+  const [decisionReady, setDecisionReady] = useState<boolean | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const caps = await withAuthGuard(() => api.getModelCapabilities(), logout);
+        if (!cancelled) setDecisionReady(caps.decision.configured);
+      } catch {
+        /* unknown — leave ungated */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [logout]);
+
   // ?s=<id> — a busy-assistant tab hand-off from another page: open that
   // session once the configs loaded (the open itself validates ownership).
   const sParam = searchParams.get('s');
@@ -831,6 +851,7 @@ export function AssistantSessionPage() {
                       config={conversation.config satisfies ComposerConfig}
                       onConfigSet={(set) => void configSet(set)}
                       commands={conversation.commands}
+                      decisionReady={decisionReady ?? undefined}
                     />
                   </div>
                 </div>

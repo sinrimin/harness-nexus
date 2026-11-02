@@ -271,9 +271,12 @@ export class AssistantRealtimeService {
         // #79 — the sender's write-policy switch. The names are protocol-side
         // labels; the web renders this option by its `id` with localized
         // strings, values stay the declared modes. #95 follow-up — the third
-        // value hands answers to the owner's default decision model, so the
-        // option is advertised even when no model resolves (picking it then
-        // returns ASSISTANT_APPROVALS_NO_PROVIDER, the discoverable failure).
+        // value hands answers to the owner's default decision model. #108:
+        // the option is advertised even when no model resolves, but the WEB
+        // now renders that choice DISABLED with its reason (capabilities
+        // view); this advertisement only feeds the list, and the
+        // ASSISTANT_APPROVALS_NO_PROVIDER refusal below stays as the
+        // render→pick race backstop.
         {
           id: 'permissionMode',
           name: 'Write policy',
@@ -693,8 +696,9 @@ export class AssistantRealtimeService {
         return { ok: false, code: 'ASSISTANT_BAD_PERMISSION_MODE' };
       }
       // #95 follow-up — delegation needs a resolvable decision model at the
-      // moment it is picked; the option stays advertised so the failure is
-      // discoverable (the web turns the code into a "configure one" toast).
+      // moment it is picked. #108 — the web gates the choice itself
+      // (disabled + reason) off the same resolution, so this refusal is the
+      // backstop for the model being removed between render and pick.
       if (set.value === 'delegated' && (await this.resolveDecisionView(ch.ownerId)) === null) {
         return { ok: false, code: 'ASSISTANT_APPROVALS_NO_PROVIDER' };
       }

@@ -80,9 +80,11 @@ export class ModelCapabilities {
     return async (url, init) => {
       const degraded = this.degraded(ownerId);
       if (degraded !== null) {
+        // #108 — its own error kind: the gate's unavailable-notice taxonomy
+        // must say "circuit open", not "unusable answer".
         return Promise.reject({
-          kind: 'shape',
-          message: `decision model degraded (circuit open until ${new Date(degraded.until).toISOString()}; last: ${degraded.lastError})`,
+          kind: 'degraded',
+          message: `circuit open until ${new Date(degraded.until).toISOString()}; last: ${degraded.lastError}`,
         } as SystemOneError);
       }
       const fetchImpl = inner ?? globalFetch;

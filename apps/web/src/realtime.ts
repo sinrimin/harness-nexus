@@ -119,7 +119,7 @@ export type ChatStreamEvent =
       /** #104 — delegation was on but could not conclude; the card stays. */
       kind: 'permission_escalated';
       requestId: string;
-      reason: 'no-model' | 'timeout' | 'http' | 'shape';
+      reason: 'no-model' | 'timeout' | 'http' | 'shape' | 'degraded';
     }
   | {
       /** 9 W14.1 — the agent asked a structured question (ACP elicitation). */

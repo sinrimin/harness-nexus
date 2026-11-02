@@ -274,6 +274,13 @@ interface ComposerProps {
   onApprovalsSet?: (responder: 'manual' | 'delegated') => void;
   /** 9 W15 — the agent's advertised slash commands (fold slice). */
   commands: CommandView[];
+  /**
+   * #108 — the assistant 端's decision-model availability (the #100
+   * capabilities view). `undefined` = ungated (the machine 端, whose approvals
+   * switch carries its own gating); `false` = the 模型代审 write policy
+   * renders disabled with its reason instead of selectable-then-refused.
+   */
+  decisionReady?: boolean;
 }
 
 /** Mode ids that WEAKEN the permission gate — confirm before switching. */
@@ -464,6 +471,8 @@ interface SelectChoice {
   name: string;
   description?: string;
   group?: string;
+  /** #108 — the choice exists but cannot be picked (its reason rides `description`). */
+  disabled?: boolean;
 }
 
 /**
@@ -553,7 +562,12 @@ function ConfigSelect({
         {[...groups.entries()].map(([group, list]) =>
           group === '' ? (
             list.map((c) => (
-              <SelectItem key={c.value} value={c.value} title={c.description}>
+              <SelectItem
+                key={c.value}
+                value={c.value}
+                title={c.description}
+                disabled={c.disabled}
+              >
                 {c.name}
               </SelectItem>
             ))
@@ -561,7 +575,12 @@ function ConfigSelect({
             <SelectGroup key={group}>
               <SelectLabel>{group}</SelectLabel>
               {list.map((c) => (
-                <SelectItem key={c.value} value={c.value} title={c.description}>
+                <SelectItem
+                  key={c.value}
+                  value={c.value}
+                  title={c.description}
+                  disabled={c.disabled}
+                >
                   {c.name}
                 </SelectItem>
               ))}
@@ -663,6 +682,7 @@ export function Composer({
   onConfigSet,
   onApprovalsSet = () => {},
   commands,
+  decisionReady,
 }: ComposerProps) {
   const { t } = useI18n();
   const textRef = useRef<HTMLTextAreaElement | null>(null);
@@ -761,6 +781,17 @@ export function Composer({
       value: o.value,
       name: permName(o.value, o.name),
       description: o.description,
+      // #108 — an unavailable delegation must not present as pickable: the
+      // choice stays listed (discoverability) but disabled with its reason,
+      // mirroring the machine 端's approvals switch. The server's
+      // ASSISTANT_APPROVALS_NO_PROVIDER refusal remains the backstop for the
+      // render→pick race.
+      ...(decisionReady === false && o.value === 'delegated'
+        ? {
+            disabled: true,
+            description: t('assistants.permNoModel'),
+          }
+        : {}),
     })) ?? [];
   const modeChoices: SelectChoice[] =
     modeFromOptions?.options?.map((o) => ({

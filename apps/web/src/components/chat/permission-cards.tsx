@@ -17,6 +17,7 @@ const ESCALATION_REASON_KEY: Record<
   timeout: 'chat.delegationReasonTimeout',
   http: 'chat.delegationReasonHttp',
   shape: 'chat.delegationReasonShape',
+  degraded: 'chat.delegationReasonDegraded',
 };
 
 /**

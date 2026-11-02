@@ -170,7 +170,12 @@ export interface ApprovalVerdictContext {
  * card must still be answered manually — but it is visible and audited (a
  * silent fallback looked like delegated review simply not happening).
  */
-export type ApprovalUnavailableReason = 'no-model' | 'timeout' | 'http' | 'shape';
+export type ApprovalUnavailableReason =
+  | 'no-model'
+  | 'timeout'
+  | 'http'
+  | 'shape'
+  | 'degraded';
 
 export type ApprovalGateOutcome =
   | {
@@ -240,7 +245,14 @@ function normalizeWhy(choice: string | undefined): DelegationDenialReason {
 function unavailableReason(e: unknown): ApprovalUnavailableReason {
   if (e !== null && typeof e === 'object' && 'kind' in e) {
     const kind = (e as { kind: unknown }).kind;
-    if (kind === 'timeout' || kind === 'http' || kind === 'shape') return kind;
+    if (
+      kind === 'timeout' ||
+      kind === 'http' ||
+      kind === 'shape' ||
+      kind === 'degraded'
+    ) {
+      return kind;
+    }
   }
   return 'no-model';
 }

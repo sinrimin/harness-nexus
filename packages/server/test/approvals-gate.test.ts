@@ -15,6 +15,7 @@ import { describe, expect, it } from 'vitest';
 import { createMemoryUnitOfWork } from '../src/infra/storage/memory/index.js';
 import { encryptSecret } from '../src/infra/crypto.js';
 import { ChatService, type ChatIO } from '../src/realtime/chat.js';
+import { decideApproval } from '../src/realtime/approvals-gate.js';
 import type { UnitOfWork } from '@harness-nexus/core';
 
 const NOW = new Date().toISOString();
@@ -544,6 +545,55 @@ describe('delegated approvals gate (#92) — context window', () => {
 });
 
 describe('delegated approvals gate (#92) — resolution and provider #95 paths', () => {
+  it('#108 — a tripped breaker escalates with the DEGRADED reason (not shape/no-model)', async () => {
+    // The #100 breaker's fast-fail rejects before the wire; the named
+    // fallback must say "cooling down", not "unusable answer".
+    const degradedFetch: FetchImpl = async () =>
+      Promise.reject({ kind: 'degraded', message: 'circuit open until later' });
+    const uow = createMemoryUnitOfWork();
+    await uow.llmProviders.save({
+      id: 'p108',
+      name: 'brk',
+      apis: [{ kind: 'systemone', path: null }],
+      baseUrl: 'https://brk.example.com',
+      credentialName: 'c108',
+      scope: 'global',
+      ownerId: null,
+      models: [{ id: 'm108', apiKind: 'systemone' }],
+      createdAt: NOW,
+      updatedAt: NOW,
+    });
+    await uow.credentials.save({
+      id: 'c108',
+      ownerId: 'u108',
+      name: 'c108',
+      secret: encryptSecret('sk', KEY),
+      scope: 'global',
+      distributable: false,
+      createdAt: NOW,
+      updatedAt: NOW,
+    });
+    const outcome = await decideApproval(
+      {
+        uow,
+        credentialEncryptionKey: KEY,
+        timeoutMs: 1_000,
+        fetchImpl: degradedFetch,
+      },
+      {
+        ownerId: 'u108',
+        target: 'claude-code',
+        recentPrompts: [],
+        view: { responder: 'manual', providerName: 'brk', modelId: 'm108' },
+        toolCall: { title: 'Bash(ssh host)', kind: 'execute', raw: { command: 'ssh host' } },
+        policy: { decision: { providerId: 'p108', modelId: 'm108' } },
+        options: OPTIONS,
+      },
+    );
+    expect(outcome.kind).toBe('escalate');
+    expect((outcome as { unavailable?: string }).unavailable).toBe('degraded');
+  });
+
   it('#95 — follows the USER default decision model when the machine sets no override', async () => {
     const t = await setup({ target: 'claude-code', followDefault: true });
     await t.svc.onStream('m92', t.sessionId, {
