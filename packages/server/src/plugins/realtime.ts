@@ -1051,6 +1051,10 @@ export async function registerRealtime(
     socket.on('assistant:sessions.sync', (_payload: unknown, ack?: (res: unknown) => void) => {
       void realtime.assistant.snapshotFor(socket.data.userId as string).then((snap) => {
         ack?.(snap);
+        // #110 — the sync is also a REFRESH (e.g. after a rename, whose PATCH
+        // carries no push of its own): re-push the room so every mounted rail
+        // re-renders even when the emitter discarded the ack.
+        void realtime.assistant.pushSessions(socket.data.userId as string);
         // #110 — mount-time orphan GC for the assistant axis, fire-and-forget
         // (the ack must not wait on it). Only the rail's OWN visible set may
         // prune: the snapshot is the full owner listing this sync asked for.
