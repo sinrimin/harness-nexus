@@ -677,7 +677,7 @@ export const chatStreamEventSchema = z.discriminatedUnion('kind', [
   z.object({
     kind: z.literal('permission_escalated'),
     requestId: z.string().min(1).max(128),
-    reason: z.enum(['no-model', 'timeout', 'http', 'shape']),
+    reason: z.enum(['no-model', 'timeout', 'http', 'shape', 'degraded']),
   }),
   // 9 W14.1 — the agent asked the user a structured question (ACP
   // `elicitation/create`, form mode; claude's AskUserQuestion and

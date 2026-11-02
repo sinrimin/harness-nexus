@@ -105,6 +105,7 @@ const en = {
   delegationReasonTimeout: 'the decision model timed out',
   delegationReasonHttp: 'the decision-model provider returned an error',
   delegationReasonShape: 'the decision model returned an unusable answer',
+  delegationReasonDegraded: 'the decision model is cooling down after repeated failures',
   approvalsReason: {
     policy: 'never-allow floor',
     not_covered: 'not covered by your request',
@@ -311,6 +312,7 @@ const zh: typeof en = {
   delegationReasonTimeout: '决策模型超时',
   delegationReasonHttp: '决策模型供应商报错',
   delegationReasonShape: '决策模型返回了无法使用的结果',
+  delegationReasonDegraded: '决策模型连续失败后熔断冷却中（稍后自动恢复）',
   approvalsReason: {
     policy: '命中永不放行底线',
     not_covered: '不在你的请求范围内',

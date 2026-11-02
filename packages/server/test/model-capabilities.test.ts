@@ -118,7 +118,9 @@ describe('wrapFetch (the seam both gate axes thread)', () => {
       return okRes();
     });
     await expect(wrapped('https://x', {} as Parameters<SystemOneFetch>[1])).rejects.toMatchObject({
-      kind: 'shape',
+      // #108 — its own kind: the gate's named-notice taxonomy must read
+      // "circuit open", not "unusable answer".
+      kind: 'degraded',
     });
     expect(innerCalled).toBe(false);
     // the synthetic rejection was not recorded: still exactly 3 failures

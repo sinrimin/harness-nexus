@@ -133,7 +133,7 @@ export interface PermissionCardState {
    * human's to answer. Rendered as one muted reason line (never an error:
    * the fallback is safe, it was just silent before).
    */
-  escalation?: { reason: 'no-model' | 'timeout' | 'http' | 'shape' };
+  escalation?: { reason: 'no-model' | 'timeout' | 'http' | 'shape' | 'degraded' };
   /** #92 — how it settled (`undefined` on pre-#92 events = a human did). */
   resolution?: {
     responder: 'human' | 'delegated';

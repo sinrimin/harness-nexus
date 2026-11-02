@@ -45,7 +45,9 @@ export type SystemOneError =
   | { kind: 'timeout' }
   | { kind: 'http'; status: number; body: string }
   | { kind: 'shape'; message: string }
-  | { kind: 'insecure-url' };
+  | { kind: 'insecure-url' }
+  /** #108 — the #100 breaker's fast-fail (the call never went out). */
+  | { kind: 'degraded'; message: string };
 
 /** Injectable for tests; production uses the global fetch. */
 export type SystemOneFetch = (
@@ -140,5 +142,7 @@ export function systemOneErrorMessage(err: SystemOneError): string {
       return `decision model bad response: ${err.message}`;
     case 'insecure-url':
       return 'decision provider baseUrl must be https';
+    case 'degraded':
+      return `decision model degraded (${err.message})`;
   }
 }
