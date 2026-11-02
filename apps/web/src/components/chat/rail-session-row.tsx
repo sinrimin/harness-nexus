@@ -72,12 +72,7 @@ export function RailSessionRow({
       )}
     >
       <span className="min-w-0 flex-1">
-        <span
-          className={cn(
-            'block truncate text-xs',
-            active && 'text-foreground font-semibold',
-          )}
-        >
+        <span className={cn('block truncate text-xs', active && 'text-foreground font-semibold')}>
           {title}
         </span>
         <span className="mt-0.5 flex items-baseline gap-1.5">

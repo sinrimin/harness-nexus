@@ -546,9 +546,7 @@ function applyEvent(state: FoldState, event: ChatStreamEvent): FoldState {
       return {
         ...state,
         permissions: state.permissions.map((p) =>
-          p.requestId === event.requestId
-            ? { ...p, escalation: { reason: event.reason } }
-            : p,
+          p.requestId === event.requestId ? { ...p, escalation: { reason: event.reason } } : p,
         ),
       };
     case 'permission_resolved':

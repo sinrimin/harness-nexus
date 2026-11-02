@@ -562,12 +562,7 @@ function ConfigSelect({
         {[...groups.entries()].map(([group, list]) =>
           group === '' ? (
             list.map((c) => (
-              <SelectItem
-                key={c.value}
-                value={c.value}
-                title={c.description}
-                disabled={c.disabled}
-              >
+              <SelectItem key={c.value} value={c.value} title={c.description} disabled={c.disabled}>
                 {c.name}
               </SelectItem>
             ))

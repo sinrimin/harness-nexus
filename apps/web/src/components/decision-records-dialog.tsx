@@ -222,7 +222,9 @@ function DecisionRow({ record }: { record: DecisionRecordView }) {
         </DataText>
       </div>
       <div className="text-muted-foreground role-data-sm mt-1 flex flex-wrap items-baseline gap-x-3 gap-y-1">
-        <span>{record.decidedBy === 'floor' ? t('decisions.byFloor') : t('decisions.byModel')}</span>
+        <span>
+          {record.decidedBy === 'floor' ? t('decisions.byFloor') : t('decisions.byModel')}
+        </span>
         {record.target !== undefined ? <span>{record.target}</span> : null}
         {record.severity !== undefined ? (
           <span>
