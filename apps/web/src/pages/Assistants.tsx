@@ -160,10 +160,14 @@ export function AssistantsPage() {
   const [draft, setDraft] = useState<Draft>(EMPTY_DRAFT);
   const [busy, setBusy] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<AssistantConfigView | null>(null);
+  // #108 — decision-model availability for the 初始策略 模型代审 item
+  // (#100 capabilities). null = unknown → render enabled (the server-side
+  // escalation notice is the backstop).
+  const [decisionReady, setDecisionReady] = useState<boolean | null>(null);
 
   async function refresh() {
     try {
-      const [list, provs, servers, apiTools, skills] = await Promise.all([
+      const [list, provs, servers, apiTools, skills, caps] = await Promise.all([
         withAuthGuard(() => api.listAssistants(), logout),
         withAuthGuard(() => api.listLlmProviders(), logout),
         // Picker sources — failures degrade to empty lists (the dialog stays
@@ -171,12 +175,14 @@ export function AssistantsPage() {
         withAuthGuard(() => api.listMcpServers(), logout).catch(() => []),
         withAuthGuard(() => api.listApiToolServices(), logout).catch(() => ({ services: [] })),
         withAuthGuard(() => api.listResources({ kind: 'skill' }), logout).catch(() => []),
+        withAuthGuard(() => api.getModelCapabilities(), logout).catch(() => null),
       ]);
       setItems(list);
       setProviders(provs);
       setMcpServers(servers);
       setApiServices(apiTools.services);
       setSkillResources(skills);
+      if (caps !== null) setDecisionReady(caps.decision.configured);
       setError(null);
     } catch (e) {
       setError(e);
@@ -520,7 +526,14 @@ export function AssistantsPage() {
               ))}
             </div>
           </Field>
-          <Field label={t('assistants.permLabel')} hint={t('assistants.permHint')}>
+          <Field
+            label={t('assistants.permLabel')}
+            hint={
+              decisionReady === false
+                ? t('assistants.permNoModel')
+                : t('assistants.permHint')
+            }
+          >
             <Select
               value={draft.permissionMode}
               onValueChange={(v) =>
@@ -537,7 +550,19 @@ export function AssistantsPage() {
               <SelectContent>
                 <SelectItem value="prompt">{t('assistants.permPrompt')}</SelectItem>
                 <SelectItem value="autoWrite">{t('assistants.permAutoWrite')}</SelectItem>
-                <SelectItem value="delegated">{t('assistants.permDelegated')}</SelectItem>
+                {/* #108 — availability-gated like the live select; the item
+                    stays listed (discoverability) but cannot be picked. */}
+                <SelectItem
+                  value="delegated"
+                  disabled={decisionReady === false}
+                  title={
+                    decisionReady === false
+                      ? t('assistants.permNoModel')
+                      : undefined
+                  }
+                >
+                  {t('assistants.permDelegated')}
+                </SelectItem>
               </SelectContent>
             </Select>
           </Field>
