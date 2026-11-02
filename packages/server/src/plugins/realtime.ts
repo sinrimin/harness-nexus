@@ -64,6 +64,7 @@ import { AssistantDispatchService } from '../realtime/assistant-dispatch.js';
 import { AssistantRealtimeService } from '../realtime/assistant.js';
 import { ReconnectGuard } from '../realtime/reconnect.js';
 import { JobService } from '../jobs/service.js';
+import { gcSessionPins } from '../services/session-pins.js';
 
 /** #68 — a send's text (string or blocks) for the dispatch backflow note. */
 function chatTextOf(content: string | unknown[]): string {
@@ -1048,7 +1049,18 @@ export async function registerRealtime(
     // A freshly MOUNTED rail asks for the current snapshot (the connect-time
     // push predates SPA navigations — the socket survives them).
     socket.on('assistant:sessions.sync', (_payload: unknown, ack?: (res: unknown) => void) => {
-      void realtime.assistant.snapshotFor(socket.data.userId as string).then((snap) => ack?.(snap));
+      void realtime.assistant.snapshotFor(socket.data.userId as string).then((snap) => {
+        ack?.(snap);
+        // #110 — mount-time orphan GC for the assistant axis, fire-and-forget
+        // (the ack must not wait on it). Only the rail's OWN visible set may
+        // prune: the snapshot is the full owner listing this sync asked for.
+        void gcSessionPins(
+          { uow: app.uow },
+          socket.data.userId as string,
+          { kind: 'assistant' },
+          snap.sessions.map((s) => s.id),
+        );
+      });
     });
 
     // Re-push one session's open bundle (the open-ack/listener race).

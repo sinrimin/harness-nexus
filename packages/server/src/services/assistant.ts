@@ -11,6 +11,7 @@ import type {
 import {
   AppError,
   DEFAULT_ASSISTANT_TOOL_GROUPS,
+  assistantPinKey,
   type AssistantConfigCreateInput,
   type AssistantConfigUpdateInput,
   isChatApiKind,
@@ -18,6 +19,7 @@ import {
 } from '@harness-nexus/shared';
 import { generateId } from '../infra/crypto.js';
 import type { Principal, ServiceDeps } from './principal.js';
+import { gcSessionPins } from './session-pins.js';
 
 /**
  * Assistant domain service (#52) — configs, sessions, and the persisted
@@ -371,7 +373,19 @@ export async function listAssistantSessions(
   principal: Principal,
   assistantId?: string,
 ): Promise<AssistantSession[]> {
-  return deps.uow.assistants.listSessions(principal.userId, assistantId);
+  const sessions = await deps.uow.assistants.listSessions(principal.userId, assistantId);
+  if (assistantId === undefined) {
+    // #110 — only the FULL rail listing may GC assistant pins (a
+    // per-assistant listing is partial by construction). The empty-listing
+    // guard lives in gcSessionPins itself.
+    await gcSessionPins(
+      deps,
+      principal.userId,
+      { kind: 'assistant' },
+      sessions.map((s) => s.id),
+    );
+  }
+  return sessions;
 }
 
 export async function getAssistantSession(
@@ -424,6 +438,8 @@ export async function deleteAssistantSession(
   for (const ref of refs) {
     await deps.uow.fileBlobs.delete(ref);
   }
+  // #110 — the session's pin dies with it (no orphan window).
+  await deps.uow.sessionPins.delete(principal.userId, assistantPinKey(sessionId));
 }
 
 // ---- transcript ----

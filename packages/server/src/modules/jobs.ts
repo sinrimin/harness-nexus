@@ -16,6 +16,7 @@ import { jobView } from '../jobs/service.js';
 import { marketplaceNameFor } from '../marketplace/emitter.js';
 import { principalOf } from './principal.js';
 import { getMachine } from '../services/machines.js';
+import { gcSessionPins, unpinSession } from '../services/session-pins.js';
 import { getAgentInstance, listMachineAgents } from '../services/agent-instances.js';
 import {
   assertDeployableTarget,
@@ -259,6 +260,18 @@ export async function jobsRoutes(app: FastifyInstance): Promise<void> {
           });
         }
       }
+      // #110 — orphan GC for THIS instance's pin namespace, #53 residue like
+      // the rest of the handler: fire-and-forget, and only on a successful
+      // NON-EMPTY listing (the guard inside gcSessionPins makes the empty
+      // case — offline daemon, failed listing — prune nothing).
+      if (rows.length > 0) {
+        void gcSessionPins(
+          { uow: app.uow },
+          principalOf(req).userId,
+          { kind: 'machine', machineId: machine.id, target: agent.target },
+          rows.map((r) => r.sessionId),
+        );
+      }
       return {
         agent,
         supported: outcome.supported ?? true,
@@ -320,6 +333,13 @@ export async function jobsRoutes(app: FastifyInstance): Promise<void> {
           'SESSIONS_DELETE_TIMEOUT',
         );
       }
+      // #110 — the deleted session's pin dies with it (no orphan window).
+      await unpinSession({ uow: app.uow }, principalOf(req), {
+        axis: 'machine',
+        machineId: machine.id,
+        target: agent.target,
+        nativeSessionId: req.params.sessionId,
+      });
       return { ok: true };
     },
   );

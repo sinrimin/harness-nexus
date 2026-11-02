@@ -38,6 +38,7 @@ import type {
   Profile,
   Resource,
   RuntimeConfig,
+  SessionPin,
   SystemSettings,
   User,
 } from '../domain/index.js';
@@ -361,6 +362,21 @@ export interface DecisionRecordRepository {
   ): Promise<boolean>;
 }
 
+/**
+ * #110 — pinned sessions (both rails). Owner-scoped by construction: the
+ * identity is (owner, key) and every method takes the owner explicitly. The
+ * orphan-GC contract — WHICH listings may prune — lives in the service, not
+ * here: the repo is deliberately too dumb to destroy rows on an empty word.
+ */
+export interface SessionPinRepository {
+  /** The owner's pins, newest pinned first; callers filter by axis prefix. */
+  listByOwner(ownerId: string): Promise<SessionPin[]>;
+  /** Insert or refresh (re-pinning bumps `pinnedAt`). */
+  save(pin: SessionPin): Promise<SessionPin>;
+  /** Idempotent — unpinning an unpinned row is not an error. */
+  delete(ownerId: string, sessionKey: string): Promise<void>;
+}
+
 export interface UnitOfWork {
   resources: ResourceRepository;
   profiles: ProfileRepository;
@@ -382,4 +398,5 @@ export interface UnitOfWork {
   noteAnnotations: NoteAnnotationRepository;
   noteCategories: NoteCategoryRepository;
   decisionRecords: DecisionRecordRepository;
+  sessionPins: SessionPinRepository;
 }

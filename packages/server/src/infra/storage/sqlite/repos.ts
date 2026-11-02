@@ -49,6 +49,8 @@ import type {
   DecisionRecord,
   DecisionRecordListFilter,
   DecisionRecordRepository,
+  SessionPin,
+  SessionPinRepository,
   CredentialRepository,
   ProfileRepository,
   ResourceRepository,
@@ -2150,6 +2152,47 @@ export function sqliteDecisionRecordRepository(db: Database): DecisionRecordRepo
         )
         .run(response, ownerId, sessionId, requestId);
       return res.changes > 0;
+    },
+  };
+  return repo;
+}
+
+// ---- session pins (#110) ----
+
+interface SessionPinRow {
+  owner_id: string;
+  session_key: string;
+  pinned_at: string;
+}
+
+export function sqliteSessionPinRepository(db: Database): SessionPinRepository {
+  const upsertStmt = db.prepare(`
+    INSERT INTO session_pins (owner_id, session_key, pinned_at)
+    VALUES (@owner_id, @session_key, @pinned_at)
+    ON CONFLICT (owner_id, session_key) DO UPDATE SET pinned_at = excluded.pinned_at`);
+  const listStmt = db.prepare(`
+    SELECT * FROM session_pins WHERE owner_id = ?
+    ORDER BY pinned_at DESC, rowid DESC`);
+  const deleteStmt = db.prepare('DELETE FROM session_pins WHERE owner_id = ? AND session_key = ?');
+
+  const repo: SessionPinRepository = {
+    async listByOwner(ownerId) {
+      return (listStmt.all(ownerId) as SessionPinRow[]).map((r) => ({
+        ownerId: r.owner_id,
+        sessionKey: r.session_key,
+        pinnedAt: r.pinned_at,
+      }));
+    },
+    async save(pin: SessionPin) {
+      upsertStmt.run({
+        owner_id: pin.ownerId,
+        session_key: pin.sessionKey,
+        pinned_at: pin.pinnedAt,
+      });
+      return pin;
+    },
+    async delete(ownerId, sessionKey) {
+      deleteStmt.run(ownerId, sessionKey);
     },
   };
   return repo;

@@ -51,6 +51,8 @@ import type {
   DecisionRecord,
   DecisionRecordListFilter,
   DecisionRecordRepository,
+  SessionPin,
+  SessionPinRepository,
 } from '@harness-nexus/core';
 import { DEFAULT_SYSTEM_SETTINGS, DECISION_RECORDS_CAP } from '@harness-nexus/core';
 
@@ -733,6 +735,23 @@ export function createMemoryUnitOfWork(): UnitOfWork {
     },
   };
 
+  // #110 — session pins (both rails). key: `${ownerId}\u0000${sessionKey}`.
+  const sessionPins = new Map<string, SessionPin>();
+  const sessionPinRepo: SessionPinRepository = {
+    async listByOwner(ownerId) {
+      return [...sessionPins.values()]
+        .filter((p) => p.ownerId === ownerId)
+        .sort((a, b) => b.pinnedAt.localeCompare(a.pinnedAt));
+    },
+    async save(pin) {
+      sessionPins.set(`${pin.ownerId}\u0000${pin.sessionKey}`, { ...pin });
+      return pin;
+    },
+    async delete(ownerId, sessionKey) {
+      sessionPins.delete(`${ownerId}\u0000${sessionKey}`);
+    },
+  };
+
   return {
     users: userRepo,
     tokens: tokenRepo,
@@ -754,5 +773,6 @@ export function createMemoryUnitOfWork(): UnitOfWork {
     noteAnnotations: noteAnnotationRepo,
     noteCategories: noteCategoryRepo,
     decisionRecords: decisionRecordRepo,
+    sessionPins: sessionPinRepo,
   };
 }

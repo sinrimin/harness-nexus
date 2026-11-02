@@ -669,6 +669,20 @@ CREATE INDEX idx_decision_records_owner_created ON decision_records(owner_id, cr
 CREATE INDEX idx_decision_records_session_req ON decision_records(session_id, request_id);
     `,
   },
+  {
+    version: 34,
+    description:
+      'issue #110 — session pins (both rails): one row per (owner, session_key); the key is assistant/<id> or machine/<machineId>/<target>/<nativeSessionId>',
+    sql: `
+CREATE TABLE session_pins (
+  owner_id    TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  session_key TEXT NOT NULL,
+  pinned_at   TEXT NOT NULL,
+  PRIMARY KEY (owner_id, session_key)
+);
+CREATE INDEX idx_session_pins_owner ON session_pins(owner_id, pinned_at DESC);
+    `,
+  },
 ] as const;
 
 /**

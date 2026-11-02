@@ -40,6 +40,7 @@ import { marketplaceRoutes } from './modules/marketplace.js';
 import { assistantRoutes } from './modules/assistant.js';
 import { notesRoutes } from './modules/notes.js';
 import { decisionRecordRoutes } from './modules/decision-records.js';
+import { sessionPinRoutes } from './modules/session-pins.js';
 import { MarketplaceEmitter } from './marketplace/emitter.js';
 import { SkillCatalogService } from './infra/source-fetchers/catalog-service.js';
 import { parseAllowlist, type MarketplaceEntry } from './infra/source-fetchers/allowlist.js';
@@ -303,6 +304,7 @@ export async function buildApp(config: ServerConfig): Promise<FastifyInstance> {
     await assistantRoutes(api);
     await notesRoutes(api);
     await decisionRecordRoutes(api);
+    await sessionPinRoutes(api);
   });
 
   await mountMcpProxy(app);

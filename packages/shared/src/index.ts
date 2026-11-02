@@ -16,6 +16,7 @@ export * from './schemas/api-tools.js';
 export * from './schemas/settings.js';
 export * from './schemas/note.js';
 export * from './schemas/decision-record.js';
+export * from './schemas/session-pin.js';
 export * from './hooks.js';
 export * from './trust.js';
 export * from './realtime.js';
