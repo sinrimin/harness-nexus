@@ -88,6 +88,7 @@ async function setup(opts: { tokensPerSecond?: number } = {}) {
         catalog: {} as never,
         allowlist: [],
       },
+      titleRefine: false,
       buildModel: async () => ({
         model: faux.getModel('gw-large'),
         streamFn: models.streamSimple.bind(models),

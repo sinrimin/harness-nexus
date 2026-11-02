@@ -132,6 +132,7 @@ async function setup(opts: { delegated?: boolean; answers?: Record<string, unkno
         catalog: {} as never,
         allowlist: [],
       },
+      titleRefine: false,
       buildModel: async () => ({
         model: faux.getModel('gw-large'),
         streamFn: models.streamSimple.bind(models),

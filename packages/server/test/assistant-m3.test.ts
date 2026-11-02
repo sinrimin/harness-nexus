@@ -95,6 +95,7 @@ async function setup(): Promise<Harness> {
         catalog: {} as never,
         allowlist: [],
       },
+      titleRefine: false,
       buildModel: async () => ({
         model: faux.getModel('gw-large'),
         streamFn: models.streamSimple.bind(models),
