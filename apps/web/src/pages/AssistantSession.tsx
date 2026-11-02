@@ -8,17 +8,29 @@ import { toast } from 'sonner';
 import {
   BotIcon,
   ListIcon,
+  MoreHorizontalIcon,
   PencilIcon,
+  PinIcon,
+  PinOffIcon,
   PlusIcon,
   RefreshCwIcon,
   ScrollTextIcon,
+  TrashIcon,
   XIcon,
 } from 'lucide-react';
 import { api } from '@/api';
 import { useAuth, withAuthGuard } from '@/auth';
 import { useI18n, dateLocale } from '@/i18n';
+import { assistantPinKey } from '@harness-nexus/sdk';
 import { StateSignal } from '@/components/state-signal';
 import { ConfirmDialog, EmptyState } from '@/components/kit';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import {
   appSocket,
   emitWithAck,
@@ -43,6 +55,7 @@ import { WelcomePane, type WelcomeCard } from '@/components/chat/welcome-pane.js
 import { ChannelTabs } from '@/components/chat/channel-tabs.js';
 import { SessionRow } from '@/components/chat/session-row.js';
 import { RailSessionRow } from '@/components/chat/rail-session-row.js';
+import { useSessionPins } from '@/components/chat/use-session-pins.js';
 import { DecisionRecordsDialog } from '@/components/decision-records-dialog';
 import { useChatChannels } from '@/components/chat/use-chat-channels.js';
 import { useAssistantSessions } from '@/components/chat/use-assistant-sessions.js';
@@ -87,6 +100,107 @@ interface OpenRaceBuffer {
 
 /** The last-used assistant config (localStorage — same stance as the 端 pin). */
 const AGENT_KEY = 'hnx.chat.agent';
+
+/**
+ * #110 — the assistant row's ⋮ menu: pin/unpin → rename → separator → delete
+ * (destructive, last) — the list pages' row-menu language. Machine rows get
+ * NO menu (their titles are agent-owned); the rail keeps their trash.
+ */
+function SessionRowMenu({
+  pinned,
+  deleteDisabled,
+  onPin,
+  onRename,
+  onDelete,
+}: {
+  pinned: boolean;
+  deleteDisabled: boolean;
+  onPin: () => void;
+  onRename: () => void;
+  onDelete: () => void;
+}) {
+  const { t } = useI18n();
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button
+          type="button"
+          className="text-muted-foreground hover:text-foreground flex p-0.5"
+          aria-label={t('common.openMenu')}
+          title={t('common.openMenu')}
+        >
+          <MoreHorizontalIcon className="size-3.5" />
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        <DropdownMenuItem onClick={onPin}>
+          {pinned ? <PinOffIcon /> : <PinIcon />}
+          {pinned ? t('chat.unpinAction') : t('chat.pinAction')}
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={onRename}>
+          <PencilIcon />
+          {t('chat.renameAction')}
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem variant="destructive" disabled={deleteDisabled} onClick={onDelete}>
+          <TrashIcon />
+          {t('chat.deleteSessionAction')}
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+/**
+ * #110 — the inline rename: the row's title swaps to an input in place (no
+ * modal — the rail is 288px). Enter/blur saves, Esc cancels; empty = restore
+ * the automatic title (the placeholder says so). The geometry mirrors
+ * RailSessionRow so the row does not jump.
+ */
+function RenameSessionRow({
+  initial,
+  placeholder,
+  onCommit,
+  onCancel,
+}: {
+  initial: string;
+  placeholder: string;
+  onCommit: (title: string) => void;
+  onCancel: () => void;
+}) {
+  const [value, setValue] = useState(initial);
+  const settled = useRef(false);
+  const commit = (): void => {
+    if (settled.current) return;
+    settled.current = true;
+    onCommit(value.trim());
+  };
+  return (
+    <div className="flex w-full items-center border-l-2 border-l-transparent py-2 pr-3 pl-[30px] md:pr-8">
+      <input
+        autoFocus
+        className="placeholder:text-muted-foreground w-full bg-transparent text-xs outline-none"
+        maxLength={256}
+        value={value}
+        placeholder={placeholder}
+        spellCheck={false}
+        autoComplete="off"
+        onChange={(e) => setValue(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            commit();
+          } else if (e.key === 'Escape') {
+            e.preventDefault();
+            settled.current = true;
+            onCancel();
+          }
+        }}
+        onBlur={commit}
+      />
+    </div>
+  );
+}
 
 function relativeTime(iso: string | null, locale: string): string {
   if (iso === null || iso === '') return '';
@@ -547,12 +661,50 @@ export function AssistantSessionPage() {
     refreshSessions();
   };
 
+  // #110 — session pins + inline rename (assistant rows are ours to name).
+  const pins = useSessionPins();
+  /** The row being renamed (its input replaces the row); null = none. */
+  const [renaming, setRenaming] = useState<{ id: string; title: string } | null>(null);
+  const toggleAssistantPin = (sessionId: string, next: boolean): void => {
+    void pins.toggle({ axis: 'assistant', sessionId }, next).catch((e: unknown) =>
+      toast.error(
+        t('chat.pinToggleFailed', {
+          error: e instanceof HarnessNexusError ? e.message : String(e),
+        }),
+      ),
+    );
+  };
+  /** Enter/blur saves, Esc cancels; empty restores the automatic title. */
+  const commitRename = async (sessionId: string, title: string): Promise<void> => {
+    setRenaming(null);
+    try {
+      await withAuthGuard(() => api.renameAssistantSession(sessionId, title), logout);
+    } catch (e) {
+      toast.error(
+        t('chat.renameFailed', {
+          error: e instanceof HarnessNexusError ? e.message : String(e),
+        }),
+      );
+    }
+    // The rail follows the next sessions push; ask for it now.
+    refreshSessions();
+  };
+
   usePageTitle(assistant !== null ? assistant.name : t('assistants.endAssistant'));
 
   // Server order IS the display order — newest activity first (the storage
   // contract; the welcome cards below rely on the same array). #94: this rail
-  // used to .reverse() it into oldest-first.
-  const sortedSessions = sessions;
+  // used to .reverse() it into oldest-first. #110: the pinned block rides
+  // FIRST, newest-pinned at its top; the rest keeps the server order.
+  const sortedSessions = useMemo(() => {
+    const pinnedAt = (id: string): string | undefined => pins.pins.get(assistantPinKey(id));
+    return [
+      ...sessions
+        .filter((s) => pinnedAt(s.id) !== undefined)
+        .sort((a, b) => pinnedAt(b.id)!.localeCompare(pinnedAt(a.id)!)),
+      ...sessions.filter((s) => pinnedAt(s.id) === undefined),
+    ];
+  }, [sessions, pins.pins]);
 
   /** #54 — the welcome's recent cards: this config's conversations, newest
    *  first (the sessions push arrives newest-first from the server). */
@@ -611,14 +763,41 @@ export function AssistantSessionPage() {
             // #55 — the delete affordance skips rows the server would refuse:
             // the viewed one holds a live channel, a busy one is mid-turn.
             const deletable = !active && !s.busy;
+            const pinned = pins.pins.has(assistantPinKey(s.id));
+            // #110 — the rename input replaces the row in place.
+            if (renaming?.id === s.id) {
+              return (
+                <RenameSessionRow
+                  key={s.id}
+                  initial={s.title}
+                  placeholder={t('chat.renamePlaceholder')}
+                  onCommit={(title) => void commitRename(s.id, title)}
+                  onCancel={() => setRenaming(null)}
+                />
+              );
+            }
             return (
               <SessionRow
                 key={s.id}
+                pinned={pinned}
+                pinLabel={pinned ? t('chat.unpinAction') : t('chat.pinAction')}
+                onTogglePin={() => toggleAssistantPin(s.id, !pinned)}
                 deleteLabel={t('chat.deleteSessionAction')}
                 onDelete={
                   deletable
                     ? () => setPendingDelete({ id: s.id, title: s.title || t('chat.untitled') })
                     : undefined
+                }
+                trailing={
+                  <SessionRowMenu
+                    pinned={pinned}
+                    deleteDisabled={!deletable}
+                    onPin={() => toggleAssistantPin(s.id, !pinned)}
+                    onRename={() => setRenaming({ id: s.id, title: s.title })}
+                    onDelete={() =>
+                      setPendingDelete({ id: s.id, title: s.title || t('chat.untitled') })
+                    }
+                  />
                 }
               >
                 {/* #99 — the flat assistant rail: the SAME row device as the
@@ -738,6 +917,65 @@ export function AssistantSessionPage() {
                   <XIcon className="size-3.5" />
                   <span className="hidden sm:inline">{t('chat.disconnect')}</span>
                 </Button>
+              ) : null}
+              {/* #110 — the phone's row-action stand-in (the drawer rail has
+                  no hover): the CURRENT session's pin / rename / delete.
+                  Delete rides #75's close-then-delete; a busy turn is
+                  refused server-side and the item disables meanwhile. */}
+              {sessionId !== '' ? (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="size-8 shrink-0 md:hidden"
+                      aria-label={t('common.openMenu')}
+                    >
+                      <MoreHorizontalIcon className="size-4" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem
+                      onClick={() =>
+                        toggleAssistantPin(sessionId, !pins.pins.has(assistantPinKey(sessionId)))
+                      }
+                    >
+                      {pins.pins.has(assistantPinKey(sessionId)) ? <PinOffIcon /> : <PinIcon />}
+                      {pins.pins.has(assistantPinKey(sessionId))
+                        ? t('chat.unpinAction')
+                        : t('chat.pinAction')}
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      onClick={() => {
+                        setRenaming({
+                          id: sessionId,
+                          title: sessions.find((s) => s.id === sessionId)?.title ?? '',
+                        });
+                        // The rename input lives on the rail row — on the
+                        // phone that means the drawer.
+                        setRailOpen(true);
+                      }}
+                    >
+                      <PencilIcon />
+                      {t('chat.renameAction')}
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem
+                      variant="destructive"
+                      disabled={conversation.turnActive}
+                      onClick={() =>
+                        setPendingDelete({
+                          id: sessionId,
+                          title:
+                            sessions.find((s) => s.id === sessionId)?.title || t('chat.untitled'),
+                        })
+                      }
+                    >
+                      <TrashIcon />
+                      {t('chat.deleteSessionAction')}
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
               ) : null}
             </div>
             {sessionId !== '' ? (
