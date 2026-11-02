@@ -22,8 +22,10 @@ const touch = (x: number, y: number): { touches: { clientX: number; clientY: num
 });
 
 function rowElement(container: HTMLElement): HTMLElement {
-  // The wrapper's children: [the revealed delete layer, the moving row].
-  const el = container.firstElementChild?.children[1];
+  // The wrapper's children: [the pin layer?, the delete layer?, the moving
+  // row] — #110 made the underlays per-action; the moving row is last.
+  const kids = container.firstElementChild?.children ?? [];
+  const el = kids[kids.length - 1];
   if (el === null || el === undefined) throw new Error('moving layer not found');
   return el as HTMLElement;
 }
@@ -95,6 +97,49 @@ describe('SwipeRow (#55)', () => {
     );
     fireEvent.click(screen.getByRole('button', { name: 'Delete session' }));
     expect(onDelete).toHaveBeenCalledTimes(1);
+  });
+
+  // #110 — the rightward reveal: the PIN action. Same gesture math mirrored:
+  // clamped at +96, snaps open past half, fires onPin, and a row with no pin
+  // action rubber-bands immediately on that side.
+  it('a rightward drag reveals the pin action and fires it (#110)', () => {
+    const onPin = vi.fn();
+    const { container } = render(
+      <SwipeRow
+        onPin={onPin}
+        pinLabel="Pin"
+        onDelete={() => undefined}
+        deleteLabel="Delete session"
+      >
+        <button type="button">row</button>
+      </SwipeRow>,
+    );
+    const layer = rowElement(container);
+    fireEvent.touchStart(layer, touch(200, 100));
+    fireEvent.touchMove(layer, touch(280, 100));
+    expect(layer.style.transform).toBe('translateX(80px)');
+    fireEvent.touchMove(layer, touch(900, 100));
+    expect(layer.style.transform).toBe('translateX(96px)');
+    fireEvent.touchEnd(layer);
+    expect(layer.style.transform).toBe('translateX(72px)');
+    fireEvent.click(screen.getByRole('button', { name: 'Pin' }));
+    expect(onPin).toHaveBeenCalledTimes(1);
+    // Tapping the action closes the reveal.
+    expect(layer.style.transform).toBe('translateX(0px)');
+  });
+
+  it('without a pin action the right side rubber-bands, never opens (#110)', () => {
+    const { container } = render(
+      <SwipeRow onDelete={() => undefined} deleteLabel="Delete session">
+        <button type="button">row</button>
+      </SwipeRow>,
+    );
+    const layer = rowElement(container);
+    fireEvent.touchStart(layer, touch(200, 100));
+    fireEvent.touchMove(layer, touch(320, 100));
+    expect(layer.style.transform).toBe('translateX(24px)');
+    fireEvent.touchEnd(layer);
+    expect(layer.style.transform).toBe('translateX(0px)');
   });
 });
 

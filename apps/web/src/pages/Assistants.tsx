@@ -528,11 +528,7 @@ export function AssistantsPage() {
           </Field>
           <Field
             label={t('assistants.permLabel')}
-            hint={
-              decisionReady === false
-                ? t('assistants.permNoModel')
-                : t('assistants.permHint')
-            }
+            hint={decisionReady === false ? t('assistants.permNoModel') : t('assistants.permHint')}
           >
             <Select
               value={draft.permissionMode}
@@ -555,11 +551,7 @@ export function AssistantsPage() {
                 <SelectItem
                   value="delegated"
                   disabled={decisionReady === false}
-                  title={
-                    decisionReady === false
-                      ? t('assistants.permNoModel')
-                      : undefined
-                  }
+                  title={decisionReady === false ? t('assistants.permNoModel') : undefined}
                 >
                   {t('assistants.permDelegated')}
                 </SelectItem>

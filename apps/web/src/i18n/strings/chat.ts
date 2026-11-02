@@ -38,6 +38,14 @@ const en = {
   deleteSessionConsequence:
     'The conversation and all its messages are permanently removed from its store.',
   deleteFailed: 'Delete failed: {error}',
+  // #110 — rail row actions: the pin toggle, the rename menu item + inline
+  // input (empty restores the automatic title), and the toggle's failure.
+  pinAction: 'Pin',
+  unpinAction: 'Unpin',
+  pinToggleFailed: 'Pin action failed: {error}',
+  renameAction: 'Rename',
+  renamePlaceholder: 'Empty restores the automatic title',
+  renameFailed: 'Rename failed: {error}',
   // The rail's group header: the comp's `.sgroup-h` label over the directory.
   workingDirectory: 'Working directory',
   staleModel: 'pinned {model} no longer configured — not resumable',
@@ -251,6 +259,12 @@ const zh: typeof en = {
   deleteSessionAction: '删除会话',
   deleteSessionConsequence: '会话及其全部消息将从所属存储中永久删除。',
   deleteFailed: '删除失败：{error}',
+  pinAction: '置顶',
+  unpinAction: '取消置顶',
+  pinToggleFailed: '置顶操作失败：{error}',
+  renameAction: '重命名',
+  renamePlaceholder: '留空恢复自动标题',
+  renameFailed: '重命名失败：{error}',
   workingDirectory: '工作目录',
   staleModel: '固定模型 {model} 已不在当前配置——无法恢复',
   untitled: '未命名会话',

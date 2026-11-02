@@ -10,7 +10,10 @@ import {
   BotIcon,
   ClockIcon,
   FolderIcon,
+  MoreHorizontalIcon,
   PencilIcon,
+  PinIcon,
+  PinOffIcon,
   PlusIcon,
   RefreshCwIcon,
   HistoryIcon,
@@ -52,6 +55,14 @@ import { ChannelTabs } from '@/components/chat/channel-tabs.js';
 import { EndSwitcher } from '@/components/chat/end-switcher.js';
 import { SessionRow } from '@/components/chat/session-row.js';
 import { RailSessionRow } from '@/components/chat/rail-session-row.js';
+import { useSessionPins } from '@/components/chat/use-session-pins.js';
+import { machinePinKey, type AgentTarget } from '@harness-nexus/sdk';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { DecisionRecordsDialog } from '@/components/decision-records-dialog';
 import { cwdBasename, cwdParent } from '@/lib/cwd.js';
 import { useChatChannels } from '@/components/chat/use-chat-channels.js';
@@ -225,6 +236,7 @@ function QueuedMessage({
 function SessionRail({
   rail,
   groups,
+  pinnedRows,
   collapsedCwds,
   nativeSessionId,
   firstPromptText,
@@ -235,11 +247,18 @@ function SessionRail({
   onNewSession,
   onRefresh,
   onDeleteSession,
+  onTogglePin,
   end,
   endInDrawer,
 }: {
   rail: RailState;
   groups: SessionGroup[];
+  /**
+   * #110 — this instance's pinned rows, newest-pinned first. They LEAVE their
+   * cwd group and float above every group header, so `groups` never holds
+   * them.
+   */
+  pinnedRows: NativeSessionView[];
   collapsedCwds: Set<string>;
   nativeSessionId: string | null;
   firstPromptText: string | null;
@@ -259,6 +278,8 @@ function SessionRail({
    * the affordance entirely.
    */
   onDeleteSession?: (sessionId: string, title: string) => void;
+  /** #110 — pin/unpin a row (the leading slot + the phone's right swipe). */
+  onTogglePin: (session: NativeSessionView, next: boolean) => void;
   /** The 端 switcher (both the desktop rail AND the phone drawer — the drawer
    *  is the only rail on mobile, hiding the switcher there dead-ended the
    *  machine ends). */
@@ -268,6 +289,88 @@ function SessionRail({
   endInDrawer?: boolean;
 }) {
   const { t, lang } = useI18n();
+  /**
+   * One rail row — shared by the pinned block and the cwd groups. #110: a
+   * PINNED row has left its group, so its meta line names the directory
+   * (`time · <cwd basename>`, the full path in the tooltip) instead of the
+   * short id; rows inside groups keep `time · short id` — the group already
+   * carries the directory, and the short id is the only cross-reference to
+   * agent-side logs.
+   */
+  const renderRow = (s: NativeSessionView, pinnedBlock: boolean) => {
+    const active = s.sessionId === nativeSessionId;
+    const stale = s.staleReason !== undefined;
+    // Live truth ONLY (#13 fix): the listing's `openChannelId` stamp is a
+    // moment-in-time snapshot that goes stale the moment a channel closes
+    // elsewhere (the user-wide `chat:channels` push is already realtime for
+    // every window), so consulting it left a dead blue dot on the row. The
+    // channel map IS the open state.
+    const attached = channelByNative.get(s.sessionId);
+    // #12 — RUNNING is the attached channel's live busy flag, shown even on
+    // the row being viewed; #99 — `open` is a WORD now and only on
+    // non-current rows (the edge + tint already mark the current one).
+    const running = attached?.busy === true;
+    const word = running
+      ? ('running' as const)
+      : attached !== undefined && !active
+        ? ('open' as const)
+        : null;
+    const when = relativeTime(s.updatedAt, dateLocale(lang));
+    return (
+      <SessionRow
+        key={s.sessionId}
+        pinned={pinnedBlock}
+        pinLabel={pinnedBlock ? t('chat.unpinAction') : t('chat.pinAction')}
+        onTogglePin={() => onTogglePin(s, !pinnedBlock)}
+        deleteLabel={t('chat.deleteSessionAction')}
+        onDelete={
+          attached === undefined && onDeleteSession !== undefined
+            ? () => onDeleteSession(s.sessionId, s.title ?? t('chat.untitled'))
+            : undefined
+        }
+      >
+        <RailSessionRow
+          title={
+            s.title ??
+            (s.sessionId === nativeSessionId ? firstPromptText : undefined) ??
+            t('chat.untitled')
+          }
+          meta={
+            pinnedBlock ? `${when} · ${cwdBasename(s.cwd)}` : `${when} · ${s.sessionId.slice(0, 8)}`
+          }
+          active={active}
+          word={word}
+          faded={stale}
+          disabled={stale && !active}
+          titleAttr={
+            stale
+              ? t('chat.staleModel', { model: s.model ?? '?' })
+              : attached !== undefined && !active
+                ? t('chat.channelOpenHint')
+                : pinnedBlock
+                  ? s.cwd
+                  : (s.title ?? s.cwd)
+          }
+          onClick={() => {
+            if (active || stale) return;
+            // With a live channel this is a REJOIN; without one (fresh page,
+            // or after a server restart — channels are server-memory only)
+            // it is a fresh RESUME of the same native session. Both keep the
+            // row's promise: open this conversation (#22 — the no-channel
+            // case used to be a silent no-op).
+            if (attached !== undefined) {
+              void onOpenChannel(attached.sessionId, undefined, {
+                sessionId: s.sessionId,
+                cwd: s.cwd,
+              });
+            } else {
+              void onOpenChannel(undefined, undefined, { sessionId: s.sessionId, cwd: s.cwd });
+            }
+          }}
+        />
+      </SessionRow>
+    );
+  };
   return (
     <>
       {/* The rail's header band pins to the stream header's h-12 so the two
@@ -321,7 +424,12 @@ function SessionRail({
                 {t('chat.sessionsUnsupportedPartial')}
               </p>
             ) : null}
-            {groups.length === 0 ? (
+            {/* #110 — the pinned block floats above ALL group headers
+                (newest-pinned first); its rows have left their groups. */}
+            {pinnedRows.length > 0 ? (
+              <div className="border-b">{pinnedRows.map((s) => renderRow(s, true))}</div>
+            ) : null}
+            {groups.length === 0 && pinnedRows.length === 0 ? (
               <p className="text-muted-foreground px-3 py-4 text-xs">{t('chat.noSessions')}</p>
             ) : (
               groups.map((group) => {
@@ -368,84 +476,7 @@ function SessionRail({
                         <PlusIcon className="size-3" />
                       </button>
                     </div>
-                    {!collapsed
-                      ? group.sessions.map((s) => {
-                          const active = s.sessionId === nativeSessionId;
-                          const stale = s.staleReason !== undefined;
-                          // Live truth ONLY (#13 fix): the listing's
-                          // `openChannelId` stamp is a moment-in-time
-                          // snapshot that goes stale the moment a channel
-                          // closes elsewhere (the user-wide `chat:channels`
-                          // push is already realtime for every window), so
-                          // consulting it left a dead blue dot on the row.
-                          // The channel map IS the open state.
-                          const attached = channelByNative.get(s.sessionId);
-                          // #12 — RUNNING is the attached channel's live busy
-                          // flag, shown even on the row being viewed; #99 —
-                          // `open` is a WORD now and only on non-current rows
-                          // (the edge + tint already mark the current one).
-                          const running = attached?.busy === true;
-                          const word = running
-                            ? ('running' as const)
-                            : attached !== undefined && !active
-                              ? ('open' as const)
-                              : null;
-                          return (
-                            <SessionRow
-                              key={s.sessionId}
-                              deleteLabel={t('chat.deleteSessionAction')}
-                              onDelete={
-                                attached === undefined && onDeleteSession !== undefined
-                                  ? () =>
-                                      onDeleteSession(s.sessionId, s.title ?? t('chat.untitled'))
-                                  : undefined
-                              }
-                            >
-                              <RailSessionRow
-                                title={
-                                  s.title ??
-                                  (s.sessionId === nativeSessionId ? firstPromptText : undefined) ??
-                                  t('chat.untitled')
-                                }
-                                meta={`${relativeTime(s.updatedAt, dateLocale(lang))} · ${s.sessionId.slice(0, 8)}`}
-                                active={active}
-                                word={word}
-                                faded={stale}
-                                disabled={stale && !active}
-                                titleAttr={
-                                  stale
-                                    ? t('chat.staleModel', { model: s.model ?? '?' })
-                                    : attached !== undefined && !active
-                                      ? t('chat.channelOpenHint')
-                                      : (s.title ?? s.cwd)
-                                }
-                                onClick={() => {
-                                  if (active || stale) return;
-                                  // With a live channel this is a REJOIN;
-                                  // without one (fresh page, or after a
-                                  // server restart — channels are
-                                  // server-memory only) it is a fresh RESUME
-                                  // of the same native session. Both keep the
-                                  // row's promise: open this conversation
-                                  // (#22 — the no-channel case used to be a
-                                  // silent no-op).
-                                  if (attached !== undefined) {
-                                    void onOpenChannel(attached.sessionId, undefined, {
-                                      sessionId: s.sessionId,
-                                      cwd: s.cwd,
-                                    });
-                                  } else {
-                                    void onOpenChannel(undefined, undefined, {
-                                      sessionId: s.sessionId,
-                                      cwd: s.cwd,
-                                    });
-                                  }
-                                }}
-                              />
-                            </SessionRow>
-                          );
-                        })
-                      : null}
+                    {!collapsed ? group.sessions.map((s) => renderRow(s, false)) : null}
                   </div>
                 );
               })
@@ -1167,9 +1198,57 @@ export function AgentSessionPage() {
     );
   }
 
+  // #110 — this instance's pins. The key carries machine + target, so pins
+  // from a sibling agent instance on the same machine never cross.
+  const pins = useSessionPins();
+  const pinnedAt = useCallback(
+    (nativeId: string): string | undefined =>
+      agent === null
+        ? undefined
+        : pins.pins.get(machinePinKey(agent.machineId, agent.target, nativeId)),
+    [agent, pins.pins],
+  );
+  /** The pinned block: newest-pinned first, above every group header. */
+  const pinnedRows = useMemo<NativeSessionView[]>(
+    () =>
+      rail.state === 'ready'
+        ? rail.sessions
+            .filter((s) => pinnedAt(s.sessionId) !== undefined)
+            .sort((a, b) => pinnedAt(b.sessionId)!.localeCompare(pinnedAt(a.sessionId)!))
+        : [],
+    [rail, pinnedAt],
+  );
   const groups = useMemo(
-    () => (rail.state === 'ready' ? groupSessions(rail.sessions) : []),
-    [rail],
+    () =>
+      rail.state === 'ready'
+        ? groupSessions(rail.sessions.filter((s) => pinnedAt(s.sessionId) === undefined))
+        : [],
+    [rail, pinnedAt],
+  );
+  const toggleNativePin = useCallback(
+    (nativeId: string, next: boolean) => {
+      if (agent === null) return;
+      void pins
+        .toggle(
+          {
+            axis: 'machine',
+            machineId: agent.machineId,
+            // AgentInstanceView widens target to string; the pin input wants
+            // the AgentTarget union the view's values always are.
+            target: agent.target as AgentTarget,
+            nativeSessionId: nativeId,
+          },
+          next,
+        )
+        .catch((e: unknown) =>
+          toast.error(
+            t('chat.pinToggleFailed', {
+              error: e instanceof Error ? e.message : String(e),
+            }),
+          ),
+        );
+    },
+    [agent, pins, t],
   );
   /**
    * 9 W11 B — live-channel truth OVERLAID onto rail rows by native id: the
@@ -1279,6 +1358,8 @@ export function AgentSessionPage() {
             <SessionRail
               rail={rail}
               groups={groups}
+              pinnedRows={pinnedRows}
+              onTogglePin={(s2, next) => toggleNativePin(s2.sessionId, next)}
               collapsedCwds={collapsedCwds}
               nativeSessionId={nativeSessionId}
               firstPromptText={firstPromptText ?? null}
@@ -1306,6 +1387,8 @@ export function AgentSessionPage() {
                 <SessionRail
                   rail={rail}
                   groups={groups}
+                  pinnedRows={pinnedRows}
+                  onTogglePin={(s2, next) => toggleNativePin(s2.sessionId, next)}
                   collapsedCwds={collapsedCwds}
                   nativeSessionId={nativeSessionId}
                   firstPromptText={firstPromptText ?? null}
@@ -1401,6 +1484,36 @@ export function AgentSessionPage() {
                     <span className="hidden sm:inline">{t('chat.disconnect')}</span>
                   </Button>
                 </>
+              ) : null}
+              {/* #110 — the phone's row-action stand-in: the drawer rail has
+                  no hover, so the CURRENT session's pin lives here (delete
+                  stays a swipe on non-current rows — the viewed session holds
+                  a live channel and the daemon would refuse it). */}
+              {nativeSessionId !== null && agent !== null ? (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="size-8 shrink-0 md:hidden"
+                      aria-label={t('common.openMenu')}
+                    >
+                      <MoreHorizontalIcon className="size-4" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem
+                      onClick={() =>
+                        toggleNativePin(nativeSessionId, pinnedAt(nativeSessionId) === undefined)
+                      }
+                    >
+                      {pinnedAt(nativeSessionId) === undefined ? <PinIcon /> : <PinOffIcon />}
+                      {pinnedAt(nativeSessionId) === undefined
+                        ? t('chat.pinAction')
+                        : t('chat.unpinAction')}
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
               ) : null}
             </div>
             {sessionId !== '' ? (

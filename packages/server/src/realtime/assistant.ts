@@ -27,6 +27,7 @@ import {
   type AssistantRunnerDeps,
   type RunningTurn,
 } from '../assistant/runner.js';
+import { deriveFallbackTitle, refineSessionTitle } from '../assistant/titles.js';
 import type { AssistantMcpDeps } from '../assistant/context.js';
 import type { SystemOneFetch } from '../infra/systemone.js';
 import {
@@ -801,6 +802,20 @@ export class AssistantRealtimeService {
     // #59 — the echo carries the WIRE view (refs resolved inline, transient).
     this.emit(ch.sessionId, { kind: 'user_message', blocks: await this.wireView(prompt) });
 
+    // #109 — the title's fallback lands at TURN START (the first prompt's
+    // append), not at settle: the rail shows a real title even on the
+    // turn-error path. "First" = no user row existed BEFORE this append; the
+    // queued-prompt flush re-enters startTurn later and is not first.
+    if (!rowsBefore.some((r) => r.type === 'user') && session.title === '') {
+      const fallback = deriveFallbackTitle(prompt);
+      if (fallback !== '') {
+        session = { ...session, title: fallback };
+        await this.deps.uow.assistants.saveSession(session);
+        void this.pushSessions(ch.ownerId);
+        if (this.deps.titleRefine !== false) this.refineTitleInBackground(ch, fallback, prompt);
+      }
+    }
+
     const turn = startAssistantTurn(
       this.mcp === undefined ? this.deps : { ...this.deps, mcp: this.mcp },
       {
@@ -833,15 +848,15 @@ export class AssistantRealtimeService {
         },
         settle: async (summary) => {
           const now = new Date().toISOString();
+          // #79/#109 — write onto the LIVE row, not the turn-start snapshot:
+          // `permissionMode` follows the channel (a mid-turn sender switch),
+          // while title ownership stays with whoever wrote it last (a user
+          // rename or the #109 refine landing mid-turn must survive).
+          const live = await this.deps.uow.assistants.findSessionById(ch.sessionId);
+          if (live === null) return; // deleted mid-turn — nothing to settle
           await this.deps.uow.assistants.saveSession({
-            ...session,
-            // #79 — persist the channel's CURRENT policy: a mid-turn sender
-            // switch updated ch after this turn captured `session`, and the
-            // row must keep the user's latest choice, not the stale snapshot.
+            ...live,
             permissionMode: ch.permissionMode,
-            ...(summary.title !== undefined && session.title === ''
-              ? { title: summary.title }
-              : {}),
             updatedAt: now,
             lastMessageAt: summary.lastMessageAt,
           });
@@ -890,6 +905,38 @@ export class AssistantRealtimeService {
       void this.pushSessions(ch.ownerId);
       await this.flushQueue(ch.ownerId);
     }
+  }
+
+  /**
+   * #109 — one fire-and-forget titling call on the session's OWN
+   * provider/model, fired beside the first turn. The stored title is
+   * replaced ONLY while it still equals the fallback this refine was fired
+   * with — a user rename in between always wins. Every failure keeps the
+   * fallback; nothing here ever surfaces to the turn.
+   */
+  private refineTitleInBackground(
+    ch: LiveChannel,
+    fallback: string,
+    prompt: AssistantPromptBlock[],
+  ): void {
+    void (async () => {
+      const provider = await this.deps.uow.llmProviders.findById(ch.providerId);
+      if (provider === null) return;
+      const refined = await refineSessionTitle(this.deps, {
+        ownerId: ch.ownerId,
+        provider,
+        modelId: ch.modelId,
+        firstPrompt: prompt
+          .filter((b): b is Extract<AssistantPromptBlock, { type: 'text' }> => b.type === 'text')
+          .map((b) => b.text)
+          .join(' '),
+      });
+      if (refined === '') return;
+      const row = await this.deps.uow.assistants.findSessionById(ch.sessionId);
+      if (row === null || row.title !== fallback) return;
+      await this.deps.uow.assistants.saveSession({ ...row, title: refined });
+      void this.pushSessions(ch.ownerId);
+    })();
   }
 
   /** Flush the user's OLDEST parked slot once the turn ended. */

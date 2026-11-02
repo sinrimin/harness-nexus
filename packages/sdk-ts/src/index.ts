@@ -87,6 +87,7 @@ import type {
   UpdateAnnotationInput,
   CreateCategoryInput,
   UpdateCategoryInput,
+  SessionPinPut,
 } from '@harness-nexus/shared';
 export {
   SCANNABLE_TARGETS,
@@ -123,6 +124,10 @@ export {
   skillMetaToResourceSource,
   type HookEvent,
 } from '@harness-nexus/shared';
+// #110 — the pin key builders are ONE definition shared by server and web;
+// the web reaches them through this package (it does not depend on shared).
+export { assistantPinKey, machinePinKey, sessionPinKeyOf } from '@harness-nexus/shared';
+export type { SessionPinPut, SessionPinView } from '@harness-nexus/shared';
 export type {
   ApiToolServiceView,
   ApiToolServiceBundle,
@@ -885,6 +890,26 @@ export class HarnessNexusClient {
 
   async deleteAssistantSession(id: string): Promise<void> {
     await this.request('DELETE', `/api/assistant-sessions/${id}`);
+  }
+
+  /**
+   * #110 — the owner's session pins (both rails). One GET per rail mount;
+   * callers filter by axis prefix and the render filters orphans.
+   */
+  async listSessionPins(): Promise<{
+    pins: { sessionKey: string; pinnedAt: string }[];
+  }> {
+    return this.request('GET', '/api/session-pins');
+  }
+
+  /** #110 — pin one session (upsert; re-pinning refreshes `pinnedAt`). */
+  async pinSession(input: SessionPinPut): Promise<void> {
+    await this.request('PUT', '/api/session-pins', input);
+  }
+
+  /** #110 — unpin one session (idempotent). */
+  async unpinSession(input: SessionPinPut): Promise<void> {
+    await this.request('DELETE', '/api/session-pins', input);
   }
 
   async listAssistantSessionMessages(id: string): Promise<{ messages: unknown[] }> {

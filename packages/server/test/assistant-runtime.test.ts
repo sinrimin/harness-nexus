@@ -106,6 +106,7 @@ async function setup(): Promise<Harness> {
         catalog: {} as never,
         allowlist: [],
       },
+      titleRefine: false,
       buildModel: async ({ provider }) => {
         providersSeen.push(provider.id);
         return {
