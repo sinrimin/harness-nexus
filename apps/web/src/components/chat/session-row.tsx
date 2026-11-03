@@ -51,7 +51,7 @@ export function SessionRow({
         <button
           type="button"
           className={cn(
-            'absolute top-1/2 left-[9px] z-10 hidden -translate-y-1/2 md:flex',
+            'absolute top-1/2 left-2 z-10 hidden -translate-y-1/2 md:flex',
             pinned
               ? 'text-muted-foreground hover:text-foreground'
               : 'text-muted-foreground/60 hover:text-foreground opacity-0 transition-opacity group-hover/row:opacity-100 focus-visible:opacity-100',
@@ -64,7 +64,7 @@ export function SessionRow({
             onTogglePin();
           }}
         >
-          <PinIcon className={cn('size-3', pinned && 'fill-current')} />
+          <PinIcon className={cn('size-3.5', pinned && 'fill-current')} />
         </button>
       ) : null}
       {/* Desktop right slot. #99 review — it rides the row's vertical center
