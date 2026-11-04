@@ -51,6 +51,8 @@ export const profileEntrySchema = z.object({
   resourceId: z.string().min(1),
   kind: resourceKindSchema,
   pinnedVersion: z.string().optional(),
+  /** #113 — mcp entries only; mirrors `ProfileEntry.tools` in core. */
+  tools: z.array(z.string().min(1)).min(1).optional(),
   installOptions: z.record(z.string(), z.unknown()).optional(),
 });
 
@@ -87,6 +89,13 @@ export const profileEntryInputSchema = z.union([
   z.object({
     mcpServerId: z.string().min(1),
     pinnedVersion: z.string().optional(),
+    /**
+     * #113 — per-tool selection on the mcp arm: absent = whole server (follow
+     * the upstream), present non-empty = pinned allow-set of the upstream's
+     * OWN tool names. Empty arrays are rejected (indistinguishable from a
+     * server with no tools; an editor wanting "nothing" removes the entry).
+     */
+    tools: z.array(z.string().min(1)).min(1).optional(),
   }),
   z.object({
     resourceId: z.string().min(1),

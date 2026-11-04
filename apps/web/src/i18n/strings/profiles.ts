@@ -42,6 +42,15 @@ const en = {
   serversLegend: 'MCP servers in this profile',
   loadingServers: 'Loading servers…',
   noServers: 'No MCP servers visible to you yet. Add one first.',
+  // Per-tool selection on server entries (#113).
+  toolsAll: 'All tools (follows the server)',
+  toolsPicked: '{count} tools pinned',
+  toolsFollow: 'Whole server — follow its toolset',
+  toolsPin: 'Pinned subset — pick exactly these',
+  toolsUnavailable:
+    'Tool list unavailable right now (server disconnected?) — the entry stays whole-server.',
+  toolsHint:
+    'Pinned entries expose only the picked tools: upstream additions never appear, removals disappear automatically. An empty pick counts as whole-server.',
   creating: 'Creating…',
   createProfile: 'Create profile',
   created: 'Profile created',
@@ -93,6 +102,13 @@ const zh: typeof en = {
   serversLegend: '此配置集中的 MCP 服务器',
   loadingServers: '正在加载服务器…',
   noServers: '你还没有可见的 MCP 服务器。请先添加一个。',
+  // 服务器条目的工具级选择（#113）。
+  toolsAll: '全部工具（跟随服务器）',
+  toolsPicked: '已固定 {count} 个工具',
+  toolsFollow: '整个服务器——跟随其工具集',
+  toolsPin: '固定子集——只暴露所选',
+  toolsUnavailable: '暂时无法读取工具列表（服务器未连接？）——条目保持整服务器语义。',
+  toolsHint: '固定条目只暴露所选工具：上游新增不会出现，删除自动不可见。一项未选时按全部工具处理。',
   creating: '创建中…',
   createProfile: '创建配置集',
   created: '已创建配置集',

@@ -41,6 +41,15 @@ export interface ProfileEntry {
   kind: ResourceKind;
   /** Optional version pin; omit to float to latest. */
   pinnedVersion?: string;
+  /**
+   * mcp entries only (#113). Absent = the WHOLE server — profile sessions
+   * follow the upstream's toolset (the per-connection cache, refreshed at
+   * connect / operator refresh). Present = a pinned allow-set of the
+   * upstream's OWN (un-namespaced) tool names: resolution intersects it with
+   * the live tool list at list time, so upstream additions never surface and
+   * removals drop out automatically. Empty arrays are rejected at validation.
+   */
+  tools?: string[];
   /** Target-specific install overrides (e.g. an MCP server config fragment). */
   installOptions?: Record<string, unknown>;
 }
