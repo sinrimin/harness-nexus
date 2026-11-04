@@ -434,8 +434,8 @@ export function McpManagementPage() {
 }
 
 /**
- * One server row. Proxy rows carry a chevron that opens the tool-inspection
- * drawer (#112) when connected — the row itself stays single-line, so the
+ * One server row. Proxy rows' tool-count readout opens the tool-inspection
+ * drawer (#112) while connected — the row itself stays single-line, so the
  * table can never be stretched by upstream tool descriptions. Direct rows
  * render as a plain, non-expandable row with a neutral status hint (Harness
  * Nexus never dials them).
@@ -575,27 +575,19 @@ function ServerRow({
   return (
     <>
       <TableRow>
-        <TableCell className="pl-6 font-medium">
-          <div className="flex items-center gap-2">
-            {/* The chevron opens the tool-inspection drawer (#112); only
-             * meaningful when connected. Non-admins on a global row MAY open
-             * it — the drawer then explains that inspection is admin-only
-             * instead of fetching into a 404. */}
-            <button
-              type="button"
-              className="text-muted-foreground hover:text-foreground flex items-center gap-1 disabled:opacity-30"
-              disabled={!isConnected}
-              aria-label={t('mcp.expandTools')}
-              onClick={() => setInspecting(true)}
-            >
-              <ChevronRightIcon className="size-4" />
-            </button>
-            <span>{server.name}</span>
-          </div>
-        </TableCell>
+        <TableCell className="pl-6 font-medium">{server.name}</TableCell>
         <TableCell>{dialSiteCell}</TableCell>
         <TableCell>
-          <StatusBadge status={connState} detail={status?.detail} toolCount={toolCount} />
+          {/* The count IS the drawer's entry (#112) — it only renders while
+           * connected. Non-admins on a global row MAY open the drawer too; it
+           * then explains that inspection is admin-only instead of fetching
+           * into a 404. */}
+          <StatusBadge
+            status={connState}
+            detail={status?.detail}
+            toolCount={toolCount}
+            onInspect={() => setInspecting(true)}
+          />
         </TableCell>
         <TableCell>{transportCell}</TableCell>
         <TableCell>{scopeCell}</TableCell>
@@ -689,9 +681,9 @@ function ServerRow({
 /**
  * The platform's built-in MCP service (#106) — pinned first row of the table.
  * Global and non-modifiable: no connect/edit/delete actions, always available
- * (the tools are served in-process on the /mcp outlet). The chevron opens the
- * same tool-inspection drawer as the pooled rows, fed straight from the
- * descriptor — no registry round-trip, no refresh (#112).
+ * (the tools are served in-process on the /mcp outlet). The tool-count readout
+ * opens the same tool-inspection drawer as the pooled rows, fed straight from
+ * the descriptor — no registry round-trip, no refresh (#112).
  *
  * Defined at module scope (React perf rule — never nest component definitions).
  */
@@ -701,19 +693,7 @@ function BuiltinServiceRow({ service }: { service: BuiltinMcpService }) {
   return (
     <>
       <TableRow>
-        <TableCell className="pl-6 font-medium">
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              className="text-muted-foreground hover:text-foreground flex items-center gap-1"
-              aria-label={t('mcp.expandTools')}
-              onClick={() => setInspecting(true)}
-            >
-              <ChevronRightIcon className="size-4" />
-            </button>
-            <span>{t('mcp.builtinName')}</span>
-          </div>
-        </TableCell>
+        <TableCell className="pl-6 font-medium">{t('mcp.builtinName')}</TableCell>
         <TableCell>
           <Badge variant="default">server</Badge>
         </TableCell>
@@ -722,11 +702,16 @@ function BuiltinServiceRow({ service }: { service: BuiltinMcpService }) {
             {/* Status words stay English (wire vocabulary, like every other
              * row); the service is in-process, so "built-in" IS its state. */}
             <Lamp state="connected" word="built-in" />
-            <span className="text-muted-foreground nums text-xs">
+            <button
+              type="button"
+              className="text-muted-foreground hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-current nums text-xs underline-offset-2 hover:underline"
+              aria-label={t('mcp.expandTools')}
+              onClick={() => setInspecting(true)}
+            >
               {service.tools.length === 1
                 ? t('mcp.toolOne', { count: 1 })
                 : t('mcp.toolMany', { count: service.tools.length })}
-            </span>
+            </button>
           </div>
         </TableCell>
         <TableCell>
@@ -753,20 +738,29 @@ function BuiltinServiceRow({ service }: { service: BuiltinMcpService }) {
 
 /**
  * Live connection status — the two-channel status device (`Lamp`: the lamp
- * carries the tone, the word the state) plus a tool-count badge when
- * connected and the error detail when present.
+ * carries the tone, the word the state) plus the tool-count readout when
+ * connected, and the error detail when present. With `onInspect` the count IS
+ * the tool drawer's entry (#112) — the row keeps a single affordance instead
+ * of a chevron + link pair.
  */
 function StatusBadge({
   status,
   detail,
   toolCount,
+  onInspect,
 }: {
   status: McpServerStatus['status'] | undefined;
   detail: string | undefined;
   toolCount: number;
+  /** Present = clicking the count opens the tool-inspection drawer. */
+  onInspect?: () => void;
 }) {
   const { t } = useI18n();
   const resolved: McpServerStatus['status'] = status ?? 'disconnected';
+  const count =
+    toolCount === 1
+      ? t('mcp.toolOne', { count: toolCount })
+      : t('mcp.toolMany', { count: toolCount });
   return (
     <>
       <div className="flex items-center gap-2">
@@ -776,11 +770,18 @@ function StatusBadge({
           pulse={resolved === 'connecting'}
         />
         {resolved === 'connected' ? (
-          <span className="text-muted-foreground nums text-xs">
-            {toolCount === 1
-              ? t('mcp.toolOne', { count: toolCount })
-              : t('mcp.toolMany', { count: toolCount })}
-          </span>
+          onInspect ? (
+            <button
+              type="button"
+              className="text-muted-foreground hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-current nums text-xs underline-offset-2 hover:underline"
+              aria-label={t('mcp.expandTools')}
+              onClick={onInspect}
+            >
+              {count}
+            </button>
+          ) : (
+            <span className="text-muted-foreground nums text-xs">{count}</span>
+          )
         ) : null}
         {resolved === 'error' && detail ? (
           <span className="text-muted-foreground truncate text-xs" title={detail}>
@@ -845,13 +846,13 @@ function useServerTools(serverId: string, serverName: string, active: boolean, l
 }
 
 /**
- * The tool-inspection drawer (#112) — the right-side sheet the MCP table's
- * chevrons open. Tall content (long upstream descriptions, parameter lists,
- * raw input schemas) belongs here, not in a colSpan table cell whose
- * min-content width stretched the whole table: the row stays single-line and
- * the table keeps its width. Server rows pass a lazily fetched list plus
- * refresh; the built-in service row passes its static descriptor and no
- * refresh.
+ * The tool-inspection drawer (#112) — the right-side sheet each row's
+ * tool-count readout opens. Tall content (long upstream descriptions,
+ * parameter lists, raw input schemas) belongs here, not in a colSpan table
+ * cell whose min-content width stretched the whole table: the row stays
+ * single-line and the table keeps its width. Server rows pass a lazily
+ * fetched list plus refresh; the built-in service row passes its static
+ * descriptor and no refresh.
  */
 function ToolInspectorDrawer({
   open,

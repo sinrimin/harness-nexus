@@ -28,12 +28,21 @@ function DrawerContent({
     <DialogPrimitive.Portal data-slot="drawer-portal">
       <DialogPrimitive.Overlay
         data-slot="drawer-overlay"
-        className="data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 bg-scrim/50 fixed inset-0 z-50"
+        className="data-[state=open]:animate-in data-[state=open]:duration-300 data-[state=closed]:animate-out data-[state=closed]:duration-200 data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 bg-scrim/50 fixed inset-0 z-50"
       />
       <DialogPrimitive.Content
         data-slot="drawer-content"
         className={cn(
-          'bg-background data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:duration-300 data-[state=open]:duration-300 fixed inset-y-0 right-0 z-50 flex h-full w-full flex-col border-l shadow-lg outline-none sm:max-w-xl',
+          // The sheet motion (the reason this component exists): transform
+          // SLIDE from the right edge — the panel never fades, only the scrim
+          // does. Curve is vaul's `cubic-bezier(0.32, 0.72, 0, 1)` both ways
+          // (sharp decel into place, no bounce; MUI's Slide uses the same
+          // transform-then-settle shape). Radix Presence holds the panel
+          // until the exit animation finishes, so the close runs to completion
+          // before unmount. `transform-gpu` keeps the 100vh panel on its own
+          // compositing layer so the slide never re-rasters; reduced-motion
+          // users get the panel without any motion.
+          'bg-background data-[state=open]:animate-in data-[state=open]:duration-300 data-[state=open]:ease-[cubic-bezier(0.32,0.72,0,1)] data-[state=open]:slide-in-from-right data-[state=closed]:animate-out data-[state=closed]:duration-250 data-[state=closed]:ease-[cubic-bezier(0.32,0.72,0,1)] data-[state=closed]:slide-out-to-right transform-gpu fixed inset-y-0 right-0 z-50 flex h-full w-full flex-col border-l shadow-lg outline-none motion-reduce:animate-none sm:max-w-xl',
           className,
         )}
         {...props}
