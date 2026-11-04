@@ -149,10 +149,18 @@ async function resolveEntries(
   const out: ProfileEntry[] = [];
   for (const e of entries) {
     if ('mcpServerId' in e) {
+      // #113 — the pinned tool allow-set is stored deduped; the shared schema
+      // already rejects empty arrays. The upstream's OWN names are stored —
+      // the `srv__` prefix is derived at list time.
+      const tools = e.tools ? [...new Set(e.tools)] : undefined;
       // #107 — the built-in service enters profiles like any MCP server, but
       // has no row: global and always visible, so no lookup applies.
       if (e.mcpServerId === BUILTIN_MCP_SERVICE_ID) {
-        out.push({ resourceId: BUILTIN_MCP_SERVICE_ID, kind: 'mcp' });
+        out.push({
+          resourceId: BUILTIN_MCP_SERVICE_ID,
+          kind: 'mcp',
+          ...(tools ? { tools } : {}),
+        });
         continue;
       }
       const server = await deps.uow.mcpServers.findById(e.mcpServerId);
@@ -167,6 +175,7 @@ async function resolveEntries(
         resourceId: e.mcpServerId,
         kind: 'mcp',
         ...(e.pinnedVersion ? { pinnedVersion: e.pinnedVersion } : {}),
+        ...(tools ? { tools } : {}),
       });
       continue;
     }

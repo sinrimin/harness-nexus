@@ -36,6 +36,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { FormDialog } from '@/components/ui/form-dialog';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import {
   CommandLine,
   ConfirmDialog,
@@ -58,13 +59,14 @@ import {
   useListQuery,
   type ListQuerySpec,
 } from '@/lib/list-query';
-import { MoreHorizontalIcon } from 'lucide-react';
+import { ChevronDownIcon, ListChecksIcon, MoreHorizontalIcon } from 'lucide-react';
 import {
   BUILTIN_MCP_SERVICE_ID,
   HarnessNexusError,
   type Profile,
   type ProfileEntryInput,
   type McpServer,
+  type McpToolInfo,
   type Resource,
   type ResourceKind,
   type AgentTarget,
@@ -75,6 +77,14 @@ type Scope = 'global' | 'personal';
 /** A stored profile entry row (the domain shape) — used when carrying
  * pinnedVersion/installOptions over from the profile being edited. */
 type ProfileEntryRow = Profile['entries'][number];
+
+/**
+ * Per-server tool selection (#113): `'all'` = whole server (the entry follows
+ * the upstream's toolset), a non-empty Set = pinned allow-set of the
+ * upstream's OWN tool names. An empty Set is a transient editing state only —
+ * it is stored as `'all'` (the schema rejects empty arrays).
+ */
+type ServerTools = 'all' | ReadonlySet<string>;
 
 /**
  * Fetch the MCP servers + resources the caller can see — the entry-checkbox
@@ -119,7 +129,9 @@ function toggleIn(setter: React.Dispatch<React.SetStateAction<Set<string>>>, id:
  * Build the PATCH entries from the checkbox state. Still-selected ids that
  * already had a row keep their pinnedVersion/installOptions. Soft-deleted
  * targets (two-stage delete) and ids absent from the fetched lists drop out —
- * saving self-heals dead references instead of 409-ing forever.
+ * saving self-heals dead references instead of 409-ing forever. A server
+ * whose picker holds a non-empty pinned set carries it as `tools` (#113); an
+ * empty transient set or 'all' stores nothing (whole-server semantics).
  */
 function buildEntries(
   originals: ProfileEntryRow[],
@@ -127,6 +139,7 @@ function buildEntries(
   resources: Resource[],
   selectedServers: Set<string>,
   selectedResources: Set<string>,
+  serverTools: Map<string, ServerTools>,
 ): ProfileEntryInput[] {
   const liveIds = (rows: Array<{ id: string; deletedAt?: string }>): Set<string> =>
     new Set(rows.filter((x) => x.deletedAt === undefined).map((x) => x.id));
@@ -141,11 +154,15 @@ function buildEntries(
         : {}),
     };
   };
+  const toolsFor = (id: string) => {
+    const picked = serverTools.get(id);
+    return picked instanceof Set && picked.size > 0 ? { tools: [...picked] } : {};
+  };
   return [
     ...[...selectedServers]
       // #107 — the built-in service has no row but is always a live pick.
       .filter((id) => id === BUILTIN_MCP_SERVICE_ID || liveServers.has(id))
-      .map((mcpServerId) => ({ mcpServerId, ...extrasFor(mcpServerId) })),
+      .map((mcpServerId) => ({ mcpServerId, ...extrasFor(mcpServerId), ...toolsFor(mcpServerId) })),
     ...[...selectedResources]
       .filter((id) => liveResources.has(id))
       .map((resourceId) => ({
@@ -156,21 +173,147 @@ function buildEntries(
   ];
 }
 
-/** Shared entry checkboxes: MCP servers + one fieldset per resource kind. */
+/**
+ * One server's per-tool picker (#113) — a trigger under the checked row
+ * showing the current selection, opening a Popover with follow-upstream /
+ * pinned-subset modes and the tool checklist. The tool list is fetched lazily
+ * on first open (visibility-gated since #114, so any viewer of the row can
+ * read it); a disconnected or unreachable upstream shows a hint and the
+ * entry stays editable as whole-server.
+ */
+function ServerToolPicker({
+  serverId,
+  selection,
+  onChange,
+}: {
+  serverId: string;
+  selection: ServerTools;
+  onChange: (id: string, sel: ServerTools) => void;
+}) {
+  const { t } = useI18n();
+  const [open, setOpen] = useState(false);
+  const [tools, setTools] = useState<McpToolInfo[] | null>(null);
+  const pinned = selection instanceof Set ? selection : null;
+
+  // Lazy fetch on first open, cached for the dialog's lifetime.
+  useEffect(() => {
+    if (!open || tools !== null) return;
+    let cancelled = false;
+    const load =
+      serverId === BUILTIN_MCP_SERVICE_ID
+        ? api
+            .getBuiltinMcpService()
+            .then((b) => b.tools)
+            .catch(() => [])
+        : api.listMcpServerTools(serverId).catch(() => []);
+    void load.then((list) => {
+      if (!cancelled) setTools(list);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [open, tools, serverId]);
+
+  function toggleTool(name: string) {
+    const next = new Set(pinned);
+    if (next.has(name)) next.delete(name);
+    else next.add(name);
+    // Un-picking everything falls back to whole-server (empty arrays are
+    // rejected by the schema; "nothing" means removing the entry).
+    onChange(serverId, next.size > 0 ? next : 'all');
+  }
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          className="text-muted-foreground hover:text-foreground flex w-fit items-center gap-1 text-xs underline-offset-2 hover:underline"
+        >
+          <ListChecksIcon className="size-3.5" />
+          {pinned === null
+            ? t('profiles.toolsAll')
+            : t('profiles.toolsPicked', { count: pinned.size })}
+          <ChevronDownIcon className="size-3" />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent align="start" className="w-96">
+        <div className="flex flex-col gap-2">
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="radio"
+              name={`tools-${serverId}`}
+              checked={pinned === null}
+              onChange={() => onChange(serverId, 'all')}
+              className="size-4"
+            />
+            {t('profiles.toolsFollow')}
+          </label>
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="radio"
+              name={`tools-${serverId}`}
+              checked={pinned !== null}
+              onChange={() => onChange(serverId, new Set())}
+              className="size-4"
+            />
+            {t('profiles.toolsPin')}
+          </label>
+          {pinned !== null ? (
+            tools === null ? (
+              <p className="text-muted-foreground text-xs">{t('common.loading')}</p>
+            ) : tools.length === 0 ? (
+              <p className="text-muted-foreground text-xs">{t('profiles.toolsUnavailable')}</p>
+            ) : (
+              <div className="border-border max-h-56 overflow-y-auto rounded-md border p-1.5">
+                {tools.map((tool) => (
+                  <label key={tool.name} className="flex items-start gap-2 px-1 py-1 text-xs">
+                    <input
+                      type="checkbox"
+                      className="mt-0.5 size-3.5"
+                      checked={pinned.has(tool.name)}
+                      onChange={() => toggleTool(tool.name)}
+                    />
+                    <span className="min-w-0 flex-1">
+                      <code className="text-foreground break-all">{tool.name}</code>
+                      {tool.description ? (
+                        <span className="text-muted-foreground mt-0.5 block line-clamp-1">
+                          {tool.description}
+                        </span>
+                      ) : null}
+                    </span>
+                  </label>
+                ))}
+              </div>
+            )
+          ) : null}
+          <p className="text-muted-foreground text-xs">{t('profiles.toolsHint')}</p>
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+/** Shared entry checkboxes: MCP servers (each with a #113 tool picker when
+ * checked) + one fieldset per resource kind. */
 function EntryPickers({
   servers,
   resources,
   selectedServers,
   selectedResources,
+  serverTools,
   onToggleServer,
   onToggleResource,
+  onServerTools,
 }: {
   servers: McpServer[] | null;
   resources: Resource[] | null;
   selectedServers: Set<string>;
   selectedResources: Set<string>;
+  serverTools: Map<string, ServerTools>;
   onToggleServer: (id: string) => void;
   onToggleResource: (id: string) => void;
+  onServerTools: (id: string, sel: ServerTools) => void;
 }) {
   const { t } = useI18n();
   return (
@@ -180,44 +323,66 @@ function EntryPickers({
         {servers === null ? (
           <p className="text-muted-foreground text-sm">{t('profiles.loadingServers')}</p>
         ) : (
-          <div className="grid gap-2 sm:grid-cols-2">
+          <div className="grid items-start gap-2 sm:grid-cols-2">
             {/* #107 — the built-in service: pinned first, always available
              * (no row, never soft-deleted); opting in is what exposes the
-             * platform's native tools to this profile's agents. */}
-            <label className="border-border flex items-center gap-2.5 rounded-md border px-3 py-2 text-sm">
-              <input
-                type="checkbox"
-                checked={selectedServers.has(BUILTIN_MCP_SERVICE_ID)}
-                onChange={() => onToggleServer(BUILTIN_MCP_SERVICE_ID)}
-                className="size-4"
-              />
-              <span className="min-w-0 flex-1 truncate">{t('mcp.builtinName')}</span>
-              <span className="text-muted-foreground font-mono text-[10px]">built-in</span>
-            </label>
-            {servers.map((s) => (
-              <label
-                key={s.id}
-                className={`border-border flex items-center gap-2.5 rounded-md border px-3 py-2 text-sm${
-                  s.deletedAt !== undefined ? ' text-muted-foreground opacity-60' : ''
-                }`}
-              >
+             * platform's native tools to this profile's agents. #113 — its
+             * notes toolset is selectable like any upstream's. */}
+            <div className="border-border grid gap-1 rounded-md border px-3 py-2 text-sm">
+              <label className="flex items-center gap-2.5">
                 <input
                   type="checkbox"
-                  checked={s.deletedAt === undefined && selectedServers.has(s.id)}
-                  onChange={() => onToggleServer(s.id)}
-                  disabled={s.deletedAt !== undefined}
+                  checked={selectedServers.has(BUILTIN_MCP_SERVICE_ID)}
+                  onChange={() => onToggleServer(BUILTIN_MCP_SERVICE_ID)}
                   className="size-4"
                 />
-                <span className="min-w-0 flex-1 truncate">{s.name}</span>
-                {s.deletedAt !== undefined ? (
-                  <span className="font-mono text-[10px]">{t('profiles.deletedEntry')}</span>
-                ) : (
-                  <span className="text-muted-foreground font-mono text-[10px]">
-                    {s.transport.type}
-                  </span>
-                )}
+                <span className="min-w-0 flex-1 truncate">{t('mcp.builtinName')}</span>
+                <span className="text-muted-foreground font-mono text-[10px]">built-in</span>
               </label>
-            ))}
+              {selectedServers.has(BUILTIN_MCP_SERVICE_ID) ? (
+                <ServerToolPicker
+                  serverId={BUILTIN_MCP_SERVICE_ID}
+                  selection={serverTools.get(BUILTIN_MCP_SERVICE_ID) ?? 'all'}
+                  onChange={onServerTools}
+                />
+              ) : null}
+            </div>
+            {servers.map((s) => {
+              const checked = s.deletedAt === undefined && selectedServers.has(s.id);
+              return (
+                <div
+                  key={s.id}
+                  className={`border-border grid gap-1 rounded-md border px-3 py-2 text-sm${
+                    s.deletedAt !== undefined ? ' text-muted-foreground opacity-60' : ''
+                  }`}
+                >
+                  <label className="flex items-center gap-2.5">
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={() => onToggleServer(s.id)}
+                      disabled={s.deletedAt !== undefined}
+                      className="size-4"
+                    />
+                    <span className="min-w-0 flex-1 truncate">{s.name}</span>
+                    {s.deletedAt !== undefined ? (
+                      <span className="font-mono text-[10px]">{t('profiles.deletedEntry')}</span>
+                    ) : (
+                      <span className="text-muted-foreground font-mono text-[10px]">
+                        {s.transport.type}
+                      </span>
+                    )}
+                  </label>
+                  {checked ? (
+                    <ServerToolPicker
+                      serverId={s.id}
+                      selection={serverTools.get(s.id) ?? 'all'}
+                      onChange={onServerTools}
+                    />
+                  ) : null}
+                </div>
+              );
+            })}
             {servers.length === 0 ? (
               <p className="text-muted-foreground text-sm sm:col-span-2">
                 {t('profiles.noServers')}
@@ -591,12 +756,21 @@ function EditProfile({
   const [busy, setBusy] = useState(false);
   const { servers, resources } = useEntryLists();
   // Preselect from the stored entries: mcp rows reference McpServer.ids,
-  // everything else references Resource.ids (3.5's two arms).
+  // everything else references Resource.ids (3.5's two arms). Pinned tool
+  // sets (#113) come along the same way.
   const [selectedServers, setSelectedServers] = useState<Set<string>>(
     () => new Set(profile.entries.filter((e) => e.kind === 'mcp').map((e) => e.resourceId)),
   );
   const [selectedResources, setSelectedResources] = useState<Set<string>>(
     () => new Set(profile.entries.filter((e) => e.kind !== 'mcp').map((e) => e.resourceId)),
+  );
+  const [serverTools, setServerTools] = useState<Map<string, ServerTools>>(
+    () =>
+      new Map(
+        profile.entries
+          .filter((e) => e.kind === 'mcp' && e.tools !== undefined)
+          .map((e) => [e.resourceId, new Set(e.tools) as ServerTools]),
+      ),
   );
 
   async function onSubmit(e: React.FormEvent) {
@@ -614,6 +788,7 @@ function EditProfile({
               resources ?? [],
               selectedServers,
               selectedResources,
+              serverTools,
             ),
           }),
         logout,
@@ -685,8 +860,16 @@ function EditProfile({
             resources={resources}
             selectedServers={selectedServers}
             selectedResources={selectedResources}
+            serverTools={serverTools}
             onToggleServer={(id) => toggleIn(setSelectedServers, id)}
             onToggleResource={(id) => toggleIn(setSelectedResources, id)}
+            onServerTools={(id, sel) =>
+              setServerTools((prev) => {
+                const next = new Map(prev);
+                next.set(id, sel);
+                return next;
+              })
+            }
           />
 
           <div className="flex justify-end gap-2">
@@ -713,6 +896,7 @@ function CreateProfile({ onClose, onCreated }: { onClose: () => void; onCreated:
   const [target, setTarget] = useState<AgentTarget>('generic');
   const [selectedServers, setSelectedServers] = useState<Set<string>>(new Set());
   const [selectedResources, setSelectedResources] = useState<Set<string>>(new Set());
+  const [serverTools, setServerTools] = useState<Map<string, ServerTools>>(new Map());
   const [busy, setBusy] = useState(false);
   const { servers, resources } = useEntryLists();
 
@@ -728,6 +912,7 @@ function CreateProfile({ onClose, onCreated }: { onClose: () => void; onCreated:
         resources ?? [],
         selectedServers,
         selectedResources,
+        serverTools,
       );
       await withAuthGuard(
         () =>
@@ -819,8 +1004,16 @@ function CreateProfile({ onClose, onCreated }: { onClose: () => void; onCreated:
             resources={resources}
             selectedServers={selectedServers}
             selectedResources={selectedResources}
+            serverTools={serverTools}
             onToggleServer={(id) => toggleIn(setSelectedServers, id)}
             onToggleResource={(id) => toggleIn(setSelectedResources, id)}
+            onServerTools={(id, sel) =>
+              setServerTools((prev) => {
+                const next = new Map(prev);
+                next.set(id, sel);
+                return next;
+              })
+            }
           />
 
           <div className="flex justify-end gap-2">

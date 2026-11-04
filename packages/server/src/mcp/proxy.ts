@@ -31,6 +31,7 @@ import { SSEServerTransport } from '@modelcontextprotocol/sdk/server/sse.js';
 import { randomUUID } from 'node:crypto';
 import { AppError } from '@harness-nexus/shared';
 import type { ApiToolDef, ApiToolService } from '@harness-nexus/core';
+import type { ToolSelection, ToolSelectionMap } from '@harness-nexus/mcp-runtime';
 import { McpRegistry } from './registry.js';
 import { hashToken, PAT_PREFIX } from '../infra/crypto.js';
 import { listApiToolServices } from '../services/api-tools.js';
@@ -127,10 +128,11 @@ function capSessionsForUser(
   }
 }
 
-/** Request-scoped: the resolved upstream server ids + built-in flag for the chosen profile. */
+/** Request-scoped: the resolved per-upstream tool selection (#113) + the built-in
+ * service's selection for the chosen profile. */
 interface ResolvedProfileRequest {
-  resolvedServerIds: string[];
-  builtinIncluded: boolean;
+  resolvedServers: ToolSelectionMap;
+  builtinSelection: ToolSelection | null;
 }
 
 export async function mountMcpProxy(app: FastifyInstance): Promise<void> {
@@ -165,10 +167,10 @@ export async function mountMcpProxy(app: FastifyInstance): Promise<void> {
       throw new AppError('A profile query parameter is required', 400, 'PROFILE_REQUIRED');
     }
     try {
-      const { serverIds, builtin } = await registry.profileEntriesFor(profileId, req.user.id);
+      const { servers, builtin } = await registry.profileEntriesFor(profileId, req.user.id);
       const scoped = req as FastifyRequest & ResolvedProfileRequest;
-      scoped.resolvedServerIds = serverIds;
-      scoped.builtinIncluded = builtin;
+      scoped.resolvedServers = servers;
+      scoped.builtinSelection = builtin;
     } catch {
       throw new AppError(
         'Profile not found or references inaccessible MCP servers',
@@ -223,8 +225,8 @@ export async function mountMcpProxy(app: FastifyInstance): Promise<void> {
         session = await buildSession(
           registry,
           transport,
-          (req as FastifyRequest & ResolvedProfileRequest).resolvedServerIds,
-          (req as FastifyRequest & ResolvedProfileRequest).builtinIncluded,
+          (req as FastifyRequest & ResolvedProfileRequest).resolvedServers,
+          (req as FastifyRequest & ResolvedProfileRequest).builtinSelection,
           { userId: req.user!.id, role: req.user!.role },
           await apiToolsForUser(app.uow, req.user!.id),
           { uow: app.uow, credentialEncryptionKey: app.credentialEncryptionKey },
@@ -258,8 +260,8 @@ export async function mountMcpProxy(app: FastifyInstance): Promise<void> {
       const session = await buildSession(
         registry,
         transport,
-        (req as FastifyRequest & ResolvedProfileRequest).resolvedServerIds,
-        (req as FastifyRequest & ResolvedProfileRequest).builtinIncluded,
+        (req as FastifyRequest & ResolvedProfileRequest).resolvedServers,
+        (req as FastifyRequest & ResolvedProfileRequest).builtinSelection,
         { userId: req.user!.id, role: req.user!.role },
         await apiToolsForUser(app.uow, req.user!.id),
         { uow: app.uow, credentialEncryptionKey: app.credentialEncryptionKey },
@@ -303,16 +305,19 @@ export async function mountMcpProxy(app: FastifyInstance): Promise<void> {
 
 /**
  * Build a per-session SDK server wired to a transport, registering every
- * aggregated tool (filtered to the profile's MCP entries) with a forwarding
- * callback — plus the user's visible API tools (#80) under the `api__`
- * virtual namespace, and the `notes__` namespace when the profile references
- * the built-in service (#107). Returns once the server has connected.
+ * aggregated tool the profile's SELECTION exposes (#113: per-upstream
+ * `'all'`/allow-set; an empty selection lists nothing — entries define the
+ * surface, the old full-pool fallback is gone) with a forwarding callback —
+ * plus the user's visible API tools (#80) under the `api__` virtual
+ * namespace, and the `notes__` namespace under the built-in service's
+ * selection (#107/#113). The SAME selection is enforced at call time.
+ * Returns once the server has connected.
  */
 async function buildSession(
   registry: McpRegistry,
   transport: StreamableHTTPServerTransport | SSEServerTransport,
-  serverIds: string[],
-  builtinIncluded: boolean,
+  servers: ToolSelectionMap,
+  builtin: ToolSelection | null,
   principal: Principal,
   apiTools: ApiToolEntry[],
   execDeps: { uow: Parameters<typeof executeApiTool>[0]['uow']; credentialEncryptionKey: string },
@@ -327,10 +332,12 @@ async function buildSession(
     { name: 'harness-nexus', version: '0.1.0' },
     { capabilities: { tools: {} } },
   );
-  const filter = serverIds.length ? serverIds : undefined;
   server.setRequestHandler(ListToolsRequestSchema, async () => ({
     tools: [
-      ...registry.listTools(filter).map((t) => ({
+      // The profile's closed world: only selected upstreams, only allowed
+      // tools (#113). No serverIds-length fallback — zero entries ⇒ zero
+      // pooled tools.
+      ...registry.listTools(servers).map((t) => ({
         name: t.name,
         ...(t.description !== undefined ? { description: t.description } : {}),
         inputSchema: t.inputSchema,
@@ -342,15 +349,17 @@ async function buildSession(
         ...(t.description !== undefined ? { description: t.description } : {}),
         inputSchema: t.inputSchema,
       })),
-      // #88/#107 — the caller's own notes library, same read-set stance, but
-      // PROFILE-GATED: listed (and callable) only when the profile references
-      // the built-in service. Reads only.
-      ...(builtinIncluded
-        ? NOTES_TOOL_DEFS.map((t) => ({
-            name: t.name,
-            description: t.description,
-            inputSchema: t.inputSchema,
-          }))
+      // #88/#107/#113 — the caller's own notes library, same read-set stance,
+      // PROFILE-GATED: listed only under the built-in service's selection
+      // ('all', or a pinned subset of the notes toolset). Reads only.
+      ...(builtin !== null
+        ? NOTES_TOOL_DEFS.filter((t) => !(builtin instanceof Set) || builtin.has(t.name)).map(
+            (t) => ({
+              name: t.name,
+              description: t.description,
+              inputSchema: t.inputSchema,
+            }),
+          )
         : []),
     ],
   }));
@@ -359,15 +368,19 @@ async function buildSession(
     // #80 — the virtual api__ namespace routes to the runtime (same
     // allowlist/envelope/caps path the assistant uses); everything else
     // stays a pooled upstream call.
-    // #88/#107 — the virtual notes__ namespace routes to the #53 services with
-    // the session owner as principal (owner-only reads, 404 hiding) — only on
-    // sessions whose profile references the built-in service.
+    // #88/#107/#113 — the virtual notes__ namespace routes to the #53
+    // services with the session owner as principal (owner-only reads, 404
+    // hiding) — only under the built-in service's selection, pinned subsets
+    // included.
+    const unknownTool = {
+      content: [{ type: 'text', text: `error: unknown tool ${req.params.name}` }],
+      isError: true,
+    } as CallToolResult;
     if (req.params.name.startsWith(NOTES_TOOL_PREFIX)) {
-      if (!builtinIncluded) {
-        return {
-          content: [{ type: 'text', text: `error: unknown tool ${req.params.name}` }],
-          isError: true,
-        } as CallToolResult;
+      const allowed =
+        builtin !== null && (builtin === 'all' || builtin.has(req.params.name));
+      if (!allowed) {
+        return unknownTool;
       }
       const result = await executeNotesTool(
         { uow: execDeps.uow },
@@ -383,10 +396,7 @@ async function buildSession(
     if (req.params.name.startsWith(API_TOOL_PREFIX)) {
       const entry = apiTools.find((t) => t.name === req.params.name);
       if (entry === undefined) {
-        return {
-          content: [{ type: 'text', text: `error: unknown tool ${req.params.name}` }],
-          isError: true,
-        } as CallToolResult;
+        return unknownTool;
       }
       const result = await executeApiTool(
         { uow: execDeps.uow, credentialEncryptionKey: execDeps.credentialEncryptionKey },
@@ -399,7 +409,12 @@ async function buildSession(
         ...(result.isError ? { isError: true } : {}),
       } as CallToolResult;
     }
-    const result = await registry.callTool(req.params.name, args);
+    // #113 — the profile's selection is enforced on CALLS too: a session can
+    // neither list nor invoke tools outside its resolved allow-set (the pool
+    // spans every tenant's rows; listing alone was never a boundary). The
+    // pool rejects with the ordinary unknown-tool error — membership is not
+    // leakable from the error shape.
+    const result = await registry.callTool(req.params.name, args, servers);
     // The registry returns the upstream's raw CallToolResult; pass it through.
     return result as CallToolResult;
   });

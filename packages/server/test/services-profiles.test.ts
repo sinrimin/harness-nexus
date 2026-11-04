@@ -4,7 +4,7 @@
 
 import { describe, expect, it } from 'vitest';
 import type { McpServer, Resource } from '@harness-nexus/core';
-import { BUILTIN_MCP_SERVICE_ID } from '@harness-nexus/shared';
+import { BUILTIN_MCP_SERVICE_ID, createProfileSchema } from '@harness-nexus/shared';
 import { createMemoryUnitOfWork } from '../src/infra/storage/memory/index.js';
 import type { Principal, ServiceDeps } from '../src/services/principal.js';
 import {
@@ -129,6 +129,35 @@ describe('svc profiles — entry resolution gates', () => {
       entries: [{ mcpServerId: BUILTIN_MCP_SERVICE_ID }],
     });
     expect(profile.entries).toEqual([{ resourceId: BUILTIN_MCP_SERVICE_ID, kind: 'mcp' }]);
+  });
+
+  it('#113 stores the pinned tool allow-set deduped, on both mcp arms', async () => {
+    const d = deps();
+    const srv = await seedServer(d);
+    const profile = await createProfile(d, owner, {
+      name: 'P-pinned',
+      target: 'claude-code',
+      scope: 'personal',
+      entries: [{ mcpServerId: srv.id, tools: ['alpha', 'beta', 'alpha'] }],
+    });
+    // Deduped, upstream's OWN names (the srv__ prefix is derived at list time).
+    expect(profile.entries[0].tools).toEqual(['alpha', 'beta']);
+    // The builtin arm carries the same field.
+    const builtinPinned = await createProfile(d, owner, {
+      name: 'P-builtin-pin',
+      target: 'claude-code',
+      scope: 'personal',
+      entries: [{ mcpServerId: BUILTIN_MCP_SERVICE_ID, tools: ['notes__search'] }],
+    });
+    expect(builtinPinned.entries[0].tools).toEqual(['notes__search']);
+    // Whole-server entries (tools absent) store nothing.
+    const whole = await createProfile(d, owner, profileInput(srv.id));
+    expect(whole.entries[0].tools).toBeUndefined();
+    // The shared schema rejects an empty pin set at the wire (the service
+    // only ever sees zod-parsed input).
+    expect(() =>
+      createProfileSchema.shape.entries.parse([{ mcpServerId: srv.id, tools: [] }]),
+    ).toThrow();
   });
 
   it('rejects another user’s personal MCP server and soft-deleted rows', async () => {

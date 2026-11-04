@@ -34,6 +34,8 @@ import {
   type AggregatedTool,
   type McpServerStatus,
   type ResolvedTransport,
+  type ToolSelection,
+  type ToolSelectionMap,
   type UpstreamDefinition,
 } from '@harness-nexus/mcp-runtime';
 import { decryptSecret } from '../infra/crypto.js';
@@ -46,6 +48,8 @@ export type {
   ConnectionStatus,
   McpServerStatus,
   RegistryErrorKind,
+  ToolSelection,
+  ToolSelectionMap,
 } from '@harness-nexus/mcp-runtime';
 
 export interface McpRegistryOptions {
@@ -168,27 +172,29 @@ export class McpRegistry {
   }
 
   /**
-   * Resolve a profile into the outlet exposure set, after an accessibility
-   * check. Throws if the profile references an MCP server the caller cannot
-   * see. Returns `{ serverIds, builtin }` — the ids are the `listTools` filter
-   * (pooled server-dialed rows), `builtin` says the profile references the
-   * built-in service (#107: its virtual namespaces ride the session only then).
+   * Resolve a profile into its outlet exposure SELECTION, after an
+   * accessibility check. Throws if the profile references an MCP server the
+   * caller cannot see. Returns `{ servers, builtin }` — the map is the
+   * per-upstream tool selection for the pooled server-dialed rows (#113:
+   * `'all'` = the whole server; a Set = a pinned allow-set), `builtin` is the
+   * built-in service's selection (#107: null = the profile does not reference
+   * it and the namespace rides nothing).
    */
   async profileEntriesFor(
     profileId: string,
     userId: string,
-  ): Promise<{ serverIds: string[]; builtin: boolean }> {
+  ): Promise<{ servers: ToolSelectionMap; builtin: ToolSelection | null }> {
     const profile = await this.uow.profiles.findById(profileId);
     if (!profile || !profileVisibleBy(profile, userId)) {
       throw new Error(`profile ${profileId} not accessible`);
     }
-    const serverIds: string[] = [];
-    let builtin = false;
+    const servers = new Map<string, ToolSelection>();
+    let builtin: ToolSelection | null = null;
     for (const entry of profile.entries) {
       if (entry.kind !== 'mcp') continue;
-      // #107 — the built-in service has no row; its flag is the exposure gate.
+      // #107 — the built-in service has no row; its selection is the gate.
       if (entry.resourceId === BUILTIN_MCP_SERVICE_ID) {
-        builtin = true;
+        builtin = entry.tools ? new Set(entry.tools) : 'all';
         continue;
       }
       const server = await this.uow.mcpServers.findById(entry.resourceId);
@@ -197,19 +203,29 @@ export class McpRegistry {
       if (!serverVisibleBy(server, userId)) {
         throw new Error(`profile entry ${entry.resourceId} not accessible`);
       }
-      serverIds.push(server.id);
+      servers.set(server.id, entry.tools ? new Set(entry.tools) : 'all');
     }
-    return { serverIds, builtin };
+    return { servers, builtin };
   }
 
-  /** Aggregated (namespaced) tools of the pooled server-dialed set. */
-  listTools(filterServerIds?: string[]): AggregatedTool[] {
-    return this.pool.listTools(filterServerIds);
+  /**
+   * Aggregated (namespaced) tools of the pooled server-dialed set, under an
+   * optional per-upstream selection (#113). `undefined` = everything (the
+   * operator/assistant default); a map — even an EMPTY one — is a closed
+   * world: an empty map lists nothing (a profile with no mcp entries serves
+   * no pooled tools; the old full-pool fallback is gone).
+   */
+  listTools(selection?: ToolSelectionMap): AggregatedTool[] {
+    return this.pool.listTools(selection);
   }
 
-  /** Call a namespaced tool on a pooled upstream. */
-  callTool(namespacedName: string, args?: Record<string, unknown>): Promise<unknown> {
-    return this.pool.callTool(namespacedName, args);
+  /** Call a namespaced tool on a pooled upstream, enforcing the selection (#113). */
+  callTool(
+    namespacedName: string,
+    args?: Record<string, unknown>,
+    selection?: ToolSelectionMap,
+  ): Promise<unknown> {
+    return this.pool.callTool(namespacedName, args, selection);
   }
 
   /** Snapshot of every server-dialed upstream's connection status. */

@@ -53,6 +53,17 @@ export interface AggregatedTool {
   inputSchema: Record<string, unknown>;
 }
 
+/**
+ * Per-upstream tool selection (#113) — `'all'` exposes the upstream's whole
+ * (live) toolset; a Set is a pinned allow-set of the upstream's OWN tool
+ * names, intersected with the live list at list/call time.
+ */
+export type ToolSelection = 'all' | ReadonlySet<string>;
+
+/** upstream id → selection. A mapped id participates; an unmapped one is
+ * excluded; `undefined` (no map at all) means "everything connected". */
+export type ToolSelectionMap = ReadonlyMap<string, ToolSelection>;
+
 /** Minimal pino-compatible logger subset — no framework imports here. */
 export interface PoolLogger {
   info(obj: object, msg: string): void;
@@ -236,22 +247,30 @@ export class UpstreamPool {
   }
 
   /**
-   * List aggregated tools, optionally restricted to a subset of upstream ids.
-   * Local upstreams namespace as `<name>__<tool>`; passthrough (`namespaced`)
-   * upstreams contribute their tool names verbatim.
+   * List aggregated tools under an optional per-upstream tool selection
+   * (#113): upstreams absent from the map contribute nothing; `'all'`
+   * contributes every cached tool; a Set contributes only the allowed tools
+   * (intersected with the LIVE list — upstream additions never surface,
+   * removals drop out). `undefined` = every connected upstream's every tool
+   * (the operator/assistant default). Local upstreams namespace as
+   * `<name>__<tool>`; passthrough (`namespaced`) upstreams contribute their
+   * tool names verbatim — per-tool selection never applies to them (their
+   * surface is decided by whoever aggregates them, e.g. the outlet).
    */
-  listTools(filterUpstreamIds?: string[]): AggregatedTool[] {
-    const allow = filterUpstreamIds ? new Set(filterUpstreamIds) : null;
+  listTools(selection?: ToolSelectionMap): AggregatedTool[] {
     const out: AggregatedTool[] = [];
     for (const conn of this.pool.values()) {
       if (conn.status !== 'connected') continue;
-      if (allow && !allow.has(conn.def.id)) continue;
+      // An explicit map is a closed world: only mapped upstreams contribute.
+      const allow = selection?.get(conn.def.id);
+      if (selection !== undefined && allow === undefined) continue;
       const prefix = sanitizeNamespace(conn.def.name) + NAMESPACE_SEP;
       for (const tool of conn.tools.values()) {
         if (conn.def.namespaced) {
           out.push(tool);
           continue;
         }
+        if (allow instanceof Set && !allow.has(tool.name)) continue;
         out.push({
           name: prefix + tool.name,
           ...(tool.description ? { description: `[${conn.def.name}] ${tool.description}` } : {}),
@@ -265,9 +284,17 @@ export class UpstreamPool {
   /**
    * Call a tool by its exposed (namespaced or passthrough) name. Local lookup
    * first; if no local upstream owns the name, passthrough upstreams get the
-   * full name forwarded verbatim (the outlet already namespaced it).
+   * full name forwarded verbatim (the outlet already namespaced it). With a
+   * `selection` the SAME allow-set enforced at listing is enforced here
+   * (#113): a session must not be able to invoke what it cannot list — the
+   * rejection is the ordinary unknown-tool error, so membership is not
+   * leakable from the error shape.
    */
-  async callTool(exposedName: string, args?: Record<string, unknown>): Promise<unknown> {
+  async callTool(
+    exposedName: string,
+    args?: Record<string, unknown>,
+    selection?: ToolSelectionMap,
+  ): Promise<unknown> {
     // Local namespaced lookup: `<server>__<tool>`.
     const [upstreamName, toolName] = splitNamespace(exposedName);
     if (toolName) {
@@ -277,6 +304,12 @@ export class UpstreamPool {
         if (sanitizeNamespace(conn.def.name) !== target) continue;
         if (!conn.tools.has(toolName)) {
           throw new Error(`tool not found: ${toolName} on ${upstreamName}`);
+        }
+        if (selection !== undefined) {
+          const allow = selection.get(conn.def.id);
+          if (allow === undefined || (allow instanceof Set && !allow.has(toolName))) {
+            throw new Error(`tool not found: ${toolName} on ${upstreamName}`);
+          }
         }
         return conn.client.callTool({ name: toolName, arguments: args });
       }

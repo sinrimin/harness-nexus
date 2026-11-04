@@ -254,9 +254,13 @@ export async function registerRealtime(
     },
     // M2 — the MCP registry seam. LAZY on purpose: mountMcpProxy decorates
     // `app.mcpRegistry` AFTER registerRealtime runs, so the closures resolve
-    // it per call (turn time), never at wiring time.
+    // it per call (turn time), never at wiring time. The seam's per-id
+    // contract maps onto the registry's selection world (#113) as 'all' per
+    // id — dispatch sees whole servers, never pinned subsets (profile tool
+    // selection is an outlet concern).
     {
-      listTools: (serverIds) => app.mcpRegistry.listTools(serverIds),
+      listTools: (serverIds) =>
+        app.mcpRegistry.listTools(new Map(serverIds.map((id) => [id, 'all']))),
       callTool: (namespacedName, args) => app.mcpRegistry.callTool(namespacedName, args),
     },
     // M3 — write-gate watchdog; #57 — the SAME viewer grace the chat axis

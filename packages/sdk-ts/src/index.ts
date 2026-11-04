@@ -359,7 +359,12 @@ export interface McpServerStatus {
  *    servers are managed via /api/mcp-servers and enter via the other arm).
  */
 export type ProfileEntryInput =
-  | { mcpServerId: string; pinnedVersion?: string }
+  | {
+      mcpServerId: string;
+      pinnedVersion?: string;
+      /** #113 — absent = whole server; present non-empty = pinned tool allow-set. */
+      tools?: string[];
+    }
   | {
       resourceId: string;
       kind: Exclude<ResourceKind, 'mcp'>;
