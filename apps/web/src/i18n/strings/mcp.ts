@@ -48,8 +48,7 @@ const en = {
   connect: 'Connect',
   reconnect: 'Reconnect',
   connecting: 'Connecting…',
-  expandTools: 'Expand tools',
-  collapseTools: 'Collapse tools',
+  expandTools: 'Inspect tools',
   // Dial-site badge vocabulary.
   dialAutoDerived: 'auto → {site}',
   dialClient: 'client',
@@ -62,9 +61,10 @@ const en = {
   // Status badge tool count.
   toolOne: '{count} tool',
   toolMany: '{count} tools',
-  // Tool inspection panel.
-  toolsHeader: 'Tools',
-  toolsHeaderCount: 'Tools ({count})',
+  // Tool inspector drawer (#112).
+  searchTools: 'Search tools…',
+  noMatchingTools: 'No tools matching "{query}".',
+  rawSchema: 'Raw input schema',
   refresh: 'Refresh',
   loadingTools: 'Loading tools…',
   noTools: 'No tools exposed by this server.',
@@ -162,8 +162,7 @@ const zh: typeof en = {
   connect: '连接',
   reconnect: '重新连接',
   connecting: '连接中…',
-  expandTools: '展开工具',
-  collapseTools: '收起工具',
+  expandTools: '查看工具',
   // 拨号端徽章词汇。
   dialAutoDerived: '自动 → {site}',
   dialClient: '客户端',
@@ -176,9 +175,10 @@ const zh: typeof en = {
   // 状态徽章工具计数。
   toolOne: '{count} 个工具',
   toolMany: '{count} 个工具',
-  // 工具检查面板。
-  toolsHeader: '工具',
-  toolsHeaderCount: '工具（{count}）',
+  // 工具检查抽屉（#112）。
+  searchTools: '搜索工具…',
+  noMatchingTools: '没有匹配“{query}”的工具。',
+  rawSchema: '原始 input schema',
   refresh: '刷新',
   loadingTools: '工具加载中…',
   noTools: '此服务器未暴露任何工具。',
