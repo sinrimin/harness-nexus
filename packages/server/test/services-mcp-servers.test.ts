@@ -8,6 +8,7 @@ import { createMemoryUnitOfWork } from '../src/infra/storage/memory/index.js';
 import type { Principal, ServiceDeps } from '../src/services/principal.js';
 import {
   assertServerDialedOwned,
+  assertServerDialedVisible,
   createMcpServer,
   deleteMcpServer,
   listMcpServers,
@@ -208,6 +209,64 @@ describe('svc mcp-servers — dial-site gates (Phase 8 C2)', () => {
     });
     await expect(assertServerDialedOwned(d, owner, autoToServer.id)).resolves.toBeUndefined();
     await expect(assertServerDialedOwned(d, owner, serverRow.id)).resolves.toBeUndefined();
+  });
+});
+
+describe('svc mcp-servers — tools read is visibility-gated (#114)', () => {
+  it('a global row is readable by EVERY viewer of it, not just admins', async () => {
+    const d = deps();
+    const global = await createMcpServer(
+      d,
+      admin,
+      serverInput({ scope: 'global', name: 'g', dialSite: 'server' }),
+    );
+    for (const p of [owner, stranger, admin]) {
+      await expect(assertServerDialedVisible(d, p, global.id)).resolves.toBeUndefined();
+    }
+  });
+
+  it('a personal row stays owner-only — strangers (and other tenants) get the same 404', async () => {
+    const d = deps();
+    const theirs = await createMcpServer(d, owner, serverInput({ dialSite: 'server' }));
+    await expect(assertServerDialedVisible(d, owner, theirs.id)).resolves.toBeUndefined();
+    await expect(assertServerDialedVisible(d, stranger, theirs.id)).rejects.toMatchObject({
+      statusCode: 404,
+      code: 'MCP_SERVER_NOT_FOUND',
+    });
+    // Missing ids 404 the same way (leak prevention unchanged).
+    await expect(assertServerDialedVisible(d, admin, 'nope')).rejects.toMatchObject({
+      statusCode: 404,
+    });
+  });
+
+  it('a client-dialed row has no platform cache to read — 409 regardless of visibility', async () => {
+    const d = deps();
+    const clientRow = await createMcpServer(
+      d,
+      admin,
+      serverInput({ scope: 'global', name: 'c', dialSite: 'client' }),
+    );
+    await expect(assertServerDialedVisible(d, stranger, clientRow.id)).rejects.toMatchObject({
+      statusCode: 409,
+      code: 'NOT_SERVER_DIALED',
+    });
+  });
+
+  it('the OPERATOR guard is unchanged: connect-class checks stay canManage', async () => {
+    const d = deps();
+    const global = await createMcpServer(
+      d,
+      admin,
+      serverInput({ scope: 'global', name: 'g2', dialSite: 'server' }),
+    );
+    // Viewing opens for strangers (#114)…
+    await expect(assertServerDialedVisible(d, stranger, global.id)).resolves.toBeUndefined();
+    // …but operating does not (canManage: admin-only on global rows).
+    await expect(assertServerDialedOwned(d, stranger, global.id)).rejects.toMatchObject({
+      statusCode: 404,
+      code: 'MCP_SERVER_NOT_FOUND',
+    });
+    await expect(assertServerDialedOwned(d, admin, global.id)).resolves.toBeUndefined();
   });
 });
 
