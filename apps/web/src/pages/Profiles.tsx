@@ -36,7 +36,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { FormDialog } from '@/components/ui/form-dialog';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import {
   CommandLine,
   ConfirmDialog,
@@ -59,7 +59,8 @@ import {
   useListQuery,
   type ListQuerySpec,
 } from '@/lib/list-query';
-import { ChevronDownIcon, ListChecksIcon, MoreHorizontalIcon } from 'lucide-react';
+import { cn } from '@/lib/utils';
+import { ChevronRightIcon, ListChecksIcon, MoreHorizontalIcon } from 'lucide-react';
 import {
   BUILTIN_MCP_SERVICE_ID,
   HarnessNexusError,
@@ -174,12 +175,15 @@ function buildEntries(
 }
 
 /**
- * One server's per-tool picker (#113) — a trigger under the checked row
- * showing the current selection, opening a Popover with follow-upstream /
- * pinned-subset modes and the tool checklist. The tool list is fetched lazily
- * on first open (visibility-gated since #114, so any viewer of the row can
- * read it); a disconnected or unreachable upstream shows a hint and the
- * entry stays editable as whole-server.
+ * One server's per-tool picker (#113) — an INLINE expansion under the checked
+ * row (a Collapsible in the dialog's own flow, deliberately NOT a Popover:
+ * a portal layer re-anchors on every click — the trigger label's width
+ * changes as the count updates — and taps land on the content underneath).
+ * Expanded, it shows the two modes (whole-server / pinned subset) and a
+ * fixed-height scrolling checklist. The tool list is fetched lazily on first
+ * expand (visibility-gated since #114, so any viewer of the row can read it);
+ * a disconnected or unreachable upstream shows a hint and the entry stays
+ * editable as whole-server.
  */
 function ServerToolPicker({
   serverId,
@@ -195,7 +199,7 @@ function ServerToolPicker({
   const [tools, setTools] = useState<McpToolInfo[] | null>(null);
   const pinned = selection instanceof Set ? selection : null;
 
-  // Lazy fetch on first open, cached for the dialog's lifetime.
+  // Lazy fetch on first expand, cached for the dialog's lifetime.
   useEffect(() => {
     if (!open || tools !== null) return;
     let cancelled = false;
@@ -224,50 +228,55 @@ function ServerToolPicker({
   }
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>
+    <Collapsible open={open} onOpenChange={setOpen}>
+      <CollapsibleTrigger asChild>
         <button
           type="button"
-          className="text-muted-foreground hover:text-foreground flex w-fit items-center gap-1 text-xs underline-offset-2 hover:underline"
+          className="text-muted-foreground hover:text-foreground flex w-fit items-center gap-1.5 text-xs"
         >
+          <ChevronRightIcon className={cn('size-3 transition-transform', open && 'rotate-90')} />
           <ListChecksIcon className="size-3.5" />
           {pinned === null
             ? t('profiles.toolsAll')
             : t('profiles.toolsPicked', { count: pinned.size })}
-          <ChevronDownIcon className="size-3" />
         </button>
-      </PopoverTrigger>
-      <PopoverContent align="start" className="w-96">
-        <div className="flex flex-col gap-2">
-          <label className="flex items-center gap-2 text-sm">
-            <input
-              type="radio"
-              name={`tools-${serverId}`}
-              checked={pinned === null}
-              onChange={() => onChange(serverId, 'all')}
-              className="size-4"
-            />
-            {t('profiles.toolsFollow')}
-          </label>
-          <label className="flex items-center gap-2 text-sm">
-            <input
-              type="radio"
-              name={`tools-${serverId}`}
-              checked={pinned !== null}
-              onChange={() => onChange(serverId, new Set())}
-              className="size-4"
-            />
-            {t('profiles.toolsPin')}
-          </label>
+      </CollapsibleTrigger>
+      <CollapsibleContent>
+        <div className="border-border mt-1.5 flex flex-col gap-2.5 rounded-md border bg-muted/30 p-2.5">
+          <div className="flex flex-col gap-1.5">
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="radio"
+                name={`tools-${serverId}`}
+                checked={pinned === null}
+                onChange={() => onChange(serverId, 'all')}
+                className="size-4"
+              />
+              {t('profiles.toolsFollow')}
+            </label>
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="radio"
+                name={`tools-${serverId}`}
+                checked={pinned !== null}
+                onChange={() => onChange(serverId, new Set())}
+                className="size-4"
+              />
+              {t('profiles.toolsPin')}
+            </label>
+          </div>
           {pinned !== null ? (
             tools === null ? (
               <p className="text-muted-foreground text-xs">{t('common.loading')}</p>
             ) : tools.length === 0 ? (
               <p className="text-muted-foreground text-xs">{t('profiles.toolsUnavailable')}</p>
             ) : (
-              <div className="border-border max-h-56 overflow-y-auto rounded-md border p-1.5">
+              <div className="border-border max-h-52 overflow-y-auto rounded-md border bg-background">
                 {tools.map((tool) => (
-                  <label key={tool.name} className="flex items-start gap-2 px-1 py-1 text-xs">
+                  <label
+                    key={tool.name}
+                    className="hover:bg-muted/40 flex cursor-pointer items-start gap-2 border-border border-b px-2 py-1.5 text-xs last:border-b-0"
+                  >
                     <input
                       type="checkbox"
                       className="mt-0.5 size-3.5"
@@ -277,7 +286,11 @@ function ServerToolPicker({
                     <span className="min-w-0 flex-1">
                       <code className="text-foreground break-all">{tool.name}</code>
                       {tool.description ? (
-                        <span className="text-muted-foreground mt-0.5 block line-clamp-1">
+                        // line-clamp-1 carries its own -webkit-box display —
+                        // adding `block` would override it (`.block` sorts
+                        // AFTER `.line-clamp-*` in the built sheet) and
+                        // silently unclamp the paragraph.
+                        <span className="text-muted-foreground mt-0.5 line-clamp-1">
                           {tool.description}
                         </span>
                       ) : null}
@@ -289,8 +302,8 @@ function ServerToolPicker({
           ) : null}
           <p className="text-muted-foreground text-xs">{t('profiles.toolsHint')}</p>
         </div>
-      </PopoverContent>
-    </Popover>
+      </CollapsibleContent>
+    </Collapsible>
   );
 }
 

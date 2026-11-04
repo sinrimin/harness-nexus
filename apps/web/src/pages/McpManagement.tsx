@@ -995,7 +995,11 @@ function ToolRow({ tool }: { tool: McpToolInfo }) {
               {tool.description ? (
                 <span
                   className={cn(
-                    'text-muted-foreground mt-0.5 block text-xs leading-5',
+                    // No `block` here on purpose: `line-clamp-2` carries its
+                    // own -webkit-box display, and `.block` sorts AFTER
+                    // `.line-clamp-*` in the built sheet — pairing them
+                    // silently unclamps the paragraph.
+                    'text-muted-foreground mt-0.5 text-xs leading-5',
                     !open && 'line-clamp-2',
                   )}
                 >
