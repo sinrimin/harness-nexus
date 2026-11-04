@@ -564,13 +564,12 @@ function ServerRow({
   }
 
   // ---- server-dialed row: single-line; tools inspect in the drawer ----
-  const canInspect = !(server.scope === 'global' && !isAdmin);
-  const { tools, refreshing, refresh } = useServerTools(
-    server.id,
-    server.name,
-    inspecting && canInspect,
-    logout,
-  );
+  // Inspection is VISIBILITY-gated (#114): every row the caller can see lists
+  // its tools — the count, /status and profile sessions already agree with
+  // that. REFRESH stays a manager action (it re-dials the upstream), so the
+  // drawer's Refresh button hides for non-managers of the row.
+  const canManage = isAdmin || server.scope === 'personal';
+  const { tools, refreshing, refresh } = useServerTools(server.id, server.name, inspecting, logout);
   const lampState: McpServerStatus['status'] = connState ?? 'disconnected';
   return (
     <>
@@ -579,9 +578,7 @@ function ServerRow({
         <TableCell>{dialSiteCell}</TableCell>
         <TableCell>
           {/* The count IS the drawer's entry (#112) — it only renders while
-           * connected. Non-admins on a global row MAY open the drawer too; it
-           * then explains that inspection is admin-only instead of fetching
-           * into a 404. */}
+           * connected, and opens for every viewer of the row (#114). */}
           <StatusBadge
             status={connState}
             detail={status?.detail}
@@ -669,7 +666,7 @@ function ServerRow({
             pulse={lampState === 'connecting'}
           />
         }
-        adminOnly={!canInspect}
+        canRefresh={canManage}
         tools={tools}
         refreshing={refreshing}
         onRefresh={refresh}
@@ -860,7 +857,7 @@ function ToolInspectorDrawer({
   title,
   lamp,
   hint,
-  adminOnly,
+  canRefresh,
   tools,
   refreshing,
   onRefresh,
@@ -872,8 +869,9 @@ function ToolInspectorDrawer({
   lamp: ReactNode;
   /** A one-line note pinned above the list (the built-in service's hint). */
   hint?: string;
-  /** Show the admin-only note instead of the list (global row, non-admin). */
-  adminOnly?: boolean;
+  /** False hides the Refresh button (viewing is open, re-dialing is a
+   * manager action — #114). Default true; moot when onRefresh is omitted. */
+  canRefresh?: boolean;
   /** The tool list; null = still loading (server rows fetch on open). */
   tools: McpToolInfo[] | null;
   refreshing?: boolean;
@@ -902,7 +900,7 @@ function ToolInspectorDrawer({
         <DrawerHeader>
           <div className="flex items-center justify-between gap-2 pr-1">
             <DrawerTitle className="min-w-0 truncate">{title}</DrawerTitle>
-            {onRefresh ? (
+            {onRefresh && canRefresh !== false ? (
               <Button
                 variant="ghost"
                 size="sm"
@@ -930,9 +928,7 @@ function ToolInspectorDrawer({
         </DrawerHeader>
         <DrawerBody className="flex flex-col gap-2">
           {hint ? <p className="text-muted-foreground text-xs">{hint}</p> : null}
-          {adminOnly ? (
-            <p className="text-muted-foreground text-xs">{t('mcp.toolsAdminOnly')}</p>
-          ) : filtered === null ? (
+          {filtered === null ? (
             <p className="text-muted-foreground text-xs">{t('mcp.loadingTools')}</p>
           ) : filtered.length === 0 ? (
             <p className="text-muted-foreground text-xs">
@@ -983,14 +979,19 @@ function ToolRow({ tool }: { tool: McpToolInfo }) {
             type="button"
             className="hover:bg-muted/40 -mx-1.5 flex w-full items-start gap-1.5 rounded-xs px-1.5 py-1 text-left"
           >
-            <ChevronRightIcon
-              className={cn(
-                'text-muted-foreground mt-0.5 size-3.5 shrink-0 transition-transform',
-                open && 'rotate-90',
-              )}
-            />
             <span className="min-w-0 flex-1">
-              <code className="text-foreground text-xs font-medium break-all">{tool.name}</code>
+              {/* The name line is its own items-center row so the 14px chevron
+               * centers against the 16px text line — no hand-tuned top margin
+               * (a mt guess is exactly how they drifted 1px apart). */}
+              <span className="flex items-center gap-1.5">
+                <ChevronRightIcon
+                  className={cn(
+                    'text-muted-foreground size-3.5 shrink-0 transition-transform',
+                    open && 'rotate-90',
+                  )}
+                />
+                <code className="text-foreground text-xs font-medium break-all">{tool.name}</code>
+              </span>
               {tool.description ? (
                 <span
                   className={cn(
