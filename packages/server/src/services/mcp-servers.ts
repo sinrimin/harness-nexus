@@ -150,12 +150,14 @@ export async function deleteMcpServer(
 }
 
 /**
- * Phase 2.4 — guard for the connect/disconnect/tools routes. Reads the stored
- * record (NOT the pool entry) and applies canManage + dial-site checks
- * BEFORE the route touches the registry: a not-found/not-manageable server
- * returns 404 MCP_SERVER_NOT_FOUND (leak prevention, identical to
- * PATCH/DELETE), and a client-dialed server returns 409 NOT_SERVER_DIALED
- * (the platform never dials it — that is the shim's job).
+ * Phase 2.4 — guard for the connect/disconnect/refresh routes (the operator
+ * actions). Reads the stored record (NOT the pool entry) and applies canManage
+ * + dial-site checks BEFORE the route touches the registry: a
+ * not-found/not-manageable server returns 404 MCP_SERVER_NOT_FOUND (leak
+ * prevention, identical to PATCH/DELETE), and a client-dialed server returns
+ * 409 NOT_SERVER_DIALED (the platform never dials it — that is the shim's
+ * job). The tools READ route uses `assertServerDialedVisible` instead (#114):
+ * viewing is visibility-gated, not admin-gated.
  */
 export async function assertServerDialedOwned(
   deps: ServiceDeps,
@@ -164,6 +166,39 @@ export async function assertServerDialedOwned(
 ): Promise<void> {
   const existing = await deps.uow.mcpServers.findById(id);
   if (!existing || !canManage(existing, principal.userId, principal.role)) {
+    throw new AppError('MCP server not found', 404, 'MCP_SERVER_NOT_FOUND');
+  }
+  const distributable = new Map<string, boolean>();
+  for (const cred of await deps.uow.credentials.list()) {
+    if (!distributable.has(cred.name)) distributable.set(cred.name, cred.distributable);
+  }
+  const site = resolveDialSite(existing, (name) => distributable.get(name) === true);
+  if (site !== 'server') {
+    throw new AppError(
+      `MCP server "${existing.name}" is dialed by the client, not the platform (dial site: ${site})`,
+      409,
+      'NOT_SERVER_DIALED',
+    );
+  }
+}
+
+/**
+ * #114 — guard for the tools READ route. Viewing is VISIBILITY-gated, not
+ * admin-gated: the row must exist (404 on miss — a stranger's personal row
+ * 404s like every other read, leak prevention unchanged), be visible to the
+ * caller (global → everyone, personal → owner), and resolve to a server dial
+ * site (409 — a client-dialed row has no platform tool cache to read). Tool
+ * names were never secret from the visibility set: `toolCount` rides the
+ * public /status rows, and a profile referencing the server already lists and
+ * calls the tools in that caller's own /mcp session.
+ */
+export async function assertServerDialedVisible(
+  deps: ServiceDeps,
+  principal: Principal,
+  id: string,
+): Promise<void> {
+  const existing = await deps.uow.mcpServers.findById(id);
+  if (!existing || (existing.scope !== 'global' && existing.ownerId !== principal.userId)) {
     throw new AppError('MCP server not found', 404, 'MCP_SERVER_NOT_FOUND');
   }
   const distributable = new Map<string, boolean>();

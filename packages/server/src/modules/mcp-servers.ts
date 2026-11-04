@@ -16,6 +16,7 @@ import { RegistryError } from '../mcp/registry.js';
 import { builtinMcpService } from '../mcp/builtin.js';
 import {
   assertServerDialedOwned,
+  assertServerDialedVisible,
   createMcpServer,
   deleteMcpServer,
   listMcpServers,
@@ -109,8 +110,12 @@ export async function mcpServersRoutes(app: FastifyInstance): Promise<void> {
 
   // GET /api/mcp-servers/:id/tools — cached tool list (original names).
   // Not connected → [] (not an error); the UI gates the panel on status.
+  // Visibility-gated, NOT admin-gated (#114): every viewer of the row can
+  // read its tool cache — toolCount rides the public /status rows and profile
+  // sessions already list+call these tools. Refresh (a re-dial) stays
+  // operator-only below.
   app.get<{ Params: { id: string } }>('/api/mcp-servers/:id/tools', guard, async (req) => {
-    await assertServerDialedOwned(deps(), principalOf(req), req.params.id);
+    await assertServerDialedVisible(deps(), principalOf(req), req.params.id);
     // #53 residue: cached tools are registry (live connection) truth.
     try {
       const tools = app.mcpRegistry!.listServerTools(req.params.id);
