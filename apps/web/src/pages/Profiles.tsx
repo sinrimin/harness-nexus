@@ -824,7 +824,12 @@ function EditProfile({
         description={t('profiles.editDesc')}
         size="xl"
       >
-        <form onSubmit={onSubmit} className="flex flex-col gap-4">
+        {/* select-none: picking an entry/picker option changes the dialog's
+         * height mid-click — between mousedown and mouseup the text under the
+         * cursor shifts, and a browser reads that as a text-selection drag.
+         * Form INPUTS stay selectable regardless (user-select only gates
+         * static text); everything worth copying here has a copy affordance. */}
+        <form onSubmit={onSubmit} className="flex flex-col gap-4 select-none">
           <div className="grid gap-4 sm:grid-cols-3">
             {/* content-start: the version cell carries a hint <p>, and without
               it the default align-content:stretch distributes that extra
@@ -956,7 +961,10 @@ function CreateProfile({ onClose, onCreated }: { onClose: () => void; onCreated:
         description={t('profiles.addDesc')}
         size="xl"
       >
-        <form onSubmit={onSubmit} className="flex flex-col gap-4">
+        {/* select-none for the same mid-click height-shift reason as the edit
+         * dialog above (no drag-selection when the layout moves under the
+         * cursor). */}
+        <form onSubmit={onSubmit} className="flex flex-col gap-4 select-none">
           <div className="grid gap-4 sm:grid-cols-4">
             <div className="grid gap-2">
               <Label htmlFor="prof-name">{t('common.name')}</Label>

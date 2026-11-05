@@ -977,7 +977,7 @@ function ToolRow({ tool }: { tool: McpToolInfo }) {
         <CollapsibleTrigger asChild>
           <button
             type="button"
-            className="hover:bg-muted/40 -mx-1.5 flex w-full items-start gap-1.5 rounded-xs px-1.5 py-1 text-left"
+            className="hover:bg-muted/40 -mx-1.5 flex w-full items-start gap-1.5 rounded-xs px-1.5 py-1 text-left select-none"
           >
             <span className="min-w-0 flex-1">
               {/* The name line is its own items-center row so the 14px chevron
@@ -1030,7 +1030,7 @@ function ToolRow({ tool }: { tool: McpToolInfo }) {
               <CollapsibleTrigger asChild>
                 <button
                   type="button"
-                  className="text-muted-foreground hover:text-foreground flex w-fit items-center gap-1 text-xs"
+                  className="text-muted-foreground hover:text-foreground flex w-fit items-center gap-1 text-xs select-none"
                 >
                   <ChevronRightIcon
                     className={cn('size-3 transition-transform', schemaOpen && 'rotate-90')}
