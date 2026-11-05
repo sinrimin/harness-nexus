@@ -95,7 +95,11 @@ export const SystemNote = memo(function SystemNote({
   return (
     <div
       className={cn(
-        'rounded-md border px-3 py-1.5 text-xs',
+        // #116 — error bodies carry unbreakable tokens (hex request ids,
+        // long JSON keys); `anywhere` (not `break-word`) also shrinks the
+        // row's intrinsic min-content, so a wide note can no longer stretch
+        // the flex chain into a page-level horizontal scroll on phones.
+        'rounded-md border px-3 py-1.5 text-xs [overflow-wrap:anywhere]',
         tone === 'error'
           ? 'text-destructive border-danger/40 bg-danger/5'
           : tone === 'success'
