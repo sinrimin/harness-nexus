@@ -19,7 +19,7 @@ import {
   provisionAdapters,
   type AdapterPatch,
 } from '../src/daemon/acp/adapter-provision.js';
-import { PINNED_ADAPTER_SPECS } from '../src/daemon/acp/adapters.js';
+import { PINNED_ADAPTER_SPECS, pinnedSpecParts } from '../src/daemon/acp/adapters.js';
 
 /**
  * Issue #2 — pinned adapter provisioning: install once into
@@ -43,12 +43,27 @@ const PATCH: AdapterPatch = {
 
 const CLAUDE_MODEL_FILE = PATCH.file;
 
-/** Seed a (complete or partial) adapter store with the patch target file. */
-function seedStore(dir: string, opts: { bins?: boolean; patched?: boolean } = {}): void {
+const CLAUDE_PKG = '@agentclientprotocol/claude-agent-acp';
+
+/**
+ * Seed a (complete or partial) adapter store with the patch target file. A
+ * provisioned package carries its `package.json` at the PINNED version unless
+ * `versions` overrides it (#117 drift) — a real npm install always writes one.
+ */
+function seedStore(
+  dir: string,
+  opts: { bins?: boolean; patched?: boolean; versions?: Record<string, string> } = {},
+): void {
   if (opts.bins !== false) {
     for (const s of PINNED_ADAPTER_SPECS) {
       mkdirSync(join(dir, 'node_modules', '.bin'), { recursive: true });
       writeFileSync(join(dir, 'node_modules', '.bin', s.bin), '#!/bin/sh\n');
+      const { name, version } = pinnedSpecParts(s.spec);
+      mkdirSync(join(dir, 'node_modules', name), { recursive: true });
+      writeFileSync(
+        join(dir, 'node_modules', name, 'package.json'),
+        JSON.stringify({ name, version: opts.versions?.[name] ?? version }),
+      );
     }
   }
   mkdirSync(join(dir, CLAUDE_MODEL_FILE, '..'), { recursive: true });
@@ -199,6 +214,7 @@ describe('provisionAdapters (issue #2)', () => {
       },
     });
     expect(r.installed).toBe(false);
+    expect(r.drift).toEqual([]);
     expect(r.applied).toEqual([PATCH.id]);
   });
 
@@ -231,11 +247,75 @@ describe('provisionAdapters (issue #2)', () => {
       },
     });
     expect(r.installed).toBe(false);
+    expect(r.drift).toEqual([]);
     expect(r.error).toContain('npm install exited 1');
     expect(existsSync(join(home, '.hnx', 'acp-adapters'))).toBe(false);
     expect(existsSync(join(home, '.hnx', 'acp-adapters.staging-' + String(process.pid)))).toBe(
       false,
     );
+  });
+
+  // #117 — a pin bump keeps the bin NAME, so bins alone called a store
+  // provisioned before the bump "complete" forever (#71: 0.79.0 stayed).
+  it('#117 a store that drifted from its pins re-provisions and reports the drift', async () => {
+    const home = mkdtempSync(join(tmpdir(), 'hnx-provision-home-'));
+    const store = join(home, '.hnx', 'acp-adapters');
+    seedStore(store, { versions: { [CLAUDE_PKG]: '0.79.0' } });
+    let npmRuns = 0;
+    const r = await provisionAdapters(home, {
+      patches: [PATCH],
+      runNpm: async (args) => {
+        npmRuns += 1;
+        seedStore(args[args.indexOf('--prefix') + 1]!);
+      },
+    });
+    expect(npmRuns).toBe(1);
+    expect(r.installed).toBe(true);
+    expect(r.drift).toEqual([`${CLAUDE_PKG} 0.79.0 → ${pinnedVersionOf(CLAUDE_PKG)}`]);
+    expect(r.applied).toEqual([PATCH.id]); // the replacement is born patched
+    const pkg = JSON.parse(
+      readFileSync(join(store, 'node_modules', CLAUDE_PKG, 'package.json'), 'utf8'),
+    ) as { version: string };
+    expect(pkg.version).toBe(pinnedVersionOf(CLAUDE_PKG));
+    expect(readdir(join(home, '.hnx'))).toEqual(['acp-adapters']);
+  });
+
+  it('#117 a failed re-provision keeps the drifted store in place (npx stays the path)', async () => {
+    const home = mkdtempSync(join(tmpdir(), 'hnx-provision-home-'));
+    const store = join(home, '.hnx', 'acp-adapters');
+    seedStore(store, { versions: { [CLAUDE_PKG]: '0.79.0' } });
+    const r = await provisionAdapters(home, {
+      runNpm: async () => {
+        throw new Error('npm install exited 1: network unreachable');
+      },
+    });
+    expect(r.installed).toBe(false);
+    expect(r.error).toContain('npm install exited 1');
+    expect(r.drift).toHaveLength(1);
+    // The swap only happens after a successful install: the old store stays.
+    const pkg = JSON.parse(
+      readFileSync(join(store, 'node_modules', CLAUDE_PKG, 'package.json'), 'utf8'),
+    ) as { version: string };
+    expect(pkg.version).toBe('0.79.0');
+  });
+
+  it('#117 bins without package manifests do not count as a current store', async () => {
+    const home = mkdtempSync(join(tmpdir(), 'hnx-provision-home-'));
+    const store = join(home, '.hnx', 'acp-adapters');
+    for (const s of PINNED_ADAPTER_SPECS) {
+      mkdirSync(join(store, 'node_modules', '.bin'), { recursive: true });
+      writeFileSync(join(store, 'node_modules', '.bin', s.bin), '#!/bin/sh\n');
+    }
+    let npmRuns = 0;
+    const r = await provisionAdapters(home, {
+      runNpm: async (args) => {
+        npmRuns += 1;
+        seedStore(args[args.indexOf('--prefix') + 1]!);
+      },
+    });
+    expect(npmRuns).toBe(1);
+    expect(r.installed).toBe(true);
+    expect(r.drift).toEqual([]); // absent manifests are incompleteness, not drift
   });
 
   it('exports the version-pinned specs used for both install and npx fallback', () => {
@@ -252,4 +332,9 @@ describe('provisionAdapters (issue #2)', () => {
 
 function readdir(dir: string): string[] {
   return readdirSync(dir).filter((d) => !d.startsWith('acp-adapters.staging'));
+}
+
+function pinnedVersionOf(name: string): string {
+  const spec = PINNED_ADAPTER_SPECS.find((s) => pinnedSpecParts(s.spec).name === name)!.spec;
+  return pinnedSpecParts(spec).version;
 }
