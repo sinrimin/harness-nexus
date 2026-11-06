@@ -66,8 +66,9 @@ per home volume. `HNX_PROFILE`/inspector env is ignored in machine mode.
 
 Node.js 22, `@harness-nexus/cli`, `@modelcontextprotocol/inspector`, plus the
 baseline coding-agent toolbox (git, ssh client, ps, python3) and tini as PID
+
 1. The inspector's bind-all flag is enabled inside the container — the
-container is the isolation it requires, and the published ports land on your
-own machine. Image-owned tools (`hnx`, the Inspector) live under
-`/usr/local`; anything installed at runtime (adapters, harness CLIs) lands in
-the home, so it survives image upgrades when the home is a volume.
+   container is the isolation it requires, and the published ports land on your
+   own machine. Image-owned tools (`hnx`, the Inspector) live under
+   `/usr/local`; anything installed at runtime (adapters, harness CLIs) lands in
+   the home, so it survives image upgrades when the home is a volume.
