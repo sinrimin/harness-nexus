@@ -6,24 +6,42 @@ import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { resolveAcpCommand } from '../src/daemon/acp/adapters.js';
+import {
+  PINNED_ADAPTER_SPECS,
+  pinnedSpecParts,
+  resolveAcpCommand,
+} from '../src/daemon/acp/adapters.js';
 
 /**
  * Issue #2 — pinned adapter resolution: an npx-backed row prefers a pinned
  * install under `~/.hnx/acp-adapters/node_modules/.bin/<bin>` (absolute bin,
  * no per-spawn npx re-resolution); without it the npx fallback is unchanged;
- * `HN_ACP_COMMAND_*` overrides keep winning over both.
+ * `HN_ACP_COMMAND_*` overrides keep winning over both. #117 — the pinned bin
+ * only counts while the store holds the PINNED version.
  */
 
 const ENV: NodeJS.ProcessEnv = { PATH: process.env.PATH ?? '' };
 
-/** A tmp home with (optionally) a pinned bin provisioned for one adapter. */
-function pinnedHome(bin?: string): string {
+/**
+ * A tmp home with (optionally) a pinned bin provisioned for one adapter —
+ * bin + the package's `package.json`, at the pinned version unless `version`
+ * says otherwise (a store provisioned before a pin bump).
+ */
+function pinnedHome(bin?: string, version?: string): string {
   const home = mkdtempSync(join(tmpdir(), 'hnx-adapters-home-'));
   if (bin !== undefined) {
-    const dir = join(home, '.hnx', 'acp-adapters', 'node_modules', '.bin');
-    mkdirSync(dir, { recursive: true });
-    writeFileSync(join(dir, bin), '#!/bin/sh\n');
+    const store = join(home, '.hnx', 'acp-adapters', 'node_modules');
+    mkdirSync(join(store, '.bin'), { recursive: true });
+    writeFileSync(join(store, '.bin', bin), '#!/bin/sh\n');
+    const spec = PINNED_ADAPTER_SPECS.find((s) => s.bin === bin);
+    if (spec !== undefined) {
+      const parts = pinnedSpecParts(spec.spec);
+      mkdirSync(join(store, parts.name), { recursive: true });
+      writeFileSync(
+        join(store, parts.name, 'package.json'),
+        JSON.stringify({ name: parts.name, version: version ?? parts.version }),
+      );
+    }
   }
   return home;
 }
@@ -55,6 +73,23 @@ describe('resolveAcpCommand pinned installs (issue #2)', () => {
     );
     // claude-code has no pinned bin in that home → npx fallback.
     expect(resolveAcpCommand('claude-code', ENV, { homeDir: home })?.command).toBe('npx');
+  });
+
+  it('#117 a store that drifted from the pin is never spawned — npx with the pinned spec', () => {
+    const home = pinnedHome('claude-agent-acp', '0.79.0');
+    expect(resolveAcpCommand('claude-code', ENV, { homeDir: home })).toEqual({
+      command: 'npx',
+      args: ['-y', '@agentclientprotocol/claude-agent-acp@0.93.0'],
+      env: { CLAUDE_CODE_ENABLE_TODO_TOOLS: '1' },
+    });
+  });
+
+  it('#117 a bin without its package manifest is not a provisioned install', () => {
+    const home = mkdtempSync(join(tmpdir(), 'hnx-adapters-home-'));
+    const bins = join(home, '.hnx', 'acp-adapters', 'node_modules', '.bin');
+    mkdirSync(bins, { recursive: true });
+    writeFileSync(join(bins, 'codex-acp'), '#!/bin/sh\n');
+    expect(resolveAcpCommand('codex', ENV, { homeDir: home })?.command).toBe('npx');
   });
 
   it('HN_ACP_COMMAND_* overrides win over a pinned install', () => {

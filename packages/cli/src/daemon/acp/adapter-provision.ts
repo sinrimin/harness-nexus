@@ -5,7 +5,12 @@
 import { spawn } from '../../proc.js';
 import { existsSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { PINNED_ADAPTER_SPECS, type PinnedAdapterSpec } from './adapters.js';
+import {
+  installedPinnedVersion,
+  PINNED_ADAPTER_SPECS,
+  pinnedSpecParts,
+  type PinnedAdapterSpec,
+} from './adapters.js';
 
 /**
  * Issue #2 — pinned adapter provisioning. `npx -y <pkg>` re-resolves the
@@ -20,9 +25,10 @@ import { PINNED_ADAPTER_SPECS, type PinnedAdapterSpec } from './adapters.js';
  * reference claude-acp-bridge uses (`patch-acp-agent.js` at image build).
  *
  * `resolveAcpCommand` already prefers the pinned bin; npx remains the
- * fallback while (or if) provisioning has not landed. Everything here is
- * fire-and-forget from daemon boot: no failure blocks or crashes the
- * daemon — the worst case is simply the previous npx behavior.
+ * fallback while (or if) provisioning has not landed — and, since #117,
+ * while a store provisioned before a pin bump waits to be replaced.
+ * Everything here is fire-and-forget from daemon boot: no failure blocks or
+ * crashes the daemon — the worst case is simply the previous npx behavior.
  */
 
 /**
@@ -162,28 +168,52 @@ export interface ProvisionOptions {
 export interface ProvisionResult extends PatchOutcome {
   /** True when a fresh install landed (false = store already complete). */
   installed: boolean;
+  /**
+   * #117 — pinned packages the store held at ANOTHER version (`name old →
+   * pinned`): the reason a present store was re-provisioned. Empty for a
+   * fresh or current store.
+   */
+  drift: string[];
   /** Non-empty when provisioning could not complete (npx stays the path). */
   error?: string;
 }
 
-function binsAllPresent(storeDir: string): boolean {
-  return PINNED_ADAPTER_SPECS.every((s) =>
-    existsSync(join(storeDir, 'node_modules', '.bin', s.bin)),
-  );
+/**
+ * #117 — a store is CURRENT only when every pinned bin exists AND each
+ * package's installed version equals its pin. Bins alone said "complete"
+ * forever: a pin bump keeps the bin name, so stores provisioned before it
+ * never followed (the #71 deployment note's manual wipe).
+ */
+function storeState(storeDir: string): { current: boolean; drift: string[] } {
+  let current = true;
+  const drift: string[] = [];
+  for (const s of PINNED_ADAPTER_SPECS) {
+    const { name, version } = pinnedSpecParts(s.spec);
+    const installed = installedPinnedVersion(storeDir, name);
+    if (!existsSync(join(storeDir, 'node_modules', '.bin', s.bin)) || installed !== version) {
+      current = false;
+    }
+    if (installed !== null && installed !== version) {
+      drift.push(`${name} ${installed} → ${version}`);
+    }
+  }
+  return { current, drift };
 }
 
 /**
- * Ensure the pinned adapter store exists and carries the patch set. Safe to
- * call on every boot: a complete store only re-checks patches; an
- * incomplete/absent one installs into a staging dir and atomically renames.
+ * Ensure the pinned adapter store exists, matches its pins and carries the
+ * patch set. Safe to call on every boot: a current store only re-checks
+ * patches; an absent, incomplete or DRIFTED one installs into a staging dir
+ * and atomically replaces the store.
  */
 export async function provisionAdapters(
   home: string,
   opts: ProvisionOptions = {},
 ): Promise<ProvisionResult> {
   const storeDir = join(home, '.hnx', 'acp-adapters');
-  if (binsAllPresent(storeDir)) {
-    return { installed: false, ...applyAdapterPatches(storeDir, opts.patches) };
+  const state = storeState(storeDir);
+  if (state.current) {
+    return { installed: false, drift: [], ...applyAdapterPatches(storeDir, opts.patches) };
   }
 
   const specs: readonly string[] = PINNED_ADAPTER_SPECS.map((s: PinnedAdapterSpec) => s.spec);
@@ -230,11 +260,12 @@ export async function provisionAdapters(
     const patches = applyAdapterPatches(staging, opts.patches);
     rmSync(storeDir, { recursive: true, force: true });
     renameSync(staging, storeDir);
-    return { installed: true, ...patches };
+    return { installed: true, drift: state.drift, ...patches };
   } catch (e) {
     rmSync(staging, { recursive: true, force: true });
     return {
       installed: false,
+      drift: state.drift,
       applied: [],
       already: [],
       failed: [],

@@ -130,7 +130,7 @@ export function startDaemon(options: DaemonOptions): DaemonHandle {
       .then((r) => {
         // eslint-disable-next-line no-console
         console.log(
-          `hnx daemon: adapter provisioning — ${r.installed ? 'installed pinned adapters' : 'pinned adapters present'}${r.applied.length > 0 ? `, patches applied: ${r.applied.join(', ')}` : ''}${r.already.length > 0 ? `, patches already in place: ${r.already.join(', ')}` : ''}${r.failed.length > 0 ? `, patch issues: ${r.failed.map((f) => `${f.id} (${f.reason})`).join('; ')}` : ''}${r.error !== undefined ? ` — install FAILED (${r.error}), npx fallback stays` : ''}`,
+          `hnx daemon: adapter provisioning — ${r.installed ? 'installed pinned adapters' : 'pinned adapters present'}${r.drift.length > 0 ? ` (store drifted from its pins: ${r.drift.join(', ')})` : ''}${r.applied.length > 0 ? `, patches applied: ${r.applied.join(', ')}` : ''}${r.already.length > 0 ? `, patches already in place: ${r.already.join(', ')}` : ''}${r.failed.length > 0 ? `, patch issues: ${r.failed.map((f) => `${f.id} (${f.reason})`).join('; ')}` : ''}${r.error !== undefined ? ` — install FAILED (${r.error}), npx fallback stays` : ''}`,
         );
         // #38 — the operation trail remembers installs even when the console
         // scrollback is long gone.
@@ -138,7 +138,11 @@ export function startDaemon(options: DaemonOptions): DaemonHandle {
           op: r.installed ? 'adapter-provision' : 'adapter-provision-check',
           outcome: r.error !== undefined ? 'error' : 'ok',
           ms: Date.now() - provisionStartedAt,
-          ...(r.error !== undefined ? { detail: r.error } : {}),
+          ...(r.error !== undefined
+            ? { detail: r.error }
+            : r.drift.length > 0
+              ? { detail: `drifted from pins: ${r.drift.join(', ')}` }
+              : {}),
         });
       })
       .catch((e: unknown) => {

@@ -2,7 +2,7 @@
 //
 // SPDX-License-Identifier: MIT
 
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import type { AgentTarget } from '@harness-nexus/shared';
@@ -106,17 +106,49 @@ export interface AcpCommand {
   env?: Record<string, string>;
 }
 
-/** The pinned-install bin path for an npx-backed row, or null when absent. */
+/**
+ * The pinned-install bin path for an npx-backed row, or null when absent —
+ * or when the store's copy DRIFTED from the pin (#117: a store provisioned
+ * before a pin bump). A drifted package is never spawned: npx with the pinned
+ * spec is the correct-but-slow path until provisioning swaps the store, so
+ * nothing from the drifted store is live when the swap removes it.
+ */
 function pinnedAcpCommand(
   def: AcpAdapterSpec,
   home: string,
 ): { command: string; args: string[] } | null {
   if (def.pkg === undefined) return null;
-  const bin = join(home, '.hnx', 'acp-adapters', 'node_modules', '.bin', def.pkg[1]);
+  const store = join(home, '.hnx', 'acp-adapters');
+  const { name, version } = pinnedSpecParts(def.pkg[0]);
+  if (installedPinnedVersion(store, name) !== version) return null;
+  const bin = join(store, 'node_modules', '.bin', def.pkg[1]);
   for (const candidate of pinnedBinCandidates(bin)) {
     if (existsSync(candidate)) return { command: candidate, args: [] };
   }
   return null;
+}
+
+/** `@scope/pkg@1.2.3` → `{ name: '@scope/pkg', version: '1.2.3' }`. */
+export function pinnedSpecParts(spec: string): { name: string; version: string } {
+  const at = spec.lastIndexOf('@');
+  return { name: spec.slice(0, at), version: spec.slice(at + 1) };
+}
+
+/**
+ * #117 — the version a store actually holds for one pinned package (its
+ * installed `package.json`), or null when the package is absent/unreadable.
+ * Bin presence alone cannot tell a current store from one provisioned before
+ * a pin bump: the bin NAME survives the bump (#71 kept `claude-agent-acp`).
+ */
+export function installedPinnedVersion(storeDir: string, name: string): string | null {
+  try {
+    const pkg = JSON.parse(
+      readFileSync(join(storeDir, 'node_modules', name, 'package.json'), 'utf8'),
+    ) as { version?: unknown };
+    return typeof pkg.version === 'string' ? pkg.version : null;
+  } catch {
+    return null;
+  }
 }
 
 /**
