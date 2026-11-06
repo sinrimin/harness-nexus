@@ -753,16 +753,31 @@ export function AgentSessionPage() {
   // #66 — silent /app reconnect (weak network, lock screen): the socket is a
   // NEW connection with no chan-room membership while this pane stays
   // mounted. Re-join the open channel on reconnect; the server re-pushes
-  // ready + resync and the daemon ring replays whatever the gap missed. A
-  // channel that died anyway (grace expiry) bounces SESSION_NOT_FOUND and
-  // the error path surfaces it — honest, never a frozen pane.
+  // ready + resync and the daemon ring replays whatever the gap missed.
+  // #119 — a channel that died anyway (grace expiry, server restart) bounces
+  // SESSION_NOT_FOUND on the bare rejoin; carry the resume arm (the channel's
+  // nativeSessionId + the rail row's cwd) so the rejoin→resume fallback
+  // reopens the SAME native session transparently. Without either (a channel
+  // that never advertised its native id, no cwd in the listing) the honest
+  // error path stays. Re-registered when nativeSessionId arrives so the
+  // closure never holds a stale null.
   useEffect(() => {
     if (sessionId === '') return;
     return onAppResubscribe(() => {
-      void openChannel(sessionId);
+      const cwd =
+        nativeSessionId !== null && rail.state === 'ready'
+          ? rail.sessions.find((s) => s.sessionId === nativeSessionId)?.cwd
+          : undefined;
+      void openChannel(
+        sessionId,
+        undefined,
+        nativeSessionId !== null && cwd !== undefined
+          ? { sessionId: nativeSessionId, cwd }
+          : undefined,
+      );
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sessionId]);
+  }, [sessionId, nativeSessionId]);
 
   // Live channel wiring — the same contract as the C5 page, plus 9 W7 history.
   useEffect(() => {
@@ -1082,7 +1097,11 @@ export function AgentSessionPage() {
             ? t('chat.errMachineBusy')
             : ack.error === 'MACHINE_OFFLINE'
               ? t('chat.errMachineOffline')
-              : ack.error,
+              : // #119 — the channel died and recovery could not reopen it;
+                // mapped words, never the raw code.
+                ack.error === 'SESSION_NOT_FOUND'
+                ? t('chat.errSessionGone')
+                : ack.error,
       );
     } else if (ack.queued === true) {
       toast.info(t('chat.queuedToast'));
