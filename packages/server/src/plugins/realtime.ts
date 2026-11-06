@@ -215,6 +215,8 @@ export async function registerRealtime(
     {
       uow: app.uow,
       credentialEncryptionKey: app.credentialEncryptionKey,
+      // #120 — unexpected turn failures log instead of crashing the process.
+      log: app.log,
       skills: {
         search: app.skillSearch,
         catalog: app.skillCatalog,

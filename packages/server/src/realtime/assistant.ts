@@ -153,6 +153,12 @@ export interface AssistantApprovalAnswer {
 export interface AssistantRealtimeDeps extends AssistantRunnerDeps {
   /** #100 — the decision-model breaker, shared with the machine axis. */
   capabilities?: ModelCapabilities;
+  /**
+   * #120 — operator-visible logging for turn failures the transcript alone
+   * cannot explain (the route layer passes the Fastify logger; structural,
+   * like the approvals dep's).
+   */
+  log?: { error: (msg: string) => void };
   approvals?: {
     timeoutMs: number;
     log?: { warn: (msg: string) => void };
@@ -868,23 +874,46 @@ export class AssistantRealtimeService {
     try {
       await turn.done;
     } catch (err) {
-      if (!(err instanceof TurnSetupError)) throw err;
+      // #120 — the turn is fired with `void` (the send ack must not wait on
+      // a generation), so a rethrow here is an UNHANDLED rejection and kills
+      // the whole process — one undecryptable credential (a key rotation
+      // without re-encryption) took the entire instance down. Every failure
+      // now ends the turn honestly; the unexpected ones are logged for the
+      // operator.
+      const message = err instanceof Error ? err.message : String(err);
+      const setup = err instanceof TurnSetupError;
+      if (!setup) {
+        this.deps.log?.error(
+          `assistant turn failed unexpectedly (session ${ch.sessionId}): ${message}`,
+        );
+      }
       // Setup failures (provider/credential/model drift) end the turn
-      // honestly: an error row + system note, never a wedged busy gate.
-      await this.transact(ch.sessionId, async () => {
-        const rowsNow = await this.deps.uow.assistants.listMessages(ch.sessionId);
-        const seq = rowsNow.reduce((max, r) => Math.max(max, r.seq), 0) + 1;
-        await this.deps.uow.assistants.appendMessage(ch.sessionId, {
-          seq,
-          type: 'note',
-          text: `error: ${err.message}`,
+      // honestly: an error row + system note, never a wedged busy gate. The
+      // settle is guarded — a DB failure while reporting a failure must not
+      // re-enter the rethrow this fix removed.
+      const text = `error: ${setup ? message : `internal error: ${message}`}`;
+      try {
+        await this.transact(ch.sessionId, async () => {
+          const rowsNow = await this.deps.uow.assistants.listMessages(ch.sessionId);
+          const seq = rowsNow.reduce((max, r) => Math.max(max, r.seq), 0) + 1;
+          await this.deps.uow.assistants.appendMessage(ch.sessionId, {
+            seq,
+            type: 'note',
+            text,
+          });
         });
-      });
-      this.emit(ch.sessionId, {
-        kind: 'raw',
-        method: 'hnx/prompt-error',
-        params: { message: err.message },
-      });
+        this.emit(ch.sessionId, {
+          kind: 'raw',
+          method: 'hnx/prompt-error',
+          params: { message: text.slice('error: '.length) },
+        });
+      } catch (settleErr) {
+        this.deps.log?.error(
+          `assistant turn settle failed (session ${ch.sessionId}): ${
+            settleErr instanceof Error ? settleErr.message : String(settleErr)
+          }`,
+        );
+      }
       this.emit(ch.sessionId, { kind: 'turn_result', stopReason: 'end_turn' });
       this.emit(ch.sessionId, { kind: 'session_status', state: 'idle' });
     } finally {
