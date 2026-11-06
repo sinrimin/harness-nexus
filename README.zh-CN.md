@@ -104,7 +104,7 @@ hnx daemon --server https://your-instance --token <machine-token> --machine-id <
 MCP Inspector 装进一个即用即弃的容器。
 
 ```bash
-docker run -it --rm -p 6274:6274 -p 6275:6275 \
+docker run -it --rm -p 127.0.0.1:6274:6274 -p 127.0.0.1:6275:6275 \
   -e HNX_SERVER=https://your-instance \
   -e HNX_TOKEN=hnpat_… \
   sinrimin/harness-nexus-client
@@ -113,8 +113,38 @@ docker run -it --rm -p 6274:6274 -p 6275:6275 \
 token 先在 Web 界面创建（访问令牌 → 新建）。盒子会校验 token、打印配置集
 聚合出的工具列表，然后在 `http://localhost:6274` 起 Inspector 界面——已经
 指向该服务器的 `/mcp` 出口，无需手填；`HNX_PROFILE` 选择配置集（默认
-`default`）。带参数运行则完全跳过盒子流程，直接用 CLI：
-`docker run -it --rm sinrimin/harness-nexus-client hnx …`。
+`default`，值为 Web 界面里的配置集 **id**）。端口请发布在 `127.0.0.1`：
+Inspector 的 auth token 只防 CSRF，不是访问控制。带参数运行则完全跳过盒子
+流程，直接用 CLI：`docker run -it --rm sinrimin/harness-nexus-client hnx …`。
+
+同一镜像也能当**机器容器**用——见
+[Docker 里的机器](#docker-里的机器)。
+
+### Docker 里的机器
+
+`sinrimin/harness-nexus-client machine` 以 tini 作 PID 1 跑 `hnx daemon`，
+容器本身就是实例的一台机器。状态全在容器外：home 挂命名卷（注册身份、固定
+版本的适配器、各 agent 的技能/设置/凭据/会话历史、用户级安装），项目目录挂
+到 `/workspace`（并在 Web 界面把它设为该机器的 base workspace）：
+
+```bash
+docker volume create hnx-mybox-home
+docker run -d --name hnx-mybox --restart unless-stopped \
+  -v hnx-mybox-home:/home/box \
+  -v "$HOME/projects:/workspace" \
+  -e HNX_SERVER=https://your-instance \
+  -e HNX_TOKEN=hnpat_… \
+  sinrimin/harness-nexus-client machine
+```
+
+只有首次启动需要 env：`HNX_SERVER` + `HNX_TOKEN`（个人访问令牌）让容器自己
+完成注册——或者带上 Web 界面（机器 → 注册）给的三个变量
+（`-e HNX_MACHINE_ID=…` 配机器 token）。身份会写进卷；之后的启动——包括
+升级（pull 新镜像 + 同一个卷重建容器）——都不再需要 env。服务器下发的
+harness CLI 安装落在卷内的 `~/.npm-global`，升级同样不丢。宿主机 uid 不是
+1000 时，用 `--user 0 -e HNX_UID=$(id -u) -e HNX_GID=$(id -g)` 启动：入口
+脚本会重映射用户、一次性交接 home 属主、再降回非 root。一个 home 卷只配一个
+容器。
 
 ## 安全
 

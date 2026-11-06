@@ -119,7 +119,7 @@ the client image bundles the `hnx` CLI and the official MCP Inspector in a
 disposable container.
 
 ```bash
-docker run -it --rm -p 6274:6274 -p 6275:6275 \
+docker run -it --rm -p 127.0.0.1:6274:6274 -p 127.0.0.1:6275:6275 \
   -e HNX_SERVER=https://your-instance \
   -e HNX_TOKEN=hnpat_… \
   sinrimin/harness-nexus-client
@@ -128,8 +128,44 @@ docker run -it --rm -p 6274:6274 -p 6275:6275 \
 Create the token first in the web UI (Tokens → New). The box checks it,
 prints the profile's aggregated tool list, then serves the Inspector UI at
 `http://localhost:6274`, already pointed at the server's `/mcp` outlet —
-`HNX_PROFILE` picks the profile (default `default`). Any argument skips the
-box flow for plain CLI use: `docker run -it --rm sinrimin/harness-nexus-client hnx …`.
+`HNX_PROFILE` picks the profile (default `default`; the value is the profile
+**id** shown in the web UI). Publish the ports on `127.0.0.1`: the
+Inspector's auth token is CSRF protection, not access control. Any argument
+skips the box flow for plain CLI use:
+`docker run -it --rm sinrimin/harness-nexus-client hnx …`.
+
+The same image doubles as a **machine container** — see
+[Machines in Docker](#machines-in-docker).
+
+### Machines in Docker
+
+`sinrimin/harness-nexus-client machine` runs `hnx daemon` with PID 1 under
+tini, so the container itself is a machine of the instance. State lives
+outside the container: mount the home as a named volume (enrollment identity,
+pinned adapters, every agent's skills/settings/credentials/session history,
+user-level installs) and the project directory at `/workspace` (set it as the
+machine's base workspace in the web UI):
+
+```bash
+docker volume create hnx-mybox-home
+docker run -d --name hnx-mybox --restart unless-stopped \
+  -v hnx-mybox-home:/home/box \
+  -v "$HOME/projects:/workspace" \
+  -e HNX_SERVER=https://your-instance \
+  -e HNX_TOKEN=hnpat_… \
+  sinrimin/harness-nexus-client machine
+```
+
+First start only: `HNX_SERVER` + `HNX_TOKEN` (a personal access token) let
+the container enroll itself — or pass the triple from the web UI
+(Machines → Enroll: `-e HNX_MACHINE_ID=…` with the machine token). The
+identity is saved to the volume; later starts — and upgrades: pull +
+recreate with the same volume — need no env. Harness CLIs the server
+installs land in `~/.npm-global` inside the volume, so they survive upgrades
+too. If the host uid is not 1000, start with
+`--user 0 -e HNX_UID=$(id -u) -e HNX_GID=$(id -g)` — the entrypoint remaps
+the user, hands the home over once and drops back to non-root. One container
+per home volume.
 
 ## Security
 
