@@ -226,6 +226,11 @@ const en = {
   errMachineBusy: 'Too many sessions are generating on this machine — let one finish first.',
   errSessionGone:
     'This channel is no longer live (the server or agent restarted) — open a new one.',
+  // #119 — the assistant pane's dead-channel wording (idle too long past the
+  // viewer grace, or a server restart): recovery reopens the session, this is
+  // the last-resort surface when that could not land.
+  errAssistantSessionGone:
+    'This conversation was disconnected (idle too long or the server restarted) and is being reopened — resend your message.',
   errWorkspaceNotSet: 'This machine has no base workspace — set one in the picker first.',
   errWorkspaceInvalid: 'That directory is outside the machine base workspace.',
   subagentTaskLabel: 'Task',
@@ -426,6 +431,7 @@ const zh: typeof en = {
   errSessionLimit: '此机器上所有打开的会话都在生成中——请等一个完成或先断开一个。',
   errMachineBusy: '此机器上同时生成中的会话过多——请先等其中一个完成。',
   errSessionGone: '该通道已不再在线（服务器或 Agent 重启过）—— 请重新打开一个。',
+  errAssistantSessionGone: '会话已断开（长时间空闲或服务器重启过），正在重新打开——请重新发送。',
   errWorkspaceNotSet: '此机器未设置基础工作区——请先在选择器中设置。',
   errWorkspaceInvalid: '该目录不在机器基础工作区内。',
   subagentTaskLabel: '任务',

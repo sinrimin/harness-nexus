@@ -406,10 +406,18 @@ export function AssistantSessionPage() {
   // every chan-room membership while this pane stayed mounted. Re-sync the
   // open session; the server re-joins the socket, re-pushes ready + history
   // (+ the in-flight turn's ring), so the timeline continues seamlessly.
+  // #119 — a sync that answers SESSION_NOT_FOUND means the channel was
+  // reaped while the tab was away (viewer-grace expiry, server restart)
+  // while the ROW persists: transparently re-open the session instead of
+  // leaving a live-looking pane whose next send bounces with the raw code.
   useEffect(() => {
     if (sessionId === '') return;
     return onAppResubscribe(() => {
-      appSocket().emit('assistant:session.sync', { sessionId }, () => undefined);
+      appSocket().emit('assistant:session.sync', { sessionId }, (res: unknown) => {
+        if ((res as { error?: string } | null)?.error === 'SESSION_NOT_FOUND') {
+          void openSession(sessionId);
+        }
+      });
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId]);
@@ -482,7 +490,11 @@ export function AssistantSessionPage() {
       setError(
         ack.error === 'ASSISTANT_NOT_FOUND' || ack.error === 'ASSISTANTS_DELETED'
           ? t('assistants.errNoAssistant')
-          : (ack.error ?? t('assistants.errUnknown')),
+          : // #119 — the row was deleted while away (another tab); the raw
+            // code is for nobody.
+            ack.error === 'SESSION_NOT_FOUND'
+            ? t('chat.errAssistantSessionGone')
+            : (ack.error ?? t('assistants.errUnknown')),
       );
       return;
     }
@@ -566,7 +578,15 @@ export function AssistantSessionPage() {
       // The turn never started — put everything back so nothing is lost.
       setDraft(text);
       setAttachments(attachments);
-      toast.error(ack.error === 'QUEUE_FULL' ? t('chat.queueFull') : ack.error);
+      // #119 — a dead channel at send time (recovery could not re-open it):
+      // mapped words, never the raw code.
+      toast.error(
+        ack.error === 'QUEUE_FULL'
+          ? t('chat.queueFull')
+          : ack.error === 'SESSION_NOT_FOUND'
+            ? t('chat.errAssistantSessionGone')
+            : ack.error,
+      );
     } else if (ack.queued === true) {
       toast.info(t('chat.queuedToast'));
     }
