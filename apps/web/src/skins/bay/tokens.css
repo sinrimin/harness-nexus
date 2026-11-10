@@ -139,7 +139,7 @@
    * rack: the same inverted surface as the wells, steel/phosphor inks, and the
    * card's own chassis radius at the top. The pixel label face stays (the HUD
    * is an instrument face in both skins); values ride JetBrains Mono. */
-  --hud-h: 26px;
+  --hud-h: 18px;
   --hud-bg: var(--surface-inverted);
   --hud-ink: var(--surface-inverted-ink);
   --hud-dim: var(--surface-inverted-dim);

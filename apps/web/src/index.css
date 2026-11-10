@@ -13,9 +13,6 @@
 @import './fonts/ibm-plex-sans-latin.css';
 @import '@fontsource/ibm-plex-mono/latin-400.css';
 @import '@fontsource/ibm-plex-mono/latin-500.css';
-/* #124 — the session HUD's pixel label face. Latin-only (the HUD is
- * English-only by design); self-hosted like every other font. */
-@import '@fontsource/silkscreen/latin-400.css';
 
 @custom-variant dark (&:is(.dark *));
 
@@ -126,9 +123,11 @@
    * something to override. Values are the Signal reading — a quiet console.
    */
   --app-font-label: var(--app-font-sans);
-  /* #124 — the session HUD's engraved label face (labels only; values stay on
-   * --app-font-mono so figures remain crisp and checkable). */
-  --app-font-hud: 'Silkscreen', var(--app-font-mono);
+  /* #124 — the session HUD's engraved label face. It is the skin's MONO at
+   * micro size with wide tracking: an outline face stays crisp at 9px where a
+   * pixel face fuzzes on fractional scaling, and it follows the skin (BAY's
+   * labels get JetBrains Mono for free). Values use the same mono. */
+  --app-font-hud: var(--app-font-mono);
   --label-size: 11px;
   --label-size-sm: 9.5px;
   --label-tracking: 0.09em;
@@ -198,7 +197,7 @@
    * modes, so its readings look the same wherever the page's mode goes. A
    * skin may repaint the whole material (BAY cuts its inverted LCD window);
    * the component names these tokens and nothing else. */
-  --hud-h: 26px;
+  --hud-h: 18px;
   --hud-label-size: 9px;
   --hud-value-size: 11px;
   --hud-bg: oklch(0.21 0.012 260);

@@ -25,9 +25,9 @@ import type { HudEditStats } from './hud-stats.js';
  * border fall on the band at the seam — the strip carries no shadow or border
  * of its own, so both surfaces read as one device's physics.
  *
- * The readings sit on the strip's FLOOR — 2px above the Sender's first row —
- * so the band reads as a header moulded into the card rather than a label
- * parked in its middle.
+ * The readings are centred in the 18px strip (the context ticks ride 2px
+ * above that centre — a level bar beside mono figures reads low), so the band
+ * reads as a moulded-in header rather than a label parked at one edge.
  *
  * Material is the always-dark instrument glass (`data-surface="hud"`); every
  * colour and size is a `--hud-*` token, so BAY repaints it as its inverted LCD
@@ -71,7 +71,7 @@ function toneClass(tone: MeterTone): string | undefined {
 
 function Label({ children }: { children: string }) {
   return (
-    <span className="font-hud text-[length:var(--hud-label-size)] leading-none tracking-[0.08em] text-(--hud-dim) uppercase">
+    <span className="font-hud text-[length:var(--hud-label-size)] font-medium leading-none tracking-[0.16em] text-(--hud-dim) uppercase">
       {children}
     </span>
   );
@@ -180,14 +180,16 @@ export function SessionHud({ usage, sessionUsage, files, historyPartial }: Sessi
                 data-kind="ctx"
                 aria-label={contextTitle}
                 title={contextTitle}
-                className="focus-visible:ring-ring/50 flex shrink-0 items-end gap-2 px-3 pb-0.5 transition-colors hover:bg-(--hud-hover) focus-visible:ring-[3px] focus-visible:outline-none @max-2xl:gap-1 @max-2xl:px-1.5 @max-sm:px-1"
+                className="focus-visible:ring-ring/50 flex shrink-0 items-center gap-2 px-3 transition-colors hover:bg-(--hud-hover) focus-visible:ring-[3px] focus-visible:outline-none @max-2xl:gap-1 @max-2xl:px-1.5 @max-sm:px-1"
               >
                 <Label>{t('chat.hudContext')}</Label>
+                {/* The ticks ride ~2px ABOVE the text's optical centre: a
+                    level bar next to lowercase-free mono figures reads low. */}
                 <span
                   data-slot="hud-segments"
                   data-tone={pressure.tone}
                   aria-hidden="true"
-                  className="flex items-center gap-[2px]"
+                  className="flex -translate-y-[2px] items-center gap-[2px]"
                 >
                   {Array.from({ length: SEGMENTS }, (_, i) => (
                     <span
@@ -232,7 +234,7 @@ export function SessionHud({ usage, sessionUsage, files, historyPartial }: Sessi
               role="group"
               aria-label={tokensTitle}
               title={tokensTitle}
-              className="flex shrink-0 items-end gap-2 px-3 pb-0.5 @max-2xl:gap-1 @max-2xl:px-1.5 @max-sm:px-1"
+              className="flex shrink-0 items-center gap-2 px-3 @max-2xl:gap-1 @max-2xl:px-1.5 @max-sm:px-1"
             >
               <Label>{t('chat.hudTokens')}</Label>
               {tokens.inputTokens !== undefined ? (
@@ -260,7 +262,7 @@ export function SessionHud({ usage, sessionUsage, files, historyPartial }: Sessi
               role="group"
               aria-label={cacheTitle}
               title={cacheTitle}
-              className="flex shrink-0 items-end gap-2 px-3 pb-0.5 @max-2xl:gap-1 @max-2xl:px-1.5 @max-sm:px-1"
+              className="flex shrink-0 items-center gap-2 px-3 @max-2xl:gap-1 @max-2xl:px-1.5 @max-sm:px-1"
             >
               <Label>{t('chat.hudCache')}</Label>
               <Value>{cache.pct}%</Value>
@@ -277,7 +279,7 @@ export function SessionHud({ usage, sessionUsage, files, historyPartial }: Sessi
               role="group"
               aria-label={filesTitle}
               title={filesTitle}
-              className="flex shrink-0 items-end gap-2 px-3 pb-0.5 @max-2xl:gap-1 @max-2xl:px-1.5 @max-sm:px-1"
+              className="flex shrink-0 items-center gap-2 px-3 @max-2xl:gap-1 @max-2xl:px-1.5 @max-sm:px-1"
             >
               <Label>{t('chat.hudFiles')}</Label>
               <Value>{files.files > 0 ? String(files.files) : '?'}</Value>

@@ -128,10 +128,8 @@ const DEFAULT_SKINS = ['signal'];
 // for EVERY family to actually be active or shots race fallback-vs-webfont
 // metrics (mono-heavy mobile layouts are where the race becomes visible).
 const SKIN_FONT_FAMILIES = {
-  // #124 — the session HUD's Silkscreen label face is NOT listed here: none of
-  // the captured routes renders the HUD, and the gate's `document.fonts.check`
-  // would wait its full 10s per shot for a face the page never uses. Add it
-  // when a seeded session route enters the matrix (`data-surface="hud"`).
+  // #124 — the session HUD's labels ride --app-font-mono (no extra family);
+  // the session route itself is still outside this matrix.
   signal: ['IBM Plex Sans Variable', 'IBM Plex Mono'],
   bay: ['Archivo Variable', 'Archivo Narrow', 'JetBrains Mono'],
   ledger: ['Public Sans', 'Zilla Slab', 'DM Mono'],
