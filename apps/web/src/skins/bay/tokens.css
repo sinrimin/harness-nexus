@@ -135,16 +135,14 @@
     'Noto Sans CJK SC', sans-serif;
   --label-size-sm: 10px;
 
-  /* #124 — the session HUD is a cut-in LCD window on this rack: the same
-   * inverted surface as the wells, steel/phosphor inks and the comp's square
-   * 1–2px hardware radius. The pixel label face stays (the HUD is an
-   * instrument face in both skins); values ride JetBrains Mono. */
+  /* #124 — the session HUD is the LCD window the Sender slides over on this
+   * rack: the same inverted surface as the wells, steel/phosphor inks, and the
+   * card's own chassis radius at the top. The pixel label face stays (the HUD
+   * is an instrument face in both skins); values ride JetBrains Mono. */
   --hud-h: 26px;
   --hud-bg: var(--surface-inverted);
   --hud-ink: var(--surface-inverted-ink);
   --hud-dim: var(--surface-inverted-dim);
-  --hud-edge: var(--bezel);
-  --hud-highlight: rgba(255, 255, 255, 0.08);
   --hud-rule: rgba(200, 212, 224, 0.16);
   --hud-track: rgba(200, 212, 224, 0.18);
   --hud-fill: #93a3b5;

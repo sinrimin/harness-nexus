@@ -12,11 +12,18 @@ import type { ComposerUsage, MeterTone } from './context-meter.js';
 import type { HudEditStats } from './hud-stats.js';
 
 /**
- * #124 — the session HUD, the Sender's instrument cap. One thin band FUSED to
- * the composer card's top (the Composer `header` slot): the card's top corners,
- * the card's active state, no floating gap:
+ * #124 — the session HUD, the band UNDER the Sender's top edge:
  *
- *   CTX ▮▮▯▯▯▯▯▯ 17% 34.1K/200K │ TOK ↑34.1K ↓2.1K │ CACHE 84% │ FILES 3 +42 −7
+ *   CTX ▮▮▯▯▯▯▯▯ 17% 34.1K/200K │ TOK ↑34.1K ↓1.2K │ CACHE 84% │ FILES 3 +42 −7
+ *
+ * The Sender keeps its full rounded rectangle; this strip is a sibling that
+ * carries a 26px spacer in flow and then extends BEHIND the card (absolute,
+ * radius + 2px deeper than the visible strip). The card's opaque background
+ * and rounded top corners therefore cut the strip's bottom edge into the
+ * concave corners of a slider-phone body: the Sender is on top, the band
+ * slides out from under it. The assembly's single shadow and the card's own
+ * border fall on the band at the seam — the strip carries no shadow or border
+ * of its own, so both surfaces read as one device's physics.
  *
  * The readings sit on the strip's FLOOR — 2px above the Sender's first row —
  * so the band reads as a header moulded into the card rather than a label
@@ -157,131 +164,133 @@ export function SessionHud({ usage, sessionUsage, files, historyPartial }: Sessi
       : 0;
 
   return (
-    <section
-      data-slot="session-hud"
-      data-surface="hud"
-      aria-label={t('chat.hudAria')}
-      className="@container flex h-(--hud-h) shrink-0 items-stretch justify-between overflow-x-auto border-b border-(--hud-edge) bg-(--hud-bg) text-(--hud-ink) shadow-[inset_0_1px_0_var(--hud-highlight)] [scrollbar-width:none]"
-    >
-      {pressure !== null ? (
-        <Popover>
-          <PopoverTrigger asChild>
-            <button
-              type="button"
-              data-slot="hud-cell"
-              data-kind="ctx"
-              aria-label={contextTitle}
-              title={contextTitle}
-              className="focus-visible:ring-ring/50 flex shrink-0 items-end gap-2 px-3 pb-0.5 transition-colors hover:bg-(--hud-hover) focus-visible:ring-[3px] focus-visible:outline-none @max-2xl:gap-1 @max-2xl:px-1.5 @max-sm:px-1"
-            >
-              <Label>{t('chat.hudContext')}</Label>
-              <span
-                data-slot="hud-segments"
-                data-tone={pressure.tone}
-                aria-hidden="true"
-                className="flex items-center gap-[2px]"
+    <div data-slot="session-hud-slot" className="relative h-(--hud-h)">
+      <section
+        data-slot="session-hud"
+        data-surface="hud"
+        aria-label={t('chat.hudAria')}
+        className="@container absolute inset-x-0 top-0 flex h-[calc(var(--hud-h)+var(--radius-xl)+2px)] items-stretch justify-between overflow-x-auto rounded-t-[var(--radius-xl)] bg-(--hud-bg) pb-[calc(var(--radius-xl)+2px)] text-(--hud-ink) [scrollbar-width:none]"
+      >
+        {pressure !== null ? (
+          <Popover>
+            <PopoverTrigger asChild>
+              <button
+                type="button"
+                data-slot="hud-cell"
+                data-kind="ctx"
+                aria-label={contextTitle}
+                title={contextTitle}
+                className="focus-visible:ring-ring/50 flex shrink-0 items-end gap-2 px-3 pb-0.5 transition-colors hover:bg-(--hud-hover) focus-visible:ring-[3px] focus-visible:outline-none @max-2xl:gap-1 @max-2xl:px-1.5 @max-sm:px-1"
               >
-                {Array.from({ length: SEGMENTS }, (_, i) => (
-                  <span
-                    key={i}
-                    data-slot="hud-seg"
-                    data-on={i < filled ? 'true' : 'false'}
-                    data-tone={pressure.tone}
-                    className={cn(
-                      'h-2 w-[3px] rounded-[1px]',
-                      i < filled
-                        ? pressure.tone === 'warn'
-                          ? 'bg-(--hud-warn)'
-                          : pressure.tone === 'danger'
-                            ? 'bg-(--hud-fail)'
-                            : 'bg-(--hud-fill)'
-                        : 'bg-(--hud-track)',
-                    )}
-                  />
-                ))}
-              </span>
-              <Value className={toneClass(pressure.tone)}>
-                {String(Math.round(pressure.pct))}%
-              </Value>
-              <span className="font-mono text-[length:var(--hud-value-size)] leading-none tabular-nums text-(--hud-dim) @max-2xl:hidden">
-                {formatTokens(pressure.used).toUpperCase()}/
-                {formatTokens(pressure.size).toUpperCase()}
-              </span>
-            </button>
-          </PopoverTrigger>
-          <PopoverContent className="w-64 space-y-2 p-3">
-            <ContextDetails usage={usage} />
-          </PopoverContent>
-        </Popover>
-      ) : null}
+                <Label>{t('chat.hudContext')}</Label>
+                <span
+                  data-slot="hud-segments"
+                  data-tone={pressure.tone}
+                  aria-hidden="true"
+                  className="flex items-center gap-[2px]"
+                >
+                  {Array.from({ length: SEGMENTS }, (_, i) => (
+                    <span
+                      key={i}
+                      data-slot="hud-seg"
+                      data-on={i < filled ? 'true' : 'false'}
+                      data-tone={pressure.tone}
+                      className={cn(
+                        'h-2 w-[3px] rounded-[1px]',
+                        i < filled
+                          ? pressure.tone === 'warn'
+                            ? 'bg-(--hud-warn)'
+                            : pressure.tone === 'danger'
+                              ? 'bg-(--hud-fail)'
+                              : 'bg-(--hud-fill)'
+                          : 'bg-(--hud-track)',
+                      )}
+                    />
+                  ))}
+                </span>
+                <Value className={toneClass(pressure.tone)}>
+                  {String(Math.round(pressure.pct))}%
+                </Value>
+                <span className="font-mono text-[length:var(--hud-value-size)] leading-none tabular-nums text-(--hud-dim) @max-2xl:hidden">
+                  {formatTokens(pressure.used).toUpperCase()}/
+                  {formatTokens(pressure.size).toUpperCase()}
+                </span>
+              </button>
+            </PopoverTrigger>
+            <PopoverContent className="w-64 space-y-2 p-3">
+              <ContextDetails usage={usage} />
+            </PopoverContent>
+          </Popover>
+        ) : null}
 
-      {tokens !== null ? (
-        <>
-          <Divider />
-          <div
-            data-slot="hud-cell"
-            data-kind="tok"
-            role="group"
-            aria-label={tokensTitle}
-            title={tokensTitle}
-            className="flex shrink-0 items-end gap-2 px-3 pb-0.5 @max-2xl:gap-1 @max-2xl:px-1.5 @max-sm:px-1"
-          >
-            <Label>{t('chat.hudTokens')}</Label>
-            {tokens.inputTokens !== undefined ? (
-              <Value>
-                <span className="text-(--hud-dim)">↑</span>
-                {compact(tokens.inputTokens)}
-              </Value>
-            ) : null}
-            {tokens.outputTokens !== undefined ? (
-              <Value>
-                <span className="text-(--hud-dim)">↓</span>
-                {compact(tokens.outputTokens)}
-              </Value>
-            ) : null}
-          </div>
-        </>
-      ) : null}
+        {tokens !== null ? (
+          <>
+            <Divider />
+            <div
+              data-slot="hud-cell"
+              data-kind="tok"
+              role="group"
+              aria-label={tokensTitle}
+              title={tokensTitle}
+              className="flex shrink-0 items-end gap-2 px-3 pb-0.5 @max-2xl:gap-1 @max-2xl:px-1.5 @max-sm:px-1"
+            >
+              <Label>{t('chat.hudTokens')}</Label>
+              {tokens.inputTokens !== undefined ? (
+                <Value>
+                  <span className="text-(--hud-dim)">↑</span>
+                  {compact(tokens.inputTokens)}
+                </Value>
+              ) : null}
+              {tokens.outputTokens !== undefined ? (
+                <Value>
+                  <span className="text-(--hud-dim)">↓</span>
+                  {compact(tokens.outputTokens)}
+                </Value>
+              ) : null}
+            </div>
+          </>
+        ) : null}
 
-      {cache !== null ? (
-        <>
-          <Divider />
-          <div
-            data-slot="hud-cell"
-            data-kind="cache"
-            role="group"
-            aria-label={cacheTitle}
-            title={cacheTitle}
-            className="flex shrink-0 items-end gap-2 px-3 pb-0.5 @max-2xl:gap-1 @max-2xl:px-1.5 @max-sm:px-1"
-          >
-            <Label>{t('chat.hudCache')}</Label>
-            <Value>{cache.pct}%</Value>
-          </div>
-        </>
-      ) : null}
+        {cache !== null ? (
+          <>
+            <Divider />
+            <div
+              data-slot="hud-cell"
+              data-kind="cache"
+              role="group"
+              aria-label={cacheTitle}
+              title={cacheTitle}
+              className="flex shrink-0 items-end gap-2 px-3 pb-0.5 @max-2xl:gap-1 @max-2xl:px-1.5 @max-sm:px-1"
+            >
+              <Label>{t('chat.hudCache')}</Label>
+              <Value>{cache.pct}%</Value>
+            </div>
+          </>
+        ) : null}
 
-      {files !== null ? (
-        <>
-          <Divider />
-          <div
-            data-slot="hud-cell"
-            data-kind="files"
-            role="group"
-            aria-label={filesTitle}
-            title={filesTitle}
-            className="flex shrink-0 items-end gap-2 px-3 pb-0.5 @max-2xl:gap-1 @max-2xl:px-1.5 @max-sm:px-1"
-          >
-            <Label>{t('chat.hudFiles')}</Label>
-            <Value>{files.files > 0 ? String(files.files) : '?'}</Value>
-            {files.added > 0 ? (
-              <Value className="text-(--hud-ok)">+{String(files.added)}</Value>
-            ) : null}
-            {files.removed > 0 ? (
-              <Value className="text-(--hud-fail)">−{String(files.removed)}</Value>
-            ) : null}
-          </div>
-        </>
-      ) : null}
-    </section>
+        {files !== null ? (
+          <>
+            <Divider />
+            <div
+              data-slot="hud-cell"
+              data-kind="files"
+              role="group"
+              aria-label={filesTitle}
+              title={filesTitle}
+              className="flex shrink-0 items-end gap-2 px-3 pb-0.5 @max-2xl:gap-1 @max-2xl:px-1.5 @max-sm:px-1"
+            >
+              <Label>{t('chat.hudFiles')}</Label>
+              <Value>{files.files > 0 ? String(files.files) : '?'}</Value>
+              {files.added > 0 ? (
+                <Value className="text-(--hud-ok)">+{String(files.added)}</Value>
+              ) : null}
+              {files.removed > 0 ? (
+                <Value className="text-(--hud-fail)">−{String(files.removed)}</Value>
+              ) : null}
+            </div>
+          </>
+        ) : null}
+      </section>
+    </div>
   );
 }

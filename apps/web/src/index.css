@@ -204,8 +204,6 @@
   --hud-bg: oklch(0.21 0.012 260);
   --hud-ink: oklch(0.95 0.004 250);
   --hud-dim: oklch(0.72 0.012 250);
-  --hud-edge: oklch(1 0 0 / 0.1);
-  --hud-highlight: oklch(1 0 0 / 0.12);
   --hud-rule: oklch(1 0 0 / 0.12);
   --hud-track: oklch(1 0 0 / 0.16);
   --hud-fill: oklch(0.92 0.004 250);
@@ -297,7 +295,6 @@
   /* #124 — the HUD stays dark in dark mode; lift it just enough to read as a
    * device ON the page rather than a hole in it. */
   --hud-bg: oklch(0.25 0.012 260);
-  --hud-edge: oklch(1 0 0 / 0.08);
 
   --background: oklch(0.18 0.015 260); /* near-black, cool */
   --foreground: oklch(0.96 0.005 250);

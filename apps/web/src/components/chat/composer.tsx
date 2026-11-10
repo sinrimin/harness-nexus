@@ -248,11 +248,13 @@ interface ComposerProps {
   turnActive: boolean;
   usage: ComposerUsage | null;
   /**
-   * #124 — an optional band FUSED to the card's top (the session HUD on the
-   * agent page). It lives inside the card's border and focus-within effect on
-   * purpose: the strip is the Sender's instrument cap, not a widget floating
-   * above it — one rounded surface, one active state. The slot clips the band
-   * to the card's top corners (`--radius-xl` minus the 1px border).
+   * #124 — an optional band UNDER the card's top edge (the session HUD on the
+   * agent page): the Sender keeps its own rounded top, and the band peeks out
+   * from behind it like a slider phone's upper body. The caller's band renders
+   * its own in-flow spacer (the HUD does) and extends behind the card, so the
+   * card's own background cuts the band's bottom into the requested concave
+   * corners; the card's border and the assembly's shadow fall on the band at
+   * the seam.
    */
   header?: ReactNode;
   /**
@@ -705,174 +707,185 @@ export function Composer({
 
   return (
     <div
-      data-slot="composer"
+      data-slot="composer-shell"
       className={cn(
-        // #122 — the composer is its own container: what fits the toolbar
-        // tracks THIS element's width, not the viewport (at 900px the rail
-        // and the plate both eat width, so the viewport said "desktop" while
-        // the toolbar was phone-narrow and wrapped). The config controls and
-        // Send key their compact shape off @max-* container queries below.
-        '@container bg-background focus-within:border-ring focus-within:ring-ring/50 relative rounded-xl border shadow-sm transition-[border-color,box-shadow] focus-within:ring-[3px]',
+        // #124 — ONE device shadow and ONE focus ring for the assembly. The
+        // shell's border box IS the union silhouette (the band's rounded top
+        // joined to the card's rounded bottom at the same width), so a single
+        // shadow-sm / ring here covers the band and the Sender together; the
+        // card keeps only its border (which carves the concave seam).
+        'relative rounded-xl shadow-sm transition-[box-shadow] focus-within:ring-ring/50 focus-within:ring-[3px]',
         disabled && 'opacity-60',
-        dragOver && 'border-ring',
       )}
-      onDragOver={(e) => {
-        if (disabled || !imageSupported) return;
-        e.preventDefault();
-        setDragOver(true);
-      }}
-      onDragLeave={() => setDragOver(false)}
-      onDrop={(e) => {
-        setDragOver(false);
-        if (disabled || !imageSupported) return;
-        e.preventDefault();
-        const files = Array.from(e.dataTransfer.files).filter((f) => f.type.startsWith('image/'));
-        if (files.length > 0) onPickImages(files);
-      }}
     >
-      {/* #124 — the fused top band. The inner radius is the card's minus its
-          1px border, so the strip's dark glass meets the Sender's outline with
-          one continuous corner; `overflow-hidden` keeps hover fills inside it. */}
-      {header !== undefined ? (
-        <div className="overflow-hidden rounded-t-[calc(var(--radius-xl)-1px)]">{header}</div>
-      ) : null}
+      {/* #124 — the band behind the Sender's top edge. It is an in-flow sibling
+          BEFORE the card (the HUD carries its own 26px spacer), so the card's
+          opaque background + border-radius cut the band into the concave
+          corners: the Sender stays a full rounded rectangle on top, the band
+          slides out from under it. */}
+      {header !== undefined ? <div>{header}</div> : null}
 
-      {/* Hidden input behind the "+" menu's image item. */}
-      <input
-        ref={fileInputRef}
-        type="file"
-        accept="image/png,image/jpeg,image/webp,image/gif"
-        multiple
-        className="hidden"
-        onChange={(e) => {
-          const files = Array.from(e.target.files ?? []);
-          e.target.value = '';
+      <div
+        data-slot="composer"
+        className={cn(
+          // #122 — the composer is its own container: what fits the toolbar
+          // tracks THIS element's width, not the viewport (at 900px the rail
+          // and the plate both eat width, so the viewport said "desktop" while
+          // the toolbar was phone-narrow and wrapped). The config controls and
+          // Send key their compact shape off @max-* container queries below.
+          '@container bg-background focus-within:border-ring relative rounded-xl border transition-[border-color]',
+          dragOver && 'border-ring',
+        )}
+        onDragOver={(e) => {
+          if (disabled || !imageSupported) return;
+          e.preventDefault();
+          setDragOver(true);
+        }}
+        onDragLeave={() => setDragOver(false)}
+        onDrop={(e) => {
+          setDragOver(false);
+          if (disabled || !imageSupported) return;
+          e.preventDefault();
+          const files = Array.from(e.dataTransfer.files).filter((f) => f.type.startsWith('image/'));
           if (files.length > 0) onPickImages(files);
         }}
-      />
-
-      {attachments.length > 0 || fileRefs.length > 0 ? (
-        <div className="flex flex-wrap gap-1.5 px-3.5 pt-3">
-          {fileRefs.map((f) => (
-            <span
-              key={f.uri}
-              className="bg-muted inline-flex max-w-56 items-center gap-1 rounded-md px-2 py-1 font-mono text-xs"
-              title={f.uri}
-            >
-              <PaperclipIcon className="size-3 shrink-0" />
-              <span className="truncate">@{f.name}</span>
-              <button
-                type="button"
-                onClick={() => onRemoveFileRef(f.uri)}
-                className="text-muted-foreground hover:text-foreground ml-0.5 shrink-0"
-                aria-label={t('chat.removeAttachment', { name: f.name })}
-              >
-                ×
-              </button>
-            </span>
-          ))}
-          {attachments.map((a) => (
-            <span
-              key={a.id}
-              className="bg-muted relative inline-flex items-center gap-1 rounded-md p-1"
-              title={a.name}
-            >
-              <img
-                src={`data:${a.mimeType};base64,${a.data}`}
-                alt={a.name}
-                className="size-12 rounded object-cover"
-              />
-              <button
-                type="button"
-                onClick={() => onRemoveAttachment(a.id)}
-                className="bg-background/90 text-foreground absolute -right-1.5 -top-1.5 flex size-4 items-center justify-center rounded-full border text-[10px] leading-none"
-                aria-label={t('chat.removeAttachment', { name: a.name })}
-              >
-                ×
-              </button>
-            </span>
-          ))}
-        </div>
-      ) : null}
-
-      {paletteOpen ? (
-        <CommandPalette
-          commands={filteredCommands}
-          activeIdx={activeIdx}
-          onPick={pickCommand}
-          onHover={setActiveIdx}
+      >
+        {/* Hidden input behind the "+" menu's image item. */}
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/png,image/jpeg,image/webp,image/gif"
+          multiple
+          className="hidden"
+          onChange={(e) => {
+            const files = Array.from(e.target.files ?? []);
+            e.target.value = '';
+            if (files.length > 0) onPickImages(files);
+          }}
         />
-      ) : null}
 
-      <textarea
-        ref={textRef}
-        rows={1}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        onKeyDown={(e) => {
-          // 9 W15 — the palette owns the keys first while open (portal
-          // reference): arrows cycle, Esc dismisses, a bare Enter SELECTS;
-          // Enter WITH args (space after the first word) falls through to
-          // the ordinary send. IME composition guards as everywhere else.
-          if (paletteOpen && filteredCommands.length > 0 && !e.nativeEvent.isComposing) {
-            if (e.key === 'ArrowDown') {
+        {attachments.length > 0 || fileRefs.length > 0 ? (
+          <div className="flex flex-wrap gap-1.5 px-3.5 pt-3">
+            {fileRefs.map((f) => (
+              <span
+                key={f.uri}
+                className="bg-muted inline-flex max-w-56 items-center gap-1 rounded-md px-2 py-1 font-mono text-xs"
+                title={f.uri}
+              >
+                <PaperclipIcon className="size-3 shrink-0" />
+                <span className="truncate">@{f.name}</span>
+                <button
+                  type="button"
+                  onClick={() => onRemoveFileRef(f.uri)}
+                  className="text-muted-foreground hover:text-foreground ml-0.5 shrink-0"
+                  aria-label={t('chat.removeAttachment', { name: f.name })}
+                >
+                  ×
+                </button>
+              </span>
+            ))}
+            {attachments.map((a) => (
+              <span
+                key={a.id}
+                className="bg-muted relative inline-flex items-center gap-1 rounded-md p-1"
+                title={a.name}
+              >
+                <img
+                  src={`data:${a.mimeType};base64,${a.data}`}
+                  alt={a.name}
+                  className="size-12 rounded object-cover"
+                />
+                <button
+                  type="button"
+                  onClick={() => onRemoveAttachment(a.id)}
+                  className="bg-background/90 text-foreground absolute -right-1.5 -top-1.5 flex size-4 items-center justify-center rounded-full border text-[10px] leading-none"
+                  aria-label={t('chat.removeAttachment', { name: a.name })}
+                >
+                  ×
+                </button>
+              </span>
+            ))}
+          </div>
+        ) : null}
+
+        {paletteOpen ? (
+          <CommandPalette
+            commands={filteredCommands}
+            activeIdx={activeIdx}
+            onPick={pickCommand}
+            onHover={setActiveIdx}
+          />
+        ) : null}
+
+        <textarea
+          ref={textRef}
+          rows={1}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          onKeyDown={(e) => {
+            // 9 W15 — the palette owns the keys first while open (portal
+            // reference): arrows cycle, Esc dismisses, a bare Enter SELECTS;
+            // Enter WITH args (space after the first word) falls through to
+            // the ordinary send. IME composition guards as everywhere else.
+            if (paletteOpen && filteredCommands.length > 0 && !e.nativeEvent.isComposing) {
+              if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                setActiveIdx((i) => (i + 1) % filteredCommands.length);
+                return;
+              }
+              if (e.key === 'ArrowUp') {
+                e.preventDefault();
+                setActiveIdx((i) => (i - 1 + filteredCommands.length) % filteredCommands.length);
+                return;
+              }
+              if (e.key === 'Escape') {
+                e.preventDefault();
+                e.stopPropagation();
+                setPaletteDismissed(true);
+                return;
+              }
+              // #9 — Tab commits the active command into the Sender (fills
+              // `/name `, focus stays) and dismisses the palette.
+              if (e.key === 'Tab' && !e.shiftKey) {
+                e.preventDefault();
+                const cmd = filteredCommands[activeIdx];
+                if (cmd !== undefined) pickCommand(cmd);
+                return;
+              }
+              if (e.key === 'Enter' && !e.shiftKey && !hasArg) {
+                e.preventDefault();
+                const cmd = filteredCommands[activeIdx];
+                if (cmd !== undefined) pickCommand(cmd);
+                return;
+              }
+            } else if (paletteOpen && e.key === 'Escape' && !e.nativeEvent.isComposing) {
               e.preventDefault();
-              setActiveIdx((i) => (i + 1) % filteredCommands.length);
-              return;
-            }
-            if (e.key === 'ArrowUp') {
-              e.preventDefault();
-              setActiveIdx((i) => (i - 1 + filteredCommands.length) % filteredCommands.length);
-              return;
-            }
-            if (e.key === 'Escape') {
-              e.preventDefault();
-              e.stopPropagation();
               setPaletteDismissed(true);
               return;
             }
-            // #9 — Tab commits the active command into the Sender (fills
-            // `/name `, focus stays) and dismisses the palette.
-            if (e.key === 'Tab' && !e.shiftKey) {
+            // Enter sends, Shift+Enter breaks the line; a composing Enter (IME
+            // candidate confirm) must never send.
+            if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
               e.preventDefault();
-              const cmd = filteredCommands[activeIdx];
-              if (cmd !== undefined) pickCommand(cmd);
-              return;
+              onSend();
             }
-            if (e.key === 'Enter' && !e.shiftKey && !hasArg) {
+          }}
+          onPaste={(e) => {
+            const files = Array.from(e.clipboardData.files).filter((f) =>
+              f.type.startsWith('image/'),
+            );
+            if (files.length > 0 && imageSupported && !disabled) {
               e.preventDefault();
-              const cmd = filteredCommands[activeIdx];
-              if (cmd !== undefined) pickCommand(cmd);
-              return;
+              onPickImages(files);
             }
-          } else if (paletteOpen && e.key === 'Escape' && !e.nativeEvent.isComposing) {
-            e.preventDefault();
-            setPaletteDismissed(true);
-            return;
-          }
-          // Enter sends, Shift+Enter breaks the line; a composing Enter (IME
-          // candidate confirm) must never send.
-          if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
-            e.preventDefault();
-            onSend();
-          }
-        }}
-        onPaste={(e) => {
-          const files = Array.from(e.clipboardData.files).filter((f) =>
-            f.type.startsWith('image/'),
-          );
-          if (files.length > 0 && imageSupported && !disabled) {
-            e.preventDefault();
-            onPickImages(files);
-          }
-        }}
-        placeholder={placeholder}
-        disabled={disabled}
-        autoComplete="off"
-        spellCheck={false}
-        className="placeholder:text-muted-foreground max-h-56 w-full resize-none overflow-y-auto bg-transparent px-3.5 pb-1 pt-3 text-sm leading-relaxed outline-none disabled:cursor-not-allowed"
-      />
-      {/* The toolbar is ONE row, on the baseline of its TALLEST control.
+          }}
+          placeholder={placeholder}
+          disabled={disabled}
+          autoComplete="off"
+          spellCheck={false}
+          className="placeholder:text-muted-foreground max-h-56 w-full resize-none overflow-y-auto bg-transparent px-3.5 pb-1 pt-3 text-sm leading-relaxed outline-none disabled:cursor-not-allowed"
+        />
+        {/* The toolbar is ONE row, on the baseline of its TALLEST control.
           #122 — wrapping is gone: the row's width is the composer's own
           @container, and below ~672px of it the config controls collapse to
           their icon squares and the meter is the ring plus its percentage
@@ -885,143 +898,143 @@ export function Composer({
           sit ON the Send's baseline, and centring them against a taller button
           floated them a few pixels above the card's bottom edge ("下拉菜单离
           下边距特别远", #23). */}
-      <div data-slot="composer-tools" className="flex items-end gap-2 px-3 pb-2.5 pt-1">
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              data-tool="attach"
-              className="text-muted-foreground hover:text-foreground size-(--control-h-sm) shrink-0"
-              disabled={disabled}
-              title={t('chat.addMenuAria')}
-              aria-label={t('chat.addMenuAria')}
-            >
-              <PlusIcon className="size-4" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="start">
-            <DropdownMenuItem
-              disabled={!imageSupported}
-              title={imageSupported ? undefined : t('chat.imageUnsupported')}
-              onClick={() => fileInputRef.current?.click()}
-            >
-              <ImageIcon className="size-4" />
-              {t('chat.attachImage')}
-            </DropdownMenuItem>
-            {filePickerAvailable ? (
-              <DropdownMenuItem disabled={disabled} onClick={onOpenFilePicker}>
-                <PaperclipIcon className="size-4" />
-                {t('chat.attachFile')}
+        <div data-slot="composer-tools" className="flex items-end gap-2 px-3 pb-2.5 pt-1">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                data-tool="attach"
+                className="text-muted-foreground hover:text-foreground size-(--control-h-sm) shrink-0"
+                disabled={disabled}
+                title={t('chat.addMenuAria')}
+                aria-label={t('chat.addMenuAria')}
+              >
+                <PlusIcon className="size-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start">
+              <DropdownMenuItem
+                disabled={!imageSupported}
+                title={imageSupported ? undefined : t('chat.imageUnsupported')}
+                onClick={() => fileInputRef.current?.click()}
+              >
+                <ImageIcon className="size-4" />
+                {t('chat.attachImage')}
               </DropdownMenuItem>
-            ) : null}
-          </DropdownMenuContent>
-        </DropdownMenu>
+              {filePickerAvailable ? (
+                <DropdownMenuItem disabled={disabled} onClick={onOpenFilePicker}>
+                  <PaperclipIcon className="size-4" />
+                  {t('chat.attachFile')}
+                </DropdownMenuItem>
+              ) : null}
+            </DropdownMenuContent>
+          </DropdownMenu>
 
-        {config.approvals === undefined ? (
-          <ConfigSelect
-            label={t('chat.modeLabel')}
-            icon={<ShieldCheckIcon className="size-4" />}
-            value={modeValue}
-            choices={modeChoices}
-            disabled={controlsDisabled}
-            hint={turnActive ? t('chat.appliesNextTurn') : undefined}
-            onPick={pickMode}
-          />
-        ) : (
-          <PermissionsControl
-            modeValue={modeValue}
-            modeChoices={modeChoices}
-            approvals={config.approvals}
-            disabled={controlsDisabled}
-            hint={turnActive ? t('chat.appliesNextTurn') : undefined}
-            onPickMode={pickMode}
-            onApprovalsToggle={(on) => {
-              if (on) {
-                setPendingMode({
-                  kind: 'approvals',
-                  value: 'delegated',
-                  name: t('chat.approvalsSwitchTitle'),
-                });
-              } else {
-                onApprovalsSet('manual');
+          {config.approvals === undefined ? (
+            <ConfigSelect
+              label={t('chat.modeLabel')}
+              icon={<ShieldCheckIcon className="size-4" />}
+              value={modeValue}
+              choices={modeChoices}
+              disabled={controlsDisabled}
+              hint={turnActive ? t('chat.appliesNextTurn') : undefined}
+              onPick={pickMode}
+            />
+          ) : (
+            <PermissionsControl
+              modeValue={modeValue}
+              modeChoices={modeChoices}
+              approvals={config.approvals}
+              disabled={controlsDisabled}
+              hint={turnActive ? t('chat.appliesNextTurn') : undefined}
+              onPickMode={pickMode}
+              onApprovalsToggle={(on) => {
+                if (on) {
+                  setPendingMode({
+                    kind: 'approvals',
+                    value: 'delegated',
+                    name: t('chat.approvalsSwitchTitle'),
+                  });
+                } else {
+                  onApprovalsSet('manual');
+                }
+              }}
+            />
+          )}
+          {permOption === undefined ? null : (
+            <ConfigSelect
+              label={t('chat.permModeLabel')}
+              icon={<ShieldCheckIcon className="size-4" />}
+              value={permOption.currentValue}
+              choices={permChoices}
+              disabled={controlsDisabled}
+              hint={turnActive ? t('chat.appliesNextTurn') : undefined}
+              onPick={pickPermission}
+            />
+          )}
+          {modelOption === undefined ? null : (
+            <ConfigSelect
+              label={t('chat.modelLabel')}
+              icon={<BoxIcon className="size-4" />}
+              value={modelOption.currentValue}
+              choices={
+                modelOption.options?.map((o) => ({
+                  value: o.value,
+                  name: o.name,
+                  description: o.description,
+                  group: o.group,
+                })) ?? []
               }
-            }}
-          />
-        )}
-        {permOption === undefined ? null : (
-          <ConfigSelect
-            label={t('chat.permModeLabel')}
-            icon={<ShieldCheckIcon className="size-4" />}
-            value={permOption.currentValue}
-            choices={permChoices}
-            disabled={controlsDisabled}
-            hint={turnActive ? t('chat.appliesNextTurn') : undefined}
-            onPick={pickPermission}
-          />
-        )}
-        {modelOption === undefined ? null : (
-          <ConfigSelect
-            label={t('chat.modelLabel')}
-            icon={<BoxIcon className="size-4" />}
-            value={modelOption.currentValue}
-            choices={
-              modelOption.options?.map((o) => ({
-                value: o.value,
-                name: o.name,
-                description: o.description,
-                group: o.group,
-              })) ?? []
-            }
-            disabled={controlsDisabled}
-            hint={turnActive ? t('chat.appliesNextTurn') : undefined}
-            onPick={(v) => onConfigSet({ kind: 'option', configId: modelOption.id, value: v })}
-          />
-        )}
-        {effortOption === undefined ? null : (
-          <ConfigSelect
-            label={t('chat.effortLabel')}
-            icon={<BrainIcon className="size-4" />}
-            value={effortOption.currentValue}
-            choices={
-              effortOption.options?.map((o) => ({
-                value: o.value,
-                name: o.name,
-                description: o.description,
-              })) ?? []
-            }
-            disabled={controlsDisabled}
-            hint={turnActive ? t('chat.appliesNextTurn') : undefined}
-            onPick={(v) => onConfigSet({ kind: 'option', configId: effortOption.id, value: v })}
-          />
-        )}
+              disabled={controlsDisabled}
+              hint={turnActive ? t('chat.appliesNextTurn') : undefined}
+              onPick={(v) => onConfigSet({ kind: 'option', configId: modelOption.id, value: v })}
+            />
+          )}
+          {effortOption === undefined ? null : (
+            <ConfigSelect
+              label={t('chat.effortLabel')}
+              icon={<BrainIcon className="size-4" />}
+              value={effortOption.currentValue}
+              choices={
+                effortOption.options?.map((o) => ({
+                  value: o.value,
+                  name: o.name,
+                  description: o.description,
+                })) ?? []
+              }
+              disabled={controlsDisabled}
+              hint={turnActive ? t('chat.appliesNextTurn') : undefined}
+              onPick={(v) => onConfigSet({ kind: 'option', configId: effortOption.id, value: v })}
+            />
+          )}
 
-        {extraOptions.map((opt) => (
-          <ConfigSelect
-            key={opt.id}
-            label={opt.name}
-            icon={<BotIcon className="size-4" />}
-            value={opt.currentValue}
-            choices={
-              opt.options?.map((o) => ({
-                value: o.value,
-                name: o.name,
-                description: o.description,
-                group: o.group,
-              })) ?? []
-            }
-            disabled={controlsDisabled}
-            hint={turnActive ? t('chat.appliesNextTurn') : undefined}
-            onPick={(v) => onConfigSet({ kind: 'option', configId: opt.id, value: v })}
-          />
-        ))}
+          {extraOptions.map((opt) => (
+            <ConfigSelect
+              key={opt.id}
+              label={opt.name}
+              icon={<BotIcon className="size-4" />}
+              value={opt.currentValue}
+              choices={
+                opt.options?.map((o) => ({
+                  value: o.value,
+                  name: o.name,
+                  description: o.description,
+                  group: o.group,
+                })) ?? []
+              }
+              disabled={controlsDisabled}
+              hint={turnActive ? t('chat.appliesNextTurn') : undefined}
+              onPick={(v) => onConfigSet({ kind: 'option', configId: opt.id, value: v })}
+            />
+          ))}
 
-        <span className="min-w-0 flex-1" />
-        {showContextMeter ? <ContextMeter usage={usage} /> : null}
-        {turnActive ? (
-          <>
-            {/* #10 — a non-empty draft mid-turn offers Send (the message
+          <span className="min-w-0 flex-1" />
+          {showContextMeter ? <ContextMeter usage={usage} /> : null}
+          {turnActive ? (
+            <>
+              {/* #10 — a non-empty draft mid-turn offers Send (the message
                 queues server-side) ALONGSIDE Stop; an empty draft is Stop
                 only. Send keeps the primary look; Stop stays the outlined
                 danger-leaning outline. Both are the SAME shape as the config
@@ -1029,80 +1042,81 @@ export function Composer({
                 height, not the comp's 40px circle: the circle was a head taller
                 than its own toolbar (#23), and on a phone the fingertip is
                 served by `--touch` without the desktop row growing with it. */}
-            {canSend ? (
+              {canSend ? (
+                <Button
+                  type="button"
+                  size="icon"
+                  className="@max-2xl:size-(--touch) size-(--control-h) shrink-0 rounded-md"
+                  onClick={onSend}
+                  title={t('chat.queueSendAria')}
+                  aria-label={t('chat.queueSendAria')}
+                >
+                  <ArrowUpIcon className="size-4" />
+                </Button>
+              ) : null}
               <Button
                 type="button"
+                variant="outline"
                 size="icon"
-                className="@max-2xl:size-(--touch) size-(--control-h) shrink-0 rounded-md"
-                onClick={onSend}
-                title={t('chat.queueSendAria')}
-                aria-label={t('chat.queueSendAria')}
+                className="hover:border-destructive/40 hover:text-destructive @max-2xl:size-(--touch) size-(--control-h) shrink-0 rounded-md"
+                onClick={onCancel}
+                title={t('chat.stopAria')}
+                aria-label={t('chat.stopAria')}
               >
-                <ArrowUpIcon className="size-4" />
+                <CircleStopIcon className="size-4" />
               </Button>
-            ) : null}
+            </>
+          ) : (
             <Button
               type="button"
-              variant="outline"
               size="icon"
-              className="hover:border-destructive/40 hover:text-destructive @max-2xl:size-(--touch) size-(--control-h) shrink-0 rounded-md"
-              onClick={onCancel}
-              title={t('chat.stopAria')}
-              aria-label={t('chat.stopAria')}
+              className="@max-2xl:size-(--touch) size-(--control-h) shrink-0 rounded-md"
+              onClick={onSend}
+              disabled={!canSend}
+              title={t('chat.sendAria')}
+              aria-label={t('chat.sendAria')}
             >
-              <CircleStopIcon className="size-4" />
+              <ArrowUpIcon className="size-4" />
             </Button>
-          </>
-        ) : (
-          <Button
-            type="button"
-            size="icon"
-            className="@max-2xl:size-(--touch) size-(--control-h) shrink-0 rounded-md"
-            onClick={onSend}
-            disabled={!canSend}
-            title={t('chat.sendAria')}
-            aria-label={t('chat.sendAria')}
-          >
-            <ArrowUpIcon className="size-4" />
-          </Button>
-        )}
-      </div>
+          )}
+        </div>
 
-      {pendingMode !== null ? (
-        <ConfirmDialog
-          open
-          onOpenChange={(o) => {
-            if (!o) setPendingMode(null);
-          }}
-          title={t('chat.modeSwitchAction')}
-          consequence={
-            pendingMode.kind === 'mode'
-              ? t('chat.modeConsequence', { name: pendingMode.name })
-              : pendingMode.kind === 'approvals'
-                ? t('chat.approvalsConsequence')
-                : pendingMode.kind === 'perm-delegated'
-                  ? t('chat.permDelegatedConsequence')
-                  : t('chat.permConsequence', { name: pendingMode.name })
-          }
-          impact={[
-            {
-              label:
-                pendingMode.kind === 'mode'
-                  ? 'mode'
-                  : pendingMode.kind === 'approvals'
-                    ? 'approvals'
-                    : 'write policy',
-              value: pendingMode.value,
-            },
-          ]}
-          actionLabel={t('chat.modeSwitchAction')}
-          // Danger edge without the irreversible line: flipping the mode back
-          // restores the gate, so claiming "cannot be undone" would be false.
-          tone="danger"
-          irreversible={false}
-          onConfirm={confirmMode}
-        />
-      ) : null}
+        {pendingMode !== null ? (
+          <ConfirmDialog
+            open
+            onOpenChange={(o) => {
+              if (!o) setPendingMode(null);
+            }}
+            title={t('chat.modeSwitchAction')}
+            consequence={
+              pendingMode.kind === 'mode'
+                ? t('chat.modeConsequence', { name: pendingMode.name })
+                : pendingMode.kind === 'approvals'
+                  ? t('chat.approvalsConsequence')
+                  : pendingMode.kind === 'perm-delegated'
+                    ? t('chat.permDelegatedConsequence')
+                    : t('chat.permConsequence', { name: pendingMode.name })
+            }
+            impact={[
+              {
+                label:
+                  pendingMode.kind === 'mode'
+                    ? 'mode'
+                    : pendingMode.kind === 'approvals'
+                      ? 'approvals'
+                      : 'write policy',
+                value: pendingMode.value,
+              },
+            ]}
+            actionLabel={t('chat.modeSwitchAction')}
+            // Danger edge without the irreversible line: flipping the mode back
+            // restores the gate, so claiming "cannot be undone" would be false.
+            tone="danger"
+            irreversible={false}
+            onConfirm={confirmMode}
+          />
+        ) : null}
+      </div>
     </div>
   );
 }
