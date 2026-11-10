@@ -175,6 +175,12 @@ interface DaemonSession {
    * Undefined = no stored config: adapter options pass through untouched.
    */
   modelOptions?: readonly string[];
+  /**
+   * #125 — the stored RuntimeConfig's provider label (same start payload),
+   * feeding the rewrite's dsh group relabel. Undefined = the adapter's own
+   * group labels stand.
+   */
+  providerLabel?: string;
   /** 9 W7 — the history ring (user items + mapped events), newest last. */
   history: HistoryItem[];
   /** Paging cursor source — monotonic per channel, stamped on every ring item. */
@@ -809,6 +815,7 @@ export function attachChatHandlers(
       cwd,
       resume,
       modelOptions,
+      providerLabel,
       defaultMode,
       prewarm,
       createDirectory,
@@ -991,7 +998,11 @@ export function attachChatHandlers(
                 mcpServers: [],
               })) as { sessionId?: string };
               acpSessionId = loaded?.sessionId ?? resume.sessionId;
-              history = rewriteHistoryItems(finishCaptured(captured), { target, modelOptions });
+              history = rewriteHistoryItems(finishCaptured(captured), {
+                target,
+                modelOptions,
+                providerLabel,
+              });
               establishedConfig = takeSessionConfig(loaded);
             } finally {
               stopCapture();
@@ -1022,6 +1033,7 @@ export function attachChatHandlers(
             options: rewriteSessionConfigOptions(establishedConfig.options, {
               target,
               modelOptions,
+              providerLabel,
             }),
           };
         }
@@ -1041,6 +1053,7 @@ export function attachChatHandlers(
               ? { ...establishedConfig, ...(approvals !== undefined ? { approvals } : {}) }
               : { options: [], ...(approvals !== undefined ? { approvals } : {}) },
           ...(modelOptions !== undefined ? { modelOptions } : {}),
+          ...(providerLabel !== undefined ? { providerLabel } : {}),
           history: [],
           historySeq: 0,
           wireTextEmitted: false,
