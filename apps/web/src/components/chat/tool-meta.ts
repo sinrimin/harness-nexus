@@ -2,6 +2,7 @@
 //
 // SPDX-License-Identifier: MIT
 
+import { stripAnsi } from '@/lib/ansi';
 import type { ToolCallNode } from './fold.js';
 
 /**
@@ -55,7 +56,8 @@ export function toolArgumentsPreview(node: ToolCallNode): string {
 export function firstOutputLine(node: ToolCallNode): string | null {
   if (typeof node.output !== 'string' || node.output === '') return null;
   const i = node.output.indexOf('\n');
-  const line = i === -1 ? node.output : node.output.slice(0, i);
+  // #121 — the header summary is plain text: no escape remnants in it.
+  const line = stripAnsi(i === -1 ? node.output : node.output.slice(0, i));
   return line.trim() === '' ? null : line;
 }
 

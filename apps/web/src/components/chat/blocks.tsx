@@ -6,6 +6,8 @@ import { memo, useMemo, useState } from 'react';
 import { CheckIcon, CopyIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useI18n } from '@/i18n';
+import { parseAnsi, stripAnsi } from '@/lib/ansi';
+import { AnsiSpans, AnsiText } from './ansi-text.js';
 import { useCopyFeedback } from './copy-feedback.js';
 
 /**
@@ -248,10 +250,10 @@ export const TerminalBlock = memo(function TerminalBlock({
 }) {
   const { t } = useI18n();
   const text = output ?? '';
-  const lines = useMemo(() => {
-    const body = text.endsWith('\n') ? text.slice(0, -1) : text;
-    return body === '' ? [] : body.split('\n');
-  }, [text]);
+  // #121 — ANSI styling renders (the ESC byte used to leave `[0m` text);
+  // blank lines keep their height; copy takes the plain text.
+  const lines = useMemo(() => parseAnsi(text), [text]);
+  const plain = useMemo(() => stripAnsi(text), [text]);
   const commandLines = useMemo(() => {
     const body = command.endsWith('\n') ? command.slice(0, -1) : command;
     return body === '' ? [] : body.split('\n');
@@ -272,7 +274,7 @@ export const TerminalBlock = memo(function TerminalBlock({
         </div>
         {!running && !empty ? (
           <span className="shrink-0">
-            <CopyButton text={text} />
+            <CopyButton text={plain} />
           </span>
         ) : null}
       </div>
@@ -283,8 +285,8 @@ export const TerminalBlock = memo(function TerminalBlock({
       ) : (
         <div className="max-h-56 overflow-auto p-2 font-mono text-xs leading-5">
           {lines.map((line, i) => (
-            <div key={i} className="whitespace-pre-wrap break-all">
-              {line}
+            <div key={i} className="min-h-5 whitespace-pre-wrap break-all">
+              <AnsiSpans line={line} />
             </div>
           ))}
         </div>
@@ -462,7 +464,7 @@ export const IoCard = memo(function IoCard({
               failed && 'text-destructive',
             )}
           >
-            {output}
+            <AnsiText text={output} />
           </pre>
         </div>
       ) : null}

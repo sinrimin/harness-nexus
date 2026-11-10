@@ -88,6 +88,15 @@
   --well-ok: #64d493;
   --well-warn: #e8ae5d;
   --well-fail: #ff8b7a;
+  /* #121 — the terminal ANSI hues the LCD window can carry (red / green /
+     yellow and the greys already follow the well inks above). */
+  --ansi-0: #6b7686;
+  --ansi-4: #7cb4ff;
+  --ansi-5: #d9a0ff;
+  --ansi-6: #7fd6cf;
+  --ansi-12: #a3c9ff;
+  --ansi-13: #e6bdff;
+  --ansi-14: #a6e6e0;
 }
 
 /* Posture readouts (dashboard figures) get well padding; links keep routing. */
