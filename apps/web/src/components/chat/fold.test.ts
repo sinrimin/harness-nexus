@@ -388,3 +388,37 @@ describe('delegated permission fallbacks (#104)', () => {
     expect(state.permissions[0]?.resolution).toBeUndefined();
   });
 });
+
+describe('#124 — toolRevision', () => {
+  it('bumps on tool rows only, never on text deltas, and ignores session_usage', () => {
+    let state = createFoldState();
+    expect(state.toolRevision).toBe(0);
+
+    state = fold(state, { type: 'event', event: { kind: 'message_delta', delta: 'hello' } });
+    expect(state.toolRevision).toBe(0);
+
+    state = fold(state, {
+      type: 'event',
+      event: {
+        kind: 'tool_call',
+        call: { toolCallId: 'c1', status: 'completed', toolName: 'Write' },
+      },
+    });
+    expect(state.toolRevision).toBe(1);
+
+    // A derived telemetry event never touches the transcript revision.
+    const before = state;
+    state = fold(state, {
+      type: 'event',
+      event: { kind: 'session_usage', turns: 1, inputTokens: 10 },
+    });
+    expect(state).toBe(before);
+    expect(state.toolRevision).toBe(1);
+
+    state = fold(state, {
+      type: 'event',
+      event: { kind: 'tool_call', call: { toolCallId: 'c1', status: 'completed', output: 'ok' } },
+    });
+    expect(state.toolRevision).toBe(2);
+  });
+});

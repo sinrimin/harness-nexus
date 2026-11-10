@@ -128,8 +128,10 @@ const DEFAULT_SKINS = ['signal'];
 // for EVERY family to actually be active or shots race fallback-vs-webfont
 // metrics (mono-heavy mobile layouts are where the race becomes visible).
 const SKIN_FONT_FAMILIES = {
-  signal: ['IBM Plex Sans Variable', 'IBM Plex Mono'],
-  bay: ['Archivo Variable', 'Archivo Narrow', 'JetBrains Mono'],
+  // #124 — Silkscreen is the session HUD's label face (base index.css, but a
+  // page whose HUD renders must not screenshot before it is active).
+  signal: ['IBM Plex Sans Variable', 'IBM Plex Mono', 'Silkscreen'],
+  bay: ['Archivo Variable', 'Archivo Narrow', 'JetBrains Mono', 'Silkscreen'],
   ledger: ['Public Sans', 'Zilla Slab', 'DM Mono'],
   nightwatch: ['Instrument Sans', 'Red Hat Mono'],
 };

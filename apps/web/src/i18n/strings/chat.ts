@@ -156,6 +156,20 @@ const en = {
   // figures stay in the popover, so this is the bare qualifier.
   contextPctShort: '{pct}%',
   contextShort: '{pct}% context',
+  // #124 — the session HUD is an engraved instrument face: English in BOTH
+  // locales by design (the same exception as the nav-group labels). These
+  // values are intentionally identical in `zh`; do not translate them.
+  hudAria: 'Session telemetry',
+  hudContext: 'CTX',
+  hudTokens: 'TOK',
+  hudCache: 'CACHE',
+  hudFiles: 'FILES',
+  hudContextTitle: 'Context: {used} of {size} tokens ({pct}%)',
+  hudTokensTitle: 'Session tokens (daemon run): {turns} turns · input {input} · output {output}',
+  hudCacheTitle: 'Prompt cache (daemon run): {read} read · {write} written · {input} uncached',
+  hudFilesTitle: 'Files in the loaded transcript: {files} · +{added} / −{removed}',
+  hudFilesPathless: 'some diffs carried no path — file count is a lower bound',
+  hudFilesPartial: 'older history not loaded — the count is a lower bound',
   permissionAsk: 'The agent asks permission',
   permissionAskTitle: 'The agent asks permission: {title}',
   // ---- 9 W14.1: agent questions (ACP elicitation) ----
@@ -376,6 +390,19 @@ const zh: typeof en = {
   // figures stay in the popover, so this is the bare qualifier.
   contextPctShort: '{pct}%',
   contextShort: '上下文 {pct}%',
+  // #124 — English-only instrument face (see the `en` block): identical values
+  // in both locales, deliberately untranslated.
+  hudAria: 'Session telemetry',
+  hudContext: 'CTX',
+  hudTokens: 'TOK',
+  hudCache: 'CACHE',
+  hudFiles: 'FILES',
+  hudContextTitle: 'Context: {used} of {size} tokens ({pct}%)',
+  hudTokensTitle: 'Session tokens (daemon run): {turns} turns · input {input} · output {output}',
+  hudCacheTitle: 'Prompt cache (daemon run): {read} read · {write} written · {input} uncached',
+  hudFilesTitle: 'Files in the loaded transcript: {files} · +{added} / −{removed}',
+  hudFilesPathless: 'some diffs carried no path — file count is a lower bound',
+  hudFilesPartial: 'older history not loaded — the count is a lower bound',
   permissionAsk: '代理请求权限',
   permissionAskTitle: '代理请求权限：{title}',
   // ---- 9 W14.1: agent questions (ACP elicitation) ----

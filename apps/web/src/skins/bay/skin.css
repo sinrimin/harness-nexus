@@ -518,6 +518,21 @@
   border-radius: 1px;
 }
 
+/* ---------- Session HUD -------------------------------------------------- */
+
+/* #124 — the Sender's telemetry strip is a bolted LCD window on this rack:
+   square hardware radius, a bezel hairline and the 1px top highlight the
+   wells carry. Tokens own the palette; this is the shape a token cannot say. */
+[data-skin='bay'] [data-surface='hud'] {
+  border-radius: 2px;
+  box-shadow:
+    inset 0 1px 0 var(--hud-highlight),
+    0 1px 0 var(--bezel);
+}
+[data-skin='bay'] [data-surface='hud'] [data-slot='hud-seg'] {
+  border-radius: 1px;
+}
+
 /* ---------- Hazard ------------------------------------------------------ */
 
 /* The comp's hazard stripe (.hazard): a 5px diagonal warning bar, used on

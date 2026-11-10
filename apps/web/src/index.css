@@ -13,6 +13,9 @@
 @import './fonts/ibm-plex-sans-latin.css';
 @import '@fontsource/ibm-plex-mono/latin-400.css';
 @import '@fontsource/ibm-plex-mono/latin-500.css';
+/* #124 — the session HUD's pixel label face. Latin-only (the HUD is
+ * English-only by design); self-hosted like every other font. */
+@import '@fontsource/silkscreen/latin-400.css';
 
 @custom-variant dark (&:is(.dark *));
 
@@ -123,6 +126,9 @@
    * something to override. Values are the Signal reading — a quiet console.
    */
   --app-font-label: var(--app-font-sans);
+  /* #124 — the session HUD's engraved label face (labels only; values stay on
+   * --app-font-mono so figures remain crisp and checkable). */
+  --app-font-hud: 'Silkscreen', var(--app-font-mono);
   --label-size: 11px;
   --label-size-sm: 9.5px;
   --label-tracking: 0.09em;
@@ -186,6 +192,27 @@
   --state-ok-ink: oklch(0.5 0.13 152);
   --state-warn-ink: oklch(0.5 0.12 62);
   --state-fail-ink: oklch(0.5 0.19 25);
+
+  /* #124 — the session HUD (the Sender's telemetry strip). It is an
+   * INSTRUMENT, not a page surface: always-dark glass in Signal, in both
+   * modes, so its readings look the same wherever the page's mode goes. A
+   * skin may repaint the whole material (BAY cuts its inverted LCD window);
+   * the component names these tokens and nothing else. */
+  --hud-h: 26px;
+  --hud-label-size: 9px;
+  --hud-value-size: 11px;
+  --hud-bg: oklch(0.21 0.012 260);
+  --hud-ink: oklch(0.95 0.004 250);
+  --hud-dim: oklch(0.72 0.012 250);
+  --hud-edge: oklch(1 0 0 / 0.1);
+  --hud-highlight: oklch(1 0 0 / 0.12);
+  --hud-rule: oklch(1 0 0 / 0.12);
+  --hud-track: oklch(1 0 0 / 0.16);
+  --hud-fill: oklch(0.92 0.004 250);
+  --hud-ok: oklch(0.8 0.16 150);
+  --hud-warn: oklch(0.84 0.15 75);
+  --hud-fail: oklch(0.74 0.19 25);
+  --hud-hover: oklch(1 0 0 / 0.06);
 
   /* #121 — ANSI palette for terminal output (the 16 base colours; 256-colour
    * and truecolour render literal). Red / green / yellow ARE the status inks
@@ -266,6 +293,11 @@
 
 .dark {
   color-scheme: dark;
+
+  /* #124 — the HUD stays dark in dark mode; lift it just enough to read as a
+   * device ON the page rather than a hole in it. */
+  --hud-bg: oklch(0.25 0.012 260);
+  --hud-edge: oklch(1 0 0 / 0.08);
 
   --background: oklch(0.18 0.015 260); /* near-black, cool */
   --foreground: oklch(0.96 0.005 250);
@@ -388,6 +420,7 @@
   --font-mono: var(--app-font-mono);
   --font-display: var(--app-font-display);
   --font-label: var(--app-font-label);
+  --font-hud: var(--app-font-hud);
 
   --color-background: var(--background);
   --color-foreground: var(--foreground);
