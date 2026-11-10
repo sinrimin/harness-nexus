@@ -32,7 +32,8 @@ import {
   toolArgumentsPreview,
 } from './tool-meta.js';
 import { IoCard, ReadBlock, SearchBlock, TerminalBlock, TodoList } from './blocks.js';
-import { DiffView } from './diff-view.js';
+import { buildDiffFiles, diffTotals } from './diff-model.js';
+import { DiffStatText, DiffView } from './diff-view.js';
 
 /**
  * Tool rows (Phase 9 W6): a 24px-high disclosure row — status-marked icon,
@@ -117,13 +118,16 @@ const BashCard = memo(function BashCard({ node, cwd }: ToolCardProps) {
 /**
  * #121 — Edit, MultiEdit and Write share one card: every diff the call
  * carries (claude's hook hunks with their line numbers, or the raw
- * snippets before they land) through the GitLab-structured DiffView.
+ * snippets before they land) through the GitLab-structured DiffView, and
+ * the same files feed the header's `+N −M` readout (left of the duration).
  */
 const EditCard = memo(function EditCard({ node, cwd }: ToolCardProps) {
   const sources = useMemo(() => {
     const raw = diffSources(node);
     return raw === null ? null : raw.map((s) => ({ ...s, path: relativizeToCwd(s.path, cwd) }));
   }, [node, cwd]);
+  const files = useMemo(() => (sources === null ? null : buildDiffFiles(sources)), [sources]);
+  const totals = files === null ? null : diffTotals(files);
   const display = sources?.[0]?.path || relativizeToCwd(mainPath(node) || node.title || '', cwd);
   return (
     <ToolCardShell
@@ -133,9 +137,14 @@ const EditCard = memo(function EditCard({ node, cwd }: ToolCardProps) {
       summary={display !== '' ? display : undefined}
       summaryIsPath
       errorSummary={firstOutputLine(node)}
+      headerStat={
+        totals !== null && totals.added + totals.removed > 0 ? (
+          <DiffStatText added={totals.added} removed={totals.removed} tone="page" />
+        ) : undefined
+      }
       body={
-        sources !== null ? (
-          <DiffView sources={sources} />
+        files !== null && files.length > 0 ? (
+          <DiffView files={files} />
         ) : node.output !== undefined ? (
           <IoCard output={node.output} failed={node.status === 'failed'} />
         ) : undefined
@@ -411,6 +420,8 @@ interface ToolCardShellProps {
   /** #68 — a non-interactive action zone at the header's END (outside the
    *  expand button — interactive content may not nest in it). */
   headerTrailing?: ReactNode;
+  /** #121 — a readout left of the duration (edit cards' `+N −M`). */
+  headerStat?: ReactNode;
 }
 
 function ToolCardShell({
@@ -423,6 +434,7 @@ function ToolCardShell({
   body,
   collapsible = true,
   headerTrailing,
+  headerStat,
 }: ToolCardShellProps) {
   const [expanded, setExpanded] = useState(false);
   const expandable = body !== undefined && collapsible;
@@ -450,7 +462,12 @@ function ToolCardShell({
           title={title}
           summary={showSummary}
           summaryTone={failed && errorSummary != null ? 'error' : summaryIsPath ? 'path' : 'plain'}
-          readouts={<DurationReadout label={elapsedLabel(node.startedAt, node.endedAt)} />}
+          readouts={
+            <>
+              {headerStat}
+              <DurationReadout label={elapsedLabel(node.startedAt, node.endedAt)} />
+            </>
+          }
           running={node.status === 'running'}
           expandable={expandable}
           open={open}

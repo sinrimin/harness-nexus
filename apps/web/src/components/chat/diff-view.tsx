@@ -7,14 +7,12 @@ import { cn } from '@/lib/utils';
 import { useI18n } from '@/i18n';
 import { CopyButton } from './blocks.js';
 import {
-  buildDiffFiles,
   highlightLines,
   markSegments,
   unifiedText,
   type DiffFile,
   type DiffHunk,
   type DiffLine,
-  type DiffSource,
   type MarkedSegment,
   type SyntaxSegment,
 } from './diff-model.js';
@@ -202,8 +200,9 @@ function FileDiff({ file }: { file: DiffFile }) {
   );
 }
 
-export const DiffView = memo(function DiffView({ sources }: { sources: DiffSource[] }) {
-  const files = useMemo(() => buildDiffFiles(sources), [sources]);
+/** The diff body. Takes built files — the card builds them once for the
+ * body AND its header's +N −M readout. */
+export const DiffView = memo(function DiffView({ files }: { files: DiffFile[] }) {
   if (files.length === 0) return null;
   return (
     <div
