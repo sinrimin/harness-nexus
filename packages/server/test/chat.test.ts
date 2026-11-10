@@ -273,6 +273,58 @@ describe('rejoin (9 W7 — resync, no persisted rows)', () => {
     d.close();
   }, 15000);
 
+  it('#124 — stores the daemon session_usage snapshot and re-pushes it on rejoin', async () => {
+    const d = await connectDaemon(['chat']);
+    const startPromise = once(d, 'chat:session.start');
+    const fresh = await openSession(browser, agentId);
+    const start = (await startPromise) as { sessionId: string };
+    expect(fresh.phase).toBe('starting');
+    readyFor(d, start);
+    await once(browser, 'chat:session.ready');
+
+    const relayP = once(browser, 'chat:event');
+    const accepted = await emitAck(d, 'chat:event', {
+      sessionId: start.sessionId,
+      event: {
+        kind: 'session_usage',
+        turns: 2,
+        inputTokens: 200,
+        outputTokens: 40,
+        cacheReadTokens: 1000,
+        cacheWriteTokens: 100,
+      },
+    });
+    expect(accepted).toMatchObject({ accepted: true });
+    const relay = (await relayP) as {
+      sessionId: string;
+      event: { kind: string; turns?: number; costUsd?: number };
+    };
+    expect(relay.sessionId).toBe(start.sessionId);
+    expect(relay.event).toMatchObject({ kind: 'session_usage', turns: 2 });
+    expect(relay.event.costUsd).toBeUndefined();
+
+    // A rejoin's ready push restores the HUD totals (derived state never
+    // enters history, so without this the strip would blank on refresh).
+    const pushP = once(browser, 'chat:session.ready');
+    const rejoin = await openSession(browser, agentId, start.sessionId);
+    expect(rejoin.phase).toBe('ready');
+    const push = (await pushP) as { sessionUsage?: unknown };
+    expect(push.sessionUsage).toEqual({
+      turns: 2,
+      inputTokens: 200,
+      outputTokens: 40,
+      cacheReadTokens: 1000,
+      cacheWriteTokens: 100,
+    });
+
+    await emitAck(d, 'chat:session.closed', {
+      sessionId: start.sessionId,
+      reason: 'user',
+    });
+    await once(browser, 'chat:session.closed');
+    d.close();
+  }, 15000);
+
   it('relays a daemon history batch to the channel room', async () => {
     const d = await connectDaemon(['chat']);
     try {
