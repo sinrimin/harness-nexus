@@ -9,6 +9,7 @@ import {
   BotIcon,
   ListIcon,
   MoreHorizontalIcon,
+  PanelLeftCloseIcon,
   PencilIcon,
   PinIcon,
   PinOffIcon,
@@ -48,6 +49,7 @@ import {
   type LlmProviderView,
 } from '@harness-nexus/sdk';
 import { Button } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
 import { Dialog as DialogPrimitive } from 'radix-ui';
 import { ChatStream } from '@/components/chat/chat-stream.js';
 import { CaptureNoteDialog } from '@/pages/notes/CaptureNoteDialog';
@@ -63,6 +65,7 @@ import { Composer, type ComposerConfig } from '@/components/chat/composer.js';
 import { usePageTitle } from '@/components/shell/page-slots';
 import { TodoPanel } from '@/components/chat/todo-panel.js';
 import { EndSwitcher } from '@/components/chat/end-switcher.js';
+import { CollapsedRail, useRailCollapsed } from '@/components/chat/collapsed-rail.js';
 import { createFoldState, fold, type UserBlock } from '@/components/chat/fold.js';
 import type { ChatConfigSetPayload, PromptBlock } from '@/realtime';
 import {
@@ -239,6 +242,10 @@ export function AssistantSessionPage() {
   const channels = useChatChannels();
   const sessions = useAssistantSessions();
   const [railOpen, setRailOpen] = useState(false);
+  // #126 — the DESKTOP rail collapses to the same 48px icon column as the
+  // agent end's; the flag is the chat surface's shared preference (one key),
+  // so switching ends never changes the rail's width.
+  const [railCollapsed, toggleRailCollapsed] = useRailCollapsed();
 
   const refreshAssistants = useCallback(async () => {
     try {
@@ -750,18 +757,34 @@ export function AssistantSessionPage() {
       {/* Same contract as the machine rail's band: h-12 pinned to the stream
       header so both columns' borders align in every skin (a hugging height
       rides --control-h-sm: 52px Signal / 45px BAY vs the fixed 48px band). */}
-      <div className="flex h-12 items-center gap-1 border-b px-2">
+      <div className="flex h-12 shrink-0 items-center gap-1 border-b px-2">
         <EndSwitcher current="assistant" fromDrawer={inDrawer} />
         <span className="min-w-0 flex-1" />
         <Button
           variant="ghost"
           size="icon"
           className="size-(--control-h-sm) shrink-0"
+          aria-label={t('common.refresh')}
           title={t('common.refresh')}
           onClick={refreshSessions}
         >
           <RefreshCwIcon className="size-3.5" />
         </Button>
+        {/* #126 — the same collapse door as the agent rail's header; the
+            phone drawer keeps the full rail (no door in a sheet that opens
+            over the page). */}
+        {inDrawer ? null : (
+          <Button
+            variant="ghost"
+            size="icon"
+            className="size-(--control-h-sm) shrink-0"
+            aria-label={t('chat.railCollapse')}
+            title={t('chat.railCollapse')}
+            onClick={toggleRailCollapsed}
+          >
+            <PanelLeftCloseIcon className="size-3.5" />
+          </Button>
+        )}
       </div>
       <div className="border-b p-3">
         <Button
@@ -872,8 +895,35 @@ export function AssistantSessionPage() {
           }}
         />
         <div className="flex h-full min-h-0">
-          <aside className="bg-sidebar/40 hidden w-72 shrink-0 flex-col border-r md:flex">
-            {rail(false)}
+          {/* #126 — the desktop rail collapses to the shared 48px column; its
+              pinned sessions are the tiles (the same shortcuts the agent end
+              keeps when collapsed). */}
+          <aside
+            className={cn(
+              'bg-sidebar/40 hidden shrink-0 flex-col border-r md:flex',
+              railCollapsed ? 'w-12' : 'w-72',
+            )}
+          >
+            {railCollapsed ? (
+              <CollapsedRail
+                tiles={sortedSessions
+                  .filter((s) => pins.pins.has(assistantPinKey(s.id)))
+                  .map((s) => ({
+                    id: s.id,
+                    label: s.title || t('chat.untitled'),
+                    active: s.id === sessionId,
+                    onClick: () => {
+                      if (s.id !== sessionId) void openSession(s.id);
+                    },
+                  }))}
+                newSessionLabel={t('assistants.newAssistantSession')}
+                newSessionDisabled={assistantId === ''}
+                onNewSession={() => void openSession()}
+                onExpand={toggleRailCollapsed}
+              />
+            ) : (
+              rail(false)
+            )}
           </aside>
           <DialogPrimitive.Root open={railOpen} onOpenChange={setRailOpen}>
             <DialogPrimitive.Portal>
