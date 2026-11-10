@@ -187,6 +187,41 @@
   --state-warn-ink: oklch(0.5 0.12 62);
   --state-fail-ink: oklch(0.5 0.19 25);
 
+  /* #121 — ANSI palette for terminal output (the 16 base colours; 256-colour
+   * and truecolour render literal). Red / green / yellow ARE the status inks
+   * (re-resolved per well below, so a skin's LCD inks carry); blue, magenta
+   * and cyan sit in the same lightness/chroma band — cyan shifted to teal,
+   * clear of the --signal hue. Black / white / the greys map onto inks the
+   * surface can actually show: a light trough cannot print "white". */
+  --ansi-0: oklch(0.32 0.012 260);
+  --ansi-1: var(--well-fail);
+  --ansi-2: var(--well-ok);
+  --ansi-3: var(--well-warn);
+  --ansi-4: oklch(0.5 0.14 255);
+  --ansi-5: oklch(0.5 0.16 320);
+  --ansi-6: oklch(0.52 0.08 185);
+  --ansi-7: var(--well-dim);
+  --ansi-8: var(--well-dim);
+  --ansi-9: var(--well-fail);
+  --ansi-10: var(--well-ok);
+  --ansi-11: var(--well-warn);
+  --ansi-12: oklch(0.55 0.15 255);
+  --ansi-13: oklch(0.55 0.17 320);
+  --ansi-14: oklch(0.56 0.09 185);
+  --ansi-15: var(--well-ink);
+
+  /* #121 — diff material strength. The diff takes GitLab's structure but the
+   * console's restraint: changed rows get a faint wash of the well's status
+   * ink (enough to find the change, not enough to paint the transcript), only
+   * the changed WORDS get a firmer mark, and the sign column carries the
+   * meaning. The derived --diff-* colours live on the well (below); a skin
+   * tunes the strengths here or in its well — `--diff-tint: 0%` is a pure
+   * console diff, and the edges add a 2px rule at the row's start. */
+  --diff-tint: 7%;
+  --diff-word-tint: 22%;
+  --diff-add-edge: transparent;
+  --diff-del-edge: transparent;
+
   /* Physics — a skin may make the panel hard-shadowed and mechanical.
    * `--press-shift`/`--shadow-press` are the press displacement: Signal is a
    * flat console (both zero), BAY is a machine key (2px shift, shadow gone).
@@ -301,6 +336,44 @@
   --state-warn-ink: oklch(0.83 0.14 72);
   --state-fail-ink: oklch(0.76 0.17 22);
   --shadow-panel: 0 1px 2px oklch(0 0 0 / 35%);
+
+  /* #121 — ANSI, dark reading: the literal hues lift into the dark band
+   * (the ink-backed entries follow the dark inks on their own). */
+  --ansi-0: oklch(0.6 0.012 260);
+  --ansi-4: oklch(0.74 0.12 255);
+  --ansi-5: oklch(0.74 0.14 320);
+  --ansi-6: oklch(0.76 0.08 185);
+  --ansi-12: oklch(0.8 0.12 255);
+  --ansi-13: oklch(0.8 0.14 320);
+  --ansi-14: oklch(0.82 0.08 185);
+
+  /* #121 — a dark trough needs a firmer wash for the same legibility. */
+  --diff-tint: 12%;
+  --diff-word-tint: 28%;
+}
+
+/* #121 — tokens that must re-resolve against the WELL they render in. A skin
+ * re-scopes the inks on the well element itself (BAY's LCD window), while a
+ * custom property computed on :root would carry the page's inks inside. */
+[data-surface='well'] {
+  --ansi-1: var(--well-fail);
+  --ansi-2: var(--well-ok);
+  --ansi-3: var(--well-warn);
+  --ansi-7: var(--well-dim);
+  --ansi-8: var(--well-dim);
+  --ansi-9: var(--well-fail);
+  --ansi-10: var(--well-ok);
+  --ansi-11: var(--well-warn);
+  --ansi-15: var(--well-ink);
+  --diff-add-row: color-mix(in oklch, var(--well-ok) var(--diff-tint), transparent);
+  --diff-del-row: color-mix(in oklch, var(--well-fail) var(--diff-tint), transparent);
+  --diff-add-word: color-mix(in oklch, var(--well-ok) var(--diff-word-tint), transparent);
+  --diff-del-word: color-mix(in oklch, var(--well-fail) var(--diff-word-tint), transparent);
+  --diff-sign-add: var(--well-ok);
+  --diff-sign-del: var(--well-fail);
+  /* Hunk bands are neutral — never the accent (the --signal budget). */
+  --diff-hunk-bg: color-mix(in oklch, var(--well-dim) 12%, transparent);
+  --diff-hunk-ink: var(--well-dim);
 }
 
 /* Map CSS variables into Tailwind's theme so utilities like bg-background,
@@ -837,11 +910,7 @@
     position: relative;
   }
   [data-slot='composer-tools']
-    :is(
-      [data-slot='select-trigger'],
-      [data-slot='meter-trigger'],
-      [data-tool='attach']
-    )::after {
+    :is([data-slot='select-trigger'], [data-slot='meter-trigger'], [data-tool='attach'])::after {
     content: '';
     position: absolute;
     inset: 50%;

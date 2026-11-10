@@ -2,6 +2,8 @@
 //
 // SPDX-License-Identifier: MIT
 
+import { stripAnsi } from '@/lib/ansi';
+import type { DiffSource } from './diff-model.js';
 import type { ToolCallNode } from './fold.js';
 
 /**
@@ -55,7 +57,8 @@ export function toolArgumentsPreview(node: ToolCallNode): string {
 export function firstOutputLine(node: ToolCallNode): string | null {
   if (typeof node.output !== 'string' || node.output === '') return null;
   const i = node.output.indexOf('\n');
-  const line = i === -1 ? node.output : node.output.slice(0, i);
+  // #121 — the header summary is plain text: no escape remnants in it.
+  const line = stripAnsi(i === -1 ? node.output : node.output.slice(0, i));
   return line.trim() === '' ? null : line;
 }
 
@@ -99,40 +102,60 @@ export function bashCommandParts(node: ToolCallNode): BashParts {
   return { command, description };
 }
 
-interface EditParts {
-  path: string;
-  oldText: string | null;
-  newText: string | null;
+/** A text side: the wire drops empty strings and nulls alike — both read as absent. */
+function textSide(v: unknown): string | null {
+  return typeof v === 'string' && v !== '' ? v : null;
 }
 
-/** Edit/Write diff inputs: structured content first, rawInput fallback. */
-export function editDiffParts(node: ToolCallNode): EditParts | null {
-  const diff = node.content?.find((c) => c.type === 'diff');
-  if (diff !== undefined) {
-    return {
-      path: diff.path ?? mainPath(node) ?? '',
-      oldText: diff.oldText ?? null,
-      newText: diff.newText ?? null,
-    };
+/**
+ * #121 — every diff an edit-class tool call carries, for the diff view and
+ * the header's line stat. Structured content first, and ALL of it (MultiEdit
+ * and `replaceAll` arrive as several items; the old reader showed only the
+ * first). `locations[i].line` positions item i only when the two lists
+ * align — claude-agent-acp's PostToolUse hook sends one location per hunk;
+ * the pre-hook snippet carries a bare path. An absent `oldText` is whole new
+ * content, an absent `newText` a deletion. rawInput fallbacks: Edit's
+ * old_string / new_string, every MultiEdit edit, a Write's content.
+ */
+export function diffSources(node: ToolCallNode): DiffSource[] | null {
+  const diffs = (node.content ?? []).filter((c) => c.type === 'diff');
+  const out: DiffSource[] = [];
+  if (diffs.length > 0) {
+    const locations = node.locations ?? [];
+    const aligned = locations.length === diffs.length;
+    diffs.forEach((c, i) => {
+      const oldText = textSide(c.oldText);
+      const newText = textSide(c.newText);
+      if (oldText === null && newText === null) return;
+      const line = aligned ? locations[i]?.line : undefined;
+      out.push({
+        path: c.path ?? mainPath(node) ?? '',
+        oldText,
+        newText,
+        ...(typeof line === 'number' && Number.isInteger(line) && line >= 1
+          ? { newStart: line }
+          : {}),
+      });
+    });
+    return out.length > 0 ? out : null;
   }
   const raw = (node.rawInput ?? {}) as UnknownRecord;
-  const hasEdit =
-    (typeof raw.old_string === 'string' && typeof raw.new_string === 'string') ||
-    (typeof raw.edits === 'object' && raw.edits !== null);
-  if (!hasEdit) return null;
   const path = mainPath(node) ?? '';
-  if (typeof raw.old_string === 'string' && typeof raw.new_string === 'string') {
-    return { path, oldText: raw.old_string, newText: raw.new_string };
-  }
-  const edits = Array.isArray(raw.edits)
-    ? (raw.edits as UnknownRecord[]).filter((e) => typeof e === 'object' && e !== null)
-    : [];
-  if (edits.length === 0) return null;
-  return {
-    path,
-    oldText: typeof edits[0]?.old_string === 'string' ? (edits[0]!.old_string as string) : null,
-    newText: typeof edits[0]?.new_string === 'string' ? (edits[0]!.new_string as string) : null,
+  const pushEdit = (edit: UnknownRecord) => {
+    const oldText = textSide(edit.old_string);
+    const newText = textSide(edit.new_string);
+    if (oldText !== null || newText !== null) out.push({ path, oldText, newText });
   };
+  if (typeof raw.old_string === 'string' || typeof raw.new_string === 'string') {
+    pushEdit(raw);
+  } else if (Array.isArray(raw.edits)) {
+    for (const e of raw.edits as unknown[]) {
+      if (typeof e === 'object' && e !== null) pushEdit(e as UnknownRecord);
+    }
+  } else if (typeof raw.content === 'string') {
+    out.push({ path, oldText: null, newText: raw.content });
+  }
+  return out.length > 0 ? out : null;
 }
 
 type SearchParse =

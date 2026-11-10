@@ -3,11 +3,12 @@
 // SPDX-License-Identifier: MIT
 
 import { memo, useEffect, useRef, useState } from 'react';
-import { BrainIcon, ChevronDownIcon, FileTextIcon, NotebookPenIcon } from 'lucide-react';
+import { BrainIcon, FileTextIcon, NotebookPenIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useI18n } from '@/i18n';
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import { MarkdownText } from './markdown-text.js';
+import { RowHeader } from './row-header.js';
 import type { TurnStats, UserBlock } from './fold.js';
 
 /**
@@ -175,37 +176,27 @@ function ReasoningRow({ text, running }: { text: string; running: boolean }) {
     el.scrollLeft = running ? el.scrollWidth - el.clientWidth : 0;
   }, [running, summary]);
 
+  // #121 — the same header as a tool card (chevron before the title, title in
+  // the tool ink and size) inside the same header row — a bare flex-1 button
+  // in the column would take basis 0 over its h-6 and shrink to 16px. Only
+  // the live text breathes, not the open body.
   return (
-    <div className="text-muted-foreground text-xs" data-state={running ? 'running' : 'ok'}>
-      <button
-        type="button"
-        disabled={empty}
-        aria-expanded={expanded && !empty}
-        onClick={() => setExpanded((v) => !v)}
-        className={cn(
-          'flex h-6 w-full items-center gap-1.5 rounded-sm text-left',
-          !empty && 'hover:text-foreground',
-          running && 'lamp-breath',
-        )}
-      >
-        <BrainIcon className="size-3.5 shrink-0" />
-        <span className="shrink-0 text-[11px] font-medium">{t('chat.thought')}</span>
-        {!empty ? (
-          <ChevronDownIcon
-            className={cn('size-3 shrink-0 transition-transform', expanded && 'rotate-180')}
-          />
-        ) : null}
-        <span className="min-w-0 flex-1" />
-        <span
-          ref={summaryRef}
-          className="max-w-[60%] truncate overflow-hidden whitespace-nowrap"
-          title={summary}
-        >
-          {summary}
-        </span>
-      </button>
+    <div className="flex flex-col text-xs" data-state={running ? 'running' : 'ok'}>
+      <div className="flex min-w-0 items-center gap-1">
+        <RowHeader
+          lead={<BrainIcon className="size-3.5" />}
+          title={t('chat.thought')}
+          summary={summary}
+          summaryRef={summaryRef}
+          summaryTitle={summary}
+          breathing={running}
+          expandable={!empty}
+          open={expanded && !empty}
+          onToggle={() => setExpanded((v) => !v)}
+        />
+      </div>
       {expanded && !empty ? (
-        <div className="border-border/60 mt-1 mb-2 ml-5 max-h-48 overflow-y-auto rounded-md border px-3 py-2 whitespace-pre-wrap">
+        <div className="border-border/60 text-muted-foreground mt-1 mb-2 ml-5 max-h-48 overflow-y-auto rounded-md border px-3 py-2 whitespace-pre-wrap">
           {text}
         </div>
       ) : null}

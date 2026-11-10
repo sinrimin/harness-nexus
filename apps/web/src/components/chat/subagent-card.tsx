@@ -3,11 +3,12 @@
 // SPDX-License-Identifier: MIT
 
 import { memo, useState } from 'react';
-import { BotIcon, ChevronDownIcon } from 'lucide-react';
+import { BotIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useI18n } from '@/i18n';
 import { StateSignal, type SignalState } from '@/components/state-signal';
 import type { SubagentNode } from './fold.js';
+import { DurationReadout, RowHeader, elapsedLabel } from './row-header.js';
 import { AssistantStepRow, SystemNote, UserMessage } from './rows.js';
 import { ToolCallRow } from './tool-card.js';
 
@@ -36,10 +37,6 @@ export const SubagentRow = memo(function SubagentRow({
   const { t } = useI18n();
   const [expanded, setExpanded] = useState(false);
   const running = agent.state === 'running';
-  const duration =
-    agent.endedAt !== undefined && agent.endedAt - agent.startedAt > 400
-      ? `${((agent.endedAt - agent.startedAt) / 1000).toFixed(1)}s`
-      : null;
   const name = agent.name !== '' ? agent.name : agent.subagentId;
 
   return (
@@ -48,38 +45,23 @@ export const SubagentRow = memo(function SubagentRow({
       data-subagent-state={agent.state}
     >
       <div className="flex min-w-0 items-center gap-1">
-        <button
-          type="button"
-          aria-expanded={expanded}
-          onClick={() => setExpanded((v) => !v)}
-          className="flex h-6 min-w-0 flex-1 items-center gap-1.5 text-left hover:text-foreground"
-        >
-          <StateSignal
-            state={CHILD_STATE_SIGNAL[agent.state]}
-            label={agent.state}
-            pulse={running}
-            className="size-1.5"
-          />
-          <ChevronDownIcon
-            className={cn('size-3 shrink-0 transition-transform', expanded && 'rotate-180')}
-          />
-          <span className="text-muted-foreground shrink-0 font-medium">{name}</span>
-          <span className="text-muted-foreground/40" aria-hidden>
-            ·
-          </span>
-          {agent.task !== '' ? (
-            <span className="text-muted-foreground min-w-0 truncate">{agent.task}</span>
-          ) : null}
-          <span className="min-w-0 flex-1" />
-          {duration !== null ? (
-            <span className="text-muted-foreground/60 shrink-0 font-mono text-[10px] tabular-nums">
-              {duration}
-            </span>
-          ) : null}
-          {running ? (
-            <span className="text-muted-foreground shrink-0 text-[10px]">{t('chat.running')}</span>
-          ) : null}
-        </button>
+        <RowHeader
+          lead={
+            <StateSignal
+              state={CHILD_STATE_SIGNAL[agent.state]}
+              label={agent.state}
+              pulse={running}
+              className="size-1.5"
+            />
+          }
+          title={name}
+          summary={agent.task}
+          readouts={<DurationReadout label={elapsedLabel(agent.startedAt, agent.endedAt)} />}
+          running={running}
+          expandable
+          open={expanded}
+          onToggle={() => setExpanded((v) => !v)}
+        />
         <BotIcon className="text-muted-foreground/50 size-3 shrink-0" aria-hidden />
       </div>
       {expanded ? (
