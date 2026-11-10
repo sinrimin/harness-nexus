@@ -106,9 +106,10 @@ function PermissionsControl({
             'text-muted-foreground hover:text-foreground',
             'inline-flex h-(--control-h-sm) items-center gap-1 rounded-md px-1.5 text-xs font-normal',
             'disabled:cursor-not-allowed disabled:opacity-50',
-            // Phone: the same icon-only square as every ConfigSelect — the
-            // label and chevron drop out, the dot keeps the delegated state.
-            'max-sm:min-w-(--control-h-sm) max-sm:justify-center max-sm:gap-0 max-sm:px-0',
+            // Narrow CONTAINER (#122): the same icon-only square as every
+            // ConfigSelect — the label and chevron drop out, the dot keeps
+            // the delegated state.
+            '@max-2xl:min-w-(--control-h-sm) @max-2xl:justify-center @max-2xl:gap-0 @max-2xl:px-0',
           )}
         >
           <span className="relative shrink-0">
@@ -122,7 +123,7 @@ function PermissionsControl({
               />
             ) : null}
           </span>
-          <span className="max-w-32 truncate max-sm:hidden">
+          <span className="max-w-32 truncate @max-2xl:hidden">
             {label}
             {delegated ? (
               <span className="text-muted-foreground/80"> · {t('chat.approvalsBadge')}</span>
@@ -130,7 +131,7 @@ function PermissionsControl({
           </span>
           <ChevronDownIcon
             aria-hidden="true"
-            className="size-4 shrink-0 opacity-50 max-sm:hidden"
+            className="size-4 shrink-0 opacity-50 @max-2xl:hidden"
           />
         </button>
       </PopoverTrigger>
@@ -316,12 +317,12 @@ export function queuedPreview(blocks: PromptBlock[]): string {
 type MeterTone = 'neutral' | 'warn' | 'danger';
 
 /**
- * The ring — the meter's phone shape. A 20px gauge whose stroke is the tone:
- * `meter-ring-track` is the muted step, `meter-ring-fill` the value, both on
- * `currentColor`. `data-tone` rides every element of the device (as it does on
- * the bar and its fill) because that is the attribute a skin keys on: a skin
- * that re-tones only the visual and forgets the fill leaves the danger reading
- * painted in its neutral colour — measured, not assumed (#26).
+ * The ring — the meter's one shape (#122): a 20px gauge whose stroke is the
+ * tone: `meter-ring-track` is the muted step, `meter-ring-fill` the value,
+ * both on `currentColor`. `data-tone` rides every element of the device
+ * because that is the attribute a skin keys on: a skin that re-tones only
+ * the visual and forgets the fill leaves the danger reading painted in its
+ * neutral colour — measured, not assumed (#26).
  */
 function MeterRing({ pct, tone }: { pct: number; tone: MeterTone }) {
   const radius = 8;
@@ -333,7 +334,7 @@ function MeterRing({ pct, tone }: { pct: number; tone: MeterTone }) {
       viewBox="0 0 20 20"
       aria-hidden="true"
       className={cn(
-        'size-5 shrink-0 sm:hidden',
+        'size-5 shrink-0',
         tone === 'warn' ? 'text-warn' : tone === 'danger' ? 'text-danger' : 'text-primary',
       )}
     >
@@ -369,14 +370,13 @@ function MeterRing({ pct, tone }: { pct: number; tone: MeterTone }) {
  * Context pressure from the fold's usage slice — hidden when the target's
  * adapter reports no occupancy (it is the only source; nothing is invented).
  *
- * One device, two shapes. From `sm` up: the figures plus the comp's 62x7 bar.
- * Below `sm`: a RING with no text, because the figures-plus-bar row was the
- * widest thing in a toolbar that has to hold four controls and Send on a 390px
- * phone. Both shapes are the same control and open the same details on click —
- * the label, the fraction, a percentage qualifier and a full-width bar, on the
- * popover material the dropdowns already use, so a floating surface reads as
- * one device in the product whatever opened it. Tone (neutral, warn above 80%,
- * danger above 95%) drives every form and both surfaces.
+ * #122 — ONE shape at every size: the 20px RING. (It used to be figures plus
+ * a 62x7 bar from `sm` up and a ring below — two devices for one control,
+ * and the bar's trigger was only its content tall, so `items-end` sank it
+ * below the dropdowns' optical line.) The trigger now rides the toolbar's
+ * control height with its ring centred, and the figures live where they were
+ * always complete: the popover, with a full-width bar variant. Tone (neutral,
+ * warn above 80%, danger above 95%) drives every form and both surfaces.
  *
  * Exported for the unit test (`context-meter.test.tsx`).
  */
@@ -397,34 +397,8 @@ export function ContextMeter({ usage }: { usage: ComposerUsage | null }) {
           data-slot="meter-trigger"
           aria-label={label}
           title={label}
-          className="text-muted-foreground focus-visible:ring-ring/50 flex shrink-0 items-center gap-2 rounded-sm focus-visible:ring-[3px] focus-visible:outline-none"
+          className="text-muted-foreground focus-visible:ring-ring/50 flex h-(--control-h-sm) shrink-0 items-center justify-center rounded-sm focus-visible:ring-[3px] focus-visible:outline-none"
         >
-          <span
-            className={cn(
-              'hidden font-mono text-[11px] tabular-nums sm:inline',
-              tone === 'warn' && 'text-warn',
-              tone === 'danger' && 'text-danger',
-            )}
-          >
-            {figure}
-          </span>
-          {/* Slots + tone are data: the comp's meter is 62x7 with a steel fill,
-              and a skin has to reach both without parsing utilities. */}
-          <span
-            data-slot="meter"
-            data-tone={tone}
-            className="bg-muted relative hidden h-1 w-16 overflow-hidden rounded-full sm:block"
-          >
-            <span
-              data-slot="meter-fill"
-              data-tone={tone}
-              className={cn(
-                'absolute inset-y-0 left-0 rounded-full transition-[width] duration-300',
-                tone === 'danger' ? 'bg-danger' : tone === 'warn' ? 'bg-warn' : 'bg-primary',
-              )}
-              style={{ width: `${pct}%` }}
-            />
-          </span>
           <MeterRing pct={pct} tone={tone} />
         </button>
       </PopoverTrigger>
@@ -541,16 +515,18 @@ function ConfigSelect({
         }
         className={cn(
           'text-muted-foreground hover:text-foreground min-w-0 max-w-40 gap-1 px-1.5 text-xs font-normal',
-          // Phone: one compact square per control — the trigger keeps the
-          // compact control height and drops the chevron (the icon IS the
-          // affordance) and the value (the picker states it, check included).
-          // Its fingertip comes from the hit-area rule in index.css, so the
-          // visual stays as dense as the reference row.
-          'max-sm:min-w-(--control-h-sm) max-sm:max-w-none max-sm:justify-center max-sm:gap-0 max-sm:px-0',
+          // Narrow CONTAINER: one compact square per control (#122 moved this
+          // from the viewport to the composer's own @container — a 900px
+          // window with rail+plate visible is phone-narrow HERE). The trigger
+          // keeps the compact control height and drops the chevron (the icon
+          // IS the affordance) and the value (the picker states it, check
+          // included). Its fingertip comes from the hit-area rule in
+          // index.css, so the visual stays as dense as the reference row.
+          '@max-2xl:min-w-(--control-h-sm) @max-2xl:max-w-none @max-2xl:justify-center @max-2xl:gap-0 @max-2xl:px-0',
           // The base rules for these two slots are `*:` selectors (more
-          // specific than a bare utility), so the mobile hiding has to name
+          // specific than a bare utility), so the compact hiding has to name
           // them too.
-          'max-sm:[&_[data-slot=select-value]]:hidden max-sm:[&_[data-slot=select-chevron]]:hidden',
+          '@max-2xl:[&_[data-slot=select-value]]:hidden @max-2xl:[&_[data-slot=select-chevron]]:hidden',
         )}
       >
         <span className="shrink-0" aria-hidden="true">
@@ -855,7 +831,12 @@ export function Composer({
   return (
     <div
       className={cn(
-        'bg-background focus-within:border-ring focus-within:ring-ring/50 relative rounded-xl border shadow-sm transition-[border-color,box-shadow] focus-within:ring-[3px]',
+        // #122 — the composer is its own container: what fits the toolbar
+        // tracks THIS element's width, not the viewport (at 900px the rail
+        // and the plate both eat width, so the viewport said "desktop" while
+        // the toolbar was phone-narrow and wrapped). The config controls and
+        // Send key their compact shape off @max-* container queries below.
+        '@container bg-background focus-within:border-ring focus-within:ring-ring/50 relative rounded-xl border shadow-sm transition-[border-color,box-shadow] focus-within:ring-[3px]',
         disabled && 'opacity-60',
         dragOver && 'border-ring',
       )}
@@ -1008,21 +989,19 @@ export function Composer({
         spellCheck={false}
         className="placeholder:text-muted-foreground max-h-56 w-full resize-none overflow-y-auto bg-transparent px-3.5 pb-1 pt-3 text-sm leading-relaxed outline-none disabled:cursor-not-allowed"
       />
-      {/* The toolbar WRAPS and sits on the baseline of its TALLEST control.
-          Three opaque config values plus a meter plus Send do not fit a 390px
-          phone, and a non-shrinkable row pushed the Send control off the screen
-          — reported from a phone. Below `sm` the config controls are icons
-          (their picker is where the value is read), the meter takes its own row
-          (`order:9`, comp `.ctools .ctx`) and Send keeps the right edge of its
-          row (`.round { margin-left:auto }`). Wrapping stays as the fallback for
-          a narrow desktop window. `items-end` because the row is not a line of
-          text: the config words sit ON the Send's baseline, and centring them
-          against a taller button floated them a few pixels above the card's
-          bottom edge ("下拉菜单离下边距特别远", #23). */}
-      <div
-        data-slot="composer-tools"
-        className="flex flex-wrap items-end gap-x-2 gap-y-1.5 px-3 pb-2.5 pt-1"
-      >
+      {/* The toolbar is ONE row, on the baseline of its TALLEST control.
+          #122 — wrapping is gone: the row's width is the composer's own
+          @container, and below ~672px of it the config controls collapse to
+          their icon squares and the meter is the bare ring, which is how four
+          controls plus a meter plus Send fit one line on a 390px phone — and,
+          identically, on a browser-zoomed desktop whose rail and plate have
+          eaten the width (the viewport said "desktop" while this toolbar was
+          phone-narrow; at 900px the old row wrapped Send onto its own line).
+          `items-end` because the row is not a line of text: the config words
+          sit ON the Send's baseline, and centring them against a taller button
+          floated them a few pixels above the card's bottom edge ("下拉菜单离
+          下边距特别远", #23). */}
+      <div data-slot="composer-tools" className="flex items-end gap-2 px-3 pb-2.5 pt-1">
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button
@@ -1170,7 +1149,7 @@ export function Composer({
               <Button
                 type="button"
                 size="icon"
-                className="size-(--control-h) shrink-0 rounded-md max-sm:ml-auto max-sm:size-(--touch)"
+                className="@max-2xl:size-(--touch) size-(--control-h) shrink-0 rounded-md"
                 onClick={onSend}
                 title={t('chat.queueSendAria')}
                 aria-label={t('chat.queueSendAria')}
@@ -1182,7 +1161,7 @@ export function Composer({
               type="button"
               variant="outline"
               size="icon"
-              className="hover:border-destructive/40 hover:text-destructive size-(--control-h) shrink-0 rounded-md max-sm:size-(--touch)"
+              className="hover:border-destructive/40 hover:text-destructive @max-2xl:size-(--touch) size-(--control-h) shrink-0 rounded-md"
               onClick={onCancel}
               title={t('chat.stopAria')}
               aria-label={t('chat.stopAria')}
@@ -1194,7 +1173,7 @@ export function Composer({
           <Button
             type="button"
             size="icon"
-            className="size-(--control-h) shrink-0 rounded-md max-sm:ml-auto max-sm:size-(--touch)"
+            className="@max-2xl:size-(--touch) size-(--control-h) shrink-0 rounded-md"
             onClick={onSend}
             disabled={!canSend}
             title={t('chat.sendAria')}

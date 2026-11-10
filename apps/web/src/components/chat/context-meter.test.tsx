@@ -12,11 +12,12 @@ import { SkinProvider } from '@/components/skin-provider';
 import { ContextMeter } from './composer';
 
 /**
- * The context meter's mechanical contract (#26): the adapter is the only
- * source (no occupancy -> nothing renders), the ring and the bar carry the
- * same tone, and the details the phone cannot show inline are one activation
- * away. Visual correctness is not asserted here — that is the agent-browser
- * pass and ui-snap.
+ * The context meter's mechanical contract (#26, reshaped by #122): the
+ * adapter is the only source (no occupancy -> nothing renders), the ONE
+ * inline shape is the ring (the figures live in the popover), ring and
+ * popover bar carry the same tone, and the details the ring cannot show are
+ * one activation away. Visual correctness is not asserted here — that is the
+ * agent-browser pass and ui-snap.
  */
 
 beforeAll(() => {
@@ -71,12 +72,15 @@ describe('ContextMeter', () => {
     expect(container.querySelector('[data-slot="meter-trigger"]')).toBeNull();
   });
 
-  it('carries one tone across the bar, the ring and the wide bar', () => {
+  it('carries one tone across the ring (the figures live in the popover)', () => {
     const { container } = renderMeter({ contextUsed: 40_000, contextSize: 200_000 });
 
     const trigger = container.querySelector('[data-slot="meter-trigger"]');
     expect(trigger?.getAttribute('aria-label')).toContain('40k');
     expect(trigger?.getAttribute('aria-label')).toContain('200k');
+    // #122 — one inline shape: no figures, no 62px bar, the ring at EVERY size.
+    expect(container.querySelector('[data-slot="meter-ring"]')).not.toBeNull();
+    expect(container.querySelector('[data-slot="meter"]:not([data-variant])')).toBeNull();
 
     // Neutral pressure: every form says so in `data-tone`.
     for (const el of container.querySelectorAll('[data-tone]')) {
@@ -89,14 +93,11 @@ describe('ContextMeter', () => {
     expect(Number(fill?.getAttribute('stroke-dashoffset'))).toBeCloseTo(circumference * 0.8, 5);
   });
 
-  it('marks near-full windows as danger on both shapes', () => {
+  it('marks near-full windows as danger on the ring and the popover bar', () => {
     const { container } = renderMeter({ contextUsed: 197_000, contextSize: 200_000 });
-    const tones = [...container.querySelectorAll('[data-slot="meter"], [data-slot="meter-ring"]')];
-    expect(tones.length).toBeGreaterThan(0);
-    for (const el of tones) expect(el.getAttribute('data-tone')).toBe('danger');
     // A skin keys its tone rules on the FILL elements, so the tone has to reach
     // them too — a ring that only colours its wrapper stays steel.
-    for (const sel of ['[data-slot="meter-fill"]', '[data-slot="meter-ring-fill"]']) {
+    for (const sel of ['[data-slot="meter-ring"]', '[data-slot="meter-ring-fill"]']) {
       expect(container.querySelector(sel)?.getAttribute('data-tone')).toBe('danger');
     }
   });
@@ -108,9 +109,9 @@ describe('ContextMeter', () => {
     fireEvent.click(screen.getByRole('button', { name: /Context: 34\.1k of 200k tokens/ }));
 
     expect(screen.getByText('Context window')).toBeDefined();
-    // The percentage is the qualifier the inline shapes do not carry.
+    // The percentage is the qualifier the ring cannot carry.
     expect(screen.getByText('17% used')).toBeDefined();
-    // …and the bar is there at the card's width, not the nameplate's.
+    // …and the wide bar carries the same danger/warn tone rules as the ring.
     const wide = document.querySelector('[data-slot="meter"][data-variant="wide"]');
     expect(wide).not.toBeNull();
   });

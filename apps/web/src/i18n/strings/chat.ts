@@ -17,6 +17,8 @@ const en = {
   cardEnter: 'Open sessions',
   // P5: the phone's session-list drawer.
   railOpen: 'Sessions',
+  railCollapse: 'Collapse session rail',
+  railExpand: 'Expand session rail',
   sourceDeploy: 'deployed',
   sourceDetected: 'detected',
   // P5: the machine group's nameplate — the machine's NAME is prose in the body.
@@ -247,6 +249,8 @@ const zh: typeof en = {
   cardChatOff: '远程聊天未开启',
   cardEnter: '进入会话',
   railOpen: '会话列表',
+  railCollapse: '收起会话栏',
+  railExpand: '展开会话栏',
   sourceDeploy: '部署',
   sourceDetected: '检测',
   machineGroupLabel: '对话',
