@@ -12,7 +12,6 @@ import {
   FolderIcon,
   MoreHorizontalIcon,
   PanelLeftCloseIcon,
-  PanelLeftOpenIcon,
   PencilIcon,
   PinIcon,
   PinOffIcon,
@@ -58,6 +57,7 @@ import { CaptureNoteDialog } from '@/pages/notes/CaptureNoteDialog';
 import { WelcomePane, type WelcomeCard } from '@/components/chat/welcome-pane.js';
 import { ChannelTabs } from '@/components/chat/channel-tabs.js';
 import { EndSwitcher } from '@/components/chat/end-switcher.js';
+import { CollapsedRail, useRailCollapsed } from '@/components/chat/collapsed-rail.js';
 import { SessionRow } from '@/components/chat/session-row.js';
 import { RailSessionRow } from '@/components/chat/rail-session-row.js';
 import { useSessionPins } from '@/components/chat/use-session-pins.js';
@@ -238,95 +238,6 @@ function QueuedMessage({
  * passed in, and the live-channel overlay (`channelByNative`) is the page's
  * map, not a second subscription.
  */
-/**
- * #122 — the collapsed rail: a 48px icon column (expand, new session, and
- * the #110 pinned sessions as initial tiles). The full rail is one toggle
- * away; nothing here is a second navigation concept, just the rail's
- * shortcuts with the labels moved to tooltips.
- */
-function CollapsedRail({
-  pinnedRows,
-  nativeSessionId,
-  onOpenChannel,
-  onNewSession,
-  onExpand,
-}: {
-  pinnedRows: NativeSessionView[];
-  nativeSessionId: string | null;
-  onOpenChannel: (
-    rejoinId?: string,
-    directory?: string,
-    resume?: { sessionId: string; cwd: string },
-  ) => Promise<void>;
-  onNewSession: () => void;
-  onExpand: () => void;
-}) {
-  const { t } = useI18n();
-  return (
-    <div className="flex h-full w-12 flex-col items-center">
-      {/* #123 — the same h-12 band as the expanded header, so both rail
-          widths keep their top line on the stream header's border. */}
-      <div className="flex h-12 w-full shrink-0 items-center justify-center border-b">
-        <Button
-          variant="ghost"
-          size="icon"
-          className="size-8 shrink-0"
-          aria-label={t('chat.railExpand')}
-          title={t('chat.railExpand')}
-          onClick={onExpand}
-        >
-          <PanelLeftOpenIcon className="size-4" />
-        </Button>
-      </div>
-      <div className="flex min-h-0 w-full flex-1 flex-col items-center gap-1.5 px-1 py-2">
-        <Button
-          variant="ghost"
-          size="icon"
-          className="size-8 shrink-0"
-          aria-label={t('chat.newSession')}
-          title={t('chat.newSession')}
-          onClick={onNewSession}
-        >
-          <PlusIcon className="size-4" />
-        </Button>
-        {pinnedRows.length > 0 ? (
-          <div className="mt-1 flex min-h-0 w-full flex-col items-center gap-1.5 overflow-y-auto">
-            {pinnedRows.map((s) => {
-              const name =
-                s.title != null && s.title !== ''
-                  ? s.title
-                  : (s.cwd.replace(/\/+$/, '').split('/').pop() ?? s.cwd);
-              const active = s.sessionId === nativeSessionId;
-              return (
-                <button
-                  key={s.sessionId}
-                  type="button"
-                  onClick={() => {
-                    void onOpenChannel(undefined, undefined, {
-                      sessionId: s.sessionId,
-                      cwd: s.cwd,
-                    });
-                  }}
-                  title={`${name}\n${s.cwd}`}
-                  aria-label={name}
-                  className={cn(
-                    'flex size-8 shrink-0 items-center justify-center rounded-md border font-mono text-[11px] uppercase transition-colors',
-                    active
-                      ? 'border-signal/60 bg-signal/10 text-signal'
-                      : 'text-muted-foreground hover:bg-muted hover:text-foreground border-transparent',
-                  )}
-                >
-                  {name.slice(0, 1)}
-                </button>
-              );
-            })}
-          </div>
-        ) : null}
-      </div>
-    </div>
-  );
-}
-
 function SessionRail({
   rail,
   groups,
@@ -618,28 +529,11 @@ export function AgentSessionPage() {
   // Phone-only drawer holding the same rail (P5) — the rail is `hidden md:flex`
   // and used to have no narrow-screen alternative at all.
   const [railOpen, setRailOpen] = useState(false);
-  // #122 — the DESKTOP rail collapses to a 48px icon column (endpoints at
+  // #122/#126 — the DESKTOP rail collapses to a 48px icon column (endpoints at
   // 900px: rail 288 + plate 198 left ~410px for the transcript AND the
-  // composer's toolbar). Persisted: collapsing is a desk setup, not a
-  // per-visit gesture.
-  const [railCollapsed, setRailCollapsed] = useState(() => {
-    try {
-      return localStorage.getItem('hnx.railCollapsed') === '1';
-    } catch {
-      return false;
-    }
-  });
-  const toggleRailCollapsed = useCallback(() => {
-    setRailCollapsed((v) => {
-      const next = !v;
-      try {
-        localStorage.setItem('hnx.railCollapsed', next ? '1' : '0');
-      } catch {
-        /* private mode — the state still works for this visit */
-      }
-      return next;
-    });
-  }, []);
+  // composer's toolbar). The flag is the chat surface's shared preference
+  // (both ends, one persisted key) — see collapsed-rail.tsx.
+  const [railCollapsed, toggleRailCollapsed] = useRailCollapsed();
   const [loadFailed, setLoadFailed] = useState(false);
   const [rail, setRail] = useState<RailState>({ state: 'loading' });
   const [sessionId, setSessionId] = useState('');
@@ -1548,9 +1442,30 @@ export function AgentSessionPage() {
           >
             {railCollapsed ? (
               <CollapsedRail
-                pinnedRows={pinnedRows}
-                nativeSessionId={nativeSessionId}
-                onOpenChannel={openChannel}
+                tiles={pinnedRows.map((s) => {
+                  const name =
+                    s.title != null && s.title !== ''
+                      ? s.title
+                      : (s.cwd.replace(/\/+$/, '').split('/').pop() ?? s.cwd);
+                  return {
+                    id: s.sessionId,
+                    label: name,
+                    detail: s.cwd,
+                    active: s.sessionId === nativeSessionId,
+                    onClick: () => {
+                      void openChannel(undefined, undefined, {
+                        sessionId: s.sessionId,
+                        cwd: s.cwd,
+                      });
+                    },
+                  };
+                })}
+                newSessionLabel={t('chat.newSession')}
+                // #126 — the collapsed door follows the expanded rail's gate
+                // (machine offline / chat disabled), which it used to ignore.
+                newSessionDisabled={
+                  machine === null || !machine.online || !machine.remoteChatEnabled
+                }
                 onNewSession={() => setPickerOpen(true)}
                 onExpand={toggleRailCollapsed}
               />

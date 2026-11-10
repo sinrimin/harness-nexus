@@ -27,6 +27,13 @@ export interface ModelOptionRewrite {
   target: string;
   /** Configured model set; absent = no stored config (or a pre-W13 server). */
   modelOptions?: readonly string[] | undefined;
+  /**
+   * #125 — the stored RuntimeConfig's provider label. dsh advertises its
+   * grouped model options with the managed ROUTE KEY (`DSH_PROVIDER_ID`) as
+   * the group label; when present, the kept options' group is relabeled to
+   * this so the picker names the real vendor. Values stay untouched.
+   */
+  providerLabel?: string | undefined;
 }
 
 /**
@@ -82,12 +89,23 @@ function rewriteModelOption(
     return { ...option, options };
   }
 
-  // opencode — intersect with the adapter's list: set validates against the
-  // provider registry, so only values the adapter itself offers are certain
-  // to be selectable. Empty intersection = a hand-managed install (or a set
-  // the live config no longer describes): the full list is the honest state.
-  const kept = option.options.filter((o) => allowed.includes(o.value));
+  // opencode / pi / deepseek — intersect with the adapter's list: set
+  // validates against the provider registry, so only values the adapter
+  // itself offers are certain to be selectable. Empty intersection = a
+  // hand-managed install (or a set the live config no longer describes): the
+  // full list is the honest state.
+  let kept = option.options.filter((o) => allowed.includes(o.value));
   if (kept.length === 0) return option;
+  // #125 — dsh groups its model options under the managed ROUTE KEY
+  // (`harness-nexus`); relabel the group to the configured provider so the
+  // picker names the real vendor. Values are untouched (the tuples stay
+  // valid against dsh's catalog). The out-of-set current row rides the same
+  // label — it belongs to the same route when it is one of ours.
+  if (ctx.target === 'deepseek' && ctx.providerLabel !== undefined) {
+    kept = kept.map((o) =>
+      o.group === ctx.providerLabel ? o : { ...o, group: ctx.providerLabel },
+    );
+  }
   // A currentValue outside the kept list stays selectable verbatim — mirrors
   // the adapters' own out-of-picker semantics (e.g. a resumed session
   // running a model outside our set).

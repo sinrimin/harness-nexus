@@ -408,6 +408,10 @@ export class ChatService {
     // row we can't read must never block the open (the daemon then leaves
     // adapter options untouched).
     let modelOptions: string[] | undefined;
+    // #125 — the spec's provider label rides along so the daemon-side rewrite
+    // can name dsh's model group after the real vendor instead of the managed
+    // route key. Same best-effort contract as modelOptions.
+    let providerLabel: string | undefined;
     if (isRuntimeTarget(agent.target)) {
       try {
         const rc = await this.deps.uow.runtimeConfigs.findByMachineAndTarget(
@@ -416,6 +420,7 @@ export class ChatService {
         );
         if (rc !== null) {
           modelOptions = [...new Set([rc.spec.model, ...(rc.spec.models ?? [])])];
+          providerLabel = rc.spec.providerLabel;
         }
       } catch {
         modelOptions = undefined;
@@ -449,6 +454,7 @@ export class ChatService {
       // #70 — the directory may not exist yet: the daemon mkdir -p's it.
       ...(createDirectory === true ? { createDirectory: true } : {}),
       ...(modelOptions !== undefined ? { modelOptions } : {}),
+      ...(providerLabel !== undefined ? { providerLabel } : {}),
       ...(defaultMode !== undefined ? { defaultMode } : {}),
       ...(prewarm ? { prewarm: true } : {}),
       // #92/#95 — the approvals view for the daemon's session_config

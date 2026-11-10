@@ -862,6 +862,17 @@ export const chatSessionStartEventSchema = z.object({
    */
   modelOptions: z.array(z.string().min(1).max(128)).max(32).optional(),
   /**
+   * #125 — the same stored RuntimeConfig's `providerLabel` (the LLM
+   * provider's name at apply time). The daemon-side model-option rewrite
+   * relabels dsh's grouped model options with it, so the sender's picker
+   * reads the real vendor instead of the managed route key
+   * `DSH_PROVIDER_ID` (the option VALUES stay the catalog's opaque tuples).
+   * Absent = no stored config (or a pre-#125 server) → the adapter's own
+   * group labels stand. Optional + stripped by old daemons' non-strict
+   * parse, so purely additive.
+   */
+  providerLabel: z.string().min(1).max(64).optional(),
+  /**
    * Issue #49 — the machine's default chat permission mode for this target,
    * stamped by the SERVER from the machine's `chatDefaultMode`. OPAQUE
    * adapter mode id; the daemon applies it via one `session/set_mode` right

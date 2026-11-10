@@ -146,6 +146,49 @@ describe('rewriteSessionConfigOptions (9 W13)', () => {
     expect(out2[0]!.options?.length).toBe(1);
   });
 
+  it('deepseek: #125 — the kept options carry the provider label as their group', () => {
+    const row = modelRow({
+      currentValue: '["harness-nexus","gw-large"]',
+      options: [
+        {
+          value: '["deepseek-official","deepseek-chat"]',
+          name: 'DeepSeek Chat',
+          group: 'deepseek-official',
+        },
+        { value: '["harness-nexus","gw-large"]', name: 'GW Large', group: 'harness-nexus' },
+        { value: '["harness-nexus","gw-mini"]', name: 'GW Mini', group: 'harness-nexus' },
+      ],
+    });
+    const out = rewriteSessionConfigOptions([row], {
+      target: 'deepseek',
+      modelOptions: ['gw-large', 'gw-mini'],
+      providerLabel: 'volcengine',
+    });
+    // values untouched (dsh validates tuples against its catalog key)…
+    expect(out[0]!.options?.map((o) => o.value)).toEqual([
+      '["harness-nexus","gw-large"]',
+      '["harness-nexus","gw-mini"]',
+    ]);
+    // …only the displayed group is the real vendor.
+    expect(out[0]!.options?.map((o) => o.group)).toEqual(['volcengine', 'volcengine']);
+    // absent label (pre-#125 server / no stored config) → the route key stands
+    const out2 = rewriteSessionConfigOptions([row], {
+      target: 'deepseek',
+      modelOptions: ['gw-large', 'gw-mini'],
+    });
+    expect(out2[0]!.options?.map((o) => o.group)).toEqual(['harness-nexus', 'harness-nexus']);
+    // other targets never relabel (their prefixes are not user-facing groups)
+    const ocRow = modelRow({
+      options: [{ value: 'harness-nexus/gw-large', name: 'GW Large', group: 'harness-nexus' }],
+    });
+    const ocOut = rewriteSessionConfigOptions([ocRow], {
+      target: 'opencode',
+      modelOptions: ['gw-large'],
+      providerLabel: 'volcengine',
+    });
+    expect(ocOut[0]!.options?.[0]!.group).toBe('harness-nexus');
+  });
+
   it('claude-code / chat-only targets are identity (writer/native own it)', () => {
     const row = modelRow();
     for (const target of ['claude-code', 'hermes', 'zcode', 'generic']) {
