@@ -152,6 +152,10 @@ const en = {
   contextUsed: 'Context: {used} of {size} tokens',
   contextWindow: 'Context window',
   contextPct: '{pct}% used',
+  // #123 — the inline toolbar form: the ring plus this number. The full
+  // figures stay in the popover, so this is the bare qualifier.
+  contextPctShort: '{pct}%',
+  contextShort: '{pct}% context',
   permissionAsk: 'The agent asks permission',
   permissionAskTitle: 'The agent asks permission: {title}',
   // ---- 9 W14.1: agent questions (ACP elicitation) ----
@@ -368,6 +372,10 @@ const zh: typeof en = {
   contextUsed: '上下文：已用 {used} / {size} tokens',
   contextWindow: '上下文窗口',
   contextPct: '已用 {pct}%',
+  // #123 — the inline toolbar form: the ring plus this number. The full
+  // figures stay in the popover, so this is the bare qualifier.
+  contextPctShort: '{pct}%',
+  contextShort: '上下文 {pct}%',
   permissionAsk: '代理请求权限',
   permissionAskTitle: '代理请求权限：{title}',
   // ---- 9 W14.1: agent questions (ACP elicitation) ----

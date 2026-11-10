@@ -260,57 +260,66 @@ function CollapsedRail({
 }) {
   const { t } = useI18n();
   return (
-    <div className="flex w-12 flex-col items-center gap-1.5 px-1 py-2">
-      <Button
-        variant="ghost"
-        size="icon"
-        className="size-8 shrink-0"
-        aria-label={t('chat.railExpand')}
-        title={t('chat.railExpand')}
-        onClick={onExpand}
-      >
-        <PanelLeftOpenIcon className="size-4" />
-      </Button>
-      <Button
-        variant="ghost"
-        size="icon"
-        className="size-8 shrink-0"
-        aria-label={t('chat.newSession')}
-        title={t('chat.newSession')}
-        onClick={onNewSession}
-      >
-        <PlusIcon className="size-4" />
-      </Button>
-      {pinnedRows.length > 0 ? (
-        <div className="mt-1 flex min-h-0 w-full flex-col items-center gap-1.5 overflow-y-auto">
-          {pinnedRows.map((s) => {
-            const name =
-              s.title != null && s.title !== ''
-                ? s.title
-                : (s.cwd.replace(/\/+$/, '').split('/').pop() ?? s.cwd);
-            const active = s.sessionId === nativeSessionId;
-            return (
-              <button
-                key={s.sessionId}
-                type="button"
-                onClick={() => {
-                  void onOpenChannel(undefined, undefined, { sessionId: s.sessionId, cwd: s.cwd });
-                }}
-                title={`${name}\n${s.cwd}`}
-                aria-label={name}
-                className={cn(
-                  'flex size-8 shrink-0 items-center justify-center rounded-md border font-mono text-[11px] uppercase transition-colors',
-                  active
-                    ? 'border-signal/60 bg-signal/10 text-signal'
-                    : 'text-muted-foreground hover:bg-muted hover:text-foreground border-transparent',
-                )}
-              >
-                {name.slice(0, 1)}
-              </button>
-            );
-          })}
-        </div>
-      ) : null}
+    <div className="flex h-full w-12 flex-col items-center">
+      {/* #123 — the same h-12 band as the expanded header, so both rail
+          widths keep their top line on the stream header's border. */}
+      <div className="flex h-12 w-full shrink-0 items-center justify-center border-b">
+        <Button
+          variant="ghost"
+          size="icon"
+          className="size-8 shrink-0"
+          aria-label={t('chat.railExpand')}
+          title={t('chat.railExpand')}
+          onClick={onExpand}
+        >
+          <PanelLeftOpenIcon className="size-4" />
+        </Button>
+      </div>
+      <div className="flex min-h-0 w-full flex-1 flex-col items-center gap-1.5 px-1 py-2">
+        <Button
+          variant="ghost"
+          size="icon"
+          className="size-8 shrink-0"
+          aria-label={t('chat.newSession')}
+          title={t('chat.newSession')}
+          onClick={onNewSession}
+        >
+          <PlusIcon className="size-4" />
+        </Button>
+        {pinnedRows.length > 0 ? (
+          <div className="mt-1 flex min-h-0 w-full flex-col items-center gap-1.5 overflow-y-auto">
+            {pinnedRows.map((s) => {
+              const name =
+                s.title != null && s.title !== ''
+                  ? s.title
+                  : (s.cwd.replace(/\/+$/, '').split('/').pop() ?? s.cwd);
+              const active = s.sessionId === nativeSessionId;
+              return (
+                <button
+                  key={s.sessionId}
+                  type="button"
+                  onClick={() => {
+                    void onOpenChannel(undefined, undefined, {
+                      sessionId: s.sessionId,
+                      cwd: s.cwd,
+                    });
+                  }}
+                  title={`${name}\n${s.cwd}`}
+                  aria-label={name}
+                  className={cn(
+                    'flex size-8 shrink-0 items-center justify-center rounded-md border font-mono text-[11px] uppercase transition-colors',
+                    active
+                      ? 'border-signal/60 bg-signal/10 text-signal'
+                      : 'text-muted-foreground hover:bg-muted hover:text-foreground border-transparent',
+                  )}
+                >
+                  {name.slice(0, 1)}
+                </button>
+              );
+            })}
+          </div>
+        ) : null}
+      </div>
     </div>
   );
 }
@@ -330,6 +339,7 @@ function SessionRail({
   onRefresh,
   onDeleteSession,
   onTogglePin,
+  onCollapse,
   end,
   endInDrawer,
 }: {
@@ -362,6 +372,12 @@ function SessionRail({
   onDeleteSession?: (sessionId: string, title: string) => void;
   /** #110 — pin/unpin a row (the leading slot + the phone's right swipe). */
   onTogglePin: (session: NativeSessionView, next: boolean) => void;
+  /**
+   * #123 — collapse the desktop rail. Undefined in the phone drawer: there is
+   * no column to collapse (the drawer closes by scrim, Esc or a pick), so the
+   * header ends at refresh.
+   */
+  onCollapse?: () => void;
   /** The 端 switcher (both the desktop rail AND the phone drawer — the drawer
    *  is the only rail on mobile, hiding the switcher there dead-ended the
    *  machine ends). */
@@ -458,8 +474,11 @@ function SessionRail({
       {/* The rail's header band pins to the stream header's h-12 so the two
       columns' bottom borders read as one line — a hugging height rides the
       skin-scaled control tokens (52px Signal / 45px BAY) and misaligns per
-      skin against the fixed 48px stream band. */}
-      <div className="flex h-12 items-center gap-1 border-b px-2">
+      skin against the fixed 48px stream band. #123 — one row, grouped by
+      meaning: the switcher carries the default-end star (it pins THAT value),
+      the right edge carries the list action (refresh) then the panel's own
+      collapse door. */}
+      <div className="flex h-12 shrink-0 items-center gap-1 border-b px-2">
         {end !== undefined && end !== null ? (
           <EndSwitcher current={end} fromDrawer={endInDrawer} />
         ) : null}
@@ -467,12 +486,25 @@ function SessionRail({
         <Button
           variant="ghost"
           size="icon"
-          className="size-(--control-h-sm)"
+          className="size-(--control-h-sm) shrink-0"
+          aria-label={t('common.refresh')}
           title={t('common.refresh')}
           onClick={() => void onRefresh()}
         >
           <RefreshCwIcon className="size-3.5" />
         </Button>
+        {onCollapse === undefined ? null : (
+          <Button
+            variant="ghost"
+            size="icon"
+            className="size-(--control-h-sm) shrink-0"
+            aria-label={t('chat.railCollapse')}
+            title={t('chat.railCollapse')}
+            onClick={onCollapse}
+          >
+            <PanelLeftCloseIcon className="size-3.5" />
+          </Button>
+        )}
       </div>
       <div className="border-b p-3">
         <Button
@@ -1492,39 +1524,24 @@ export function AgentSessionPage() {
                 onExpand={toggleRailCollapsed}
               />
             ) : (
-              <>
-                {/* #122 — the collapse door sits at the rail's top-right; the
-                    column's own toggle is its expand icon. */}
-                <div className="flex h-8 shrink-0 items-center justify-end pr-1.5">
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="size-6"
-                    aria-label={t('chat.railCollapse')}
-                    title={t('chat.railCollapse')}
-                    onClick={toggleRailCollapsed}
-                  >
-                    <PanelLeftCloseIcon className="size-3.5" />
-                  </Button>
-                </div>
-                <SessionRail
-                  rail={rail}
-                  groups={groups}
-                  pinnedRows={pinnedRows}
-                  onTogglePin={(s2, next) => toggleNativePin(s2.sessionId, next)}
-                  collapsedCwds={collapsedCwds}
-                  nativeSessionId={nativeSessionId}
-                  firstPromptText={firstPromptText ?? null}
-                  machine={machine}
-                  channelByNative={channelByNative}
-                  onToggleCwd={toggleCwd}
-                  onOpenChannel={openChannel}
-                  onNewSession={() => setPickerOpen(true)}
-                  onRefresh={() => void refreshSessions(true)}
-                  onDeleteSession={(sessionId, title) => setPendingDelete({ sessionId, title })}
-                  end={{ agentInstanceId: agentId, agentName: agent?.name }}
-                />
-              </>
+              <SessionRail
+                rail={rail}
+                groups={groups}
+                pinnedRows={pinnedRows}
+                onTogglePin={(s2, next) => toggleNativePin(s2.sessionId, next)}
+                collapsedCwds={collapsedCwds}
+                nativeSessionId={nativeSessionId}
+                firstPromptText={firstPromptText ?? null}
+                machine={machine}
+                channelByNative={channelByNative}
+                onToggleCwd={toggleCwd}
+                onOpenChannel={openChannel}
+                onNewSession={() => setPickerOpen(true)}
+                onRefresh={() => void refreshSessions(true)}
+                onDeleteSession={(sessionId, title) => setPendingDelete({ sessionId, title })}
+                onCollapse={toggleRailCollapsed}
+                end={{ agentInstanceId: agentId, agentName: agent?.name }}
+              />
             )}
           </aside>
 
