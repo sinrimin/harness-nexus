@@ -71,7 +71,7 @@ function toneClass(tone: MeterTone): string | undefined {
 
 function Label({ children }: { children: string }) {
   return (
-    <span className="font-hud text-[length:var(--hud-label-size)] font-medium leading-none tracking-[0.16em] text-(--hud-dim) uppercase">
+    <span className="font-hud text-[length:var(--hud-label-size)] leading-none tracking-[0.12em] text-(--hud-dim) uppercase">
       {children}
     </span>
   );
@@ -81,7 +81,7 @@ function Value({ children, className }: { children: ReactNode; className?: strin
   return (
     <span
       className={cn(
-        'font-mono text-[length:var(--hud-value-size)] leading-none tabular-nums text-(--hud-ink)',
+        'font-hud text-[length:var(--hud-value-size)] leading-none tabular-nums text-(--hud-ink)',
         className,
       )}
     >
@@ -183,13 +183,11 @@ export function SessionHud({ usage, sessionUsage, files, historyPartial }: Sessi
                 className="focus-visible:ring-ring/50 flex shrink-0 items-center gap-2 px-3 transition-colors hover:bg-(--hud-hover) focus-visible:ring-[3px] focus-visible:outline-none @max-2xl:gap-1 @max-2xl:px-1.5 @max-sm:px-1"
               >
                 <Label>{t('chat.hudContext')}</Label>
-                {/* The ticks ride ~2px ABOVE the text's optical centre: a
-                    level bar next to lowercase-free mono figures reads low. */}
                 <span
                   data-slot="hud-segments"
                   data-tone={pressure.tone}
                   aria-hidden="true"
-                  className="flex -translate-y-[2px] items-center gap-[2px]"
+                  className="flex items-center gap-[2px]"
                 >
                   {Array.from({ length: SEGMENTS }, (_, i) => (
                     <span
@@ -213,7 +211,7 @@ export function SessionHud({ usage, sessionUsage, files, historyPartial }: Sessi
                 <Value className={toneClass(pressure.tone)}>
                   {String(Math.round(pressure.pct))}%
                 </Value>
-                <span className="font-mono text-[length:var(--hud-value-size)] leading-none tabular-nums text-(--hud-dim) @max-2xl:hidden">
+                <span className="font-hud text-[length:var(--hud-value-size)] leading-none tabular-nums text-(--hud-dim) @max-2xl:hidden">
                   {formatTokens(pressure.used).toUpperCase()}/
                   {formatTokens(pressure.size).toUpperCase()}
                 </span>
