@@ -105,6 +105,42 @@ function Value({ children, className }: { children: ReactNode; className?: strin
   );
 }
 
+/**
+ * VT323 ships no arrow glyphs — the UA fallback is a smooth outline that
+ * breaks the 1-bit face, and the triangles/`^`/`v` substitutes read wrong.
+ * The token direction is therefore drawn on the same pixel grid as the
+ * digits: a 5×9 arrow, one SVG unit per CSS pixel, crisp edges.
+ */
+function PixelArrow({ dir }: { dir: 'up' | 'down' }) {
+  return (
+    <svg
+      viewBox="0 0 5 9"
+      width="5"
+      height="9"
+      aria-hidden="true"
+      shapeRendering="crispEdges"
+      fill="currentColor"
+      className="text-(--hud-dim)"
+    >
+      {dir === 'up' ? (
+        <>
+          <rect x="2" y="0" width="1" height="1" />
+          <rect x="1" y="1" width="3" height="1" />
+          <rect x="0" y="2" width="5" height="1" />
+          <rect x="2" y="3" width="1" height="6" />
+        </>
+      ) : (
+        <>
+          <rect x="2" y="0" width="1" height="6" />
+          <rect x="0" y="6" width="5" height="1" />
+          <rect x="1" y="7" width="3" height="1" />
+          <rect x="2" y="8" width="1" height="1" />
+        </>
+      )}
+    </svg>
+  );
+}
+
 function Divider() {
   return <span aria-hidden="true" className="my-1.5 w-px shrink-0 bg-(--hud-rule)" />;
 }
@@ -251,14 +287,14 @@ export function SessionHud({ usage, sessionUsage, files, historyPartial }: Sessi
             >
               <Label>{t('chat.hudTokens')}</Label>
               {tokens.inputTokens !== undefined ? (
-                <Value>
-                  <span className="text-(--hud-dim)">↑</span>
+                <Value className="flex items-center gap-0.5">
+                  <PixelArrow dir="up" />
                   {compact(tokens.inputTokens)}
                 </Value>
               ) : null}
               {tokens.outputTokens !== undefined ? (
-                <Value>
-                  <span className="text-(--hud-dim)">↓</span>
+                <Value className="flex items-center gap-0.5">
+                  <PixelArrow dir="down" />
                   {compact(tokens.outputTokens)}
                 </Value>
               ) : null}
