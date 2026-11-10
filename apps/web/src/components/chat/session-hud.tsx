@@ -46,6 +46,21 @@ function compact(n: number): string {
   return formatTokens(n).toUpperCase();
 }
 
+/**
+ * The FILES cell cannot grow without bound: a pathological diff (tens of
+ * thousands of lines) must not push the strip past the sender's width on a
+ * phone. Above 10k the strip prints whole K (52K, 13K) — at most four
+ * characters — while the tooltip and the Edit cards keep the exact numbers.
+ */
+function shortCount(n: number): string {
+  if (n < 1_000) return String(n);
+  if (n < 10_000) return compact(n);
+  // 999.5K would round to "1000K"; cross to M instead of growing a digit.
+  if (n < 999_500) return `${String(Math.round(n / 1_000))}K`;
+  const m = (n / 1_000_000).toFixed(1);
+  return `${m.endsWith('.0') ? m.slice(0, -2) : m}M`;
+}
+
 function cacheHit(
   usage: ChatSessionUsage | null,
 ): { pct: string; read: number; write: number; input: number } | null {
@@ -169,7 +184,7 @@ export function SessionHud({ usage, sessionUsage, files, historyPartial }: Sessi
         data-slot="session-hud"
         data-surface="hud"
         aria-label={t('chat.hudAria')}
-        className="@container absolute inset-x-0 top-0 flex h-[calc(var(--hud-h)+var(--radius-xl)+2px)] items-stretch justify-between overflow-x-auto rounded-t-[var(--radius-xl)] bg-(--hud-bg) pb-[calc(var(--radius-xl)+2px)] text-(--hud-ink) [scrollbar-width:none]"
+        className="@container absolute inset-x-0 top-0 flex h-[calc(var(--hud-h)+var(--radius-xl)+2px)] items-stretch justify-between overflow-x-auto rounded-t-[var(--radius-xl)] bg-(--hud-bg) px-2 pb-[calc(var(--radius-xl)+2px)] text-(--hud-ink) [scrollbar-width:none]"
       >
         {pressure !== null ? (
           <Popover>
@@ -280,12 +295,12 @@ export function SessionHud({ usage, sessionUsage, files, historyPartial }: Sessi
               className="flex shrink-0 items-center gap-2 px-3 @max-2xl:gap-1 @max-2xl:px-1.5 @max-sm:px-1"
             >
               <Label>{t('chat.hudFiles')}</Label>
-              <Value>{files.files > 0 ? String(files.files) : '?'}</Value>
+              <Value>{files.files > 0 ? shortCount(files.files) : '?'}</Value>
               {files.added > 0 ? (
-                <Value className="text-(--hud-ok)">+{String(files.added)}</Value>
+                <Value className="text-(--hud-ok)">+{shortCount(files.added)}</Value>
               ) : null}
               {files.removed > 0 ? (
-                <Value className="text-(--hud-fail)">−{String(files.removed)}</Value>
+                <Value className="text-(--hud-fail)">−{shortCount(files.removed)}</Value>
               ) : null}
             </div>
           </>

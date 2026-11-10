@@ -833,7 +833,16 @@
  * honours -webkit-font-smoothing; engines that ignore it (Chromium on Linux)
  * keep their AA and the face still renders, just softer. */
 [data-slot='session-hud'] {
+  /* The full pixel-rendering recipe. Honest scope: only
+   * -webkit-font-smoothing reaches TEXT rasterisation, and only on macOS
+   * engines; image-rendering applies to replaced content (there are no
+   * images inside the HUD) and -moz-osx-font-smoothing accepts auto|grayscale
+   * in Firefox. They are declared anyway so the HUD's rendering contract is
+   * explicit and any engine that gains support picks it up. */
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
   -webkit-font-smoothing: none;
+  -moz-osx-font-smoothing: none;
   font-smooth: never;
 }
 

@@ -128,6 +128,34 @@ describe('SessionHud', () => {
     expect(screen.getByText('17% used')).toBeDefined();
   });
 
+  it('bounds the FILES cell for pathological diffs (exact numbers stay in the title)', () => {
+    const huge: HudEditStats = {
+      files: 1_234,
+      added: 52_345,
+      removed: 12_890,
+      pathless: false,
+      list: [{ path: 'src/big.ts', added: 52_345, removed: 12_890 }],
+    };
+    render(<SessionHud usage={null} sessionUsage={null} files={huge} historyPartial={false} />, {
+      wrapper: Providers,
+    });
+    const cell = document.querySelector('[data-slot="hud-cell"][data-kind="files"]');
+    expect(cell?.textContent).toContain('1.2K');
+    expect(cell?.textContent).toContain('+52K');
+    expect(cell?.textContent).toContain('−13K');
+    // The exact figures remain available on the tooltip.
+    expect(cell?.getAttribute('title')).toContain('52345');
+
+    // Just under a million rounds to M, never the five-character "1000K".
+    const nearMillion: HudEditStats = { ...huge, added: 999_999, removed: 0 };
+    const { container } = render(
+      <SessionHud usage={null} sessionUsage={null} files={nearMillion} historyPartial={false} />,
+      { wrapper: Providers },
+    );
+    const nearCell = container.querySelector('[data-slot="hud-cell"][data-kind="files"]');
+    expect(nearCell?.textContent).toContain('+1M');
+  });
+
   it('marks the FILES count as a lower bound when history is paged', () => {
     render(<SessionHud usage={null} sessionUsage={null} files={files} historyPartial />, {
       wrapper: Providers,
