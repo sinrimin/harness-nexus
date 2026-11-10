@@ -177,20 +177,24 @@ function ReasoningRow({ text, running }: { text: string; running: boolean }) {
   }, [running, summary]);
 
   // #121 — the same header as a tool card (chevron before the title, title in
-  // the tool ink and size); only the live text breathes, not the open body.
+  // the tool ink and size) inside the same header row — a bare flex-1 button
+  // in the column would take basis 0 over its h-6 and shrink to 16px. Only
+  // the live text breathes, not the open body.
   return (
     <div className="flex flex-col text-xs" data-state={running ? 'running' : 'ok'}>
-      <RowHeader
-        lead={<BrainIcon className="size-3.5" />}
-        title={t('chat.thought')}
-        summary={summary}
-        summaryRef={summaryRef}
-        summaryTitle={summary}
-        breathing={running}
-        expandable={!empty}
-        open={expanded && !empty}
-        onToggle={() => setExpanded((v) => !v)}
-      />
+      <div className="flex min-w-0 items-center gap-1">
+        <RowHeader
+          lead={<BrainIcon className="size-3.5" />}
+          title={t('chat.thought')}
+          summary={summary}
+          summaryRef={summaryRef}
+          summaryTitle={summary}
+          breathing={running}
+          expandable={!empty}
+          open={expanded && !empty}
+          onToggle={() => setExpanded((v) => !v)}
+        />
+      </div>
       {expanded && !empty ? (
         <div className="border-border/60 text-muted-foreground mt-1 mb-2 ml-5 max-h-48 overflow-y-auto rounded-md border px-3 py-2 whitespace-pre-wrap">
           {text}
