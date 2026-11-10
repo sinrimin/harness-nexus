@@ -520,14 +520,13 @@
 
 /* ---------- Session HUD -------------------------------------------------- */
 
-/* #124 — the Sender's telemetry strip is a bolted LCD window on this rack:
-   square hardware radius, a bezel hairline and the 1px top highlight the
-   wells carry. Tokens own the palette; this is the shape a token cannot say. */
+/* #124 — the Sender's telemetry strip is a cut-in LCD window on this rack:
+   the card's own top corners (its radius is the chassis'), a bezel rule along
+   the Sender's top edge (the base border-b reads --hud-edge, which this skin
+   points at --bezel) and the 1px top highlight the wells carry. Tokens own the
+   palette; this is the shape a token cannot say. */
 [data-skin='bay'] [data-surface='hud'] {
-  border-radius: 2px;
-  box-shadow:
-    inset 0 1px 0 var(--hud-highlight),
-    0 1px 0 var(--bezel);
+  box-shadow: inset 0 1px 0 var(--hud-highlight);
 }
 [data-skin='bay'] [data-surface='hud'] [data-slot='hud-seg'] {
   border-radius: 1px;

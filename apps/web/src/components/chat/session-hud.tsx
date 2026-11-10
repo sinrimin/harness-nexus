@@ -12,9 +12,15 @@ import type { ComposerUsage, MeterTone } from './context-meter.js';
 import type { HudEditStats } from './hud-stats.js';
 
 /**
- * #124 — the session HUD above the Sender. One thin instrument band:
+ * #124 — the session HUD, the Sender's instrument cap. One thin band FUSED to
+ * the composer card's top (the Composer `header` slot): the card's top corners,
+ * the card's active state, no floating gap:
  *
  *   CTX ▮▮▯▯▯▯▯▯ 17% 34.1K/200K │ TOK ↑34.1K ↓2.1K │ CACHE 84% │ FILES 3 +42 −7
+ *
+ * The readings sit on the strip's FLOOR — 2px above the Sender's first row —
+ * so the band reads as a header moulded into the card rather than a label
+ * parked in its middle.
  *
  * Material is the always-dark instrument glass (`data-surface="hud"`); every
  * colour and size is a `--hud-*` token, so BAY repaints it as its inverted LCD
@@ -155,7 +161,7 @@ export function SessionHud({ usage, sessionUsage, files, historyPartial }: Sessi
       data-slot="session-hud"
       data-surface="hud"
       aria-label={t('chat.hudAria')}
-      className="@container mb-2 flex h-(--hud-h) shrink-0 items-stretch justify-between overflow-x-auto rounded-md border border-(--hud-edge) bg-(--hud-bg) text-(--hud-ink) shadow-[inset_0_1px_0_var(--hud-highlight)] [scrollbar-width:none]"
+      className="@container flex h-(--hud-h) shrink-0 items-stretch justify-between overflow-x-auto border-b border-(--hud-edge) bg-(--hud-bg) text-(--hud-ink) shadow-[inset_0_1px_0_var(--hud-highlight)] [scrollbar-width:none]"
     >
       {pressure !== null ? (
         <Popover>
@@ -166,7 +172,7 @@ export function SessionHud({ usage, sessionUsage, files, historyPartial }: Sessi
               data-kind="ctx"
               aria-label={contextTitle}
               title={contextTitle}
-              className="focus-visible:ring-ring/50 flex shrink-0 items-center gap-2 px-3 transition-colors hover:bg-(--hud-hover) focus-visible:ring-[3px] focus-visible:outline-none @max-2xl:gap-1 @max-2xl:px-1.5 @max-sm:px-1"
+              className="focus-visible:ring-ring/50 flex shrink-0 items-end gap-2 px-3 pb-0.5 transition-colors hover:bg-(--hud-hover) focus-visible:ring-[3px] focus-visible:outline-none @max-2xl:gap-1 @max-2xl:px-1.5 @max-sm:px-1"
             >
               <Label>{t('chat.hudContext')}</Label>
               <span
@@ -218,7 +224,7 @@ export function SessionHud({ usage, sessionUsage, files, historyPartial }: Sessi
             role="group"
             aria-label={tokensTitle}
             title={tokensTitle}
-            className="flex shrink-0 items-center gap-2 px-3 @max-2xl:gap-1 @max-2xl:px-1.5 @max-sm:px-1"
+            className="flex shrink-0 items-end gap-2 px-3 pb-0.5 @max-2xl:gap-1 @max-2xl:px-1.5 @max-sm:px-1"
           >
             <Label>{t('chat.hudTokens')}</Label>
             {tokens.inputTokens !== undefined ? (
@@ -246,7 +252,7 @@ export function SessionHud({ usage, sessionUsage, files, historyPartial }: Sessi
             role="group"
             aria-label={cacheTitle}
             title={cacheTitle}
-            className="flex shrink-0 items-center gap-2 px-3 @max-2xl:gap-1 @max-2xl:px-1.5 @max-sm:px-1"
+            className="flex shrink-0 items-end gap-2 px-3 pb-0.5 @max-2xl:gap-1 @max-2xl:px-1.5 @max-sm:px-1"
           >
             <Label>{t('chat.hudCache')}</Label>
             <Value>{cache.pct}%</Value>
@@ -263,7 +269,7 @@ export function SessionHud({ usage, sessionUsage, files, historyPartial }: Sessi
             role="group"
             aria-label={filesTitle}
             title={filesTitle}
-            className="flex shrink-0 items-center gap-2 px-3 @max-2xl:gap-1 @max-2xl:px-1.5 @max-sm:px-1"
+            className="flex shrink-0 items-end gap-2 px-3 pb-0.5 @max-2xl:gap-1 @max-2xl:px-1.5 @max-sm:px-1"
           >
             <Label>{t('chat.hudFiles')}</Label>
             <Value>{files.files > 0 ? String(files.files) : '?'}</Value>

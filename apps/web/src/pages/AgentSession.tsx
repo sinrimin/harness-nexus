@@ -1779,16 +1779,19 @@ export function AgentSessionPage() {
                         onCancel={() => void queueCancel()}
                       />
                     ) : null}
-                    {/* #124 — session telemetry above the Sender. The HUD owns
-                    the context reading on this page, so the composer's toolbar
-                    meter is off (showContextMeter={false} below). */}
-                    <SessionHud
-                      usage={conversation.usage}
-                      sessionUsage={sessionUsage}
-                      files={hudFiles}
-                      historyPartial={historyHasMore}
-                    />
                     <Composer
+                      // #124 — the session telemetry is the card's fused top
+                      // cap, not a widget above it: same surface, same corners,
+                      // same focus-within state. The HUD owns the context
+                      // reading on this page, so the toolbar meter is off.
+                      header={
+                        <SessionHud
+                          usage={conversation.usage}
+                          sessionUsage={sessionUsage}
+                          files={hudFiles}
+                          historyPartial={historyHasMore}
+                        />
+                      }
                       value={draft}
                       onChange={changeDraft}
                       phase={phase}

@@ -248,9 +248,17 @@ interface ComposerProps {
   turnActive: boolean;
   usage: ComposerUsage | null;
   /**
-   * #124 — the agent session page renders the session HUD above the card and
-   * turns the toolbar meter OFF (one context reading per composer, not two).
-   * The assistant page keeps the meter (default true).
+   * #124 — an optional band FUSED to the card's top (the session HUD on the
+   * agent page). It lives inside the card's border and focus-within effect on
+   * purpose: the strip is the Sender's instrument cap, not a widget floating
+   * above it — one rounded surface, one active state. The slot clips the band
+   * to the card's top corners (`--radius-xl` minus the 1px border).
+   */
+  header?: ReactNode;
+  /**
+   * #124 — the agent session page's HUD owns the context reading, so the
+   * toolbar meter is off there (one reading per composer, not two). The
+   * assistant page keeps the meter (default true).
    */
   showContextMeter?: boolean;
   onSend: () => void;
@@ -504,6 +512,7 @@ export function Composer({
   phase,
   turnActive,
   usage,
+  header,
   showContextMeter = true,
   onSend,
   onCancel,
@@ -696,6 +705,7 @@ export function Composer({
 
   return (
     <div
+      data-slot="composer"
       className={cn(
         // #122 — the composer is its own container: what fits the toolbar
         // tracks THIS element's width, not the viewport (at 900px the rail
@@ -720,6 +730,13 @@ export function Composer({
         if (files.length > 0) onPickImages(files);
       }}
     >
+      {/* #124 — the fused top band. The inner radius is the card's minus its
+          1px border, so the strip's dark glass meets the Sender's outline with
+          one continuous corner; `overflow-hidden` keeps hover fills inside it. */}
+      {header !== undefined ? (
+        <div className="overflow-hidden rounded-t-[calc(var(--radius-xl)-1px)]">{header}</div>
+      ) : null}
+
       {/* Hidden input behind the "+" menu's image item. */}
       <input
         ref={fileInputRef}
