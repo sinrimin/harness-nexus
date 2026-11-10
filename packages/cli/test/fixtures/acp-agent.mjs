@@ -263,8 +263,7 @@ function update(sessionId, sessionUpdate) {
       // on the usage_update itself). FIXTURE_RESPONSE_USAGE=1 = the claude
       // style — usage_update carries occupancy (and cost) only, tokens ride
       // the session/prompt RESPONSE as cumulative totals.
-      ...(sessionUpdate === 'usage_update' &&
-      process.env.FIXTURE_RESPONSE_USAGE !== '1'
+      ...(sessionUpdate === 'usage_update' && process.env.FIXTURE_RESPONSE_USAGE !== '1'
         ? { usage: { inputTokens: 11, outputTokens: 7 } }
         : {}),
       ...(sessionUpdate === 'usage_update' && process.env.FIXTURE_RESPONSE_USAGE === '1'
@@ -298,6 +297,14 @@ function updateMeta(sessionId, sessionUpdate, meta) {
  * `show-tools` prompt: a full turn exercising the 9 W6 rich cards — a Read
  * (rawOutput body), a Bash (rawInput + output), an Edit (structured diff),
  * markdown + a code fence, then usage → end_turn.
+ *
+ * #121 — the cards' second pass: a thinking block first (the shared row
+ * header), the Bash output carries real ANSI (SGR colours, the reported
+ * `\x1b[0m\x1b[91m` pair, a `\r` progress line), the Edit lands the way
+ * claude-agent-acp's PostToolUse hook delivers it (one diff block per hunk
+ * + `locations[i].line` = the hunk's new-side start, after a bare-path
+ * snippet), a MultiEdit rides rawInput only (unpositioned snippets), and a
+ * Write creates a new file.
  */
 function runToolShowcase(id, sessionId) {
   const finish = () => {
@@ -305,6 +312,16 @@ function runToolShowcase(id, sessionId) {
     respond(id, { stopReason: 'end_turn' });
   };
 
+  notify('session/update', {
+    sessionId,
+    update: {
+      sessionUpdate: 'agent_thought_chunk',
+      contentBlock: {
+        type: 'text',
+        text: 'Read the entry point, run the suite, then harden the bootstrap.\nA retry wrapper should absorb the transient start-up failures.',
+      },
+    },
+  });
   notify('session/update', {
     sessionId,
     update: {
@@ -368,7 +385,18 @@ function runToolShowcase(id, sessionId) {
       toolCallUpdate: {
         toolCallId: 'fx-bash-1',
         status: 'completed',
-        rawOutput: '> harness-nexus@0.1.0 test\n> vitest run\n\n ✓ 99 passed (99)',
+        rawOutput: [
+          '\x1b[1m> harness-nexus@0.1.0 test\x1b[22m',
+          '> vitest run',
+          '',
+          '\x1b[2m  10%\r  55%\r 100% collected\x1b[22m',
+          ' \x1b[32m✓\x1b[39m src/app.test.ts \x1b[2m(12 tests)\x1b[22m',
+          ' \x1b[31m×\x1b[39m src/flaky.test.ts \x1b[90m> retries on a cold cache\x1b[39m',
+          '',
+          '\x1b[0m\x1b[91mWarning:\x1b[0m 1 flaky test was retried',
+          ' \x1b[1m\x1b[32m✓ 99 passed\x1b[39m\x1b[22m \x1b[33m(1 retried)\x1b[39m \x1b[36m3.2s\x1b[0m',
+          '',
+        ].join('\n'),
       },
     },
     { claudeCode: { toolName: 'Bash' } },
@@ -383,51 +411,152 @@ function runToolShowcase(id, sessionId) {
         title: 'src/app.ts',
         kind: 'edit',
         status: 'in_progress',
-      },
-    },
-    { claudeCode: { toolName: 'Edit' } },
-  );
-  updateMeta(
-    sessionId,
-    {
-      sessionUpdate: 'tool_call_update',
-      toolCallUpdate: {
-        toolCallId: 'fx-edit-1',
-        status: 'completed',
+        // The pre-hook snippet: the raw old/new strings, a bare path.
         content: [
           {
             type: 'diff',
             path: 'src/app.ts',
             oldText: '// entry point\nawait main();',
-            newText: '// entry point (hardened)\nawait main({ retries: 2 });',
+            newText: '// entry point (hardened)\nawait retry(() => main(), { attempts: 2 });',
           },
         ],
+        locations: [{ path: 'src/app.ts' }],
       },
     },
     { claudeCode: { toolName: 'Edit' } },
   );
-
-  notify('session/update', {
-    sessionId,
-    update: {
-      sessionUpdate: 'agent_message_chunk',
-      contentBlock: {
-        type: 'text',
-        text: [
-          'All green. **Summary**:',
-          '',
-          '- `Read` found the entry point',
-          '- `Bash` ran the suite — 99 passing',
-          '- `Edit` hardened the bootstrap',
-          '',
-          '```ts',
-          'await main({ retries: 2 });',
-          '```',
-        ].join('\n'),
+  // The hook lands a moment later (a real edit takes time): the card shows
+  // its duration readout beside the +N −M one.
+  setTimeout(() => {
+    updateMeta(
+      sessionId,
+      {
+        sessionUpdate: 'tool_call_update',
+        toolCallUpdate: {
+          toolCallId: 'fx-edit-1',
+          status: 'completed',
+          // The PostToolUse hook: one block per hunk, context in both texts,
+          // locations[i].line = the hunk's new-side start.
+          content: [
+            {
+              type: 'diff',
+              path: 'src/app.ts',
+              oldText: [
+                'import { main } from "./lib.js";',
+                '',
+                '// entry point',
+                'await main();',
+                '',
+                'export {};',
+              ].join('\n'),
+              newText: [
+                'import { main } from "./lib.js";',
+                'import { retry } from "./retry.js";',
+                '',
+                '// entry point (hardened)',
+                'await retry(() => main(), { attempts: 2 });',
+                '',
+                'export {};',
+              ].join('\n'),
+            },
+            {
+              type: 'diff',
+              path: 'src/app.ts',
+              oldText: [
+                'function shutdown(code) {',
+                '  console.log("bye");',
+                '  process.exit(code);',
+                '}',
+              ].join('\n'),
+              newText: [
+                'function shutdown(code) {',
+                '  logger.info("shutting down", { code });',
+                '  process.exit(code);',
+                '}',
+              ].join('\n'),
+            },
+          ],
+          locations: [
+            { path: 'src/app.ts', line: 1 },
+            { path: 'src/app.ts', line: 40 },
+          ],
+        },
       },
-    },
-  });
-  finish();
+      { claudeCode: { toolName: 'Edit' } },
+    );
+
+    // MultiEdit carried by rawInput only: unpositioned snippets, every edit.
+    updateMeta(
+      sessionId,
+      {
+        sessionUpdate: 'tool_call',
+        toolCallUpdate: {
+          toolCallId: 'fx-multiedit-1',
+          title: 'src/lib.ts',
+          kind: 'edit',
+          status: 'completed',
+          rawInput: {
+            file_path: 'src/lib.ts',
+            edits: [
+              { old_string: 'const TIMEOUT = 5000;', new_string: 'const TIMEOUT_MS = 8000;' },
+              {
+                old_string: 'export async function main() {',
+                new_string: 'export async function main(opts = {}) {',
+              },
+            ],
+          },
+        },
+      },
+      { claudeCode: { toolName: 'MultiEdit' } },
+    );
+
+    // Write of a new file: the whole content, oldText absent.
+    updateMeta(
+      sessionId,
+      {
+        sessionUpdate: 'tool_call',
+        toolCallUpdate: {
+          toolCallId: 'fx-write-1',
+          title: 'docs/RETRY.md',
+          kind: 'edit',
+          status: 'completed',
+          content: [
+            {
+              type: 'diff',
+              path: 'docs/RETRY.md',
+              oldText: null,
+              newText:
+                '# Retry policy\n\nStart-up retries twice with a fixed back-off.\n\n- attempts: 2\n- back-off: 250ms\n',
+            },
+          ],
+          locations: [{ path: 'docs/RETRY.md' }],
+        },
+      },
+      { claudeCode: { toolName: 'Write' } },
+    );
+
+    notify('session/update', {
+      sessionId,
+      update: {
+        sessionUpdate: 'agent_message_chunk',
+        contentBlock: {
+          type: 'text',
+          text: [
+            'All green. **Summary**:',
+            '',
+            '- `Read` found the entry point',
+            '- `Bash` ran the suite — 99 passing',
+            '- `Edit` hardened the bootstrap, `MultiEdit` renamed the timeout, `Write` documented the policy',
+            '',
+            '```ts',
+            'await retry(() => main(), { attempts: 2 });',
+            '```',
+          ].join('\n'),
+        },
+      },
+    });
+    finish();
+  }, 600);
 }
 
 /**
@@ -616,7 +745,8 @@ function runPrompt(id, text, deferred = false) {
   fixtureState.accumulatedOutput += 20;
   fixtureState.accumulatedCacheRead += 500;
   fixtureState.accumulatedCacheWrite += 50;
-  fixtureState.accumulatedCostUsd = Math.round((fixtureState.accumulatedCostUsd + 0.012) * 1000) / 1000;
+  fixtureState.accumulatedCostUsd =
+    Math.round((fixtureState.accumulatedCostUsd + 0.012) * 1000) / 1000;
 
   // Test seam: hold the plain echo turn so a test can append transcript
   // frames DURING generation (the dsh live-tail streaming path).
