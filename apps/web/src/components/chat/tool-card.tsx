@@ -7,7 +7,6 @@ import { Link } from 'react-router-dom';
 import {
   SquareTerminalIcon,
   BookOpenIcon,
-  ChevronDownIcon,
   ExternalLinkIcon,
   FileEditIcon,
   GlobeIcon,
@@ -20,6 +19,7 @@ import { useI18n } from '@/i18n';
 import { StateSignal } from '@/components/state-signal';
 import type { ToolCallNode } from './fold.js';
 import { useChatChannels } from './use-chat-channels.js';
+import { DurationReadout, RowHeader, elapsedLabel } from './row-header.js';
 import {
   bashCommandParts,
   editDiffParts,
@@ -438,16 +438,11 @@ function ToolCardShell({
   collapsible = true,
   headerTrailing,
 }: ToolCardShellProps) {
-  const { t } = useI18n();
   const [expanded, setExpanded] = useState(false);
   const expandable = body !== undefined && collapsible;
   const open = collapsible ? expanded && expandable : true;
   const failed = node.status === 'failed';
   const showSummary = failed && errorSummary != null ? errorSummary : summary;
-  const duration =
-    node.endedAt !== undefined && node.endedAt - node.startedAt > 400
-      ? `${((node.endedAt - node.startedAt) / 1000).toFixed(1)}s`
-      : null;
 
   const statusMark =
     node.status === 'failed' ? (
@@ -464,57 +459,17 @@ function ToolCardShell({
       data-tool-status={node.status}
     >
       <div className="flex min-w-0 items-center gap-1">
-        <button
-          type="button"
-          aria-expanded={expandable ? open : undefined}
-          disabled={!expandable}
-          onClick={() => setExpanded((v) => !v)}
-          className={cn(
-            'flex h-6 min-w-0 flex-1 items-center gap-1.5 text-left',
-            expandable && 'hover:text-foreground',
-            !expandable && 'cursor-default',
-          )}
-        >
-          {/* #72 — the leading mark never flex-shrinks: a long summary (the
-              dispatch card's 80-char prompt preview) squeezed the svg to
-              ~11px while sibling cards kept 14px. The status dot already
-              carries shrink-0 in its base class. */}
-          <span className="flex shrink-0 items-center">
-            {node.status === 'running' || node.status === 'failed' ? statusMark : icon}
-          </span>
-          {expandable ? (
-            <ChevronDownIcon
-              className={cn('size-3 shrink-0 transition-transform', open && 'rotate-180')}
-            />
-          ) : null}
-          <span className="text-muted-foreground shrink-0 font-medium">{title}</span>
-          <span className="text-muted-foreground/40" aria-hidden>
-            ·
-          </span>
-          {showSummary !== undefined && showSummary !== '' ? (
-            <span
-              className={cn(
-                'min-w-0 truncate',
-                failed && errorSummary != null
-                  ? 'text-destructive'
-                  : summaryIsPath
-                    ? 'text-muted-foreground font-mono'
-                    : 'text-muted-foreground',
-              )}
-            >
-              {showSummary}
-            </span>
-          ) : null}
-          <span className="min-w-0 flex-1" />
-          {duration !== null ? (
-            <span className="text-muted-foreground/60 shrink-0 font-mono text-[10px] tabular-nums">
-              {duration}
-            </span>
-          ) : null}
-          {node.status === 'running' ? (
-            <span className="text-muted-foreground shrink-0 text-[10px]">{t('chat.running')}</span>
-          ) : null}
-        </button>
+        <RowHeader
+          lead={node.status === 'running' || node.status === 'failed' ? statusMark : icon}
+          title={title}
+          summary={showSummary}
+          summaryTone={failed && errorSummary != null ? 'error' : summaryIsPath ? 'path' : 'plain'}
+          readouts={<DurationReadout label={elapsedLabel(node.startedAt, node.endedAt)} />}
+          running={node.status === 'running'}
+          expandable={expandable}
+          open={open}
+          onToggle={() => setExpanded((v) => !v)}
+        />
         {headerTrailing}
       </div>
       {open && body !== undefined ? <div className="mt-1 mb-2 min-w-0">{body}</div> : null}
