@@ -210,6 +210,18 @@
   --ansi-14: oklch(0.56 0.09 185);
   --ansi-15: var(--well-ink);
 
+  /* #121 — diff material strength. The diff takes GitLab's structure but the
+   * console's restraint: changed rows get a faint wash of the well's status
+   * ink (enough to find the change, not enough to paint the transcript), only
+   * the changed WORDS get a firmer mark, and the sign column carries the
+   * meaning. The derived --diff-* colours live on the well (below); a skin
+   * tunes the strengths here or in its well — `--diff-tint: 0%` is a pure
+   * console diff, and the edges add a 2px rule at the row's start. */
+  --diff-tint: 7%;
+  --diff-word-tint: 22%;
+  --diff-add-edge: transparent;
+  --diff-del-edge: transparent;
+
   /* Physics — a skin may make the panel hard-shadowed and mechanical.
    * `--press-shift`/`--shadow-press` are the press displacement: Signal is a
    * flat console (both zero), BAY is a machine key (2px shift, shadow gone).
@@ -334,6 +346,10 @@
   --ansi-12: oklch(0.8 0.12 255);
   --ansi-13: oklch(0.8 0.14 320);
   --ansi-14: oklch(0.82 0.08 185);
+
+  /* #121 — a dark trough needs a firmer wash for the same legibility. */
+  --diff-tint: 12%;
+  --diff-word-tint: 28%;
 }
 
 /* #121 — tokens that must re-resolve against the WELL they render in. A skin
@@ -349,6 +365,15 @@
   --ansi-10: var(--well-ok);
   --ansi-11: var(--well-warn);
   --ansi-15: var(--well-ink);
+  --diff-add-row: color-mix(in oklch, var(--well-ok) var(--diff-tint), transparent);
+  --diff-del-row: color-mix(in oklch, var(--well-fail) var(--diff-tint), transparent);
+  --diff-add-word: color-mix(in oklch, var(--well-ok) var(--diff-word-tint), transparent);
+  --diff-del-word: color-mix(in oklch, var(--well-fail) var(--diff-word-tint), transparent);
+  --diff-sign-add: var(--well-ok);
+  --diff-sign-del: var(--well-fail);
+  /* Hunk bands are neutral — never the accent (the --signal budget). */
+  --diff-hunk-bg: color-mix(in oklch, var(--well-dim) 12%, transparent);
+  --diff-hunk-ink: var(--well-dim);
 }
 
 /* Map CSS variables into Tailwind's theme so utilities like bg-background,

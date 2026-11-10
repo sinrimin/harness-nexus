@@ -2,7 +2,7 @@
 //
 // SPDX-License-Identifier: MIT
 
-import { Component, memo, useState, type ComponentType, type ReactNode } from 'react';
+import { Component, memo, useMemo, useState, type ComponentType, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import {
   SquareTerminalIcon,
@@ -22,7 +22,7 @@ import { useChatChannels } from './use-chat-channels.js';
 import { DurationReadout, RowHeader, elapsedLabel } from './row-header.js';
 import {
   bashCommandParts,
-  editDiffParts,
+  diffSources,
   firstOutputLine,
   langFromPath,
   mainPath,
@@ -31,7 +31,8 @@ import {
   relativizeToCwd,
   toolArgumentsPreview,
 } from './tool-meta.js';
-import { DiffBlock, IoCard, ReadBlock, SearchBlock, TerminalBlock, TodoList } from './blocks.js';
+import { IoCard, ReadBlock, SearchBlock, TerminalBlock, TodoList } from './blocks.js';
+import { DiffView } from './diff-view.js';
 
 /**
  * Tool rows (Phase 9 W6): a 24px-high disclosure row — status-marked icon,
@@ -113,10 +114,17 @@ const BashCard = memo(function BashCard({ node, cwd }: ToolCardProps) {
   );
 });
 
+/**
+ * #121 — Edit, MultiEdit and Write share one card: every diff the call
+ * carries (claude's hook hunks with their line numbers, or the raw
+ * snippets before they land) through the GitLab-structured DiffView.
+ */
 const EditCard = memo(function EditCard({ node, cwd }: ToolCardProps) {
-  const parts = editDiffParts(node);
-  const fullPath = parts?.path || mainPath(node) || node.title || '';
-  const display = relativizeToCwd(fullPath, cwd);
+  const sources = useMemo(() => {
+    const raw = diffSources(node);
+    return raw === null ? null : raw.map((s) => ({ ...s, path: relativizeToCwd(s.path, cwd) }));
+  }, [node, cwd]);
+  const display = sources?.[0]?.path || relativizeToCwd(mainPath(node) || node.title || '', cwd);
   return (
     <ToolCardShell
       node={node}
@@ -126,33 +134,10 @@ const EditCard = memo(function EditCard({ node, cwd }: ToolCardProps) {
       summaryIsPath
       errorSummary={firstOutputLine(node)}
       body={
-        parts !== null && parts.newText !== null ? (
-          <DiffBlock diffs={[{ path: display, oldText: parts.oldText, newText: parts.newText }]} />
+        sources !== null ? (
+          <DiffView sources={sources} />
         ) : node.output !== undefined ? (
           <IoCard output={node.output} failed={node.status === 'failed'} />
-        ) : undefined
-      }
-    />
-  );
-});
-
-const WriteCard = memo(function WriteCard({ node, cwd }: ToolCardProps) {
-  const diff = node.content?.find((c) => c.type === 'diff');
-  const fullPath = diff?.path || mainPath(node) || (node.title ?? '');
-  const display = relativizeToCwd(fullPath, cwd);
-  const raw = (node.rawInput ?? {}) as Record<string, unknown>;
-  const newText = diff?.newText ?? (typeof raw.content === 'string' ? raw.content : undefined);
-  return (
-    <ToolCardShell
-      node={node}
-      icon={<FileEditIcon className="size-3.5" />}
-      title={node.toolName ?? 'Write'}
-      summary={display !== '' ? display : undefined}
-      summaryIsPath
-      errorSummary={firstOutputLine(node)}
-      body={
-        newText !== undefined ? (
-          <DiffBlock diffs={[{ path: display, oldText: null, newText }]} />
         ) : undefined
       }
     />
@@ -369,7 +354,8 @@ const toolCardRegistry: Record<string, ComponentType<ToolCardProps>> = {
   Read: ReadCard,
   Bash: BashCard,
   Edit: EditCard,
-  Write: WriteCard,
+  MultiEdit: EditCard,
+  Write: EditCard,
   Glob: SearchCard,
   Grep: SearchCard,
   WebSearch: WebCard,

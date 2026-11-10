@@ -97,6 +97,10 @@
   --ansi-12: #a3c9ff;
   --ansi-13: #e6bdff;
   --ansi-14: #a6e6e0;
+  /* #121 — the LCD window is dark in both modes: the diff wash runs at the
+     dark-trough strength whatever the page theme. */
+  --diff-tint: 12%;
+  --diff-word-tint: 28%;
 }
 
 /* Posture readouts (dashboard figures) get well padding; links keep routing. */

@@ -12,11 +12,11 @@ import { useCopyFeedback } from './copy-feedback.js';
 
 /**
  * The Block family — expandable tool-card bodies (Phase 9 W6), ported from
- * the portal reference: Read (line numbers + head/tail cap), Diff (pure text
- * colors), Terminal (banner + capped output), Search (grouped matches / path
- * list), IoCard (IN/OUT), Todo checklist. Shared chrome: 8-line head/tail
- * cap with in-place expand, copy with 1s settle, IBM Plex Mono for anything
- * machine-shaped.
+ * the portal reference: Read (line numbers + head/tail cap), Terminal
+ * (banner + capped output, ANSI rendered — #121), Search (grouped matches /
+ * path list), IoCard (IN/OUT), Todo checklist. Edit diffs render through
+ * diff-view.tsx (#121). Shared chrome: 8-line head/tail cap with in-place
+ * expand, copy with 1s settle, IBM Plex Mono for anything machine-shaped.
  */
 
 const MAX_LINES = 8;
@@ -58,7 +58,7 @@ function ExpandButton({
   );
 }
 
-function CopyButton({ text }: { text: string }) {
+export function CopyButton({ text }: { text: string }) {
   const { copied, onCopy } = useCopyFeedback();
   return (
     <button
@@ -128,106 +128,6 @@ export const ReadBlock = memo(function ReadBlock({
           />
         ) : null}
         {capped ? render(tail) : null}
-      </div>
-    </div>
-  );
-});
-
-// ---- Diff ----
-
-interface DiffHunk {
-  path: string;
-  oldText: string | null;
-  newText: string;
-}
-
-interface DiffRow {
-  kind: 'path' | 'del' | 'add' | 'gap';
-  text: string;
-}
-
-function contentLines(text: string): string[] {
-  if (text === '') return [];
-  const body = text.endsWith('\n') ? text.slice(0, -1) : text;
-  return body.split('\n');
-}
-
-export const DiffBlock = memo(function DiffBlock({ diffs }: { diffs: DiffHunk[] }) {
-  const { t } = useI18n();
-  const [expanded, setExpanded] = useState(false);
-  const { rows, added, removed, files } = useMemo(() => {
-    const out: DiffRow[] = [];
-    const paths = new Set<string>();
-    let a = 0;
-    let r = 0;
-    let prev: string | undefined;
-    for (const diff of diffs) {
-      paths.add(diff.path);
-      if (diff.path !== prev) out.push({ kind: 'path', text: diff.path });
-      else out.push({ kind: 'gap', text: '⋯' });
-      prev = diff.path;
-      if (diff.oldText !== null && diff.oldText !== undefined) {
-        for (const line of contentLines(diff.oldText)) {
-          out.push({ kind: 'del', text: line });
-          r++;
-        }
-      }
-      for (const line of contentLines(diff.newText)) {
-        out.push({ kind: 'add', text: line });
-        a++;
-      }
-    }
-    return { rows: out, added: a, removed: r, files: paths.size };
-  }, [diffs]);
-
-  if (rows.length === 0) return null;
-  const { hidden, capped, headLines, tailLines } = headTailCap(rows.length, expanded);
-  const head = capped ? rows.slice(0, headLines) : rows;
-  const tail = capped ? rows.slice(rows.length - tailLines) : [];
-  const render = (slice: DiffRow[], keyPrefix: string) =>
-    slice.map((row, i) => (
-      <div
-        key={`${keyPrefix}${i}`}
-        className={cn(
-          'flex gap-2 whitespace-pre',
-          row.kind === 'path' && 'text-foreground truncate pt-1 font-medium',
-          row.kind === 'del' && 'text-danger',
-          row.kind === 'add' && 'text-ok',
-          row.kind === 'gap' && 'text-muted-foreground/60',
-        )}
-      >
-        <span className="text-muted-foreground/60 w-3 shrink-0 select-none">
-          {row.kind === 'del' ? '-' : row.kind === 'add' ? '+' : ''}
-        </span>
-        <span className="min-w-0">{row.text}</span>
-      </div>
-    ));
-  return (
-    <div data-surface="well" className="bg-muted/50 overflow-hidden rounded-md border">
-      <div className="relative">
-        <div className="text-muted-foreground absolute top-1.5 right-2 z-10">
-          <CopyButton
-            text={rows
-              .map((r) =>
-                r.kind === 'del' ? `- ${r.text}` : r.kind === 'add' ? `+ ${r.text}` : r.text,
-              )
-              .join('\n')}
-          />
-        </div>
-        <div className="overflow-x-auto p-2 font-mono text-xs leading-5">
-          {render(head, '')}
-          {hidden > 0 ? (
-            <ExpandButton
-              expanded={expanded}
-              hidden={hidden}
-              onClick={() => setExpanded((v) => !v)}
-            />
-          ) : null}
-          {capped ? render(tail, 't') : null}
-        </div>
-      </div>
-      <div className="text-muted-foreground border-t px-3 py-1 font-mono text-[10px] tabular-nums">
-        └ +{added} -{removed} · {t('chat.diffFiles', { count: files })}
       </div>
     </div>
   );
