@@ -12,12 +12,12 @@ import { SkinProvider } from '@/components/skin-provider';
 import { ContextMeter } from './composer';
 
 /**
- * The context meter's mechanical contract (#26, reshaped by #122): the
- * adapter is the only source (no occupancy -> nothing renders), the ONE
- * inline shape is the ring (the figures live in the popover), ring and
- * popover bar carry the same tone, and the details the ring cannot show are
- * one activation away. Visual correctness is not asserted here — that is the
- * agent-browser pass and ui-snap.
+ * The context meter's mechanical contract (#26, reshaped by #122 and #123):
+ * the adapter is the only source (no occupancy -> nothing renders), the ONE
+ * inline device is the ring plus its percentage (the full figures live in the
+ * popover), ring, number and popover bar carry the same tone, and the details
+ * the inline form cannot show are one activation away. Visual correctness is
+ * not asserted here — that is the agent-browser pass and ui-snap.
  */
 
 beforeAll(() => {
@@ -72,14 +72,18 @@ describe('ContextMeter', () => {
     expect(container.querySelector('[data-slot="meter-trigger"]')).toBeNull();
   });
 
-  it('carries one tone across the ring (the figures live in the popover)', () => {
+  it('pairs the ring with its percentage inline (the figures live in the popover)', () => {
     const { container } = renderMeter({ contextUsed: 40_000, contextSize: 200_000 });
 
     const trigger = container.querySelector('[data-slot="meter-trigger"]');
     expect(trigger?.getAttribute('aria-label')).toContain('40k');
     expect(trigger?.getAttribute('aria-label')).toContain('200k');
-    // #122 — one inline shape: no figures, no 62px bar, the ring at EVERY size.
+    // #122 — one inline device; #123 — it is never a lone glyph: the ring
+    // carries the proportion, the number makes it nameable at a glance. The
+    // noun is a container-query variant of the same string (both spans live
+    // in the DOM; CSS picks one), so assert on the value, not exact text.
     expect(container.querySelector('[data-slot="meter-ring"]')).not.toBeNull();
+    expect(container.querySelector('[data-slot="meter-pct"]')?.textContent).toContain('20%');
     expect(container.querySelector('[data-slot="meter"]:not([data-variant])')).toBeNull();
 
     // Neutral pressure: every form says so in `data-tone`.
@@ -93,11 +97,16 @@ describe('ContextMeter', () => {
     expect(Number(fill?.getAttribute('stroke-dashoffset'))).toBeCloseTo(circumference * 0.8, 5);
   });
 
-  it('marks near-full windows as danger on the ring and the popover bar', () => {
+  it('marks near-full windows as danger on the ring, its number and the popover bar', () => {
     const { container } = renderMeter({ contextUsed: 197_000, contextSize: 200_000 });
-    // A skin keys its tone rules on the FILL elements, so the tone has to reach
-    // them too — a ring that only colours its wrapper stays steel.
-    for (const sel of ['[data-slot="meter-ring"]', '[data-slot="meter-ring-fill"]']) {
+    // A skin keys its tone rules on the FILL elements (and #123's number), so
+    // the tone has to reach them too — a ring that only colours its wrapper
+    // stays steel.
+    for (const sel of [
+      '[data-slot="meter-ring"]',
+      '[data-slot="meter-ring-fill"]',
+      '[data-slot="meter-pct"]',
+    ]) {
       expect(container.querySelector(sel)?.getAttribute('data-tone')).toBe('danger');
     }
   });

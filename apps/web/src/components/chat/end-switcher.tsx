@@ -123,9 +123,12 @@ export function EndSwitcher({
     <div className="flex min-w-0 items-center gap-1">
       <Popover open={open} onOpenChange={setOpen}>
         <PopoverTrigger asChild>
-          <Button variant="ghost" size="sm" className="gap-1.5 px-2">
+          {/* #123 — this trigger shares a 288px band with the star and the
+              rail's two right-hand actions, so a long agent name has to
+              truncate inside it rather than push them out. */}
+          <Button variant="ghost" size="sm" className="min-w-0 gap-1.5 px-2">
             <BotIcon className="size-3.5 shrink-0" />
-            <span className="max-w-32 truncate text-xs">
+            <span className="max-w-32 min-w-0 truncate text-xs">
               {current === 'assistant'
                 ? t('assistants.endAssistant')
                 : (current.agentName ?? t('chat.backToAgents'))}

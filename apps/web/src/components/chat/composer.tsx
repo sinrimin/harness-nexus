@@ -317,12 +317,14 @@ export function queuedPreview(blocks: PromptBlock[]): string {
 type MeterTone = 'neutral' | 'warn' | 'danger';
 
 /**
- * The ring — the meter's one shape (#122): a 20px gauge whose stroke is the
- * tone: `meter-ring-track` is the muted step, `meter-ring-fill` the value,
- * both on `currentColor`. `data-tone` rides every element of the device
- * because that is the attribute a skin keys on: a skin that re-tones only
- * the visual and forgets the fill leaves the danger reading painted in its
- * neutral colour — measured, not assumed (#26).
+ * The ring — one half of the inline meter (#122, paired with its number in
+ * #123): a 16px gauge whose stroke is the tone: `meter-ring-track` is the
+ * muted step, `meter-ring-fill` the value, both on `currentColor`. `data-tone`
+ * rides every element of the device because that is the attribute a skin keys
+ * on: a skin that re-tones only the visual and forgets the fill leaves the
+ * danger reading painted in its neutral colour — measured, not assumed (#26).
+ * The neutral stroke has NO colour class: it inherits the trigger's
+ * `text-muted-foreground hover:text-foreground`, the same as its number.
  */
 function MeterRing({ pct, tone }: { pct: number; tone: MeterTone }) {
   const radius = 8;
@@ -334,8 +336,8 @@ function MeterRing({ pct, tone }: { pct: number; tone: MeterTone }) {
       viewBox="0 0 20 20"
       aria-hidden="true"
       className={cn(
-        'size-5 shrink-0',
-        tone === 'warn' ? 'text-warn' : tone === 'danger' ? 'text-danger' : 'text-primary',
+        'size-4 shrink-0',
+        tone === 'warn' ? 'text-warn' : tone === 'danger' ? 'text-danger' : undefined,
       )}
     >
       <circle
@@ -370,13 +372,16 @@ function MeterRing({ pct, tone }: { pct: number; tone: MeterTone }) {
  * Context pressure from the fold's usage slice — hidden when the target's
  * adapter reports no occupancy (it is the only source; nothing is invented).
  *
- * #122 — ONE shape at every size: the 20px RING. (It used to be figures plus
- * a 62x7 bar from `sm` up and a ring below — two devices for one control,
- * and the bar's trigger was only its content tall, so `items-end` sank it
- * below the dropdowns' optical line.) The trigger now rides the toolbar's
- * control height with its ring centred, and the figures live where they were
- * always complete: the popover, with a full-width bar variant. Tone (neutral,
- * warn above 80%, danger above 95%) drives every form and both surfaces.
+ * #122 made the meter ONE shape at every size, the ring, and moved the figures
+ * into the popover; it also made the trigger ride the toolbar's control height
+ * so it sat on the dropdowns' line. #123 — a lone 20px ring read as a status
+ * lamp or a spinner at toolbar size: it carried no value a glance could name
+ * and gave no hover feedback. The inline form is now the ring PLUS its
+ * percentage (`17%`, mono tabular), the pattern a composer footer like
+ * Cursor's uses (`17% context`, opening a panel with the full figures). The
+ * popover keeps the complete numerator/denominator and the wide bar, which
+ * the inline form cannot carry. Tone (neutral, warn above 80%, danger above
+ * 95%) drives the ring and the number, and both brighten on hover/focus.
  *
  * Exported for the unit test (`context-meter.test.tsx`).
  */
@@ -397,9 +402,31 @@ export function ContextMeter({ usage }: { usage: ComposerUsage | null }) {
           data-slot="meter-trigger"
           aria-label={label}
           title={label}
-          className="text-muted-foreground focus-visible:ring-ring/50 flex h-(--control-h-sm) shrink-0 items-center justify-center rounded-sm focus-visible:ring-[3px] focus-visible:outline-none"
+          className="text-muted-foreground hover:text-foreground focus-visible:ring-ring/50 flex h-(--control-h-sm) shrink-0 items-center gap-1.5 rounded-sm px-1 transition-colors focus-visible:ring-[3px] focus-visible:outline-none"
         >
           <MeterRing pct={pct} tone={tone} />
+          <span
+            data-slot="meter-pct"
+            data-tone={tone}
+            className={cn(
+              'font-mono text-[10px] leading-none tabular-nums',
+              tone === 'warn'
+                ? 'text-state-warn-ink'
+                : tone === 'danger'
+                  ? 'text-state-fail-ink'
+                  : undefined,
+            )}
+          >
+            {/* #123 — the noun rides only where the toolbar's own container
+                has room; below that the ring + bare number still name the
+                value, and the popover/tooltip carry the label. */}
+            <span className="@max-2xl:hidden">
+              {t('chat.contextShort', { pct: String(Math.round(pct)) })}
+            </span>
+            <span className="hidden @max-2xl:inline">
+              {t('chat.contextPctShort', { pct: String(Math.round(pct)) })}
+            </span>
+          </span>
         </button>
       </PopoverTrigger>
       <PopoverContent className="w-64 space-y-2 p-3">
@@ -992,8 +1019,9 @@ export function Composer({
       {/* The toolbar is ONE row, on the baseline of its TALLEST control.
           #122 — wrapping is gone: the row's width is the composer's own
           @container, and below ~672px of it the config controls collapse to
-          their icon squares and the meter is the bare ring, which is how four
-          controls plus a meter plus Send fit one line on a 390px phone — and,
+          their icon squares and the meter is the ring plus its percentage
+          (#123), which is how four controls plus a meter plus Send fit one
+          line on a 390px phone — and,
           identically, on a browser-zoomed desktop whose rail and plate have
           eaten the width (the viewport said "desktop" while this toolbar was
           phone-narrow; at 900px the old row wrapped Send onto its own line).
