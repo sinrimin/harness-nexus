@@ -11,6 +11,8 @@ import {
   ClockIcon,
   FolderIcon,
   MoreHorizontalIcon,
+  PanelLeftCloseIcon,
+  PanelLeftOpenIcon,
   PencilIcon,
   PinIcon,
   PinOffIcon,
@@ -233,6 +235,86 @@ function QueuedMessage({
  * passed in, and the live-channel overlay (`channelByNative`) is the page's
  * map, not a second subscription.
  */
+/**
+ * #122 — the collapsed rail: a 48px icon column (expand, new session, and
+ * the #110 pinned sessions as initial tiles). The full rail is one toggle
+ * away; nothing here is a second navigation concept, just the rail's
+ * shortcuts with the labels moved to tooltips.
+ */
+function CollapsedRail({
+  pinnedRows,
+  nativeSessionId,
+  onOpenChannel,
+  onNewSession,
+  onExpand,
+}: {
+  pinnedRows: NativeSessionView[];
+  nativeSessionId: string | null;
+  onOpenChannel: (
+    rejoinId?: string,
+    directory?: string,
+    resume?: { sessionId: string; cwd: string },
+  ) => Promise<void>;
+  onNewSession: () => void;
+  onExpand: () => void;
+}) {
+  const { t } = useI18n();
+  return (
+    <div className="flex w-12 flex-col items-center gap-1.5 px-1 py-2">
+      <Button
+        variant="ghost"
+        size="icon"
+        className="size-8 shrink-0"
+        aria-label={t('chat.railExpand')}
+        title={t('chat.railExpand')}
+        onClick={onExpand}
+      >
+        <PanelLeftOpenIcon className="size-4" />
+      </Button>
+      <Button
+        variant="ghost"
+        size="icon"
+        className="size-8 shrink-0"
+        aria-label={t('chat.newSession')}
+        title={t('chat.newSession')}
+        onClick={onNewSession}
+      >
+        <PlusIcon className="size-4" />
+      </Button>
+      {pinnedRows.length > 0 ? (
+        <div className="mt-1 flex min-h-0 w-full flex-col items-center gap-1.5 overflow-y-auto">
+          {pinnedRows.map((s) => {
+            const name =
+              s.title != null && s.title !== ''
+                ? s.title
+                : (s.cwd.replace(/\/+$/, '').split('/').pop() ?? s.cwd);
+            const active = s.sessionId === nativeSessionId;
+            return (
+              <button
+                key={s.sessionId}
+                type="button"
+                onClick={() => {
+                  void onOpenChannel(undefined, undefined, { sessionId: s.sessionId, cwd: s.cwd });
+                }}
+                title={`${name}\n${s.cwd}`}
+                aria-label={name}
+                className={cn(
+                  'flex size-8 shrink-0 items-center justify-center rounded-md border font-mono text-[11px] uppercase transition-colors',
+                  active
+                    ? 'border-signal/60 bg-signal/10 text-signal'
+                    : 'text-muted-foreground hover:bg-muted hover:text-foreground border-transparent',
+                )}
+              >
+                {name.slice(0, 1)}
+              </button>
+            );
+          })}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function SessionRail({
   rail,
   groups,
@@ -501,6 +583,28 @@ export function AgentSessionPage() {
   // Phone-only drawer holding the same rail (P5) — the rail is `hidden md:flex`
   // and used to have no narrow-screen alternative at all.
   const [railOpen, setRailOpen] = useState(false);
+  // #122 — the DESKTOP rail collapses to a 48px icon column (endpoints at
+  // 900px: rail 288 + plate 198 left ~410px for the transcript AND the
+  // composer's toolbar). Persisted: collapsing is a desk setup, not a
+  // per-visit gesture.
+  const [railCollapsed, setRailCollapsed] = useState(() => {
+    try {
+      return localStorage.getItem('hnx.railCollapsed') === '1';
+    } catch {
+      return false;
+    }
+  });
+  const toggleRailCollapsed = useCallback(() => {
+    setRailCollapsed((v) => {
+      const next = !v;
+      try {
+        localStorage.setItem('hnx.railCollapsed', next ? '1' : '0');
+      } catch {
+        /* private mode — the state still works for this visit */
+      }
+      return next;
+    });
+  }, []);
   const [loadFailed, setLoadFailed] = useState(false);
   const [rail, setRail] = useState<RailState>({ state: 'loading' });
   const [sessionId, setSessionId] = useState('');
@@ -1373,24 +1477,55 @@ export function AgentSessionPage() {
               cwd. Below md it would leave the phone with NO way to reach a
               session, so the same content ships as a drawer opened from the
               session bar (P5). */}
-          <aside className="bg-sidebar/40 hidden w-72 shrink-0 flex-col border-r md:flex">
-            <SessionRail
-              rail={rail}
-              groups={groups}
-              pinnedRows={pinnedRows}
-              onTogglePin={(s2, next) => toggleNativePin(s2.sessionId, next)}
-              collapsedCwds={collapsedCwds}
-              nativeSessionId={nativeSessionId}
-              firstPromptText={firstPromptText ?? null}
-              machine={machine}
-              channelByNative={channelByNative}
-              onToggleCwd={toggleCwd}
-              onOpenChannel={openChannel}
-              onNewSession={() => setPickerOpen(true)}
-              onRefresh={() => void refreshSessions(true)}
-              onDeleteSession={(sessionId, title) => setPendingDelete({ sessionId, title })}
-              end={{ agentInstanceId: agentId, agentName: agent?.name }}
-            />
+          <aside
+            className={cn(
+              'bg-sidebar/40 hidden shrink-0 flex-col border-r md:flex',
+              railCollapsed ? 'w-12' : 'w-72',
+            )}
+          >
+            {railCollapsed ? (
+              <CollapsedRail
+                pinnedRows={pinnedRows}
+                nativeSessionId={nativeSessionId}
+                onOpenChannel={openChannel}
+                onNewSession={() => setPickerOpen(true)}
+                onExpand={toggleRailCollapsed}
+              />
+            ) : (
+              <>
+                {/* #122 — the collapse door sits at the rail's top-right; the
+                    column's own toggle is its expand icon. */}
+                <div className="flex h-8 shrink-0 items-center justify-end pr-1.5">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="size-6"
+                    aria-label={t('chat.railCollapse')}
+                    title={t('chat.railCollapse')}
+                    onClick={toggleRailCollapsed}
+                  >
+                    <PanelLeftCloseIcon className="size-3.5" />
+                  </Button>
+                </div>
+                <SessionRail
+                  rail={rail}
+                  groups={groups}
+                  pinnedRows={pinnedRows}
+                  onTogglePin={(s2, next) => toggleNativePin(s2.sessionId, next)}
+                  collapsedCwds={collapsedCwds}
+                  nativeSessionId={nativeSessionId}
+                  firstPromptText={firstPromptText ?? null}
+                  machine={machine}
+                  channelByNative={channelByNative}
+                  onToggleCwd={toggleCwd}
+                  onOpenChannel={openChannel}
+                  onNewSession={() => setPickerOpen(true)}
+                  onRefresh={() => void refreshSessions(true)}
+                  onDeleteSession={(sessionId, title) => setPendingDelete({ sessionId, title })}
+                  end={{ agentInstanceId: agentId, agentName: agent?.name }}
+                />
+              </>
+            )}
           </aside>
 
           {/* The phone's rail: the same component, in a drawer. Radix traps
