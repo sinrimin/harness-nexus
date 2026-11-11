@@ -112,3 +112,44 @@ export function sessionEditStats(rows: FoldState['rows']): HudEditStats | null {
   );
   return { files: list.length, added, removed, pathless, list };
 }
+
+/**
+ * #128 — tool-call totals for the ASSISTANT HUD's fourth slot: the assistant
+ * edits no files, but its tool calls (notes, dispatch, decision records, API
+ * tools, …) are the session's work product. Walks the same rows as
+ * `sessionEditStats` (tool rows + one level of sub-agent folds), counts every
+ * call and groups by tool name for the tooltip. Null when nothing ran (the
+ * TOOLS cell hides) — never a zeroed row.
+ */
+export interface HudToolStat {
+  name: string;
+  n: number;
+}
+
+export interface HudToolCalls {
+  count: number;
+  /** Per-tool totals, most-called first (the tooltip shows the top 5). */
+  list: HudToolStat[];
+}
+
+export function sessionToolCallStats(rows: FoldState['rows']): HudToolCalls | null {
+  const byName = new Map<string, number>();
+  let count = 0;
+  const visit = (list: FoldState['rows']): void => {
+    for (const row of list) {
+      if (row.row === 'tool') {
+        count += 1;
+        const name = row.root.toolName ?? row.root.title ?? row.root.kind ?? '?';
+        byName.set(name, (byName.get(name) ?? 0) + 1);
+      } else if (row.row === 'subagent') {
+        visit(row.agent.fold.rows);
+      }
+    }
+  };
+  visit(rows);
+  if (count === 0) return null;
+  const list = [...byName.entries()]
+    .map(([name, n]) => ({ name, n }))
+    .sort((a, b) => b.n - a.n || a.name.localeCompare(b.name));
+  return { count, list };
+}

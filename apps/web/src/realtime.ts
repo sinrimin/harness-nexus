@@ -92,6 +92,10 @@ export type ChatStreamEvent =
       kind: 'usage';
       inputTokens?: number;
       outputTokens?: number;
+      /** #128 — the assistant runner reports the cache fields too (the HUD's
+       * session totals accumulate them SERVER-side; the fold ignores them). */
+      cacheReadTokens?: number;
+      cacheWriteTokens?: number;
       /** dsh dialect: context occupancy instead of per-turn token counts. */
       contextUsed?: number;
       contextSize?: number;
@@ -431,6 +435,8 @@ export interface AssistantReadyPush {
   sessionId: string;
   assistantId: string;
   assistantName: string;
+  /** #128 — the server-side session accumulator's snapshot (rejoin restore). */
+  sessionUsage?: ChatSessionUsage;
 }
 
 export interface AssistantEventEnvelope {

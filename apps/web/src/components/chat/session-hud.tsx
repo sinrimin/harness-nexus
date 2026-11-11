@@ -9,7 +9,7 @@ import { cn } from '@/lib/utils';
 import type { ChatSessionUsage } from '@/realtime';
 import { ContextDetails, contextPressure, formatTokens } from './context-meter.js';
 import type { ComposerUsage, MeterTone } from './context-meter.js';
-import type { HudEditStats } from './hud-stats.js';
+import type { HudEditStats, HudToolCalls } from './hud-stats.js';
 
 /**
  * #124 — the session HUD, the band UNDER the Sender's top edge:
@@ -49,12 +49,17 @@ const SEGMENTS = 10;
  * widest content (rig-measured: 186/99/77/110 desktop, 98/75/57/82 under the
  * 2xl container break, plus value-growth headroom); pathological values
  * (999K-class FILES) outgrow the min and ride the strip's horizontal scroll.
+ * #128 — the fourth slot has TWO tenants: FILES (machine sessions) and
+ * TOOLS (the assistant, whose work product is tool calls, not edits). The
+ * occupant is fixed PER PAGE (a prop choice, never a live flip), and TOOLS
+ * holds a shorter figure (label + one count), so its min is its own.
  */
-const SLOT_MIN: Record<'ctx' | 'tok' | 'cache' | 'files', string> = {
+const SLOT_MIN: Record<'ctx' | 'tok' | 'cache' | 'files' | 'tools', string> = {
   ctx: 'min-w-[190px] @max-2xl:min-w-[100px]',
   tok: 'min-w-[120px] @max-2xl:min-w-[80px]',
   cache: 'min-w-[80px] @max-2xl:min-w-[60px]',
   files: 'min-w-[150px] @max-2xl:min-w-[96px]',
+  tools: 'min-w-[110px] @max-2xl:min-w-[72px]',
 };
 
 /** "34.1k" → "34.1K" — the HUD reads in instrument case. */
@@ -160,15 +165,27 @@ function PixelArrow({ dir }: { dir: 'up' | 'down' }) {
 export interface SessionHudProps {
   /** Context occupancy from the fold (null when the adapter reports none). */
   usage: ComposerUsage | null;
-  /** Daemon session-cumulative token totals (null until a countable turn). */
+  /** Session-cumulative token totals (null until a countable turn). */
   sessionUsage: ChatSessionUsage | null;
   /** Loaded-transcript edit totals (null when nothing was edited). */
-  files: HudEditStats | null;
+  files?: HudEditStats | null;
   /** Older history is not loaded: the FILES count is a lower bound. */
-  historyPartial: boolean;
+  historyPartial?: boolean;
+  /**
+   * #128 — tool-call totals (the assistant's fourth slot). When present the
+   * slot renders TOOLS instead of FILES; the two never share a page (a
+   * machine session edits files, an assistant calls tools).
+   */
+  toolCalls?: HudToolCalls | null;
 }
 
-export function SessionHud({ usage, sessionUsage, files, historyPartial }: SessionHudProps) {
+export function SessionHud({
+  usage,
+  sessionUsage,
+  files = null,
+  historyPartial = false,
+  toolCalls = null,
+}: SessionHudProps) {
   const { t } = useI18n();
   const pressure = contextPressure(usage);
   const tokens =
@@ -178,7 +195,14 @@ export function SessionHud({ usage, sessionUsage, files, historyPartial }: Sessi
       : null;
   const cache = cacheHit(tokens);
 
-  if (pressure === null && tokens === null && cache === null && files === null) return null;
+  if (
+    pressure === null &&
+    tokens === null &&
+    cache === null &&
+    files === null &&
+    toolCalls === null
+  )
+    return null;
 
   const contextTitle =
     pressure !== null
@@ -219,6 +243,18 @@ export function SessionHud({ usage, sessionUsage, files, historyPartial }: Sessi
             .map((f) => `${f.path} +${String(f.added)} −${String(f.removed)}`),
           ...(files.list.length > 5
             ? [t('chat.hudFilesMore', { count: String(files.list.length - 5) })]
+            : []),
+        ].join('\n')
+      : '';
+  // #128 — unlike the #124 strings, the TOOLS tooltip IS localized: tool
+  // names are protocol identifiers, but the sentence around them is copy.
+  const toolsTitle =
+    toolCalls !== null
+      ? [
+          t('chat.hudToolsTitle', { count: String(toolCalls.count) }),
+          ...toolCalls.list.slice(0, 5).map((tc) => `${tc.name} ×${String(tc.n)}`),
+          ...(toolCalls.list.length > 5
+            ? [t('chat.hudToolsMore', { count: String(toolCalls.list.length - 5) })]
             : []),
         ].join('\n')
       : '';
@@ -345,12 +381,30 @@ export function SessionHud({ usage, sessionUsage, files, historyPartial }: Sessi
           ) : null}
         </div>
 
+        {/* #128 — the fourth fixed slot's tenant is a per-page choice: TOOLS
+        when the caller passes tool-call totals (the assistant), FILES
+        otherwise (machine sessions). */}
         <div
           data-slot="hud-slot"
-          data-kind="files"
-          className={cn('flex shrink-0 items-center', SLOT_MIN.files)}
+          data-kind={toolCalls !== null ? 'tools' : 'files'}
+          className={cn(
+            'flex shrink-0 items-center',
+            toolCalls !== null ? SLOT_MIN.tools : SLOT_MIN.files,
+          )}
         >
-          {files !== null ? (
+          {toolCalls !== null ? (
+            <div
+              data-slot="hud-cell"
+              data-kind="tools"
+              role="group"
+              aria-label={toolsTitle}
+              title={toolsTitle}
+              className="flex shrink-0 items-center gap-2 px-3 @max-2xl:gap-1 @max-2xl:px-1.5 @max-sm:px-1"
+            >
+              <Label>{t('chat.hudTools')}</Label>
+              <Value>{shortCount(toolCalls.count)}</Value>
+            </div>
+          ) : files !== null ? (
             <div
               data-slot="hud-cell"
               data-kind="files"

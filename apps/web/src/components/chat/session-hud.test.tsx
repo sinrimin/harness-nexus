@@ -195,4 +195,88 @@ describe('SessionHud', () => {
     expect(fileCell?.getAttribute('title')).toContain('older history not loaded');
     expect(fileCell?.getAttribute('title')).toContain('src/a.ts +30 −5');
   });
+
+  // ---- #128 — the TOOLS fourth slot (the assistant page) ----
+
+  it('renders the TOOLS cell in the fourth fixed slot when toolCalls is provided', () => {
+    const { container } = render(
+      <SessionHud
+        usage={null}
+        sessionUsage={sessionUsage}
+        toolCalls={{
+          count: 7,
+          list: [
+            { name: 'notes_search', n: 4 },
+            { name: 'dispatch_run', n: 3 },
+          ],
+        }}
+      />,
+      { wrapper: Providers },
+    );
+    const hud = container.querySelector('[data-slot="session-hud"]');
+    const slots = hud?.querySelectorAll(':scope > [data-slot="hud-slot"]');
+    // The order stays CTX · TOK · CACHE · (FILES|TOOLS); the fourth slot's
+    // tenant flips per page, never shuffles.
+    expect([...(slots ?? [])].map((s) => s.getAttribute('data-kind'))).toEqual([
+      'ctx',
+      'tok',
+      'cache',
+      'tools',
+    ]);
+    const cell = hud?.querySelector('[data-slot="hud-cell"][data-kind="tools"]');
+    expect(cell?.textContent).toContain('TOOLS');
+    expect(cell?.textContent).toContain('7');
+    expect(hud?.querySelector('[data-slot="hud-cell"][data-kind="files"]')).toBeNull();
+  });
+
+  it('bounds the TOOLS count and keeps the exact tally plus top tools in the tooltip', () => {
+    const list = Array.from({ length: 7 }, (_, i) => ({ name: `tool_${String(i)}`, n: 2 }));
+    const { container } = render(
+      <SessionHud
+        usage={null}
+        sessionUsage={null}
+        toolCalls={{ count: 12_345, list: [{ name: 'notes_search', n: 12_345 }, ...list] }}
+      />,
+      { wrapper: Providers },
+    );
+    const cell = container.querySelector('[data-slot="hud-cell"][data-kind="tools"]');
+    expect(cell?.textContent).toContain('12K');
+    const title = cell?.getAttribute('title') ?? '';
+    expect(title).toContain('Tool calls: 12345');
+    // Top 5 by count, then the +N more line (the hudFilesMore pattern).
+    expect(title).toContain('notes_search ×12345');
+    expect(title).toContain('tool_0 ×2');
+    expect(title).not.toContain('tool_5');
+    expect(title).toContain('+3 more');
+  });
+
+  it('keeps the TOOLS label English under zh while the tooltip localizes', () => {
+    localStorage.setItem('hnx.lang', 'zh');
+    const { container } = render(
+      <SessionHud
+        usage={null}
+        sessionUsage={null}
+        toolCalls={{ count: 3, list: [{ name: 'notes_search', n: 3 }] }}
+      />,
+      { wrapper: Providers },
+    );
+    const cell = container.querySelector('[data-slot="hud-cell"][data-kind="tools"]');
+    expect(cell?.textContent).toContain('TOOLS');
+    // The engraved label stays English; the SENTENCE around the tool names
+    // is localized copy (unlike #124's titles).
+    expect(cell?.getAttribute('title')).toContain('工具调用：3 次');
+    expect(cell?.getAttribute('title')).toContain('notes_search ×3');
+  });
+
+  it('leaves the fourth slot blank when neither files nor toolCalls reported', () => {
+    const { container } = render(
+      <SessionHud usage={usage} sessionUsage={sessionUsage} files={null} />,
+      { wrapper: Providers },
+    );
+    const hud = container.querySelector('[data-slot="session-hud"]');
+    const slots = hud?.querySelectorAll(':scope > [data-slot="hud-slot"]');
+    expect(slots?.length).toBe(4);
+    expect(slots?.[3]?.getAttribute('data-kind')).toBe('files');
+    expect(slots?.[3]?.querySelector('[data-slot="hud-cell"]')).toBeNull();
+  });
 });
