@@ -13,10 +13,12 @@ import { SessionHud } from './session-hud';
 import type { HudEditStats } from './hud-stats';
 
 /**
- * #124 — the HUD's mechanical contract: English engraved labels in both
- * locales, a cell only when its source reported a value, the CTX cell opens
- * the shared details card, and the strip renders nothing at all when no
- * source has data. Visual correctness is the agent-browser pass.
+ * #124/#128 — the HUD's mechanical contract: English engraved labels in both
+ * locales, FIXED slots in the instrument order, and (the alpha.11 fixed-face
+ * revision) the strip always renders — an unknown reading is `--`, never a
+ * fake number and never an absent cell; the fourth slot's zero state is a
+ * real zero (`FILES 0 +0 −0` / `TOOLS 0`). The CTX cell with data opens the
+ * shared details card. Visual correctness is the agent-browser pass.
  */
 
 beforeAll(() => {
@@ -77,12 +79,25 @@ const sessionUsage = {
 };
 
 describe('SessionHud', () => {
-  it('renders nothing when no source reported a value', () => {
+  it('the fixed face: with no data at all the strip still renders — unknowns read --', () => {
     const { container } = render(
       <SessionHud usage={null} sessionUsage={null} files={null} historyPartial={false} />,
       { wrapper: Providers },
     );
-    expect(container.querySelector('[data-slot="session-hud"]')).toBeNull();
+    const hud = container.querySelector('[data-slot="session-hud"]');
+    expect(hud).not.toBeNull();
+    const cells = hud?.querySelectorAll('[data-slot="hud-cell"]');
+    expect(cells?.length).toBe(4);
+    expect(cells?.[0]?.getAttribute('data-unknown')).toBe('true');
+    expect(cells?.[0]?.textContent).toContain('CTX');
+    expect(cells?.[0]?.textContent).toContain('--');
+    expect(cells?.[1]?.textContent).toContain('--');
+    expect(cells?.[2]?.textContent).toContain('--');
+    // The FILES zero state is a real zero — data, not absence.
+    expect(cells?.[3]?.getAttribute('data-zero')).toBe('true');
+    expect(cells?.[3]?.textContent).toContain('0');
+    expect(cells?.[3]?.textContent).toContain('+0');
+    expect(cells?.[3]?.textContent).toContain('−0');
   });
 
   it('keeps its labels English under the zh locale and formats every cell', () => {
@@ -106,16 +121,24 @@ describe('SessionHud', () => {
     expect(hud?.textContent).toContain('+42');
     expect(hud?.textContent).toContain('−7');
 
-    // Unknown fields never become zeros: a turn-only snapshot shows no TOK.
+    // Unknown fields never become fake numbers: a turn-only snapshot keeps
+    // the TOK/CACHE glyphs with `--`, and FILES holds its real zero.
     const { container: bare } = render(
       <SessionHud usage={usage} sessionUsage={{ turns: 1 }} files={null} historyPartial={false} />,
       { wrapper: Providers },
     );
     const bareHud = bare.querySelector('[data-slot="session-hud"]');
     expect(bareHud?.textContent).toContain('CTX');
-    expect(bareHud?.textContent).not.toContain('TOK');
-    expect(bareHud?.textContent).not.toContain('CACHE');
-    expect(bareHud?.textContent).not.toContain('FILES');
+    expect(bareHud?.textContent).toContain('17%');
+    const tokCell = bareHud?.querySelector('[data-slot="hud-cell"][data-kind="tok"]');
+    expect(tokCell?.textContent).toContain('TOK');
+    expect(tokCell?.textContent).toContain('--');
+    expect(bareHud?.querySelector('[data-slot="hud-cell"][data-kind="cache"]')?.textContent).toContain(
+      '--',
+    );
+    expect(bareHud?.querySelector('[data-slot="hud-cell"][data-kind="files"]')?.textContent).toContain(
+      '+0',
+    );
   });
 
   it('each cell owns a fixed slot: absent readings leave the slot blank, not shuffled', () => {
@@ -133,8 +156,8 @@ describe('SessionHud', () => {
     ).toEqual(['ctx', 'tok', 'cache', 'files']);
     expect(hud?.querySelectorAll('[data-slot="hud-cell"]').length).toBe(4);
 
-    // No CTX report: the ctx SLOT still stands (empty) — the tok cell does
-    // not slide into the leading position.
+    // No CTX report: the ctx SLOT still stands with its gauge dark and the
+    // value `--` — the tok cell does not slide into the leading position.
     const { container: noCtx } = render(
       <SessionHud usage={null} sessionUsage={sessionUsage} files={files} historyPartial={false} />,
       { wrapper: Providers },
@@ -143,7 +166,12 @@ describe('SessionHud', () => {
     const slots = strip?.querySelectorAll(':scope > [data-slot="hud-slot"]');
     expect(slots?.length).toBe(4);
     expect(slots?.[0]?.getAttribute('data-kind')).toBe('ctx');
-    expect(slots?.[0]?.querySelector('[data-slot="hud-cell"]')).toBeNull();
+    expect(slots?.[0]?.querySelector('[data-slot="hud-cell"]')?.getAttribute('data-kind')).toBe(
+      'ctx',
+    );
+    expect(slots?.[0]?.querySelector('[data-slot="hud-cell"]')?.getAttribute('data-unknown')).toBe(
+      'true',
+    );
     expect(slots?.[1]?.querySelector('[data-slot="hud-cell"]')?.getAttribute('data-kind')).toBe(
       'tok',
     );
@@ -198,11 +226,12 @@ describe('SessionHud', () => {
 
   // ---- #128 — the TOOLS fourth slot (the assistant page) ----
 
-  it('renders the TOOLS cell in the fourth fixed slot when toolCalls is provided', () => {
+  it('renders the TOOLS cell in the fourth fixed slot when the page declares the tenant', () => {
     const { container } = render(
       <SessionHud
         usage={null}
         sessionUsage={sessionUsage}
+        slot4="tools"
         toolCalls={{
           count: 7,
           list: [
@@ -235,6 +264,7 @@ describe('SessionHud', () => {
       <SessionHud
         usage={null}
         sessionUsage={null}
+        slot4="tools"
         toolCalls={{ count: 12_345, list: [{ name: 'notes_search', n: 12_345 }, ...list] }}
       />,
       { wrapper: Providers },
@@ -256,6 +286,7 @@ describe('SessionHud', () => {
       <SessionHud
         usage={null}
         sessionUsage={null}
+        slot4="tools"
         toolCalls={{ count: 3, list: [{ name: 'notes_search', n: 3 }] }}
       />,
       { wrapper: Providers },
@@ -268,7 +299,8 @@ describe('SessionHud', () => {
     expect(cell?.getAttribute('title')).toContain('notes_search ×3');
   });
 
-  it('leaves the fourth slot blank when neither files nor toolCalls reported', () => {
+  it('the fourth slot zero states: FILES 0 +0 −0 by default, TOOLS 0 when declared', () => {
+    // FILES tenant, nothing ran: a real zero, tooltip says zero.
     const { container } = render(
       <SessionHud usage={usage} sessionUsage={sessionUsage} files={null} />,
       { wrapper: Providers },
@@ -277,6 +309,20 @@ describe('SessionHud', () => {
     const slots = hud?.querySelectorAll(':scope > [data-slot="hud-slot"]');
     expect(slots?.length).toBe(4);
     expect(slots?.[3]?.getAttribute('data-kind')).toBe('files');
-    expect(slots?.[3]?.querySelector('[data-slot="hud-cell"]')).toBeNull();
+    const filesCell = slots?.[3]?.querySelector('[data-slot="hud-cell"]');
+    expect(filesCell?.textContent).toContain('FILES');
+    expect(filesCell?.textContent).toContain('+0');
+    expect(filesCell?.getAttribute('title')).toContain('+0 / −0');
+
+    // TOOLS tenant with no calls yet: the label and a zero — the tenant is
+    // the page's declaration, not the data's nullity.
+    const { container: tools } = render(
+      <SessionHud usage={null} sessionUsage={null} slot4="tools" toolCalls={null} />,
+      { wrapper: Providers },
+    );
+    const toolsCell = tools.querySelector('[data-slot="hud-cell"][data-kind="tools"]');
+    expect(toolsCell?.textContent).toContain('TOOLS');
+    expect(toolsCell?.textContent).toContain('0');
+    expect(toolsCell?.getAttribute('title')).toContain('Tool calls: 0');
   });
 });

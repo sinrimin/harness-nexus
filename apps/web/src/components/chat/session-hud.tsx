@@ -36,8 +36,11 @@ import type { HudEditStats, HudToolCalls } from './hud-stats.js';
  * (`CTX/TOK/CACHE/FILES`): the strip is an engraved instrument face, the same
  * exception as the nav-group labels; accessible names carry the full phrases.
  *
- * Honesty: a cell renders only when its source reported the value (never 0 for
- * unknown), and the whole strip returns null when it has nothing to say.
+ * Honesty (fixed-face revision, alpha.11): the strip is a FIXED instrument
+ * face — labels and gauges always render, on both pages, in every state. An
+ * UNKNOWN reads `--` (CTX/TOK/CACHE: no source reported yet — never a fake
+ * zero); the fourth slot's zero state is a real number (`FILES 0 +0 −0`,
+ * `TOOLS 0` — nothing ran is data, not absence). The strip never unmounts.
  */
 
 const SEGMENTS = 10;
@@ -172,11 +175,17 @@ export interface SessionHudProps {
   /** Older history is not loaded: the FILES count is a lower bound. */
   historyPartial?: boolean;
   /**
-   * #128 — tool-call totals (the assistant's fourth slot). When present the
-   * slot renders TOOLS instead of FILES; the two never share a page (a
-   * machine session edits files, an assistant calls tools).
+   * #128 — tool-call totals (the assistant's fourth slot's data). The slot's
+   * TENANT is the `slot4` prop, not this value's nullity — a page passes its
+   * tenant even before any data exists (the face is fixed).
    */
   toolCalls?: HudToolCalls | null;
+  /**
+   * #128 — the fourth slot's tenant: 'files' (machine sessions, the
+   * default) or 'tools' (the assistant). Explicit per page so an empty
+   * assistant still reads TOOLS 0, never FILES.
+   */
+  slot4?: 'files' | 'tools';
 }
 
 export function SessionHud({
@@ -185,6 +194,7 @@ export function SessionHud({
   files = null,
   historyPartial = false,
   toolCalls = null,
+  slot4 = 'files',
 }: SessionHudProps) {
   const { t } = useI18n();
   const pressure = contextPressure(usage);
@@ -194,15 +204,6 @@ export function SessionHud({
       ? sessionUsage
       : null;
   const cache = cacheHit(tokens);
-
-  if (
-    pressure === null &&
-    tokens === null &&
-    cache === null &&
-    files === null &&
-    toolCalls === null
-  )
-    return null;
 
   const contextTitle =
     pressure !== null
@@ -229,34 +230,40 @@ export function SessionHud({
         })
       : '';
   const filesTitle =
-    files !== null
-      ? [
-          t('chat.hudFilesTitle', {
-            files: files.files > 0 ? String(files.files) : '?',
-            added: String(files.added),
-            removed: String(files.removed),
-          }),
-          ...(files.pathless ? [t('chat.hudFilesPathless')] : []),
-          ...(historyPartial ? [t('chat.hudFilesPartial')] : []),
-          ...files.list
-            .slice(0, 5)
-            .map((f) => `${f.path} +${String(f.added)} −${String(f.removed)}`),
-          ...(files.list.length > 5
-            ? [t('chat.hudFilesMore', { count: String(files.list.length - 5) })]
-            : []),
-        ].join('\n')
+    slot4 !== 'tools'
+      ? files !== null
+        ? [
+            t('chat.hudFilesTitle', {
+              files: files.files > 0 ? String(files.files) : '?',
+              added: String(files.added),
+              removed: String(files.removed),
+            }),
+            ...(files.pathless ? [t('chat.hudFilesPathless')] : []),
+            ...(historyPartial ? [t('chat.hudFilesPartial')] : []),
+            ...files.list
+              .slice(0, 5)
+              .map((f) => `${f.path} +${String(f.added)} −${String(f.removed)}`),
+            ...(files.list.length > 5
+              ? [t('chat.hudFilesMore', { count: String(files.list.length - 5) })]
+              : []),
+          ].join('\n')
+        : // The fixed face's zero state: nothing edited in the loaded
+          // transcript is a real zero, tooltip says so.
+          t('chat.hudFilesTitle', { files: '0', added: '0', removed: '0' })
       : '';
   // #128 — unlike the #124 strings, the TOOLS tooltip IS localized: tool
   // names are protocol identifiers, but the sentence around them is copy.
   const toolsTitle =
-    toolCalls !== null
-      ? [
-          t('chat.hudToolsTitle', { count: String(toolCalls.count) }),
-          ...toolCalls.list.slice(0, 5).map((tc) => `${tc.name} ×${String(tc.n)}`),
-          ...(toolCalls.list.length > 5
-            ? [t('chat.hudToolsMore', { count: String(toolCalls.list.length - 5) })]
-            : []),
-        ].join('\n')
+    slot4 === 'tools'
+      ? toolCalls !== null
+        ? [
+            t('chat.hudToolsTitle', { count: String(toolCalls.count) }),
+            ...toolCalls.list.slice(0, 5).map((tc) => `${tc.name} ×${String(tc.n)}`),
+            ...(toolCalls.list.length > 5
+              ? [t('chat.hudToolsMore', { count: String(toolCalls.list.length - 5) })]
+              : []),
+          ].join('\n')
+        : t('chat.hudToolsTitle', { count: '0' })
       : '';
 
   const filled =
@@ -327,7 +334,34 @@ export function SessionHud({
                 <ContextDetails usage={usage} />
               </PopoverContent>
             </Popover>
-          ) : null}
+          ) : (
+            // Fixed face, no reading yet: the gauge sits dark, the value is
+            // an explicit unknown — never a fake zero, never absent.
+            <div
+              data-slot="hud-cell"
+              data-kind="ctx"
+              data-unknown="true"
+              className="flex shrink-0 items-center gap-2 px-3 @max-2xl:gap-1 @max-2xl:px-1.5 @max-sm:px-1"
+            >
+              <Label>{t('chat.hudContext')}</Label>
+              <span
+                data-slot="hud-segments"
+                data-unknown="true"
+                aria-hidden="true"
+                className="flex items-center gap-[2px]"
+              >
+                {Array.from({ length: SEGMENTS }, (_, i) => (
+                  <span
+                    key={i}
+                    data-slot="hud-seg"
+                    data-on="false"
+                    className="h-2 w-[3px] rounded-[1px] bg-(--hud-track)"
+                  />
+                ))}
+              </span>
+              <Value>--</Value>
+            </div>
+          )}
         </div>
 
         <div
@@ -358,7 +392,23 @@ export function SessionHud({
                 </Value>
               ) : null}
             </div>
-          ) : null}
+          ) : (
+            // Fixed face: both directions hold their glyphs, values unknown.
+            <div
+              data-slot="hud-cell"
+              data-kind="tok"
+              data-unknown="true"
+              className="flex shrink-0 items-center gap-2 px-3 @max-2xl:gap-1 @max-2xl:px-1.5 @max-sm:px-1"
+            >
+              <Label>{t('chat.hudTokens')}</Label>
+              <Value className="flex items-center gap-0.5">
+                <PixelArrow dir="up" />--
+              </Value>
+              <Value className="flex items-center gap-0.5">
+                <PixelArrow dir="down" />--
+              </Value>
+            </div>
+          )}
         </div>
 
         <div
@@ -378,21 +428,31 @@ export function SessionHud({
               <Label>{t('chat.hudCache')}</Label>
               <Value>{cache.pct}%</Value>
             </div>
-          ) : null}
+          ) : (
+            <div
+              data-slot="hud-cell"
+              data-kind="cache"
+              data-unknown="true"
+              className="flex shrink-0 items-center gap-2 px-3 @max-2xl:gap-1 @max-2xl:px-1.5 @max-sm:px-1"
+            >
+              <Label>{t('chat.hudCache')}</Label>
+              <Value>--</Value>
+            </div>
+          )}
         </div>
 
-        {/* #128 — the fourth fixed slot's tenant is a per-page choice: TOOLS
-        when the caller passes tool-call totals (the assistant), FILES
-        otherwise (machine sessions). */}
+        {/* #128 — the fourth fixed slot's tenant is the page's `slot4` prop:
+        TOOLS on the assistant (its work product is tool calls), FILES on
+        machine sessions. Both have a REAL zero state — nothing ran is data. */}
         <div
           data-slot="hud-slot"
-          data-kind={toolCalls !== null ? 'tools' : 'files'}
+          data-kind={slot4 === 'tools' ? 'tools' : 'files'}
           className={cn(
             'flex shrink-0 items-center',
-            toolCalls !== null ? SLOT_MIN.tools : SLOT_MIN.files,
+            slot4 === 'tools' ? SLOT_MIN.tools : SLOT_MIN.files,
           )}
         >
-          {toolCalls !== null ? (
+          {slot4 === 'tools' ? (
             <div
               data-slot="hud-cell"
               data-kind="tools"
@@ -402,7 +462,7 @@ export function SessionHud({
               className="flex shrink-0 items-center gap-2 px-3 @max-2xl:gap-1 @max-2xl:px-1.5 @max-sm:px-1"
             >
               <Label>{t('chat.hudTools')}</Label>
-              <Value>{shortCount(toolCalls.count)}</Value>
+              <Value>{toolCalls !== null ? shortCount(toolCalls.count) : '0'}</Value>
             </div>
           ) : files !== null ? (
             <div
@@ -422,7 +482,22 @@ export function SessionHud({
                 <Value className="text-(--hud-fail)">−{shortCount(files.removed)}</Value>
               ) : null}
             </div>
-          ) : null}
+          ) : (
+            <div
+              data-slot="hud-cell"
+              data-kind="files"
+              data-zero="true"
+              role="group"
+              aria-label={filesTitle}
+              title={filesTitle}
+              className="flex shrink-0 items-center gap-2 px-3 @max-2xl:gap-1 @max-2xl:px-1.5 @max-sm:px-1"
+            >
+              <Label>{t('chat.hudFiles')}</Label>
+              <Value>0</Value>
+              <Value className="text-(--hud-ok)">+0</Value>
+              <Value className="text-(--hud-fail)">−0</Value>
+            </div>
+          )}
         </div>
       </section>
     </div>

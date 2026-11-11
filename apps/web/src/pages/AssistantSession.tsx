@@ -1212,6 +1212,7 @@ export function AssistantSessionPage() {
                           usage={conversation.usage}
                           sessionUsage={sessionUsage}
                           toolCalls={hudTools}
+                          slot4="tools"
                         />
                       }
                       value={draft}
