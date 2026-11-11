@@ -118,24 +118,35 @@ describe('SessionHud', () => {
     expect(bareHud?.textContent).not.toContain('FILES');
   });
 
-  it('has no divider rules: the strip is one face, so a missing first cell leaves no leading mark', () => {
-    // Full strip — nothing but the four cells at the top level.
+  it('each cell owns a fixed slot: absent readings leave the slot blank, not shuffled', () => {
+    // Full strip — four slots in the fixed instrument order.
     const { container } = render(
       <SessionHud usage={usage} sessionUsage={sessionUsage} files={files} historyPartial={false} />,
       { wrapper: Providers },
     );
     const hud = container.querySelector('[data-slot="session-hud"]');
-    expect(hud?.children.length).toBe(4);
+    expect(hud?.querySelectorAll(':scope > [data-slot="hud-slot"]').length).toBe(4);
+    expect(
+      [...(hud?.querySelectorAll(':scope > [data-slot="hud-slot"]') ?? [])].map((s) =>
+        s.getAttribute('data-kind'),
+      ),
+    ).toEqual(['ctx', 'tok', 'cache', 'files']);
     expect(hud?.querySelectorAll('[data-slot="hud-cell"]').length).toBe(4);
 
-    // No CTX report: the strip STARTS with the TOK cell (no leading rule).
+    // No CTX report: the ctx SLOT still stands (empty) — the tok cell does
+    // not slide into the leading position.
     const { container: noCtx } = render(
       <SessionHud usage={null} sessionUsage={sessionUsage} files={files} historyPartial={false} />,
       { wrapper: Providers },
     );
     const strip = noCtx.querySelector('[data-slot="session-hud"]');
-    expect(strip?.firstElementChild?.getAttribute('data-kind')).toBe('tok');
-    expect(strip?.firstElementChild?.tagName).toBe('DIV');
+    const slots = strip?.querySelectorAll(':scope > [data-slot="hud-slot"]');
+    expect(slots?.length).toBe(4);
+    expect(slots?.[0]?.getAttribute('data-kind')).toBe('ctx');
+    expect(slots?.[0]?.querySelector('[data-slot="hud-cell"]')).toBeNull();
+    expect(slots?.[1]?.querySelector('[data-slot="hud-cell"]')?.getAttribute('data-kind')).toBe(
+      'tok',
+    );
   });
 
   it('opens the shared context details from the CTX cell', () => {
