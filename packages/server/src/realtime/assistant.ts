@@ -258,6 +258,8 @@ export class AssistantRealtimeService {
       outputTokens?: number | undefined;
       cacheReadTokens?: number | undefined;
       cacheWriteTokens?: number | undefined;
+      contextUsed?: number | undefined;
+      contextSize?: number | undefined;
     },
   ): void {
     ch.usage.record(report);
@@ -500,11 +502,13 @@ export class AssistantRealtimeService {
       await this.refreshContextWindow(ch);
     }
     const usageSnapshot = ch.usage.snapshot();
+    const contextSnapshot = ch.usage.contextSnapshot();
     this.io.toChannel(session.id, 'assistant:session.ready', {
       sessionId: session.id,
       assistantId: ch.assistantId,
       assistantName: config.name,
       ...(usageSnapshot !== null ? { sessionUsage: usageSnapshot } : {}),
+      ...(contextSnapshot !== null ? { contextUsage: contextSnapshot } : {}),
     });
     this.io.toChannel(session.id, 'assistant:history', {
       sessionId: session.id,
@@ -909,6 +913,9 @@ export class AssistantRealtimeService {
         permissionMode: ch.permissionMode,
         prompt,
         rows: rowsBefore,
+        // #128 — the persisted rows carry the derived occupancy (the HUD's
+        // CTX restore path); absent window = the row keeps counts only.
+        ...(ch.contextWindow !== undefined ? { contextWindow: ch.contextWindow } : {}),
         // #128 — the turn's emit path is the ONLY place usage is counted:
         // the title refine and the delegated-approvals decision model build
         // their own calls outside this wrapper, so they never land here.
@@ -1159,12 +1166,14 @@ export class AssistantRealtimeService {
     this.io.joinChannel(socketId, sessionId);
     const config = await this.configOf(ch.ownerId, ch.assistantId);
     const usageSnapshot = ch.usage.snapshot();
+    const contextSnapshot = ch.usage.contextSnapshot();
     this.io.toChannel(sessionId, 'assistant:session.ready', {
       sessionId,
       assistantId: ch.assistantId,
       assistantName: config?.name ?? '',
       // #128 — the live accumulator's snapshot (a resync must not blank the HUD).
       ...(usageSnapshot !== null ? { sessionUsage: usageSnapshot } : {}),
+      ...(contextSnapshot !== null ? { contextUsage: contextSnapshot } : {}),
     });
     const rows = await this.deps.uow.assistants.listMessages(sessionId);
     this.io.toChannel(sessionId, 'assistant:history', {

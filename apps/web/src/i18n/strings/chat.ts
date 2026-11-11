@@ -162,26 +162,27 @@ const en = {
   hudAria: 'Session telemetry',
   hudContext: 'CTX',
   hudTokens: 'TOK',
-  hudCache: 'CACHE',
+  hudRead: 'READ',
+  hudWrite: 'WRITE',
+  hudHit: 'HIT',
+  hudReq: 'REQ',
   hudFiles: 'FILES',
   hudContextTitle: 'Context: {used} of {size} tokens ({pct}%)',
   // #128 — the qualifier "(daemon run)" is gone: the assistant page shares
   // these strings and its totals come from the SERVER-side accumulator
   // (lifetime semantics live in the wiki, not on the strip).
-  hudTokensTitle: 'Session tokens: {turns} turns · input {input} · output {output}',
-  hudCacheTitle: 'Prompt cache: {read} read · {write} written · {input} uncached',
+  hudTokensTitle: 'Session tokens: {total} total · {turns} requests · in {input} · out {output}',
+  hudReadTitle: 'Prompt cache read: {read} tokens',
+  hudWriteTitle: 'Prompt cache write: {write} tokens',
+  hudHitTitle: 'Prompt cache hit rate: {pct}%',
+  hudReqTitle: 'Requests in this session: {count}',
+  hudNoData: 'No data yet',
   hudFilesTitle: 'Files in the loaded transcript: {files} · +{added} / −{removed}',
   hudFilesPathless: 'some diffs carried no path — file count is a lower bound',
   hudFilesPartial: 'older history not loaded — the count is a lower bound',
   // English in both locales — the HUD is an engraved instrument face (the
   // same exception as the labels above).
   hudFilesMore: '+{count} more',
-  // #128 — the assistant's fourth slot. The LABEL is engraved English (the
-  // #124 exception); the tooltip is LOCALIZED copy — tool names are protocol
-  // identifiers, but the sentence around them is UI text.
-  hudTools: 'TOOLS',
-  hudToolsTitle: 'Tool calls: {count}',
-  hudToolsMore: '+{count} more',
   permissionAsk: 'The agent asks permission',
   permissionAskTitle: 'The agent asks permission: {title}',
   // ---- 9 W14.1: agent questions (ACP elicitation) ----
@@ -407,24 +408,26 @@ const zh: typeof en = {
   hudAria: 'Session telemetry',
   hudContext: 'CTX',
   hudTokens: 'TOK',
-  hudCache: 'CACHE',
+  hudRead: 'READ',
+  hudWrite: 'WRITE',
+  hudHit: 'HIT',
+  hudReq: 'REQ',
   hudFiles: 'FILES',
   hudContextTitle: 'Context: {used} of {size} tokens ({pct}%)',
   // #128 — same neutralized titles as `en` (the assistant page shares them;
   // its totals are server-accumulated, there is no daemon).
-  hudTokensTitle: 'Session tokens: {turns} turns · input {input} · output {output}',
-  hudCacheTitle: 'Prompt cache: {read} read · {write} written · {input} uncached',
+  hudTokensTitle: 'Session tokens: {total} total · {turns} requests · in {input} · out {output}',
+  hudReadTitle: '缓存读取：{read} tokens',
+  hudWriteTitle: '缓存写入：{write} tokens',
+  hudHitTitle: '缓存命中率：{pct}%',
+  hudReqTitle: '本会话请求数：{count}',
+  hudNoData: '暂无数据',
   hudFilesTitle: 'Files in the loaded transcript: {files} · +{added} / −{removed}',
   hudFilesPathless: 'some diffs carried no path — file count is a lower bound',
   hudFilesPartial: 'older history not loaded — the count is a lower bound',
   // English in both locales — the HUD is an engraved instrument face (the
   // same exception as the labels above).
   hudFilesMore: '+{count} more',
-  // #128 — the label is engraved English (the #124 exception); the tooltip
-  // IS localized (see the `en` block for why these two differ).
-  hudTools: 'TOOLS',
-  hudToolsTitle: '工具调用：{count} 次',
-  hudToolsMore: '还有 {count} 个',
   permissionAsk: '代理请求权限',
   permissionAskTitle: '代理请求权限：{title}',
   // ---- 9 W14.1: agent questions (ACP elicitation) ----

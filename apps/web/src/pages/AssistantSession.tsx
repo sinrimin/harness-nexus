@@ -54,7 +54,8 @@ import { cn } from '@/lib/utils';
 import { Dialog as DialogPrimitive } from 'radix-ui';
 import { ChatStream } from '@/components/chat/chat-stream.js';
 import { SessionHud } from '@/components/chat/session-hud.js';
-import { sessionToolCallStats } from '@/components/chat/hud-stats.js';
+import type { ComposerUsage } from '@/components/chat/context-meter.js';
+import { sessionEditStats } from '@/components/chat/hud-stats.js';
 import { CaptureNoteDialog } from '@/pages/notes/CaptureNoteDialog';
 import { WelcomePane, type WelcomeCard } from '@/components/chat/welcome-pane.js';
 import { ChannelTabs } from '@/components/chat/channel-tabs.js';
@@ -251,15 +252,23 @@ export function AssistantSessionPage() {
   /** #128 — server-side session token/cache totals (the HUD's TOK/CACHE). */
   const [sessionUsage, setSessionUsage] = useState<ChatSessionUsage | null>(null);
   /**
-   * #128 — tool-call totals for the HUD. `rows` identity changes on every
-   * streamed token (the fold slices on each delta), so the memo keys on the
-   * fold's toolRevision; the rows ride a ref so the walk sees the current
-   * transcript (the AgentSession hudFiles pattern).
+   * #128 — the recovery copy of the CTX reading. The live usage events carry
+   * the derived occupancy, but a reopen replays history (counts only) — the
+   * ready push's contextUsage restores the last reading instead of blanking
+   * CTX until the next turn.
+   */
+  const [readyUsage, setReadyUsage] = useState<ComposerUsage | null>(null);
+  /**
+   * #128 — edit totals for the HUD's FILES cell. `rows` identity changes on
+   * every streamed token, so the memo keys on the fold's toolRevision; the
+   * rows ride a ref so the walk sees the current transcript (the
+   * AgentSession hudFiles pattern). Assistant tools are not edit-class, so
+   * this reads its zero state — honest, not absent.
    */
   const hudRowsRef = useRef(conversation.rows);
   hudRowsRef.current = conversation.rows;
-  const hudTools = useMemo(
-    () => sessionToolCallStats(hudRowsRef.current),
+  const hudFiles = useMemo(
+    () => sessionEditStats(hudRowsRef.current),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [conversation.toolRevision],
   );
@@ -427,6 +436,7 @@ export function AssistantSessionPage() {
     // #128 — a switch starts clean; the buffered ready (or the live ready
     // push) restores the server's snapshot.
     setSessionUsage(null);
+    setReadyUsage(null);
     if (sessionId === '') {
       setPhase('idle');
       return;
@@ -438,6 +448,7 @@ export function AssistantSessionPage() {
     if (buffered.history !== undefined) dispatch({ type: 'history', items: buffered.history });
     if (buffered.ready !== undefined) {
       setSessionUsage(buffered.ready.sessionUsage ?? null);
+      setReadyUsage(buffered.ready.contextUsage ?? null);
     }
     // configDone: the session_config push raced ahead; ask the server to
     // re-emit it (idempotent, room-scoped).
@@ -479,6 +490,11 @@ export function AssistantSessionPage() {
         setSessionUsage(envelope.event);
         return;
       }
+      if (envelope.event.kind === 'usage' && envelope.event.contextUsed === undefined) {
+        // The live turn reported no occupancy (the binding has no registry
+        // window) — the restored reading no longer describes this session.
+        setReadyUsage(null);
+      }
       dispatch({ type: 'event', event: envelope.event });
     };
     const onHistory = (push: AssistantHistoryEvent): void => {
@@ -489,8 +505,9 @@ export function AssistantSessionPage() {
       if (push.sessionId !== sessionId) return;
       setPhase('ready');
       setError(null);
-      // #128 — a rejoin's ready push carries the stored totals.
+      // #128 — a rejoin's ready push carries the stored totals + occupancy.
       setSessionUsage(push.sessionUsage ?? null);
+      setReadyUsage(push.contextUsage ?? null);
     };
     const onClosed = (push: AssistantClosedPush): void => {
       if (push.sessionId !== sessionId) return;
@@ -1209,10 +1226,13 @@ export function AssistantSessionPage() {
                       // reading on this page now, so the toolbar meter is off.
                       header={
                         <SessionHud
-                          usage={conversation.usage}
+                          usage={
+                            conversation.usage?.contextUsed !== undefined
+                              ? conversation.usage
+                              : (readyUsage ?? conversation.usage)
+                          }
                           sessionUsage={sessionUsage}
-                          toolCalls={hudTools}
-                          slot4="tools"
+                          files={hudFiles}
                         />
                       }
                       value={draft}

@@ -5,7 +5,7 @@
 import { describe, expect, it } from 'vitest';
 import type { ChatToolCallView } from '@/realtime';
 import { createFoldState, fold, type FoldState } from './fold';
-import { sessionEditStats, sessionToolCallStats } from './hud-stats';
+import { sessionEditStats } from './hud-stats';
 
 /**
  * #124 — the HUD's edit totals. These walk the SAME diff helpers as the Edit
@@ -109,67 +109,5 @@ describe('sessionEditStats', () => {
     expect(stats?.list[0]?.path).toBe('src/child.ts');
     expect(stats?.added).toBe(2);
     expect(stats?.removed).toBe(1);
-  });
-});
-
-describe('sessionToolCallStats', () => {
-  it('returns null when no tool call exists (never a zeroed row)', () => {
-    let state = createFoldState();
-    state = fold(state, {
-      type: 'event',
-      event: { kind: 'message_delta', delta: 'just text' },
-    });
-    expect(sessionToolCallStats(state.rows)).toBeNull();
-    expect(sessionToolCallStats(createFoldState().rows)).toBeNull();
-  });
-
-  it('counts every call and groups by tool name, most-called first', () => {
-    const state = withCalls([
-      { toolCallId: 'c1', toolName: 'notes_search', status: 'completed' },
-      { toolCallId: 'c2', toolName: 'notes_save', status: 'completed' },
-      { toolCallId: 'c3', toolName: 'notes_search', status: 'failed' },
-      { toolCallId: 'c4', toolName: 'notes_search', status: 'in_progress' },
-    ]);
-    expect(sessionToolCallStats(state.rows)).toEqual({
-      count: 4,
-      list: [
-        { name: 'notes_search', n: 3 },
-        { name: 'notes_save', n: 1 },
-      ],
-    });
-  });
-
-  it('includes sub-agent calls and falls back through the node labels', () => {
-    let state = createFoldState();
-    state = fold(state, {
-      type: 'event',
-      event: { kind: 'subagent_spawned', subagentId: 's1', name: 'scout', task: 'look' },
-    });
-    state = fold(state, {
-      type: 'event',
-      event: {
-        kind: 'subagent_update',
-        subagentId: 's1',
-        event: {
-          kind: 'tool_call',
-          call: { toolCallId: 'c1', toolName: 'web_search', status: 'completed' },
-        },
-      },
-    });
-    state = fold(state, {
-      type: 'event',
-      event: {
-        kind: 'tool_call',
-        call: { toolCallId: 'c2', title: 'Unnamed op', status: 'completed' },
-      },
-    });
-    // c2 carries no toolName — the row's title stands in for the grouping.
-    expect(sessionToolCallStats(state.rows)).toEqual({
-      count: 2,
-      list: [
-        { name: 'Unnamed op', n: 1 },
-        { name: 'web_search', n: 1 },
-      ],
-    });
   });
 });

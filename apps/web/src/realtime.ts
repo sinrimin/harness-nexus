@@ -437,6 +437,11 @@ export interface AssistantReadyPush {
   assistantName: string;
   /** #128 — the server-side session accumulator's snapshot (rejoin restore). */
   sessionUsage?: ChatSessionUsage;
+  /**
+   * #128 — the last turn's derived occupancy (the HUD's CTX restore). The
+   * live usage events carry the same fields; this is the reopen path.
+   */
+  contextUsage?: { contextUsed: number; contextSize: number };
 }
 
 export interface AssistantEventEnvelope {

@@ -109,6 +109,7 @@ interface IoCall {
     assistantId?: string;
     assistantName?: string;
     sessionUsage?: { turns: number; inputTokens?: number; outputTokens?: number };
+    contextUsage?: { contextUsed: number; contextSize: number };
     event?: ChatStreamEvent;
   };
 }
@@ -370,7 +371,7 @@ describe('#128 — assistant session usage telemetry', () => {
     });
   });
 
-  it('re-seeds a fresh channel from the persisted rows on reopen (cache honestly unknown)', async () => {
+  it('re-seeds a fresh channel from the persisted rows on reopen (cache restored)', async () => {
     const h = await setup({
       script: [textReply('answer', { input: 100, output: 20, cacheRead: 500, cacheWrite: 50 })],
     });
@@ -380,8 +381,8 @@ describe('#128 — assistant session usage telemetry', () => {
     await settle(h.uow, sessionId);
     await h.svc.close(owner.userId, sessionId, 'user');
 
-    // The channel is gone; a fresh open seeds from the rows (which persist
-    // input/output only — the cache totals are channel-lifetime).
+    // The channel is gone; a fresh open seeds from the rows, which now carry
+    // the cache counts too (the #128 persistence amendment).
     const reopened = await h.svc.open(owner.userId, h.configId, sessionId, 'sock-2');
     expect(reopened.ok).toBe(true);
     const ready = readyPushes(h.calls, sessionId);
@@ -389,6 +390,30 @@ describe('#128 — assistant session usage telemetry', () => {
       turns: 1,
       inputTokens: 100,
       outputTokens: 20,
+      cacheReadTokens: 500,
+      cacheWriteTokens: 50,
+    });
+  });
+
+  it('CTX — a reopened session restores the derived occupancy from the rows', async () => {
+    const h = await setup({
+      providerModels: [{ id: 'gw-large', contextWindow: 64_000 }],
+      script: [textReply('answer', { input: 200, output: 40, cacheRead: 1000, cacheWrite: 50 })],
+    });
+    const res = await h.svc.open(owner.userId, h.configId, undefined, 'sock-1');
+    const sessionId = res.ok ? res.sessionId : '';
+    await h.svc.onMessageSend(owner.userId, sessionId, 'hello');
+    await settle(h.uow, sessionId);
+    await h.svc.close(owner.userId, sessionId, 'user');
+
+    // The row persisted the derived occupancy; the fresh channel's ready push
+    // restores it (a reopen must not blank CTX until the next turn).
+    const reopened = await h.svc.open(owner.userId, h.configId, sessionId, 'sock-2');
+    expect(reopened.ok).toBe(true);
+    const ready = readyPushes(h.calls, sessionId);
+    expect(ready[ready.length - 1]!.payload.contextUsage).toEqual({
+      contextUsed: 1290,
+      contextSize: 64_000,
     });
   });
 
