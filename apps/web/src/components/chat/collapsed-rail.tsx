@@ -185,6 +185,7 @@ export function RailMenuRow({
   meta,
   active = false,
   disabled = false,
+  indented = false,
   titleAttr,
   onPick,
 }: {
@@ -192,6 +193,12 @@ export function RailMenuRow({
   meta: string;
   active?: boolean;
   disabled?: boolean;
+  /**
+   * Under a group label (the agent end's cwd folders): the title aligns
+   * with the LABEL'S NAME — label x (px-2) + folder icon (12) + gap (6) —
+   * so the rows read as the folder's children, not siblings of the header.
+   */
+  indented?: boolean;
   titleAttr?: string;
   onPick: () => void;
 }) {
@@ -210,7 +217,7 @@ export function RailMenuRow({
         }
         onPick();
       }}
-      className="gap-2 py-1.5"
+      className={cn('gap-2 py-1.5', indented && 'pl-[26px]')}
     >
       <span className="min-w-0 flex-1">
         <span className="block truncate text-xs font-medium">{title}</span>

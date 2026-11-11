@@ -1427,6 +1427,9 @@ export function AgentSessionPage() {
         meta={pinnedBlock ? `${when} · ${cwdBasename(s.cwd)}` : when}
         active={active}
         disabled={stale && !active}
+        // every row sits under the folder rhythm — the pinned block has no
+        // header of its own, and one indent keeps the whole sheet on one grid.
+        indented
         titleAttr={
           stale
             ? t('chat.staleModel', { model: s.model ?? '?' })
