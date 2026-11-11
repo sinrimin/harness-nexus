@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2026 sinromium
+// SPDX-FileCopyrightText: 2026 sinrimin
 //
 // SPDX-License-Identifier: MIT
 
