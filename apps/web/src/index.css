@@ -13,6 +13,9 @@
 @import './fonts/ibm-plex-sans-latin.css';
 @import '@fontsource/ibm-plex-mono/latin-400.css';
 @import '@fontsource/ibm-plex-mono/latin-500.css';
+/* #124 — the session HUD's terminal face (labels + figures). Latin-only by
+ * design (the HUD is English-only); self-hosted like every other font. */
+@import '@fontsource/vt323/latin-400.css';
 
 @custom-variant dark (&:is(.dark *));
 
@@ -123,6 +126,11 @@
    * something to override. Values are the Signal reading — a quiet console.
    */
   --app-font-label: var(--app-font-sans);
+  /* #124 — the session HUD's terminal face: VT323 (the DEC VT320 revival) on
+   * BOTH labels and figures. It is rendered with antialiasing off (the rule
+   * below), which is the only way a bitmap-derived face stays crisp at 9–11px;
+   * skins may repoint this hook if their chassis needs another face. */
+  --app-font-hud: 'VT323', var(--app-font-mono);
   --label-size: 11px;
   --label-size-sm: 9.5px;
   --label-tracking: 0.09em;
@@ -186,6 +194,26 @@
   --state-ok-ink: oklch(0.5 0.13 152);
   --state-warn-ink: oklch(0.5 0.12 62);
   --state-fail-ink: oklch(0.5 0.19 25);
+
+  /* #124 — the session HUD (the Sender's telemetry strip). It is an
+   * INSTRUMENT, not a page surface: always-dark glass in Signal, in both
+   * modes, so its readings look the same wherever the page's mode goes. A
+   * skin may repaint the whole material (BAY cuts its inverted LCD window);
+   * the component names these tokens and nothing else. */
+  --hud-h: 18px;
+  /* VT323 runs small on the em: 11/14px in the 18px band reads like a normal
+   * 9/11px face in the other roles. */
+  --hud-label-size: 11px;
+  --hud-value-size: 14px;
+  --hud-bg: oklch(0.21 0.012 260);
+  --hud-ink: oklch(0.95 0.004 250);
+  --hud-dim: oklch(0.72 0.012 250);
+  --hud-track: oklch(1 0 0 / 0.16);
+  --hud-fill: oklch(0.92 0.004 250);
+  --hud-ok: oklch(0.8 0.16 150);
+  --hud-warn: oklch(0.84 0.15 75);
+  --hud-fail: oklch(0.74 0.19 25);
+  --hud-hover: oklch(1 0 0 / 0.06);
 
   /* #121 — ANSI palette for terminal output (the 16 base colours; 256-colour
    * and truecolour render literal). Red / green / yellow ARE the status inks
@@ -266,6 +294,10 @@
 
 .dark {
   color-scheme: dark;
+
+  /* #124 — the HUD stays dark in dark mode; lift it just enough to read as a
+   * device ON the page rather than a hole in it. */
+  --hud-bg: oklch(0.25 0.012 260);
 
   --background: oklch(0.18 0.015 260); /* near-black, cool */
   --foreground: oklch(0.96 0.005 250);
@@ -388,6 +420,7 @@
   --font-mono: var(--app-font-mono);
   --font-display: var(--app-font-display);
   --font-label: var(--app-font-label);
+  --font-hud: var(--app-font-hud);
 
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -791,6 +824,25 @@
 [data-slot='button']:not(:disabled):active {
   transform: translate(var(--press-shift), var(--press-shift));
   box-shadow: var(--shadow-press);
+}
+
+/* #124 — the HUD's terminal face is rendered WITHOUT antialiasing. VT323 is
+ * a bitmap-derived face: grey AA edges are what made the old pixel label face
+ * read as "fuzzy", and at 9–11px the stroke should be either on or off. macOS
+ * honours -webkit-font-smoothing; engines that ignore it (Chromium on Linux)
+ * keep their AA and the face still renders, just softer. */
+[data-slot='session-hud'] {
+  /* The full pixel-rendering recipe. Honest scope: only
+   * -webkit-font-smoothing reaches TEXT rasterisation, and only on macOS
+   * engines; image-rendering applies to replaced content (there are no
+   * images inside the HUD) and -moz-osx-font-smoothing accepts auto|grayscale
+   * in Firefox. They are declared anyway so the HUD's rendering contract is
+   * explicit and any engine that gains support picks it up. */
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+  -webkit-font-smoothing: none;
+  -moz-osx-font-smoothing: none;
+  font-smooth: never;
 }
 
 /* The table shell's edge padding: 13 call sites used to hand-write pl-6/pr-6

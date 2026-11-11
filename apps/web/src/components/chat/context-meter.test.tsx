@@ -9,7 +9,7 @@ import type { ReactNode } from 'react';
 import { MemoryRouter } from 'react-router-dom';
 import { I18nProvider } from '@/i18n';
 import { SkinProvider } from '@/components/skin-provider';
-import { ContextMeter } from './composer';
+import { ContextMeter } from './context-meter';
 
 /**
  * The context meter's mechanical contract (#26, reshaped by #122 and #123):

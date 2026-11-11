@@ -411,6 +411,12 @@ export function attachChatHandlers(
 
   /** #39 — token totals for the TUI (this daemon run, nothing persisted). */
   const usageLedger = new UsageLedger();
+  /**
+   * #124 — the last session_usage snapshot sent per channel. `usage` events
+   * that only carry cost/occupancy leave the totals unchanged; comparing the
+   * serialized snapshot keeps the HUD from re-rendering on every such step.
+   */
+  const lastUsageEmit = new Map<string, string>();
 
   const emitEvent = (session: DaemonSession, event: ChatStreamEvent): void => {
     // #39/#44 — the usage ledger. `usage` events carry per-turn tokens (dsh,
@@ -420,8 +426,10 @@ export function attachChatHandlers(
     // per-turn). Occupancy-only updates carry nothing countable. History
     // replays ride emitHistory, never here, so a resync cannot double-count.
     const model = modelOf(session.config, session.modelOptions) ?? '(unknown)';
+    let counted = false;
     if (event.kind === 'usage') {
       usageLedger.record(session.sessionId, session.target, model, event, new Date().toISOString());
+      counted = true;
     } else if (event.kind === 'turn_result') {
       usageLedger.recordTurn(
         session.sessionId,
@@ -430,9 +438,27 @@ export function attachChatHandlers(
         event.usage !== undefined ? event.usage : null,
         new Date().toISOString(),
       );
+      counted = true;
     }
     pushHistory(session, { type: 'event', event });
     socket.emit('chat:event', { sessionId: session.sessionId, event });
+    // #124 — the session-cumulative totals the composer HUD reads. DERIVED
+    // state: live socket only, never the history ring (a resync rebuilds the
+    // transcript, not the telemetry). The server stores the latest snapshot
+    // and re-pushes it on rejoin.
+    if (counted) {
+      const snapshot = usageLedger.sessionReport(session.sessionId);
+      if (snapshot !== null) {
+        const json = JSON.stringify(snapshot);
+        if (lastUsageEmit.get(session.sessionId) !== json) {
+          lastUsageEmit.set(session.sessionId, json);
+          socket.emit('chat:event', {
+            sessionId: session.sessionId,
+            event: { kind: 'session_usage', ...snapshot },
+          });
+        }
+      }
+    }
   };
 
   /** Issue #2 — see `ChatHandlersHandle.liveConnectionFor`. */
@@ -529,6 +555,7 @@ export function attachChatHandlers(
   const teardown = (session: DaemonSession, reason: string): void => {
     if (sessions.get(session.sessionId) !== session) return;
     sessions.delete(session.sessionId);
+    lastUsageEmit.delete(session.sessionId);
     session.tail?.stop();
     session.tap?.close();
     clearTimeout(session.cancelForce?.timer);
@@ -1167,12 +1194,16 @@ export function attachChatHandlers(
         // history (a load's replay patches settle first; last write wins) and
         // enters the ring, so a resync restores the selectors.
         if (establishedConfig !== null) emitConfig(session);
+        // #124 — a re-established channel keeps its ledger totals; hand the
+        // snapshot over with ready so a rejoin's HUD starts populated.
+        const readyUsage = usageLedger.sessionReport(sessionId);
         socket.emit('chat:session.ready', {
           sessionId,
           nativeSessionId: acpSessionId,
           ...(agentInfo.name !== undefined ? { agentName: agentInfo.name } : {}),
           ...(agentInfo.version !== undefined ? { agentVersion: agentInfo.version } : {}),
           promptCapabilities: promptCaps,
+          ...(readyUsage !== null ? { sessionUsage: readyUsage } : {}),
         });
       } catch (e) {
         tapArmed?.listener.close();

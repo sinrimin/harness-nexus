@@ -38,6 +38,7 @@ import {
   type ChatSessionClosedPush,
   type ChatSessionFailedPush,
   type ChatSessionReadyPush,
+  type ChatSessionUsage,
 } from '@/realtime';
 import {
   HarnessNexusError,
@@ -50,6 +51,8 @@ import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { Dialog as DialogPrimitive } from 'radix-ui';
 import { ChatStream } from '@/components/chat/chat-stream.js';
+import { SessionHud } from '@/components/chat/session-hud.js';
+import { sessionEditStats } from '@/components/chat/hud-stats.js';
 import { CaptureNoteDialog } from '@/pages/notes/CaptureNoteDialog';
 import { WelcomePane, type WelcomeCard } from '@/components/chat/welcome-pane.js';
 import { ChannelTabs } from '@/components/chat/channel-tabs.js';
@@ -544,6 +547,8 @@ export function AgentSessionPage() {
   const [recordsOpen, setRecordsOpen] = useState(false);
   const [nativeSessionId, setNativeSessionId] = useState<string | null>(null);
   const [phase, setPhase] = useState<Phase>('idle');
+  /** #124 — daemon session-cumulative token/cache totals for the HUD. */
+  const [sessionUsage, setSessionUsage] = useState<ChatSessionUsage | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [draft, setDraft] = useState('');
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -580,6 +585,19 @@ export function AgentSessionPage() {
   const [prependKey, setPrependKey] = useState(0);
   const conversationRef = useRef(conversation);
   conversationRef.current = conversation;
+  /**
+   * #124 — edit totals for the HUD. `rows` identity changes on EVERY streamed
+   * token (the fold slices on each delta), so the memo keys on the fold's
+   * toolRevision instead; the rows come through a ref so the walk sees the
+   * current transcript. The stats helper caches each tool node's diff.
+   */
+  const hudRowsRef = useRef(conversation.rows);
+  hudRowsRef.current = conversation.rows;
+  const hudFiles = useMemo(
+    () => sessionEditStats(hudRowsRef.current),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [conversation.toolRevision],
+  );
   /** 9 W11 B — the tab strip's live-channel truth (snapshot pushes). */
   const channels = useChatChannels();
   /** #52 M3 — the user's busy assistant turns, as tabs ahead of the channels. */
@@ -755,6 +773,10 @@ export function AgentSessionPage() {
     }
     setPhase(pendingPhaseRef.current === 'ready' ? 'ready' : 'connecting');
     pendingPhaseRef.current = null;
+    // #124 — a switch starts clean; the buffered ready below (or the live
+    // ready push) restores the server's snapshot. This must run BEFORE the
+    // buffer is applied, not in the live-wiring effect, or it clobbers it.
+    setSessionUsage(null);
     // Replay the rejoin pushes that raced ahead of this switch (see
     // SwitchRaceBuffer): the buffer holds the LATEST snapshot per session,
     // consumed here so the keyed listeners own everything live afterwards.
@@ -773,6 +795,7 @@ export function AgentSessionPage() {
         setNativeSessionId(buffered.ready.nativeSessionId);
       }
       if (buffered.ready.promptCapabilities?.image === true) setImageSupported(true);
+      setSessionUsage(buffered.ready.sessionUsage ?? null);
     }
     if (buffered.failed !== undefined) {
       setPhase('closed');
@@ -838,6 +861,12 @@ export function AgentSessionPage() {
     };
     const onEvent = (envelope: ChatEventEnvelope): void => {
       if (envelope.sessionId !== sessionId) return;
+      // #124 — derived telemetry: page state, never the transcript item base
+      // (a history rebuild must not replay the totals as a fake event).
+      if (envelope.event.kind === 'session_usage') {
+        setSessionUsage(envelope.event);
+        return;
+      }
       dispatch({ type: 'event', event: envelope.event });
       // Keep the item base complete — live events join it so a later prepend
       // rebuild replays the whole transcript, not just the ring window.
@@ -874,6 +903,8 @@ export function AgentSessionPage() {
       setError(null);
       if (push.nativeSessionId !== undefined) setNativeSessionId(push.nativeSessionId);
       setImageSupported(push.promptCapabilities?.image === true);
+      // #124 — a rejoin's ready push carries the stored totals.
+      if (push.sessionUsage !== undefined) setSessionUsage(push.sessionUsage);
       // Re-list so the just-opened row flips to its 已打开 (channel attached)
       // state instead of still offering a fresh resume.
       void refreshSessions();
@@ -1749,11 +1780,24 @@ export function AgentSessionPage() {
                       />
                     ) : null}
                     <Composer
+                      // #124 — the session telemetry is the card's fused top
+                      // cap, not a widget above it: same surface, same corners,
+                      // same focus-within state. The HUD owns the context
+                      // reading on this page, so the toolbar meter is off.
+                      header={
+                        <SessionHud
+                          usage={conversation.usage}
+                          sessionUsage={sessionUsage}
+                          files={hudFiles}
+                          historyPartial={historyHasMore}
+                        />
+                      }
                       value={draft}
                       onChange={changeDraft}
                       phase={phase}
                       turnActive={conversation.turnActive}
                       usage={conversation.usage}
+                      showContextMeter={false}
                       onSend={() => void send()}
                       onCancel={() => void cancelTurn()}
                       attachments={attachments}

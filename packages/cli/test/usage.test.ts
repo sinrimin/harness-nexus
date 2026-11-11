@@ -112,6 +112,30 @@ describe('UsageLedger', () => {
     expect(ledger.rows()[0]!.cacheReadTokens).toBe(5);
   });
 
+  it('reports which token fields a session ever reported (#124)', () => {
+    const ledger = new UsageLedger();
+    // A reported 0 is KNOWN; an absent output is unknown and must not ride the
+    // wire as 0 (the HUD would draw a fake figure).
+    ledger.record('s', 'deepseek', 'm', { inputTokens: 0, cacheReadTokens: 5 }, 't0');
+    expect(ledger.sessionUsage('s')!.reported).toEqual({
+      input: true,
+      output: false,
+      cacheRead: true,
+      cacheWrite: false,
+    });
+    expect(ledger.sessionReport('s')).toEqual({
+      turns: 0,
+      inputTokens: 0,
+      cacheReadTokens: 5,
+    });
+
+    // A turn-only session (codex) has turn_result but no token report: no
+    // snapshot at all, rather than zeros.
+    ledger.recordTurn('t', 'codex', 'm', null, 't1');
+    expect(ledger.sessionReport('t')).toBeNull();
+    expect(ledger.sessionReport('never')).toBeNull();
+  });
+
   it('sorts rows most-recently-active first', () => {
     const ledger = new UsageLedger();
     ledger.record('a', 'pi', 'm1', { inputTokens: 1 }, '2026-01-01T00:00:03Z');

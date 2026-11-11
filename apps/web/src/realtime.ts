@@ -67,6 +67,19 @@ export function dropAppSocket(): void {
 
 // ---- chat (Phase 8 C5) — mirrors shared/realtime.ts ----
 
+/**
+ * #124 — a session's token/cache totals as the daemon's UsageLedger sees them.
+ * Absent fields are unknown (never rendered as 0); `turns` counts
+ * turn_result signals.
+ */
+export interface ChatSessionUsage {
+  turns: number;
+  inputTokens?: number;
+  outputTokens?: number;
+  cacheReadTokens?: number;
+  cacheWriteTokens?: number;
+}
+
 /** One semantic chat event (`chat:event` → `{ sessionId, event }`). */
 export type ChatStreamEvent =
   | { kind: 'message_delta'; delta: string }
@@ -83,6 +96,8 @@ export type ChatStreamEvent =
       contextUsed?: number;
       contextSize?: number;
     }
+  /** #124 — derived totals; live socket only, never in history. */
+  | ({ kind: 'session_usage' } & ChatSessionUsage)
   | {
       kind: 'permission_request';
       requestId: string;
@@ -298,6 +313,8 @@ export interface ChatSessionReadyPush {
   nativeSessionId?: string;
   /** 9 W9 B — prompt-content capabilities (gates the attach affordance). */
   promptCapabilities?: { image: boolean; audio?: boolean; embeddedContext?: boolean };
+  /** #124 — the last daemon token snapshot, re-pushed on a rejoin. */
+  sessionUsage?: ChatSessionUsage;
 }
 export interface ChatSessionFailedPush {
   sessionId: string;

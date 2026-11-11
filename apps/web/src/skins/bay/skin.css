@@ -518,6 +518,17 @@
   border-radius: 1px;
 }
 
+/* ---------- Session HUD -------------------------------------------------- */
+
+/* #124 — the Sender's telemetry strip is the LCD window the card slides over:
+   it is UNDER the card (the card's background cuts its concave corners), so
+   the strip adds no border or shadow of its own — the Sender's border and
+   `shadow-sm` fall on it at the seam. Only the segment ticks keep the rack's
+   hardware radius. */
+[data-skin='bay'] [data-surface='hud'] [data-slot='hud-seg'] {
+  border-radius: 1px;
+}
+
 /* ---------- Hazard ------------------------------------------------------ */
 
 /* The comp's hazard stripe (.hazard): a 5px diagonal warning bar, used on

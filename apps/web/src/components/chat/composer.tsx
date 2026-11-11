@@ -18,7 +18,7 @@ import {
   SquareSlashIcon,
 } from 'lucide-react';
 import { useI18n } from '@/i18n';
-import { ConfirmDialog, DataText, LabelText } from '@/components/kit';
+import { ConfirmDialog } from '@/components/kit';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -39,6 +39,7 @@ import {
 import { Switch } from '@/components/ui/switch';
 import { cn } from '@/lib/utils';
 import type { DraftAttachment } from './image-attach.js';
+import { ContextMeter, type ComposerUsage } from './context-meter.js';
 import type {
   ChatConfigSetPayload,
   CommandView,
@@ -225,11 +226,6 @@ function PermissionsControl({
  * page's PRIMARY action; `--signal` stays reserved for the live-turn dot.
  */
 
-interface ComposerUsage {
-  contextUsed?: number;
-  contextSize?: number;
-}
-
 /** The fold's config slice — see fold.ts (patch-merged from session_config). */
 export interface ComposerConfig {
   currentModeId?: string;
@@ -251,6 +247,22 @@ interface ComposerProps {
   phase: 'idle' | 'connecting' | 'ready' | 'closed';
   turnActive: boolean;
   usage: ComposerUsage | null;
+  /**
+   * #124 — an optional band UNDER the card's top edge (the session HUD on the
+   * agent page): the Sender keeps its own rounded top, and the band peeks out
+   * from behind it like a slider phone's upper body. The caller's band renders
+   * its own in-flow spacer (the HUD does) and extends behind the card, so the
+   * card's own background cuts the band's bottom into the requested concave
+   * corners; the card's border and the assembly's shadow fall on the band at
+   * the seam.
+   */
+  header?: ReactNode;
+  /**
+   * #124 — the agent session page's HUD owns the context reading, so the
+   * toolbar meter is off there (one reading per composer, not two). The
+   * assistant page keeps the meter (default true).
+   */
+  showContextMeter?: boolean;
   onSend: () => void;
   onCancel: () => void;
   // ---- 9 W9 ----
@@ -287,17 +299,6 @@ interface ComposerProps {
 /** Mode ids that WEAKEN the permission gate — confirm before switching. */
 const DANGEROUS_MODES = new Set(['bypassPermissions', 'full-access', 'auto']);
 
-/** 1234 → "1.2k" · 64000 → "64k" · 130000 → "130k" · 1500000 → "1.5M". */
-function formatTokens(n: number): string {
-  const compact = (div: number): string => {
-    const s = (n / div).toFixed(1);
-    return `${s.endsWith('.0') ? s.slice(0, -2) : s}`;
-  };
-  if (n >= 1_000_000) return `${compact(1_000_000)}M`;
-  if (n >= 1_000) return `${compact(1_000)}k`;
-  return String(n);
-}
-
 /** #10 — one-line preview of the parked queue chip's blocks. */
 export function queuedPreview(blocks: PromptBlock[]): string {
   const parts: string[] = [];
@@ -312,159 +313,6 @@ export function queuedPreview(blocks: PromptBlock[]): string {
   if (files > 0) parts.push(`+${String(files)}📎`);
   if (images > 0) parts.push(`+${String(images)}🖼`);
   return parts.join(' ');
-}
-
-type MeterTone = 'neutral' | 'warn' | 'danger';
-
-/**
- * The ring — one half of the inline meter (#122, paired with its number in
- * #123): a 16px gauge whose stroke is the tone: `meter-ring-track` is the
- * muted step, `meter-ring-fill` the value, both on `currentColor`. `data-tone`
- * rides every element of the device because that is the attribute a skin keys
- * on: a skin that re-tones only the visual and forgets the fill leaves the
- * danger reading painted in its neutral colour — measured, not assumed (#26).
- * The neutral stroke has NO colour class: it inherits the trigger's
- * `text-muted-foreground hover:text-foreground`, the same as its number.
- */
-function MeterRing({ pct, tone }: { pct: number; tone: MeterTone }) {
-  const radius = 8;
-  const circumference = 2 * Math.PI * radius;
-  return (
-    <svg
-      data-slot="meter-ring"
-      data-tone={tone}
-      viewBox="0 0 20 20"
-      aria-hidden="true"
-      className={cn(
-        'size-4 shrink-0',
-        tone === 'warn' ? 'text-warn' : tone === 'danger' ? 'text-danger' : undefined,
-      )}
-    >
-      <circle
-        data-slot="meter-ring-track"
-        data-tone={tone}
-        cx="10"
-        cy="10"
-        r={radius}
-        fill="none"
-        strokeWidth="2.5"
-        className="text-muted stroke-current"
-      />
-      <circle
-        data-slot="meter-ring-fill"
-        data-tone={tone}
-        cx="10"
-        cy="10"
-        r={radius}
-        fill="none"
-        strokeWidth="2.5"
-        strokeLinecap="round"
-        stroke="currentColor"
-        strokeDasharray={circumference}
-        strokeDashoffset={circumference * (1 - pct / 100)}
-        transform="rotate(-90 10 10)"
-      />
-    </svg>
-  );
-}
-
-/**
- * Context pressure from the fold's usage slice — hidden when the target's
- * adapter reports no occupancy (it is the only source; nothing is invented).
- *
- * #122 made the meter ONE shape at every size, the ring, and moved the figures
- * into the popover; it also made the trigger ride the toolbar's control height
- * so it sat on the dropdowns' line. #123 — a lone 20px ring read as a status
- * lamp or a spinner at toolbar size: it carried no value a glance could name
- * and gave no hover feedback. The inline form is now the ring PLUS its
- * percentage (`17%`, mono tabular), the pattern a composer footer like
- * Cursor's uses (`17% context`, opening a panel with the full figures). The
- * popover keeps the complete numerator/denominator and the wide bar, which
- * the inline form cannot carry. Tone (neutral, warn above 80%, danger above
- * 95%) drives the ring and the number, and both brighten on hover/focus.
- *
- * Exported for the unit test (`context-meter.test.tsx`).
- */
-export function ContextMeter({ usage }: { usage: ComposerUsage | null }) {
-  const { t } = useI18n();
-  const used = usage?.contextUsed;
-  const size = usage?.contextSize;
-  if (used === undefined || size === undefined || size <= 0) return null;
-  const pct = Math.min(100, Math.max(0, (used / size) * 100));
-  const tone: MeterTone = pct > 95 ? 'danger' : pct > 80 ? 'warn' : 'neutral';
-  const figure = `${formatTokens(used)} / ${formatTokens(size)}`;
-  const label = t('chat.contextUsed', { used: formatTokens(used), size: formatTokens(size) });
-  return (
-    <Popover>
-      <PopoverTrigger asChild>
-        <button
-          type="button"
-          data-slot="meter-trigger"
-          aria-label={label}
-          title={label}
-          className="text-muted-foreground hover:text-foreground focus-visible:ring-ring/50 flex h-(--control-h-sm) shrink-0 items-center gap-1.5 rounded-sm px-1 transition-colors focus-visible:ring-[3px] focus-visible:outline-none"
-        >
-          <MeterRing pct={pct} tone={tone} />
-          <span
-            data-slot="meter-pct"
-            data-tone={tone}
-            className={cn(
-              'font-mono text-[10px] leading-none tabular-nums',
-              tone === 'warn'
-                ? 'text-state-warn-ink'
-                : tone === 'danger'
-                  ? 'text-state-fail-ink'
-                  : undefined,
-            )}
-          >
-            {/* #123 — the noun rides only where the toolbar's own container
-                has room; below that the ring + bare number still name the
-                value, and the popover/tooltip carry the label. */}
-            <span className="@max-2xl:hidden">
-              {t('chat.contextShort', { pct: String(Math.round(pct)) })}
-            </span>
-            <span className="hidden @max-2xl:inline">
-              {t('chat.contextPctShort', { pct: String(Math.round(pct)) })}
-            </span>
-          </span>
-        </button>
-      </PopoverTrigger>
-      <PopoverContent className="w-64 space-y-2 p-3">
-        <LabelText as="div" size="sm">
-          {t('chat.contextWindow')}
-        </LabelText>
-        <div className="flex items-baseline justify-between gap-2">
-          <DataText
-            size="sm"
-            tone={tone === 'warn' ? 'warn' : tone === 'danger' ? 'fail' : 'default'}
-          >
-            {figure}
-          </DataText>
-          <span className="text-muted-foreground text-xs tabular-nums">
-            {t('chat.contextPct', { pct: String(Math.round(pct)) })}
-          </span>
-        </div>
-        {/* The same device again, at the width a card can hold — the variant is
-            how a skin knows this bar is NOT the 62px nameplate one. */}
-        <span
-          data-slot="meter"
-          data-variant="wide"
-          data-tone={tone}
-          className="bg-muted relative block h-1.5 w-full overflow-hidden rounded-full"
-        >
-          <span
-            data-slot="meter-fill"
-            data-tone={tone}
-            className={cn(
-              'absolute inset-y-0 left-0 rounded-full transition-[width] duration-300',
-              tone === 'danger' ? 'bg-danger' : tone === 'warn' ? 'bg-warn' : 'bg-primary',
-            )}
-            style={{ width: `${pct}%` }}
-          />
-        </span>
-      </PopoverContent>
-    </Popover>
-  );
 }
 
 interface SelectChoice {
@@ -666,6 +514,8 @@ export function Composer({
   phase,
   turnActive,
   usage,
+  header,
+  showContextMeter = true,
   onSend,
   onCancel,
   attachments,
@@ -857,166 +707,185 @@ export function Composer({
 
   return (
     <div
+      data-slot="composer-shell"
       className={cn(
-        // #122 — the composer is its own container: what fits the toolbar
-        // tracks THIS element's width, not the viewport (at 900px the rail
-        // and the plate both eat width, so the viewport said "desktop" while
-        // the toolbar was phone-narrow and wrapped). The config controls and
-        // Send key their compact shape off @max-* container queries below.
-        '@container bg-background focus-within:border-ring focus-within:ring-ring/50 relative rounded-xl border shadow-sm transition-[border-color,box-shadow] focus-within:ring-[3px]',
+        // #124 — ONE device shadow and ONE focus ring for the assembly. The
+        // shell's border box IS the union silhouette (the band's rounded top
+        // joined to the card's rounded bottom at the same width), so a single
+        // shadow-sm / ring here covers the band and the Sender together; the
+        // card keeps only its border (which carves the concave seam).
+        'relative rounded-xl shadow-sm transition-[box-shadow] focus-within:ring-ring/50 focus-within:ring-[3px]',
         disabled && 'opacity-60',
-        dragOver && 'border-ring',
       )}
-      onDragOver={(e) => {
-        if (disabled || !imageSupported) return;
-        e.preventDefault();
-        setDragOver(true);
-      }}
-      onDragLeave={() => setDragOver(false)}
-      onDrop={(e) => {
-        setDragOver(false);
-        if (disabled || !imageSupported) return;
-        e.preventDefault();
-        const files = Array.from(e.dataTransfer.files).filter((f) => f.type.startsWith('image/'));
-        if (files.length > 0) onPickImages(files);
-      }}
     >
-      {/* Hidden input behind the "+" menu's image item. */}
-      <input
-        ref={fileInputRef}
-        type="file"
-        accept="image/png,image/jpeg,image/webp,image/gif"
-        multiple
-        className="hidden"
-        onChange={(e) => {
-          const files = Array.from(e.target.files ?? []);
-          e.target.value = '';
+      {/* #124 — the band behind the Sender's top edge. It is an in-flow sibling
+          BEFORE the card (the HUD carries its own 26px spacer), so the card's
+          opaque background + border-radius cut the band into the concave
+          corners: the Sender stays a full rounded rectangle on top, the band
+          slides out from under it. */}
+      {header !== undefined ? <div>{header}</div> : null}
+
+      <div
+        data-slot="composer"
+        className={cn(
+          // #122 — the composer is its own container: what fits the toolbar
+          // tracks THIS element's width, not the viewport (at 900px the rail
+          // and the plate both eat width, so the viewport said "desktop" while
+          // the toolbar was phone-narrow and wrapped). The config controls and
+          // Send key their compact shape off @max-* container queries below.
+          '@container bg-background focus-within:border-ring relative rounded-xl border transition-[border-color]',
+          dragOver && 'border-ring',
+        )}
+        onDragOver={(e) => {
+          if (disabled || !imageSupported) return;
+          e.preventDefault();
+          setDragOver(true);
+        }}
+        onDragLeave={() => setDragOver(false)}
+        onDrop={(e) => {
+          setDragOver(false);
+          if (disabled || !imageSupported) return;
+          e.preventDefault();
+          const files = Array.from(e.dataTransfer.files).filter((f) => f.type.startsWith('image/'));
           if (files.length > 0) onPickImages(files);
         }}
-      />
-
-      {attachments.length > 0 || fileRefs.length > 0 ? (
-        <div className="flex flex-wrap gap-1.5 px-3.5 pt-3">
-          {fileRefs.map((f) => (
-            <span
-              key={f.uri}
-              className="bg-muted inline-flex max-w-56 items-center gap-1 rounded-md px-2 py-1 font-mono text-xs"
-              title={f.uri}
-            >
-              <PaperclipIcon className="size-3 shrink-0" />
-              <span className="truncate">@{f.name}</span>
-              <button
-                type="button"
-                onClick={() => onRemoveFileRef(f.uri)}
-                className="text-muted-foreground hover:text-foreground ml-0.5 shrink-0"
-                aria-label={t('chat.removeAttachment', { name: f.name })}
-              >
-                ×
-              </button>
-            </span>
-          ))}
-          {attachments.map((a) => (
-            <span
-              key={a.id}
-              className="bg-muted relative inline-flex items-center gap-1 rounded-md p-1"
-              title={a.name}
-            >
-              <img
-                src={`data:${a.mimeType};base64,${a.data}`}
-                alt={a.name}
-                className="size-12 rounded object-cover"
-              />
-              <button
-                type="button"
-                onClick={() => onRemoveAttachment(a.id)}
-                className="bg-background/90 text-foreground absolute -right-1.5 -top-1.5 flex size-4 items-center justify-center rounded-full border text-[10px] leading-none"
-                aria-label={t('chat.removeAttachment', { name: a.name })}
-              >
-                ×
-              </button>
-            </span>
-          ))}
-        </div>
-      ) : null}
-
-      {paletteOpen ? (
-        <CommandPalette
-          commands={filteredCommands}
-          activeIdx={activeIdx}
-          onPick={pickCommand}
-          onHover={setActiveIdx}
+      >
+        {/* Hidden input behind the "+" menu's image item. */}
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/png,image/jpeg,image/webp,image/gif"
+          multiple
+          className="hidden"
+          onChange={(e) => {
+            const files = Array.from(e.target.files ?? []);
+            e.target.value = '';
+            if (files.length > 0) onPickImages(files);
+          }}
         />
-      ) : null}
 
-      <textarea
-        ref={textRef}
-        rows={1}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        onKeyDown={(e) => {
-          // 9 W15 — the palette owns the keys first while open (portal
-          // reference): arrows cycle, Esc dismisses, a bare Enter SELECTS;
-          // Enter WITH args (space after the first word) falls through to
-          // the ordinary send. IME composition guards as everywhere else.
-          if (paletteOpen && filteredCommands.length > 0 && !e.nativeEvent.isComposing) {
-            if (e.key === 'ArrowDown') {
+        {attachments.length > 0 || fileRefs.length > 0 ? (
+          <div className="flex flex-wrap gap-1.5 px-3.5 pt-3">
+            {fileRefs.map((f) => (
+              <span
+                key={f.uri}
+                className="bg-muted inline-flex max-w-56 items-center gap-1 rounded-md px-2 py-1 font-mono text-xs"
+                title={f.uri}
+              >
+                <PaperclipIcon className="size-3 shrink-0" />
+                <span className="truncate">@{f.name}</span>
+                <button
+                  type="button"
+                  onClick={() => onRemoveFileRef(f.uri)}
+                  className="text-muted-foreground hover:text-foreground ml-0.5 shrink-0"
+                  aria-label={t('chat.removeAttachment', { name: f.name })}
+                >
+                  ×
+                </button>
+              </span>
+            ))}
+            {attachments.map((a) => (
+              <span
+                key={a.id}
+                className="bg-muted relative inline-flex items-center gap-1 rounded-md p-1"
+                title={a.name}
+              >
+                <img
+                  src={`data:${a.mimeType};base64,${a.data}`}
+                  alt={a.name}
+                  className="size-12 rounded object-cover"
+                />
+                <button
+                  type="button"
+                  onClick={() => onRemoveAttachment(a.id)}
+                  className="bg-background/90 text-foreground absolute -right-1.5 -top-1.5 flex size-4 items-center justify-center rounded-full border text-[10px] leading-none"
+                  aria-label={t('chat.removeAttachment', { name: a.name })}
+                >
+                  ×
+                </button>
+              </span>
+            ))}
+          </div>
+        ) : null}
+
+        {paletteOpen ? (
+          <CommandPalette
+            commands={filteredCommands}
+            activeIdx={activeIdx}
+            onPick={pickCommand}
+            onHover={setActiveIdx}
+          />
+        ) : null}
+
+        <textarea
+          ref={textRef}
+          rows={1}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          onKeyDown={(e) => {
+            // 9 W15 — the palette owns the keys first while open (portal
+            // reference): arrows cycle, Esc dismisses, a bare Enter SELECTS;
+            // Enter WITH args (space after the first word) falls through to
+            // the ordinary send. IME composition guards as everywhere else.
+            if (paletteOpen && filteredCommands.length > 0 && !e.nativeEvent.isComposing) {
+              if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                setActiveIdx((i) => (i + 1) % filteredCommands.length);
+                return;
+              }
+              if (e.key === 'ArrowUp') {
+                e.preventDefault();
+                setActiveIdx((i) => (i - 1 + filteredCommands.length) % filteredCommands.length);
+                return;
+              }
+              if (e.key === 'Escape') {
+                e.preventDefault();
+                e.stopPropagation();
+                setPaletteDismissed(true);
+                return;
+              }
+              // #9 — Tab commits the active command into the Sender (fills
+              // `/name `, focus stays) and dismisses the palette.
+              if (e.key === 'Tab' && !e.shiftKey) {
+                e.preventDefault();
+                const cmd = filteredCommands[activeIdx];
+                if (cmd !== undefined) pickCommand(cmd);
+                return;
+              }
+              if (e.key === 'Enter' && !e.shiftKey && !hasArg) {
+                e.preventDefault();
+                const cmd = filteredCommands[activeIdx];
+                if (cmd !== undefined) pickCommand(cmd);
+                return;
+              }
+            } else if (paletteOpen && e.key === 'Escape' && !e.nativeEvent.isComposing) {
               e.preventDefault();
-              setActiveIdx((i) => (i + 1) % filteredCommands.length);
-              return;
-            }
-            if (e.key === 'ArrowUp') {
-              e.preventDefault();
-              setActiveIdx((i) => (i - 1 + filteredCommands.length) % filteredCommands.length);
-              return;
-            }
-            if (e.key === 'Escape') {
-              e.preventDefault();
-              e.stopPropagation();
               setPaletteDismissed(true);
               return;
             }
-            // #9 — Tab commits the active command into the Sender (fills
-            // `/name `, focus stays) and dismisses the palette.
-            if (e.key === 'Tab' && !e.shiftKey) {
+            // Enter sends, Shift+Enter breaks the line; a composing Enter (IME
+            // candidate confirm) must never send.
+            if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
               e.preventDefault();
-              const cmd = filteredCommands[activeIdx];
-              if (cmd !== undefined) pickCommand(cmd);
-              return;
+              onSend();
             }
-            if (e.key === 'Enter' && !e.shiftKey && !hasArg) {
+          }}
+          onPaste={(e) => {
+            const files = Array.from(e.clipboardData.files).filter((f) =>
+              f.type.startsWith('image/'),
+            );
+            if (files.length > 0 && imageSupported && !disabled) {
               e.preventDefault();
-              const cmd = filteredCommands[activeIdx];
-              if (cmd !== undefined) pickCommand(cmd);
-              return;
+              onPickImages(files);
             }
-          } else if (paletteOpen && e.key === 'Escape' && !e.nativeEvent.isComposing) {
-            e.preventDefault();
-            setPaletteDismissed(true);
-            return;
-          }
-          // Enter sends, Shift+Enter breaks the line; a composing Enter (IME
-          // candidate confirm) must never send.
-          if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
-            e.preventDefault();
-            onSend();
-          }
-        }}
-        onPaste={(e) => {
-          const files = Array.from(e.clipboardData.files).filter((f) =>
-            f.type.startsWith('image/'),
-          );
-          if (files.length > 0 && imageSupported && !disabled) {
-            e.preventDefault();
-            onPickImages(files);
-          }
-        }}
-        placeholder={placeholder}
-        disabled={disabled}
-        autoComplete="off"
-        spellCheck={false}
-        className="placeholder:text-muted-foreground max-h-56 w-full resize-none overflow-y-auto bg-transparent px-3.5 pb-1 pt-3 text-sm leading-relaxed outline-none disabled:cursor-not-allowed"
-      />
-      {/* The toolbar is ONE row, on the baseline of its TALLEST control.
+          }}
+          placeholder={placeholder}
+          disabled={disabled}
+          autoComplete="off"
+          spellCheck={false}
+          className="placeholder:text-muted-foreground max-h-56 w-full resize-none overflow-y-auto bg-transparent px-3.5 pb-1 pt-3 text-sm leading-relaxed outline-none disabled:cursor-not-allowed"
+        />
+        {/* The toolbar is ONE row, on the baseline of its TALLEST control.
           #122 — wrapping is gone: the row's width is the composer's own
           @container, and below ~672px of it the config controls collapse to
           their icon squares and the meter is the ring plus its percentage
@@ -1029,143 +898,143 @@ export function Composer({
           sit ON the Send's baseline, and centring them against a taller button
           floated them a few pixels above the card's bottom edge ("下拉菜单离
           下边距特别远", #23). */}
-      <div data-slot="composer-tools" className="flex items-end gap-2 px-3 pb-2.5 pt-1">
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              data-tool="attach"
-              className="text-muted-foreground hover:text-foreground size-(--control-h-sm) shrink-0"
-              disabled={disabled}
-              title={t('chat.addMenuAria')}
-              aria-label={t('chat.addMenuAria')}
-            >
-              <PlusIcon className="size-4" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="start">
-            <DropdownMenuItem
-              disabled={!imageSupported}
-              title={imageSupported ? undefined : t('chat.imageUnsupported')}
-              onClick={() => fileInputRef.current?.click()}
-            >
-              <ImageIcon className="size-4" />
-              {t('chat.attachImage')}
-            </DropdownMenuItem>
-            {filePickerAvailable ? (
-              <DropdownMenuItem disabled={disabled} onClick={onOpenFilePicker}>
-                <PaperclipIcon className="size-4" />
-                {t('chat.attachFile')}
+        <div data-slot="composer-tools" className="flex items-end gap-2 px-3 pb-2.5 pt-1">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                data-tool="attach"
+                className="text-muted-foreground hover:text-foreground size-(--control-h-sm) shrink-0"
+                disabled={disabled}
+                title={t('chat.addMenuAria')}
+                aria-label={t('chat.addMenuAria')}
+              >
+                <PlusIcon className="size-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start">
+              <DropdownMenuItem
+                disabled={!imageSupported}
+                title={imageSupported ? undefined : t('chat.imageUnsupported')}
+                onClick={() => fileInputRef.current?.click()}
+              >
+                <ImageIcon className="size-4" />
+                {t('chat.attachImage')}
               </DropdownMenuItem>
-            ) : null}
-          </DropdownMenuContent>
-        </DropdownMenu>
+              {filePickerAvailable ? (
+                <DropdownMenuItem disabled={disabled} onClick={onOpenFilePicker}>
+                  <PaperclipIcon className="size-4" />
+                  {t('chat.attachFile')}
+                </DropdownMenuItem>
+              ) : null}
+            </DropdownMenuContent>
+          </DropdownMenu>
 
-        {config.approvals === undefined ? (
-          <ConfigSelect
-            label={t('chat.modeLabel')}
-            icon={<ShieldCheckIcon className="size-4" />}
-            value={modeValue}
-            choices={modeChoices}
-            disabled={controlsDisabled}
-            hint={turnActive ? t('chat.appliesNextTurn') : undefined}
-            onPick={pickMode}
-          />
-        ) : (
-          <PermissionsControl
-            modeValue={modeValue}
-            modeChoices={modeChoices}
-            approvals={config.approvals}
-            disabled={controlsDisabled}
-            hint={turnActive ? t('chat.appliesNextTurn') : undefined}
-            onPickMode={pickMode}
-            onApprovalsToggle={(on) => {
-              if (on) {
-                setPendingMode({
-                  kind: 'approvals',
-                  value: 'delegated',
-                  name: t('chat.approvalsSwitchTitle'),
-                });
-              } else {
-                onApprovalsSet('manual');
+          {config.approvals === undefined ? (
+            <ConfigSelect
+              label={t('chat.modeLabel')}
+              icon={<ShieldCheckIcon className="size-4" />}
+              value={modeValue}
+              choices={modeChoices}
+              disabled={controlsDisabled}
+              hint={turnActive ? t('chat.appliesNextTurn') : undefined}
+              onPick={pickMode}
+            />
+          ) : (
+            <PermissionsControl
+              modeValue={modeValue}
+              modeChoices={modeChoices}
+              approvals={config.approvals}
+              disabled={controlsDisabled}
+              hint={turnActive ? t('chat.appliesNextTurn') : undefined}
+              onPickMode={pickMode}
+              onApprovalsToggle={(on) => {
+                if (on) {
+                  setPendingMode({
+                    kind: 'approvals',
+                    value: 'delegated',
+                    name: t('chat.approvalsSwitchTitle'),
+                  });
+                } else {
+                  onApprovalsSet('manual');
+                }
+              }}
+            />
+          )}
+          {permOption === undefined ? null : (
+            <ConfigSelect
+              label={t('chat.permModeLabel')}
+              icon={<ShieldCheckIcon className="size-4" />}
+              value={permOption.currentValue}
+              choices={permChoices}
+              disabled={controlsDisabled}
+              hint={turnActive ? t('chat.appliesNextTurn') : undefined}
+              onPick={pickPermission}
+            />
+          )}
+          {modelOption === undefined ? null : (
+            <ConfigSelect
+              label={t('chat.modelLabel')}
+              icon={<BoxIcon className="size-4" />}
+              value={modelOption.currentValue}
+              choices={
+                modelOption.options?.map((o) => ({
+                  value: o.value,
+                  name: o.name,
+                  description: o.description,
+                  group: o.group,
+                })) ?? []
               }
-            }}
-          />
-        )}
-        {permOption === undefined ? null : (
-          <ConfigSelect
-            label={t('chat.permModeLabel')}
-            icon={<ShieldCheckIcon className="size-4" />}
-            value={permOption.currentValue}
-            choices={permChoices}
-            disabled={controlsDisabled}
-            hint={turnActive ? t('chat.appliesNextTurn') : undefined}
-            onPick={pickPermission}
-          />
-        )}
-        {modelOption === undefined ? null : (
-          <ConfigSelect
-            label={t('chat.modelLabel')}
-            icon={<BoxIcon className="size-4" />}
-            value={modelOption.currentValue}
-            choices={
-              modelOption.options?.map((o) => ({
-                value: o.value,
-                name: o.name,
-                description: o.description,
-                group: o.group,
-              })) ?? []
-            }
-            disabled={controlsDisabled}
-            hint={turnActive ? t('chat.appliesNextTurn') : undefined}
-            onPick={(v) => onConfigSet({ kind: 'option', configId: modelOption.id, value: v })}
-          />
-        )}
-        {effortOption === undefined ? null : (
-          <ConfigSelect
-            label={t('chat.effortLabel')}
-            icon={<BrainIcon className="size-4" />}
-            value={effortOption.currentValue}
-            choices={
-              effortOption.options?.map((o) => ({
-                value: o.value,
-                name: o.name,
-                description: o.description,
-              })) ?? []
-            }
-            disabled={controlsDisabled}
-            hint={turnActive ? t('chat.appliesNextTurn') : undefined}
-            onPick={(v) => onConfigSet({ kind: 'option', configId: effortOption.id, value: v })}
-          />
-        )}
+              disabled={controlsDisabled}
+              hint={turnActive ? t('chat.appliesNextTurn') : undefined}
+              onPick={(v) => onConfigSet({ kind: 'option', configId: modelOption.id, value: v })}
+            />
+          )}
+          {effortOption === undefined ? null : (
+            <ConfigSelect
+              label={t('chat.effortLabel')}
+              icon={<BrainIcon className="size-4" />}
+              value={effortOption.currentValue}
+              choices={
+                effortOption.options?.map((o) => ({
+                  value: o.value,
+                  name: o.name,
+                  description: o.description,
+                })) ?? []
+              }
+              disabled={controlsDisabled}
+              hint={turnActive ? t('chat.appliesNextTurn') : undefined}
+              onPick={(v) => onConfigSet({ kind: 'option', configId: effortOption.id, value: v })}
+            />
+          )}
 
-        {extraOptions.map((opt) => (
-          <ConfigSelect
-            key={opt.id}
-            label={opt.name}
-            icon={<BotIcon className="size-4" />}
-            value={opt.currentValue}
-            choices={
-              opt.options?.map((o) => ({
-                value: o.value,
-                name: o.name,
-                description: o.description,
-                group: o.group,
-              })) ?? []
-            }
-            disabled={controlsDisabled}
-            hint={turnActive ? t('chat.appliesNextTurn') : undefined}
-            onPick={(v) => onConfigSet({ kind: 'option', configId: opt.id, value: v })}
-          />
-        ))}
+          {extraOptions.map((opt) => (
+            <ConfigSelect
+              key={opt.id}
+              label={opt.name}
+              icon={<BotIcon className="size-4" />}
+              value={opt.currentValue}
+              choices={
+                opt.options?.map((o) => ({
+                  value: o.value,
+                  name: o.name,
+                  description: o.description,
+                  group: o.group,
+                })) ?? []
+              }
+              disabled={controlsDisabled}
+              hint={turnActive ? t('chat.appliesNextTurn') : undefined}
+              onPick={(v) => onConfigSet({ kind: 'option', configId: opt.id, value: v })}
+            />
+          ))}
 
-        <span className="min-w-0 flex-1" />
-        <ContextMeter usage={usage} />
-        {turnActive ? (
-          <>
-            {/* #10 — a non-empty draft mid-turn offers Send (the message
+          <span className="min-w-0 flex-1" />
+          {showContextMeter ? <ContextMeter usage={usage} /> : null}
+          {turnActive ? (
+            <>
+              {/* #10 — a non-empty draft mid-turn offers Send (the message
                 queues server-side) ALONGSIDE Stop; an empty draft is Stop
                 only. Send keeps the primary look; Stop stays the outlined
                 danger-leaning outline. Both are the SAME shape as the config
@@ -1173,80 +1042,81 @@ export function Composer({
                 height, not the comp's 40px circle: the circle was a head taller
                 than its own toolbar (#23), and on a phone the fingertip is
                 served by `--touch` without the desktop row growing with it. */}
-            {canSend ? (
+              {canSend ? (
+                <Button
+                  type="button"
+                  size="icon"
+                  className="@max-2xl:size-(--touch) size-(--control-h) shrink-0 rounded-md"
+                  onClick={onSend}
+                  title={t('chat.queueSendAria')}
+                  aria-label={t('chat.queueSendAria')}
+                >
+                  <ArrowUpIcon className="size-4" />
+                </Button>
+              ) : null}
               <Button
                 type="button"
+                variant="outline"
                 size="icon"
-                className="@max-2xl:size-(--touch) size-(--control-h) shrink-0 rounded-md"
-                onClick={onSend}
-                title={t('chat.queueSendAria')}
-                aria-label={t('chat.queueSendAria')}
+                className="hover:border-destructive/40 hover:text-destructive @max-2xl:size-(--touch) size-(--control-h) shrink-0 rounded-md"
+                onClick={onCancel}
+                title={t('chat.stopAria')}
+                aria-label={t('chat.stopAria')}
               >
-                <ArrowUpIcon className="size-4" />
+                <CircleStopIcon className="size-4" />
               </Button>
-            ) : null}
+            </>
+          ) : (
             <Button
               type="button"
-              variant="outline"
               size="icon"
-              className="hover:border-destructive/40 hover:text-destructive @max-2xl:size-(--touch) size-(--control-h) shrink-0 rounded-md"
-              onClick={onCancel}
-              title={t('chat.stopAria')}
-              aria-label={t('chat.stopAria')}
+              className="@max-2xl:size-(--touch) size-(--control-h) shrink-0 rounded-md"
+              onClick={onSend}
+              disabled={!canSend}
+              title={t('chat.sendAria')}
+              aria-label={t('chat.sendAria')}
             >
-              <CircleStopIcon className="size-4" />
+              <ArrowUpIcon className="size-4" />
             </Button>
-          </>
-        ) : (
-          <Button
-            type="button"
-            size="icon"
-            className="@max-2xl:size-(--touch) size-(--control-h) shrink-0 rounded-md"
-            onClick={onSend}
-            disabled={!canSend}
-            title={t('chat.sendAria')}
-            aria-label={t('chat.sendAria')}
-          >
-            <ArrowUpIcon className="size-4" />
-          </Button>
-        )}
-      </div>
+          )}
+        </div>
 
-      {pendingMode !== null ? (
-        <ConfirmDialog
-          open
-          onOpenChange={(o) => {
-            if (!o) setPendingMode(null);
-          }}
-          title={t('chat.modeSwitchAction')}
-          consequence={
-            pendingMode.kind === 'mode'
-              ? t('chat.modeConsequence', { name: pendingMode.name })
-              : pendingMode.kind === 'approvals'
-                ? t('chat.approvalsConsequence')
-                : pendingMode.kind === 'perm-delegated'
-                  ? t('chat.permDelegatedConsequence')
-                  : t('chat.permConsequence', { name: pendingMode.name })
-          }
-          impact={[
-            {
-              label:
-                pendingMode.kind === 'mode'
-                  ? 'mode'
-                  : pendingMode.kind === 'approvals'
-                    ? 'approvals'
-                    : 'write policy',
-              value: pendingMode.value,
-            },
-          ]}
-          actionLabel={t('chat.modeSwitchAction')}
-          // Danger edge without the irreversible line: flipping the mode back
-          // restores the gate, so claiming "cannot be undone" would be false.
-          tone="danger"
-          irreversible={false}
-          onConfirm={confirmMode}
-        />
-      ) : null}
+        {pendingMode !== null ? (
+          <ConfirmDialog
+            open
+            onOpenChange={(o) => {
+              if (!o) setPendingMode(null);
+            }}
+            title={t('chat.modeSwitchAction')}
+            consequence={
+              pendingMode.kind === 'mode'
+                ? t('chat.modeConsequence', { name: pendingMode.name })
+                : pendingMode.kind === 'approvals'
+                  ? t('chat.approvalsConsequence')
+                  : pendingMode.kind === 'perm-delegated'
+                    ? t('chat.permDelegatedConsequence')
+                    : t('chat.permConsequence', { name: pendingMode.name })
+            }
+            impact={[
+              {
+                label:
+                  pendingMode.kind === 'mode'
+                    ? 'mode'
+                    : pendingMode.kind === 'approvals'
+                      ? 'approvals'
+                      : 'write policy',
+                value: pendingMode.value,
+              },
+            ]}
+            actionLabel={t('chat.modeSwitchAction')}
+            // Danger edge without the irreversible line: flipping the mode back
+            // restores the gate, so claiming "cannot be undone" would be false.
+            tone="danger"
+            irreversible={false}
+            onConfirm={confirmMode}
+          />
+        ) : null}
+      </div>
     </div>
   );
 }

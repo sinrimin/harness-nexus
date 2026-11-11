@@ -909,6 +909,31 @@ describe('session round-trip vs the fixture agent', () => {
       cacheWriteTokens: 100,
     });
     expect(row.costUsd).toBeCloseTo(0.024, 9);
+
+    // #124 — the session HUD snapshot rides its own derived event: the FIRST
+    // turn's totals, then the second turn's, latest wins, and no cost (the
+    // HUD does not render it). Per-turn snapshots must not be summed again.
+    const snapshots = socket
+      .chatEvents()
+      .filter(
+        (e): e is Extract<ChatStreamEvent, { kind: 'session_usage' }> => e.kind === 'session_usage',
+      );
+    expect(snapshots[0]).toMatchObject({
+      kind: 'session_usage',
+      turns: 1,
+      inputTokens: 100,
+      outputTokens: 20,
+      cacheReadTokens: 500,
+      cacheWriteTokens: 50,
+    });
+    expect(snapshots.at(-1)).toMatchObject({
+      kind: 'session_usage',
+      turns: 2,
+      inputTokens: 200,
+      outputTokens: 40,
+      cacheReadTokens: 1000,
+      cacheWriteTokens: 100,
+    });
   }, 15000);
 
   it('sessionsSnapshot + usage ledger track the live channel and its tokens (#39)', async () => {

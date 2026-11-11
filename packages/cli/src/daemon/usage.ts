@@ -2,6 +2,8 @@
 //
 // SPDX-License-Identifier: MIT
 
+import type { SessionUsageSnapshot } from '@harness-nexus/shared';
+
 /**
  * #39/#44 — token and cost accounting for the TUI (and anyone in-process).
  *
@@ -129,6 +131,12 @@ export interface SessionUsage {
   cacheWriteTokens: number;
   costUsd: number;
   lastAt: string;
+  /**
+   * #124 — which token fields this session EVER reported. A field that was
+   * never present is unknown, not zero: the HUD omits it rather than drawing
+   * a fake 0. A reported 0 counts as known.
+   */
+  reported: { input: boolean; output: boolean; cacheRead: boolean; cacheWrite: boolean };
 }
 
 interface Acc {
@@ -142,6 +150,8 @@ interface Acc {
   costUsd: number;
   sessions: Set<string>;
   lastAt: string;
+  /** #124 — see SessionUsage.reported. Rows ignore it; sessions expose it. */
+  reported: { input: boolean; output: boolean; cacheRead: boolean; cacheWrite: boolean };
 }
 
 /** Per-session counters the delta dialects need between reports. */
@@ -170,6 +180,14 @@ function cumulativeDelta(last: number | undefined, now: number): number {
   return now - last;
 }
 
+/** #124 — remember which fields the session ever reported (0 is a report). */
+function markReported(sess: Acc, ev: UsageFields): void {
+  if (ev.inputTokens !== undefined) sess.reported.input = true;
+  if (ev.outputTokens !== undefined) sess.reported.output = true;
+  if (ev.cacheReadTokens !== undefined) sess.reported.cacheRead = true;
+  if (ev.cacheWriteTokens !== undefined) sess.reported.cacheWrite = true;
+}
+
 export class UsageLedger {
   #rows = new Map<string, Acc>();
   #sessions = new Map<string, Acc & { baseline: SessionBaseline }>();
@@ -194,6 +212,7 @@ export class UsageLedger {
         costUsd: 0,
         sessions: new Set<string>(),
         lastAt: at,
+        reported: { input: false, output: false, cacheRead: false, cacheWrite: false },
       };
       this.#rows.set(key, row);
     }
@@ -213,6 +232,7 @@ export class UsageLedger {
         costUsd: 0,
         sessions: new Set<string>(),
         lastAt: at,
+        reported: { input: false, output: false, cacheRead: false, cacheWrite: false },
         baseline: {},
       };
       this.#sessions.set(sessionId, sess);
@@ -254,6 +274,7 @@ export class UsageLedger {
   ): void {
     if (!hasTokenCounts(ev) && ev.costUsd === undefined) return;
     const { row, sess } = this.#rowFor(sessionId, target, model, at);
+    markReported(sess, ev);
     for (const field of TOKEN_FIELDS) {
       const now = ev[field];
       if (now === undefined || now <= 0) continue;
@@ -283,6 +304,7 @@ export class UsageLedger {
     const mode = responseUsageMode(target);
     const { row, sess } = this.#rowFor(sessionId, target, model, at);
     if (usage !== null && mode !== null && hasTokenCounts(usage)) {
+      markReported(sess, usage);
       if (mode === 'cumulative') {
         for (const field of TOKEN_FIELDS) {
           const now = usage[field];
@@ -340,6 +362,26 @@ export class UsageLedger {
       cacheWriteTokens: s.cacheWriteTokens,
       costUsd: s.costUsd,
       lastAt: s.lastAt,
+      reported: { ...s.reported },
+    };
+  }
+
+  /**
+   * #124 — the wire snapshot for the session HUD. Only fields the session ever
+   * reported ride along (absent = unknown, never 0); null when it reported no
+   * token counts at all (a turn-only or codex session has nothing to show).
+   */
+  sessionReport(sessionId: string): SessionUsageSnapshot | null {
+    const u = this.sessionUsage(sessionId);
+    if (u === null) return null;
+    const r = u.reported;
+    if (!r.input && !r.output && !r.cacheRead && !r.cacheWrite) return null;
+    return {
+      turns: u.turns,
+      ...(r.input ? { inputTokens: u.inputTokens } : {}),
+      ...(r.output ? { outputTokens: u.outputTokens } : {}),
+      ...(r.cacheRead ? { cacheReadTokens: u.cacheReadTokens } : {}),
+      ...(r.cacheWrite ? { cacheWriteTokens: u.cacheWriteTokens } : {}),
     };
   }
 }

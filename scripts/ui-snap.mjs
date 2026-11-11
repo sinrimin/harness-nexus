@@ -128,6 +128,8 @@ const DEFAULT_SKINS = ['signal'];
 // for EVERY family to actually be active or shots race fallback-vs-webfont
 // metrics (mono-heavy mobile layouts are where the race becomes visible).
 const SKIN_FONT_FAMILIES = {
+  // #124 — the session HUD's labels ride --app-font-mono (no extra family);
+  // the session route itself is still outside this matrix.
   signal: ['IBM Plex Sans Variable', 'IBM Plex Mono'],
   bay: ['Archivo Variable', 'Archivo Narrow', 'JetBrains Mono'],
   ledger: ['Public Sans', 'Zilla Slab', 'DM Mono'],
