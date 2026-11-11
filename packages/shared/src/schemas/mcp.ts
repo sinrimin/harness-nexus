@@ -145,6 +145,15 @@ export const clientMcpConfigSchema = z.object({
             headers: z.record(z.string(), z.string()).optional(),
           }),
         ]),
+        /**
+         * #113 — present when the profile entry pins a subset of the
+         * upstream's tools: the shim exposes (and accepts calls for) exactly
+         * this set locally — the same call-side enforcement the platform
+         * outlet applies for server-dialed upstreams. Absent = the upstream's
+         * whole surface. Server-dialed entries carry no field; their tools
+         * already flow through the gated outlet.
+         */
+        tools: z.array(z.string().min(1)).min(1).optional(),
       }),
       z.object({ id: z.string(), name: z.string(), dialSite: z.literal('server') }),
     ]),

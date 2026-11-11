@@ -127,6 +127,26 @@ describe('svc client-config — mcp-config shape + dial-site filtering', () => {
     expect('transport' in builtin).toBe(false);
   });
 
+  it('#113 a pinned entry carries its tool subset; a whole-server entry omits the field', async () => {
+    const d = deps();
+    const { stdio, profile: whole } = await seedWorld(d);
+    const pinned = await createProfile(d, alice, {
+      name: 'pinned-echo',
+      target: 'claude-code',
+      scope: 'personal',
+      entries: [{ mcpServerId: stdio.id, tools: ['echo'] }],
+    });
+    const config = await buildClientMcpConfig(d, asCaller(alice), pinned.id);
+    const local = config.servers.find((s) => s.id === stdio.id)!;
+    expect(local.dialSite).toBe('client');
+    expect(local).toMatchObject({ tools: ['echo'] });
+
+    // seedWorld's own profile takes the whole server — no tools key at all.
+    const wholeConfig = await buildClientMcpConfig(d, asCaller(alice), whole.id);
+    const wholeRow = wholeConfig.servers.find((s) => s.id === stdio.id)!;
+    expect('tools' in wholeRow).toBe(false);
+  });
+
   it('400s a missing profile param; hides foreign personal profiles as 404', async () => {
     const d = deps();
     const { profile } = await seedWorld(d);

@@ -209,6 +209,10 @@ export async function buildClientMcpConfig(
       transport: await resolveTransport(server.transport, (input) =>
         resolve(input, server.ownerId),
       ),
+      // #113 — the entry's pinned subset rides along so the SHIM can enforce
+      // it at list/call time; this path bypasses the platform outlet (the
+      // upstream is dialed locally), so the config is the only carrier.
+      ...(entry.tools ? { tools: entry.tools } : {}),
     });
   }
 
