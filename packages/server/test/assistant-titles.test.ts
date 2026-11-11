@@ -142,7 +142,9 @@ describe('refineSessionTitle (#109, faux provider)', () => {
 });
 
 describe('realtime wiring (#109)', () => {
-  async function setup(): Promise<{
+  async function setup(
+    log?: { error: (msg: string) => void },
+  ): Promise<{
     svc: AssistantRealtimeService;
     uow: UnitOfWork;
     faux: ReturnType<typeof piAi.fauxProvider>;
@@ -206,6 +208,7 @@ describe('realtime wiring (#109)', () => {
     const svc = new AssistantRealtimeService(
       {
         uow,
+        ...(log !== undefined ? { log } : {}),
         credentialEncryptionKey: KEY,
         skills: {
           search: { search: async () => ({ results: [], partial: false }) } as never,
@@ -302,5 +305,44 @@ describe('realtime wiring (#109)', () => {
     await settleIdle(h.svc, res.sessionId);
     const after = await h.uow.assistants.findSessionById(res.sessionId);
     expect(after?.title).toBe('only prompt that will be titled');
+  });
+
+  it('a storage failure inside the refine tail is contained (#120 class)', async () => {
+    const errors: string[] = [];
+    const h = await setup({ error: (m) => errors.push(m) });
+    const unhandled: unknown[] = [];
+    const onUnhandled = (e: unknown) => unhandled.push(e);
+    process.on('unhandledRejection', onUnhandled);
+    try {
+      // A valid title reply, but the SAVE itself blows up — the exact tail
+      // refineTitleInBackground wraps. Before the guard this was an unhandled
+      // rejection that killed the process (#120's crash class).
+      h.faux.setResponses([
+        piAi.fauxAssistantMessage([piAi.fauxText('Storage failure title')]),
+        piAi.fauxAssistantMessage([piAi.fauxText('reply body')]),
+      ]);
+      const original = h.uow.assistants.saveSession;
+      let broken = true;
+      (
+        h.uow.assistants as {
+          saveSession: (...a: unknown[]) => Promise<unknown>;
+        }
+      ).saveSession = async (...args: unknown[]) => {
+        const row = args[0] as { title?: string };
+        if (broken && row.title === 'Storage failure title') throw new Error('disk on fire');
+        return original(...(args as Parameters<typeof original>));
+      };
+      const res = await h.svc.open(owner.userId, h.assistantId, undefined, 'sock-1');
+      if (!res.ok) throw new Error('open failed');
+      await h.svc.onMessageSend(owner.userId, res.sessionId, 'first prompt gets a refined title');
+      await settleIdle(h.svc, res.sessionId);
+      const row = await h.uow.assistants.findSessionById(res.sessionId);
+      expect(row?.title).toBe('first prompt gets a refined title'); // fallback kept
+      expect(errors.length).toBe(1);
+      expect(errors[0]).toContain('disk on fire');
+      expect(unhandled).toEqual([]);
+    } finally {
+      process.off('unhandledRejection', onUnhandled);
+    }
   });
 });
