@@ -1,6 +1,6 @@
 {
   "name": "@harness-nexus/sdk",
-  "version": "0.1.0-alpha.10",
+  "version": "0.1.0-alpha.11",
   "description": "TypeScript client SDK for the Harness Nexus HTTP API.",
   "type": "module",
   "main": "./dist/index.js",
