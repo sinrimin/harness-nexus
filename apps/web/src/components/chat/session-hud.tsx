@@ -27,7 +27,7 @@ import type { HudEditStats } from './hud-stats.js';
  * of its own, so both surfaces read as one device's physics.
  *
  * The reference layout (alpha.11 revision): three groups across one glass
- * face — CTX on the left, the token/cache cluster (TOK · READ · WRITE · HIT ·
+ * face — CTX on the left, the token/cache cluster (TOK · IN · OUT · HIT ·
  * REQ) in the middle behind hairline dividers, FILES on the right. Each cell
  * sits in a FIXED slot (`SLOT_MIN`); nothing shuffles when a source goes
  * dark.
@@ -35,7 +35,7 @@ import type { HudEditStats } from './hud-stats.js';
  * Material is the always-dark instrument glass (`data-surface="hud"`); every
  * colour and size is a `--hud-*` token, so BAY repaints it as its inverted LCD
  * window without touching this file. Labels are English in BOTH locales
- * (`CTX/TOK/READ/WRITE/HIT/REQ/FILES`): the strip is an engraved instrument
+ * (`CTX/TOK/IN/OUT/HIT/REQ/FILES`): the strip is an engraved instrument
  * face, the same exception as the nav-group labels; tooltips are localized.
  *
  * Honesty (fixed face): labels and gauges always render, on both pages, in
@@ -47,7 +47,7 @@ import type { HudEditStats } from './hud-stats.js';
  * — never on Tailwind's named container steps, whose @sm is 384px and left a
  * dead zone where mid-width devices scrolled. Below 640px: a 6-segment CTX
  * bar and 12px figures; the IN/OUT labels are short everywhere, so no
- * abbreviations exist. The strip scrolls only below ~340px.
+ * abbreviations exist. The strip scrolls only below ~380px.
  */
 
 /** Wide-face segment count; the phone face draws the compact count. */
@@ -175,9 +175,10 @@ function Value({ children, className }: { children: ReactNode; className?: strin
   return (
     <span
       className={cn(
-        // Phone figures run one step smaller than the --hud-value-size token
-        // (12px vs 14px): the em feels oversized on a 390px face.
-        'font-hud text-[12px] leading-none tabular-nums text-(--hud-ink) @min-[640px]:text-[length:var(--hud-value-size)]',
+        // Phone figures run one step smaller (--hud-value-size-sm): the
+        // 14px em feels oversized on a 390px face. A token, not a literal —
+        // skins resize it with the rest of the face.
+        'font-hud text-[length:var(--hud-value-size-sm)] leading-none tabular-nums text-(--hud-ink) @min-[640px]:text-[length:var(--hud-value-size)]',
         className,
       )}
     >
@@ -373,7 +374,7 @@ export function SessionHud({
               data-slot="hud-cell"
               data-kind="ctx"
               data-unknown="true"
-              className="flex shrink-0 items-center gap-2 px-2 @max-2xl:gap-1 @max-2xl:px-1.5 @max-sm:gap-1 @max-sm:px-0.5"
+              className="flex shrink-0 items-center gap-1 px-0.5 @min-[640px]:gap-1.5 @min-[640px]:px-1.5 @min-[768px]:gap-2 @min-[768px]:px-2"
             >
               <Label>{t('chat.hudContext')}</Label>
               <span

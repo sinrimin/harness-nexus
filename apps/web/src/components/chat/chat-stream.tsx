@@ -170,10 +170,18 @@ export function ChatStream({
                 return <UserMessage key={row.key} blocks={row.blocks} />;
               case 'assistant': {
                 // The turn's tail merges into this step's action row when
-                // this is the turn's last row and the actions exist.
+                // this is the turn's last row AND the actions exist — the
+                // same condition the lookbehind below suppresses the
+                // standalone row on, so a not-capturable last step (a
+                // cancelled or reasoning-only turn) never renders the tail
+                // twice.
                 const next = state.rows[i + 1];
                 const tailStats =
-                  next !== undefined && next.row === 'turn-tail' ? next.stats : undefined;
+                  next !== undefined &&
+                  next.row === 'turn-tail' &&
+                  stepCapturable(row.step, onCaptureStep)
+                    ? next.stats
+                    : undefined;
                 return (
                   <AssistantStepRow
                     key={row.key}

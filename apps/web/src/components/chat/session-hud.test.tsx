@@ -113,7 +113,7 @@ describe('SessionHud', () => {
     expect(filesCell.textContent).toContain('+0');
     expect(filesCell.textContent).toContain('−0');
 
-    // The CTX gauge keeps its two faces: 16 segments wide, 8 on the phone.
+    // The CTX gauge keeps its two faces: 16 segments wide, 6 on the phone.
     const bars = hud?.querySelectorAll('[data-slot="hud-bar"]');
     expect([...(bars ?? [])].map((b) => b.getAttribute('data-compact'))).toEqual([
       'false',
@@ -190,7 +190,7 @@ describe('SessionHud', () => {
       '40%',
     );
     expect(cells.find((c) => c.getAttribute('data-kind') === 'req')?.getAttribute('title')).toContain(
-      'Requests in this session: 2',
+      'Turns in this session: 2',
     );
   });
 
@@ -207,7 +207,7 @@ describe('SessionHud', () => {
     const inCell = cellsOf(hud).find((c) => c.getAttribute('data-kind') === 'in')!;
     expect(inCell.getAttribute('title')).toContain('输入侧：输入 5K + 缓存读 4K');
     const reqCell = cellsOf(hud).find((c) => c.getAttribute('data-kind') === 'req')!;
-    expect(reqCell.getAttribute('title')).toContain('本会话请求数：2');
+    expect(reqCell.getAttribute('title')).toContain('本会话轮数：2');
     // Unknown is localized too.
     const { container: bare } = render(
       <SessionHud usage={null} sessionUsage={null} files={null} />,

@@ -172,17 +172,15 @@ const en = {
   // #128 — the qualifier "(daemon run)" is gone: the assistant page shares
   // these strings and its totals come from the SERVER-side accumulator
   // (lifetime semantics live in the wiki, not on the strip).
-  hudTokensTitle: 'Session tokens: {total} total · {turns} requests · in {in} · out {out} (cache included)',
+  hudTokensTitle: 'Session tokens: {total} total · {turns} turns · in {in} · out {out} (cache included)',
   hudInTitle: 'Input side: {input} input + {cacheRead} cache read',
   hudOutTitle: 'Output side: {output} output + {cacheWrite} cache write',
   hudHitTitle: 'Prompt cache hit rate: {pct}%',
-  hudReqTitle: 'Requests in this session: {count}',
+  hudReqTitle: 'Turns in this session: {count}',
   hudNoData: 'No data yet',
   hudFilesTitle: 'Files in the loaded transcript: {files} · +{added} / −{removed}',
   hudFilesPathless: 'some diffs carried no path — file count is a lower bound',
   hudFilesPartial: 'older history not loaded — the count is a lower bound',
-  // English in both locales — the HUD is an engraved instrument face (the
-  // same exception as the labels above).
   hudFilesMore: '+{count} more',
   permissionAsk: 'The agent asks permission',
   permissionAskTitle: 'The agent asks permission: {title}',
@@ -415,21 +413,19 @@ const zh: typeof en = {
   hudHit: 'HIT',
   hudReq: 'REQ',
   hudFiles: 'FILES',
-  hudContextTitle: 'Context: {used} of {size} tokens ({pct}%)',
-  // #128 — same neutralized titles as `en` (the assistant page shares them;
-  // its totals are server-accumulated, there is no daemon).
-  hudTokensTitle: '会话 tokens：共 {total} · {turns} 次请求 · 入 {in} · 出 {out}（含缓存）',
+  hudContextTitle: '上下文：{used} / {size} tokens（{pct}%）',
+  // #128 — the tooltips are localized copy; only the engraved LABELS stay
+  // English (the instrument-face exception).
+  hudTokensTitle: '会话 tokens：共 {total} · {turns} 轮 · 入 {in} · 出 {out}（含缓存）',
   hudInTitle: '输入侧：输入 {input} + 缓存读 {cacheRead}',
   hudOutTitle: '输出侧：输出 {output} + 缓存写 {cacheWrite}',
   hudHitTitle: '缓存命中率：{pct}%',
-  hudReqTitle: '本会话请求数：{count}',
+  hudReqTitle: '本会话轮数：{count}',
   hudNoData: '暂无数据',
-  hudFilesTitle: 'Files in the loaded transcript: {files} · +{added} / −{removed}',
-  hudFilesPathless: 'some diffs carried no path — file count is a lower bound',
-  hudFilesPartial: 'older history not loaded — the count is a lower bound',
-  // English in both locales — the HUD is an engraved instrument face (the
-  // same exception as the labels above).
-  hudFilesMore: '+{count} more',
+  hudFilesTitle: '已加载记录中的文件：{files} · +{added} / −{removed}',
+  hudFilesPathless: '部分 diff 无路径——文件数为下界',
+  hudFilesPartial: '更早的历史未加载——计数为下界',
+  hudFilesMore: '还有 {count} 个',
   permissionAsk: '代理请求权限',
   permissionAskTitle: '代理请求权限：{title}',
   // ---- 9 W14.1: agent questions (ACP elicitation) ----
