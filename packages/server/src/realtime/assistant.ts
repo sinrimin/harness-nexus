@@ -965,7 +965,13 @@ export class AssistantRealtimeService {
       if (row === null || row.title !== fallback) return;
       await this.deps.uow.assistants.saveSession({ ...row, title: refined });
       void this.pushSessions(ch.ownerId);
-    })();
+    })().catch((err) => {
+      // #120's lesson, applied to this tail: a floating promise must never
+      // reject — a DB hiccup between the refine and the save would otherwise
+      // be an unhandled rejection that kills the process. The fallback title
+      // stays; only the operator log learns why.
+      this.deps.log?.error(`assistant title refine failed: ${String(err)}`);
+    });
   }
 
   /** Flush the user's OLDEST parked slot once the turn ended. */
