@@ -77,6 +77,13 @@ interface LiveChannel {
   /** Current model id on that provider. */
   modelId: string;
   /**
+   * #128 — the current model's registry contextWindow (the HUD CTX
+   * denominator). Resolved wherever the provider/model binding moves (open,
+   * config rebind, model pick); a registry entry without a window clears it
+   * (CTX then stays honestly blank — the denominator is unknown).
+   */
+  contextWindow?: number;
+  /**
    * #79 — the conversation's OWN write-policy (the sender switch). Stamped at
    * open from the session row (legacy rows: the config default), moved only by
    * `assistant:config.set permissionMode`. Unlike provider/model, a rebind to
@@ -263,6 +270,18 @@ export class AssistantRealtimeService {
       sessionId: ch.sessionId,
       event: { kind: 'session_usage', ...snapshot },
     });
+  }
+
+  /**
+   * #128 — resolve the current binding's contextWindow from the provider
+   * registry. One resolution path for every binding move; an entry without
+   * a window clears the field.
+   */
+  private async refreshContextWindow(ch: LiveChannel): Promise<void> {
+    const row = await this.deps.uow.llmProviders.findById(ch.providerId);
+    const contextWindow = row?.models.find((m) => m.id === ch.modelId)?.contextWindow;
+    if (contextWindow !== undefined) ch.contextWindow = contextWindow;
+    else delete ch.contextWindow;
   }
 
   private channelOf(userId: string, sessionId: string): LiveChannel | null {
@@ -478,6 +497,7 @@ export class AssistantRealtimeService {
         ...(sessionId === undefined ? { pending: session } : {}),
       };
       this.live.set(session.id, ch);
+      await this.refreshContextWindow(ch);
     }
     const usageSnapshot = ch.usage.snapshot();
     this.io.toChannel(session.id, 'assistant:session.ready', {
@@ -784,6 +804,7 @@ export class AssistantRealtimeService {
         // previous provider override belonged to the old config's session.
         ch.providerId = config.providerId;
         ch.modelId = config.defaultModel;
+        await this.refreshContextWindow(ch);
         // #82 — a LAZY (un-persisted) session has no row to note into (the
         // append would die on the assistant_messages FK); the rebind just
         // re-stamps the pending row, so the first message persists under the
@@ -811,6 +832,7 @@ export class AssistantRealtimeService {
       }
       ch.providerId = provider.id;
       ch.modelId = model.id;
+      await this.refreshContextWindow(ch);
     }
     this.emit(sessionId, await this.sessionConfigEvent(ch));
     return { ok: true };
@@ -891,6 +913,28 @@ export class AssistantRealtimeService {
         // the title refine and the delegated-approvals decision model build
         // their own calls outside this wrapper, so they never land here.
         emit: (event) => {
+          // #128 CTX — no adapter reports the assistant's window, so the
+          // response's own token counts DERIVE it: the request the model
+          // just answered (input + cache read/written — pi-ai normalizes
+          // input to EXCLUDE the cached parts on every dialect) plus the
+          // response it produced is the context as it now stands. The
+          // registry's contextWindow is the denominator; without one the
+          // fields stay absent (CTX honestly blank).
+          if (
+            event.kind === 'usage' &&
+            ch.contextWindow !== undefined &&
+            (event.inputTokens !== undefined || event.outputTokens !== undefined)
+          ) {
+            event = {
+              ...event,
+              contextUsed:
+                (event.inputTokens ?? 0) +
+                (event.cacheReadTokens ?? 0) +
+                (event.cacheWriteTokens ?? 0) +
+                (event.outputTokens ?? 0),
+              contextSize: ch.contextWindow,
+            };
+          }
           this.emit(ch.sessionId, event);
           if (event.kind === 'usage') this.recordUsage(ch, event);
         },

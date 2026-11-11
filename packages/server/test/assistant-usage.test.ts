@@ -113,7 +113,9 @@ interface IoCall {
   };
 }
 
-async function setup(opts: { titleRefine?: boolean; script?: Step[] } = {}) {
+async function setup(
+  opts: { titleRefine?: boolean; script?: Step[]; providerModels?: { id: string; contextWindow?: number }[] } = {},
+) {
   const uow = createMemoryUnitOfWork();
   await uow.users.save({
     id: owner.userId,
@@ -143,7 +145,11 @@ async function setup(opts: { titleRefine?: boolean; script?: Step[] } = {}) {
     credentialName: 'gw-key',
     scope: 'personal',
     ownerId: owner.userId,
-    models: [{ id: 'gw-large', apiKind: 'openai-chat' }],
+    models: (opts.providerModels ?? [{ id: 'gw-large' }]).map((m) => ({
+      id: m.id,
+      apiKind: 'openai-chat',
+      ...(m.contextWindow !== undefined ? { contextWindow: m.contextWindow } : {}),
+    })),
     createdAt: now,
     updatedAt: now,
   });
@@ -205,6 +211,11 @@ const sessionUsageEvents = (calls: IoCall[]) =>
 
 const readyPushes = (calls: IoCall[], sessionId: string) =>
   calls.filter((c) => c.event === 'assistant:session.ready' && c.payload.sessionId === sessionId);
+
+const usageEvents = (calls: IoCall[]) =>
+  calls
+    .map((c) => c.payload.event)
+    .filter((e): e is Extract<ChatStreamEvent, { kind: 'usage' }> => e?.kind === 'usage');
 
 describe('SessionUsageAccumulator', () => {
   it('treats missing as unknown and 0 as a report for input/output', () => {
@@ -450,6 +461,75 @@ describe('#128 — assistant session usage telemetry', () => {
     expect(chatStreamEventSchema.parse({ kind: 'session_usage', turns: 0 })).toEqual({
       kind: 'session_usage',
       turns: 0,
+    });
+  });
+
+  it('CTX — usage events carry a derived window reading when the registry has a contextWindow', async () => {
+    const h = await setup({
+      providerModels: [{ id: 'gw-large', contextWindow: 64_000 }],
+      script: [textReply('ok', { input: 200, output: 40, cacheRead: 1000, cacheWrite: 50 })],
+    });
+    const res = await h.svc.open(owner.userId, h.configId, undefined, 'sock-1');
+    expect(res.ok).toBe(true);
+    const sessionId = res.ok ? res.sessionId : '';
+    await h.svc.onMessageSend(owner.userId, sessionId, 'hello');
+    await settle(h.uow, sessionId);
+    // The request the model just answered (input + cache read/written —
+    // pi-ai normalizes input to EXCLUDE the cached parts) plus the response
+    // it produced: 200+1000+50+40 = the context as it now stands.
+    expect(usageEvents(h.calls)[0]).toMatchObject({
+      kind: 'usage',
+      contextUsed: 1290,
+      contextSize: 64_000,
+    });
+  });
+
+  it('CTX — a registry entry without a contextWindow keeps the fields absent (honest blank)', async () => {
+    const h = await setup({ script: [textReply('ok', { input: 10, output: 2 })] });
+    const res = await h.svc.open(owner.userId, h.configId, undefined, 'sock-1');
+    expect(res.ok).toBe(true);
+    const sessionId = res.ok ? res.sessionId : '';
+    await h.svc.onMessageSend(owner.userId, sessionId, 'hello');
+    await settle(h.uow, sessionId);
+    const usage = usageEvents(h.calls)[0]!;
+    expect(usage.inputTokens).toBe(10);
+    expect('contextUsed' in usage).toBe(false);
+    expect('contextSize' in usage).toBe(false);
+  });
+
+  it('CTX — a mid-session model pick re-resolves the window from the registry', async () => {
+    const h = await setup({
+      providerModels: [{ id: 'gw-large' }, { id: 'gw-mini', contextWindow: 8_000 }],
+      // One step: buildModel builds a FRESH scripted queue per turn, so both
+      // turns see this same response — the numbers under test are the CTX
+      // fields, and the model pick is what must change between them.
+      script: [textReply('same', { input: 20, output: 3 })],
+    });
+    const res = await h.svc.open(owner.userId, h.configId, undefined, 'sock-1');
+    expect(res.ok).toBe(true);
+    const sessionId = res.ok ? res.sessionId : '';
+    await h.svc.onMessageSend(owner.userId, sessionId, 'first');
+    await settle(h.uow, sessionId);
+    // gw-large carries no window: the first turn's usage has no CTX fields.
+    expect('contextUsed' in usageEvents(h.calls).at(-1)!).toBe(false);
+
+    const picked = await h.svc.onConfigSet(owner.userId, sessionId, {
+      configId: 'model',
+      value: 'prov-1/gw-mini',
+    });
+    expect(picked.ok).toBe(true);
+    h.calls.length = 0;
+    await h.svc.onMessageSend(owner.userId, sessionId, 'second');
+    // settle() keys on "last row is assistant", which turn 1 already left
+    // behind — wait for the new turn's usage event itself.
+    for (let i = 0; i < 500 && usageEvents(h.calls).length === 0; i += 1) {
+      await new Promise((r) => setTimeout(r, 10));
+    }
+    await settle(h.uow, sessionId);
+    expect(usageEvents(h.calls).at(-1)).toMatchObject({
+      kind: 'usage',
+      contextUsed: 23,
+      contextSize: 8_000,
     });
   });
 });
