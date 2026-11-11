@@ -6,6 +6,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { FastifyInstance } from 'fastify';
 import type { Server as HttpServer } from 'node:http';
 import { createServer } from 'node:http';
+import { UpstreamPool } from '@harness-nexus/mcp-runtime';
 import { buildApp } from '../src/app.js';
 import { NOTES_TOOL_PREFIX } from '../src/mcp/notes-tools.js';
 import { testConfig, waitFor } from './helpers.js';
@@ -294,5 +295,62 @@ describe('per-tool selection over the outlet (#113)', () => {
     const result = body.result as { isError?: boolean; content: { text: string }[] };
     expect(result.isError).toBe(true);
     expect(result.content[0].text).toContain('unknown tool notes__get');
+  });
+});
+
+describe('passthrough selection on the pool itself (#113 — the shim outlet def)', () => {
+  // The client shim dials the platform outlet as ONE namespaced upstream and
+  // passes a closed-world selection map beside every list/call. The pool
+  // enforces the allow-set on the passthrough arm exactly like the local
+  // arm: listing intersects with the FULL (already namespaced) names, and a
+  // call outside the set dies as the ordinary unknown-tool error.
+  let pool: UpstreamPool;
+
+  beforeAll(async () => {
+    const addr = upstream.address();
+    if (typeof addr !== 'object' || addr === null) throw new Error('no upstream port');
+    pool = new UpstreamPool({
+      logger: {
+        info() {},
+        warn() {},
+        debug() {},
+      },
+      clientName: 'passthrough-selection-test',
+      clientVersion: '0',
+    });
+    await pool.sync([
+      {
+        id: '__outlet__',
+        name: 'harness-nexus',
+        transport: { type: 'streamable-http', url: `http://127.0.0.1:${addr.port}/mcp` },
+        namespaced: true,
+      },
+    ]);
+    await pool.settle();
+  });
+
+  afterAll(async () => {
+    await pool?.shutdown();
+  });
+
+  it('a pinned passthrough lists the intersection and gates calls to it', async () => {
+    const pinned = new Map([['__outlet__', new Set(['alpha'])]]);
+    expect(pool.listTools(pinned).map((t) => t.name)).toEqual(['alpha']);
+
+    await expect(pool.callTool('alpha', {}, pinned)).resolves.toBeTruthy();
+    await expect(pool.callTool('beta', {}, pinned)).rejects.toThrow(
+      /upstream not connected or tool unknown/,
+    );
+  });
+
+  it("'all' keeps the whole passthrough surface (the shim's outlet default)", async () => {
+    const all = new Map([['__outlet__', 'all' as const]]);
+    expect(
+      pool
+        .listTools(all)
+        .map((t) => t.name)
+        .sort(),
+    ).toEqual([...TOOL_NAMES].sort());
+    await expect(pool.callTool('gamma', {}, all)).resolves.toBeTruthy();
   });
 });

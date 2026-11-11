@@ -33,6 +33,8 @@ import {
 import {
   UpstreamPool,
   type ResolvedTransport,
+  type ToolSelection,
+  type ToolSelectionMap,
   type UpstreamDefinition,
 } from '@harness-nexus/mcp-runtime';
 import { HarnessNexusClient, HarnessNexusError } from '@harness-nexus/sdk';
@@ -61,6 +63,24 @@ export interface McpServeOptions {
   server: string;
   /** Machine PAT (from `hnx enroll`) or a user PAT. */
   token: string;
+}
+
+/**
+ * #113 — the config's per-entry tool selection as the pool's closed-world
+ * map. Client-dialed upstreams map to their pin, or 'all' when the entry took
+ * the whole server; the outlet passthrough maps 'all' (the platform already
+ * gated its surface server-side). An upstream the map does not know
+ * contributes nothing and takes no calls — same enforcement the outlet path
+ * applies, on the path that bypasses the outlet.
+ */
+export function selectionFromConfig(config: ClientMcpConfig): ToolSelectionMap {
+  const map = new Map<string, ToolSelection>();
+  for (const s of config.servers) {
+    if (s.dialSite !== 'client') continue;
+    map.set(s.id, s.tools !== undefined ? new Set(s.tools) : 'all');
+  }
+  if (config.platform !== null) map.set('__outlet__', 'all');
+  return map;
 }
 
 export async function runMcpServe(opts: McpServeOptions): Promise<void> {
@@ -119,13 +139,17 @@ export async function runMcpServe(opts: McpServeOptions): Promise<void> {
     }
   }
 
+  // #113 — the pinned subsets ride with every list/call; whole-server
+  // entries and the outlet pass 'all' (see selectionFromConfig).
+  const selection = selectionFromConfig(config);
+
   const server = new Server(
     { name: 'hnx-mcp-serve', version: DAEMON_VERSION },
     { capabilities: { tools: {} } },
   );
 
   server.setRequestHandler(ListToolsRequestSchema, async () => ({
-    tools: pool.listTools().map((t) => ({
+    tools: pool.listTools(selection).map((t) => ({
       name: t.name,
       ...(t.description !== undefined ? { description: t.description } : {}),
       inputSchema: t.inputSchema,
@@ -135,7 +159,7 @@ export async function runMcpServe(opts: McpServeOptions): Promise<void> {
   server.setRequestHandler(CallToolRequestSchema, async (req) => {
     const { name, arguments: args } = req.params;
     try {
-      const result = await pool.callTool(name, args);
+      const result = await pool.callTool(name, args, selection);
       return result as CallToolResult;
     } catch (e) {
       const text = e instanceof Error ? e.message : String(e);
@@ -145,7 +169,10 @@ export async function runMcpServe(opts: McpServeOptions): Promise<void> {
 
   const transport = new StdioServerTransport();
   await server.connect(transport);
-  stderrLog.info({}, `serving profile ${config.profileId} (${pool.listTools().length} tools)`);
+  stderrLog.info(
+    {},
+    `serving profile ${config.profileId} (${pool.listTools(selection).length} tools)`,
+  );
 
   await new Promise<void>((resolve) => {
     server.onclose = () => {

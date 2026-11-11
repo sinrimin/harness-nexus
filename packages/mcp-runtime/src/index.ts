@@ -254,8 +254,9 @@ export class UpstreamPool {
    * removals drop out). `undefined` = every connected upstream's every tool
    * (the operator/assistant default). Local upstreams namespace as
    * `<name>__<tool>`; passthrough (`namespaced`) upstreams contribute their
-   * tool names verbatim — per-tool selection never applies to them (their
-   * surface is decided by whoever aggregates them, e.g. the outlet).
+   * tool names verbatim, with a Set intersecting those FULL names the same
+   * way — a passthrough caller that wants its whole surface (e.g. the shim's
+   * outlet def, gated server-side) maps `'all'`.
    */
   listTools(selection?: ToolSelectionMap): AggregatedTool[] {
     const out: AggregatedTool[] = [];
@@ -267,6 +268,7 @@ export class UpstreamPool {
       const prefix = sanitizeNamespace(conn.def.name) + NAMESPACE_SEP;
       for (const tool of conn.tools.values()) {
         if (conn.def.namespaced) {
+          if (allow instanceof Set && !allow.has(tool.name)) continue;
           out.push(tool);
           continue;
         }
@@ -286,9 +288,9 @@ export class UpstreamPool {
    * first; if no local upstream owns the name, passthrough upstreams get the
    * full name forwarded verbatim (the outlet already namespaced it). With a
    * `selection` the SAME allow-set enforced at listing is enforced here
-   * (#113): a session must not be able to invoke what it cannot list — the
-   * rejection is the ordinary unknown-tool error, so membership is not
-   * leakable from the error shape.
+   * (#113) on BOTH arms — a session must not be able to invoke what it
+   * cannot list, passthrough included — and the rejection is the ordinary
+   * unknown-tool error, so membership is not leakable from the error shape.
    */
   async callTool(
     exposedName: string,
@@ -318,6 +320,12 @@ export class UpstreamPool {
     for (const conn of this.pool.values()) {
       if (!conn.def.namespaced || conn.status !== 'connected') continue;
       if (conn.tools.has(exposedName)) {
+        if (selection !== undefined) {
+          const allow = selection.get(conn.def.id);
+          if (allow === undefined || (allow instanceof Set && !allow.has(exposedName))) {
+            throw new Error(`upstream not connected or tool unknown: ${exposedName}`);
+          }
+        }
         return conn.client.callTool({ name: exposedName, arguments: args });
       }
     }
