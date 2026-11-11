@@ -205,7 +205,7 @@ describe('SessionHud', () => {
       expect(hud.textContent).toContain(label);
     }
     const inCell = cellsOf(hud).find((c) => c.getAttribute('data-kind') === 'in')!;
-    expect(inCell.getAttribute('title')).toContain('输入侧：input 5K + 缓存读 4K');
+    expect(inCell.getAttribute('title')).toContain('输入侧：输入 5K + 缓存读 4K');
     const reqCell = cellsOf(hud).find((c) => c.getAttribute('data-kind') === 'req')!;
     expect(reqCell.getAttribute('title')).toContain('本会话请求数：2');
     // Unknown is localized too.
@@ -283,5 +283,8 @@ describe('SessionHud', () => {
     expect(by('out').textContent).toContain('--');
     expect(by('hit').textContent).toContain('--');
     expect(by('req').textContent).toContain('1');
+    // Tooltip parts print 0 for the unreported (this snapshot carries no
+    // output and no cache write at all).
+    expect(by('out').getAttribute('title')).toContain('0 output + 0 cache write');
   });
 });

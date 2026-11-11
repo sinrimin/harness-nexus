@@ -274,24 +274,27 @@ export function SessionHud({
       ? t('chat.hudTokensTitle', {
           total: compact(totals.total),
           turns: String(totals.turns),
-          // in/out as TOTALS (cache included), matching the cells.
-          in: totals.inTotal !== null ? compact(totals.inTotal) : '--',
-          out: totals.outTotal !== null ? compact(totals.outTotal) : '--',
+          // in/out as TOTALS (cache included), matching the cells. Tooltip
+          // parts print 0 for the unreported — a readable sentence, not a
+          // gauge (the strip itself keeps the honest --).
+          in: compact(totals.inTotal ?? 0),
+          out: compact(totals.outTotal ?? 0),
         })
       : noData;
-  // The IN/OUT tooltips carry the parts, not the composite.
+  // The IN/OUT tooltips carry the parts, not the composite; an unreported
+  // part prints 0 (readable sentence) while the cells keep the honest --.
   const inTitle =
     totals !== null
       ? t('chat.hudInTitle', {
-          input: totals.input !== undefined ? compact(totals.input) : '--',
-          cacheRead: totals.read !== undefined ? compact(totals.read) : '--',
+          input: compact(totals.input ?? 0),
+          cacheRead: compact(totals.read ?? 0),
         })
       : noData;
   const outTitle =
     totals !== null
       ? t('chat.hudOutTitle', {
-          output: totals.output !== undefined ? compact(totals.output) : '--',
-          cacheWrite: totals.write !== undefined ? compact(totals.write) : '--',
+          output: compact(totals.output ?? 0),
+          cacheWrite: compact(totals.write ?? 0),
         })
       : noData;
   const hitTitle =

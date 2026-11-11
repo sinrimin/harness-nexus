@@ -417,8 +417,8 @@ const zh: typeof en = {
   // #128 — same neutralized titles as `en` (the assistant page shares them;
   // its totals are server-accumulated, there is no daemon).
   hudTokensTitle: '会话 tokens：共 {total} · {turns} 次请求 · 入 {in} · 出 {out}（含缓存）',
-  hudInTitle: '输入侧：input {input} + 缓存读 {cacheRead}',
-  hudOutTitle: '输出侧：output {output} + 缓存写 {cacheWrite}',
+  hudInTitle: '输入侧：输入 {input} + 缓存读 {cacheRead}',
+  hudOutTitle: '输出侧：输出 {output} + 缓存写 {cacheWrite}',
   hudHitTitle: '缓存命中率：{pct}%',
   hudReqTitle: '本会话请求数：{count}',
   hudNoData: '暂无数据',
