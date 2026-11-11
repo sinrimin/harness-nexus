@@ -14,8 +14,8 @@ import type { HudEditStats } from './hud-stats.js';
 /**
  * #124/#128 — the session HUD, the band UNDER the Sender's top edge:
  *
- *   CTX ▮▮▮▮▮▮▮▮▮▮▮▮▮▮▮▮ -- --   TOK -- | READ -- | WRITE -- | HIT -- | REQ --   FILES 0 +0 −0
- *   CTX ▮▮▮▮▮▮▮▮▮▮▮▮▮▮▮▮ 1% 11.6K/1M   TOK 14.2K | READ 13.7K | WRITE 526 | HIT 0% | REQ 2   FILES 0 +0 −0
+ *   CTX ▮▮▮▮▮▮▮▮▮▮▮▮▮▮▮▮ -- --   TOK -- | IN -- | OUT -- | HIT -- | REQ --   FILES 0 +0 −0
+ *   CTX ▮▮▮▮▮▮▮▮▮▮▮▮▮▮▮▮ 8% 5.2K/64K   TOK 10.4K | IN 9K | OUT 700 | HIT 80% | REQ 2   FILES 0 +0 −0
  *
  * The Sender keeps its full rounded rectangle; this strip is a sibling that
  * carries an 18px spacer in flow and then extends BEHIND the card (absolute,
@@ -43,27 +43,36 @@ import type { HudEditStats } from './hud-stats.js';
  * zero state is a real number (`0 +0 −0` — nothing edited is data, not
  * absence). The strip never unmounts.
  *
- * Phone: the CTX bar shortens (16 → 8 segments) and READ/WRITE abbreviate to
- * R/W; the cells keep their fixed slots.
+ * The faces switch on EXPLICIT container widths (@min-[640px] / @min-[768px])
+ * — never on Tailwind's named container steps, whose @sm is 384px and left a
+ * dead zone where mid-width devices scrolled. Below 640px: a 6-segment CTX
+ * bar and 12px figures; the IN/OUT labels are short everywhere, so no
+ * abbreviations exist. The strip scrolls only below ~340px.
  */
 
 /** Wide-face segment count; the phone face draws the compact count. */
 const SEGMENTS = 16;
 const SEGMENTS_COMPACT = 6;
+// The wide-face container width (and the ratio's); see the phone note above.
+const FACE_WIDE = '@min-[640px]';
+const FACE_FULL = '@min-[768px]';
 
 /**
  * Each cell owns a FIXED slot; the mins hold its typical widest content plus
- * a little headroom. The `@max-2xl` step is the narrow composer column (the
- * used/size pair hides there too); `@max-sm` is the phone face.
+ * a little headroom. Two tiers on EXPLICIT container widths (the named
+ * Tailwind container steps are NOT viewport-scale — @sm is 384px — and left
+ * dead zones where the strip scrolled): the phone tier fits a 640px minus
+ * the section pad, the wide tier fits 640px itself, and the CTX ratio tier
+ * (@min-[768px]) widens CTX for the used/size pair that appears there.
  */
 const SLOT_MIN = {
-  ctx: 'min-w-[76px] @sm:min-w-[120px] @2xl:min-w-[210px]',
-  tok: 'min-w-[46px] @sm:min-w-[58px] @2xl:min-w-[70px]',
-  read: 'min-w-[30px] @sm:min-w-[56px] @2xl:min-w-[80px]',
-  write: 'min-w-[34px] @sm:min-w-[60px] @2xl:min-w-[82px]',
-  hit: 'min-w-[36px] @sm:min-w-[50px] @2xl:min-w-[62px]',
-  req: 'min-w-[34px] @sm:min-w-[48px] @2xl:min-w-[62px]',
-  files: 'min-w-[66px] @sm:min-w-[96px] @2xl:min-w-[130px]',
+  ctx: 'min-w-[72px] @min-[640px]:min-w-[110px] @min-[768px]:min-w-[200px]',
+  tok: 'min-w-[46px] @min-[640px]:min-w-[58px]',
+  in: 'min-w-[34px] @min-[640px]:min-w-[54px]',
+  out: 'min-w-[40px] @min-[640px]:min-w-[60px]',
+  hit: 'min-w-[36px] @min-[640px]:min-w-[50px]',
+  req: 'min-w-[34px] @min-[640px]:min-w-[48px]',
+  files: 'min-w-[64px] @min-[640px]:min-w-[96px]',
 } as const;
 
 /** "34.1k" → "34.1K" — the HUD reads in instrument case. */
@@ -95,6 +104,10 @@ interface Totals {
   read?: number | undefined;
   write?: number | undefined;
   turns: number;
+  /** IN = input + cache read (null until input is known). */
+  inTotal: number | null;
+  /** OUT = output + cache write (null until output is known; many models never write cache). */
+  outTotal: number | null;
 }
 
 function sessionTotals(usage: ChatSessionUsage | null): Totals | null {
@@ -119,6 +132,8 @@ function sessionTotals(usage: ChatSessionUsage | null): Totals | null {
     read: cacheReadTokens,
     write: cacheWriteTokens,
     turns: usage.turns,
+    inTotal: inputTokens !== undefined ? inputTokens + (cacheReadTokens ?? 0) : null,
+    outTotal: outputTokens !== undefined ? outputTokens + (cacheWriteTokens ?? 0) : null,
   };
 }
 
@@ -150,22 +165,8 @@ function toneClass(tone: MeterTone): string {
 
 function Label({ children }: { children: string }) {
   return (
-    <span className="font-hud text-[length:var(--hud-label-size)] leading-none tracking-normal text-(--hud-dim) uppercase @sm:tracking-[0.12em]">
+    <span className="font-hud text-[length:var(--hud-label-size)] leading-none tracking-[0.08em] text-(--hud-dim) uppercase @min-[640px]:tracking-[0.12em]">
       {children}
-    </span>
-  );
-}
-
-/**
- * A label that keeps its full engraved word on the wide face and its letter
- * on the phone face (READ → R, WRITE → W). Both are always in the DOM; the
- * container query picks one, so the accessible name stays the full word.
- */
-function AbbrLabel({ full, short }: { full: string; short: string }) {
-  return (
-    <span className="font-hud text-[length:var(--hud-label-size)] leading-none tracking-normal text-(--hud-dim) uppercase @sm:tracking-[0.12em]">
-      <span className="hidden @sm:inline">{full}</span>
-      <span className="inline @sm:hidden">{short}</span>
     </span>
   );
 }
@@ -174,7 +175,9 @@ function Value({ children, className }: { children: ReactNode; className?: strin
   return (
     <span
       className={cn(
-        'font-hud text-[length:var(--hud-value-size)] leading-none tabular-nums text-(--hud-ink)',
+        // Phone figures run one step smaller than the --hud-value-size token
+        // (12px vs 14px): the em feels oversized on a 390px face.
+        'font-hud text-[12px] leading-none tabular-nums text-(--hud-ink) @min-[640px]:text-[length:var(--hud-value-size)]',
         className,
       )}
     >
@@ -208,7 +211,7 @@ function Segments({
       aria-hidden="true"
       className={cn(
         'items-center',
-        compactFace ? 'flex gap-[1px] @sm:hidden' : 'hidden gap-[2px] @sm:flex',
+        compactFace ? 'flex gap-[1px] @min-[640px]:hidden' : 'hidden gap-[2px] @min-[640px]:flex',
       )}
     >
       {Array.from({ length: count }, (_, i) => (
@@ -271,17 +274,25 @@ export function SessionHud({
       ? t('chat.hudTokensTitle', {
           total: compact(totals.total),
           turns: String(totals.turns),
-          input: totals.input !== undefined ? compact(totals.input) : '--',
-          output: totals.output !== undefined ? compact(totals.output) : '--',
+          // in/out as TOTALS (cache included), matching the cells.
+          in: totals.inTotal !== null ? compact(totals.inTotal) : '--',
+          out: totals.outTotal !== null ? compact(totals.outTotal) : '--',
         })
       : noData;
-  const readTitle =
-    totals?.read !== undefined
-      ? t('chat.hudReadTitle', { read: compact(totals.read) })
+  // The IN/OUT tooltips carry the parts, not the composite.
+  const inTitle =
+    totals !== null
+      ? t('chat.hudInTitle', {
+          input: totals.input !== undefined ? compact(totals.input) : '--',
+          cacheRead: totals.read !== undefined ? compact(totals.read) : '--',
+        })
       : noData;
-  const writeTitle =
-    totals?.write !== undefined
-      ? t('chat.hudWriteTitle', { write: compact(totals.write) })
+  const outTitle =
+    totals !== null
+      ? t('chat.hudOutTitle', {
+          output: totals.output !== undefined ? compact(totals.output) : '--',
+          cacheWrite: totals.write !== undefined ? compact(totals.write) : '--',
+        })
       : noData;
   const hitTitle =
     hit !== null ? t('chat.hudHitTitle', { pct: hit }) : noData;
@@ -312,7 +323,7 @@ export function SessionHud({
         data-slot="session-hud"
         data-surface="hud"
         aria-label={t('chat.hudAria')}
-        className="@container absolute inset-x-0 top-0 flex h-[calc(var(--hud-h)+var(--radius-xl)+2px)] items-stretch justify-between overflow-x-auto rounded-t-[var(--radius-xl)] bg-(--hud-bg) px-0.5 pb-[calc(var(--radius-xl)+2px)] text-(--hud-ink) [scrollbar-width:none] @sm:px-2"
+        className="@container absolute inset-x-0 top-0 flex h-[calc(var(--hud-h)+var(--radius-xl)+2px)] items-stretch justify-between overflow-x-auto rounded-t-[var(--radius-xl)] bg-(--hud-bg) px-2 pb-[calc(var(--radius-xl)+2px)] text-(--hud-ink) [scrollbar-width:none]"
       >
         {/* CTX — occupancy gauge on the left. */}
         <div
@@ -329,7 +340,7 @@ export function SessionHud({
                   data-kind="ctx"
                   aria-label={contextTitle}
                   title={contextTitle}
-                  className="focus-visible:ring-ring/50 flex shrink-0 items-center gap-0.5 px-0.5 transition-colors hover:bg-(--hud-hover) focus-visible:ring-[3px] focus-visible:outline-none @sm:gap-1 @sm:px-1.5 @2xl:gap-2 @2xl:px-2"
+                  className="focus-visible:ring-ring/50 flex shrink-0 items-center gap-1 px-0.5 transition-colors hover:bg-(--hud-hover) focus-visible:ring-[3px] focus-visible:outline-none @min-[640px]:gap-1.5 @min-[640px]:px-1.5 @min-[768px]:gap-2 @min-[768px]:px-2"
                 >
                   <Label>{t('chat.hudContext')}</Label>
                   <Segments pct={pressure.pct} tone={pressure.tone} count={SEGMENTS} compactFace={false} />
@@ -342,7 +353,7 @@ export function SessionHud({
                   <Value className={cn(toneClass(pressure.tone), 'font-medium')}>
                     {String(Math.round(pressure.pct))}%
                   </Value>
-                  <span className="font-hud text-[length:var(--hud-value-size)] hidden leading-none tabular-nums text-(--hud-dim) @2xl:inline">
+                  <span className="font-hud hidden text-[length:var(--hud-value-size)] leading-none tabular-nums text-(--hud-dim) @min-[768px]:inline">
                     {formatTokens(pressure.used).toUpperCase()}/
                     {formatTokens(pressure.size).toUpperCase()}
                   </span>
@@ -366,7 +377,7 @@ export function SessionHud({
                 data-slot="hud-bar"
                 data-compact="false"
                 aria-hidden="true"
-                className="hidden items-center gap-[2px] @sm:flex"
+                className="hidden items-center gap-[2px] @min-[640px]:flex"
               >
                 {Array.from({ length: SEGMENTS }, (_, i) => (
                   <span key={i} data-slot="hud-seg" data-on="false" className="h-2 w-[3px] rounded-[1px] bg-(--hud-track)" />
@@ -376,7 +387,7 @@ export function SessionHud({
                 data-slot="hud-bar"
                 data-compact="true"
                 aria-hidden="true"
-                className="flex items-center gap-[1px] @sm:hidden"
+                className="flex items-center gap-[1px] @min-[640px]:hidden"
               >
                 {Array.from({ length: SEGMENTS_COMPACT }, (_, i) => (
                   <span key={i} data-slot="hud-seg" data-on="false" className="h-2 w-[2px] rounded-[1px] bg-(--hud-track)" />
@@ -401,7 +412,7 @@ export function SessionHud({
               role="group"
               aria-label={tokensTitle}
               title={tokensTitle}
-              className="flex shrink-0 items-center gap-0.5 px-0.5 @sm:gap-1 @sm:px-1.5 @2xl:gap-2 @2xl:px-2"
+              className="flex shrink-0 items-center gap-1 px-0.5 @min-[640px]:gap-1.5 @min-[640px]:px-1.5 @min-[768px]:gap-2 @min-[768px]:px-2"
             >
               <Label>{t('chat.hudTokens')}</Label>
               <Value>{totals !== null ? compact(totals.total) : '--'}</Value>
@@ -411,40 +422,40 @@ export function SessionHud({
           <Rule />
           <div
             data-slot="hud-slot"
-            data-kind="read"
-            className={cn('flex shrink-0 items-center', SLOT_MIN.read)}
+            data-kind="in"
+            className={cn('flex shrink-0 items-center', SLOT_MIN.in)}
           >
             <div
               data-slot="hud-cell"
-              data-kind="read"
-              data-unknown={totals?.read !== undefined ? undefined : 'true'}
+              data-kind="in"
+              data-unknown={totals?.inTotal != null ? undefined : 'true'}
               role="group"
-              aria-label={readTitle}
-              title={readTitle}
-              className="flex shrink-0 items-center gap-0.5 px-0.5 @sm:gap-1 @sm:px-1.5 @2xl:gap-2 @2xl:px-2"
+              aria-label={inTitle}
+              title={inTitle}
+              className="flex shrink-0 items-center gap-1 px-0.5 @min-[640px]:gap-1.5 @min-[640px]:px-1.5 @min-[768px]:gap-2 @min-[768px]:px-2"
             >
-              <AbbrLabel full={t('chat.hudRead')} short="R" />
-              <Value>{totals?.read !== undefined ? compact(totals.read) : '--'}</Value>
+              <Label>{t('chat.hudIn')}</Label>
+              <Value>{totals?.inTotal !== null && totals !== null ? compact(totals.inTotal) : '--'}</Value>
             </div>
           </div>
 
           <Rule />
           <div
             data-slot="hud-slot"
-            data-kind="write"
-            className={cn('flex shrink-0 items-center', SLOT_MIN.write)}
+            data-kind="out"
+            className={cn('flex shrink-0 items-center', SLOT_MIN.out)}
           >
             <div
               data-slot="hud-cell"
-              data-kind="write"
-              data-unknown={totals?.write !== undefined ? undefined : 'true'}
+              data-kind="out"
+              data-unknown={totals?.outTotal != null ? undefined : 'true'}
               role="group"
-              aria-label={writeTitle}
-              title={writeTitle}
-              className="flex shrink-0 items-center gap-0.5 px-0.5 @sm:gap-1 @sm:px-1.5 @2xl:gap-2 @2xl:px-2"
+              aria-label={outTitle}
+              title={outTitle}
+              className="flex shrink-0 items-center gap-1 px-0.5 @min-[640px]:gap-1.5 @min-[640px]:px-1.5 @min-[768px]:gap-2 @min-[768px]:px-2"
             >
-              <AbbrLabel full={t('chat.hudWrite')} short="W" />
-              <Value>{totals?.write !== undefined ? compact(totals.write) : '--'}</Value>
+              <Label>{t('chat.hudOut')}</Label>
+              <Value>{totals?.outTotal !== null && totals !== null ? compact(totals.outTotal) : '--'}</Value>
             </div>
           </div>
 
@@ -461,7 +472,7 @@ export function SessionHud({
               role="group"
               aria-label={hitTitle}
               title={hitTitle}
-              className="flex shrink-0 items-center gap-0.5 px-0.5 @sm:gap-1 @sm:px-1.5 @2xl:gap-2 @2xl:px-2"
+              className="flex shrink-0 items-center gap-1 px-0.5 @min-[640px]:gap-1.5 @min-[640px]:px-1.5 @min-[768px]:gap-2 @min-[768px]:px-2"
             >
               <Label>{t('chat.hudHit')}</Label>
               <Value>{hit !== null ? `${hit}%` : '--'}</Value>
@@ -481,7 +492,7 @@ export function SessionHud({
               role="group"
               aria-label={reqTitle}
               title={reqTitle}
-              className="flex shrink-0 items-center gap-0.5 px-0.5 @sm:gap-1 @sm:px-1.5 @2xl:gap-2 @2xl:px-2"
+              className="flex shrink-0 items-center gap-1 px-0.5 @min-[640px]:gap-1.5 @min-[640px]:px-1.5 @min-[768px]:gap-2 @min-[768px]:px-2"
             >
               <Label>{t('chat.hudReq')}</Label>
               <Value>{totals !== null ? shortCount(totals.turns) : '--'}</Value>
@@ -502,7 +513,7 @@ export function SessionHud({
             role="group"
             aria-label={filesTitle}
             title={filesTitle}
-            className="flex shrink-0 items-center gap-0.5 px-0.5 @sm:gap-1 @sm:px-1.5 @2xl:gap-2 @2xl:px-2"
+            className="flex shrink-0 items-center gap-1 px-0.5 @min-[640px]:gap-1.5 @min-[640px]:px-1.5 @min-[768px]:gap-2 @min-[768px]:px-2"
           >
             <Label>{t('chat.hudFiles')}</Label>
             <Value>{files !== null ? shortCount(files.files) : '0'}</Value>

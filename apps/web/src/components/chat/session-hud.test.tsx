@@ -93,15 +93,15 @@ describe('SessionHud', () => {
     expect([...(slots ?? [])].map((s) => s.getAttribute('data-kind'))).toEqual([
       'ctx',
       'tok',
-      'read',
-      'write',
+      'in',
+      'out',
       'hit',
       'req',
       'files',
     ]);
     const cells = cellsOf(hud!);
     expect(cells.length).toBe(7);
-    for (const kind of ['ctx', 'tok', 'read', 'write', 'hit', 'req']) {
+    for (const kind of ['ctx', 'tok', 'in', 'out', 'hit', 'req']) {
       const cell = cells.find((c) => c.getAttribute('data-kind') === kind)!;
       expect(cell.getAttribute('data-unknown')).toBe('true');
       expect(cell.textContent).toContain('--');
@@ -144,10 +144,11 @@ describe('SessionHud', () => {
     // TOK = total through the session (in + out + cache read/written).
     expect(text('tok')).toContain('TOK');
     expect(text('tok')).toContain('10.2K');
-    expect(text('read')).toContain('READ');
-    expect(text('read')).toContain('4K');
-    expect(text('write')).toContain('WRITE');
-    expect(text('write')).toContain('1K');
+    // IN = input + cache read; OUT = output + cache write.
+    expect(text('in')).toContain('IN');
+    expect(text('in')).toContain('9K');
+    expect(text('out')).toContain('OUT');
+    expect(text('out')).toContain('1.2K');
     // 4000 / (5000 + 4000 + 1000) = 40%.
     expect(text('hit')).toContain('HIT');
     expect(text('hit')).toContain('40%');
@@ -165,6 +166,26 @@ describe('SessionHud', () => {
     expect(cells.find((c) => c.getAttribute('data-kind') === 'tok')?.getAttribute('title')).toContain(
       '10.2K total',
     );
+    // TOK's in/out are the COMPOSITES (cache included)…
+    expect(cells.find((c) => c.getAttribute('data-kind') === 'tok')?.getAttribute('title')).toContain(
+      'in 9K',
+    );
+    expect(cells.find((c) => c.getAttribute('data-kind') === 'tok')?.getAttribute('title')).toContain(
+      'out 1.2K',
+    );
+    // …while IN/OUT carry the parts.
+    expect(cells.find((c) => c.getAttribute('data-kind') === 'in')?.getAttribute('title')).toContain(
+      '5K input',
+    );
+    expect(cells.find((c) => c.getAttribute('data-kind') === 'in')?.getAttribute('title')).toContain(
+      '4K cache read',
+    );
+    expect(cells.find((c) => c.getAttribute('data-kind') === 'out')?.getAttribute('title')).toContain(
+      '200 output',
+    );
+    expect(cells.find((c) => c.getAttribute('data-kind') === 'out')?.getAttribute('title')).toContain(
+      '1K cache write',
+    );
     expect(cells.find((c) => c.getAttribute('data-kind') === 'hit')?.getAttribute('title')).toContain(
       '40%',
     );
@@ -180,11 +201,11 @@ describe('SessionHud', () => {
       { wrapper: Providers },
     );
     const hud = container.querySelector('[data-slot="session-hud"]')!;
-    for (const label of ['CTX', 'TOK', 'READ', 'WRITE', 'HIT', 'REQ', 'FILES']) {
+    for (const label of ['CTX', 'TOK', 'IN', 'OUT', 'HIT', 'REQ', 'FILES']) {
       expect(hud.textContent).toContain(label);
     }
-    const readCell = cellsOf(hud).find((c) => c.getAttribute('data-kind') === 'read')!;
-    expect(readCell.getAttribute('title')).toContain('缓存读取：4K');
+    const inCell = cellsOf(hud).find((c) => c.getAttribute('data-kind') === 'in')!;
+    expect(inCell.getAttribute('title')).toContain('输入侧：input 5K + 缓存读 4K');
     const reqCell = cellsOf(hud).find((c) => c.getAttribute('data-kind') === 'req')!;
     expect(reqCell.getAttribute('title')).toContain('本会话请求数：2');
     // Unknown is localized too.
@@ -256,8 +277,10 @@ describe('SessionHud', () => {
     const cells = cellsOf(container.querySelector('[data-slot="session-hud"]')!);
     const by = (kind: string) => cells.find((c) => c.getAttribute('data-kind') === kind)!;
     expect(by('tok').textContent).toContain('700');
-    expect(by('read').textContent).toContain('--');
-    expect(by('write').textContent).toContain('--');
+    // IN rides input alone when cache read is unknown; OUT stays -- until
+    // output is known.
+    expect(by('in').textContent).toContain('700');
+    expect(by('out').textContent).toContain('--');
     expect(by('hit').textContent).toContain('--');
     expect(by('req').textContent).toContain('1');
   });
