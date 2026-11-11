@@ -2,7 +2,7 @@
 //
 // SPDX-License-Identifier: MIT
 
-import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import {
@@ -54,7 +54,12 @@ import { CaptureNoteDialog } from '@/pages/notes/CaptureNoteDialog';
 import { WelcomePane, type WelcomeCard } from '@/components/chat/welcome-pane.js';
 import { ChannelTabs } from '@/components/chat/channel-tabs.js';
 import { EndSwitcher } from '@/components/chat/end-switcher.js';
-import { CollapsedRail, useRailCollapsed } from '@/components/chat/collapsed-rail.js';
+import {
+  CollapsedRail,
+  RailMenuHint,
+  RailMenuRow,
+  useRailCollapsed,
+} from '@/components/chat/collapsed-rail.js';
 import { SessionRow } from '@/components/chat/session-row.js';
 import { RailSessionRow } from '@/components/chat/rail-session-row.js';
 import { useSessionPins } from '@/components/chat/use-session-pins.js';
@@ -63,6 +68,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuLabel,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { DecisionRecordsDialog } from '@/components/decision-records-dialog';
@@ -246,6 +252,7 @@ function SessionRail({
   channelByNative,
   onToggleCwd,
   onOpenChannel,
+  onPickSession,
   onNewSession,
   onRefresh,
   onDeleteSession,
@@ -273,6 +280,12 @@ function SessionRail({
     directory?: string,
     resume?: { sessionId: string; cwd: string },
   ) => Promise<void>;
+  /**
+   * #22/#127 — one native row's OPEN semantics (rejoin a live channel, else
+   * resume): the rail rows and the collapsed rail's floating switcher share
+   * it, so a pick from either surface behaves identically.
+   */
+  onPickSession: (session: NativeSessionView) => void;
   onNewSession: () => void;
   onRefresh: () => void;
   /**
@@ -362,19 +375,12 @@ function SessionRail({
           }
           onClick={() => {
             if (active || stale) return;
-            // With a live channel this is a REJOIN; without one (fresh page,
-            // or after a server restart — channels are server-memory only)
-            // it is a fresh RESUME of the same native session. Both keep the
-            // row's promise: open this conversation (#22 — the no-channel
+            // #22 — with a live channel this is a REJOIN; without one (fresh
+            // page, or after a server restart — channels are server-memory
+            // only) it is a fresh RESUME of the same native session. Both
+            // keep the row's promise: open this conversation (the no-channel
             // case used to be a silent no-op).
-            if (attached !== undefined) {
-              void onOpenChannel(attached.sessionId, undefined, {
-                sessionId: s.sessionId,
-                cwd: s.cwd,
-              });
-            } else {
-              void onOpenChannel(undefined, undefined, { sessionId: s.sessionId, cwd: s.cwd });
-            }
+            onPickSession(s);
           }}
         />
       </SessionRow>
@@ -1311,6 +1317,23 @@ export function AgentSessionPage() {
     }
     return m;
   }, [channels]);
+  /**
+   * #22/#127 — one native row's OPEN semantics: with a live channel it is a
+   * REJOIN; without one (fresh page, or after a server restart — channels are
+   * server-memory only) a fresh RESUME of the same native session. The rail
+   * rows, the collapsed rail's tiles and its floating switcher all pick
+   * through here, so every surface keeps the row's promise.
+   */
+  // Plain function, like openChannel itself (recreated per render — no stale
+  // closures over page state).
+  const pickNative = (s: NativeSessionView) => {
+    const attached = channelByNative.get(s.sessionId);
+    if (attached !== undefined) {
+      void openChannel(attached.sessionId, undefined, { sessionId: s.sessionId, cwd: s.cwd });
+    } else {
+      void openChannel(undefined, undefined, { sessionId: s.sessionId, cwd: s.cwd });
+    }
+  };
   const currentCwd =
     rail.state === 'ready'
       ? (rail.sessions.find((s) => s.sessionId === nativeSessionId)?.cwd ?? undefined)
@@ -1383,6 +1406,67 @@ export function AgentSessionPage() {
     );
   }
 
+  /**
+   * #127 — the collapsed rail's floating switcher: the same list the expanded
+   * rail shows (pinned block above cwd groups), compacted to menu rows. The
+   * rail's honest empty/offline states print inside the menu.
+   */
+  const railMenuRow = (s: NativeSessionView, pinnedBlock: boolean) => {
+    const attached = channelByNative.get(s.sessionId);
+    const active = s.sessionId === nativeSessionId;
+    const stale = s.staleReason !== undefined;
+    const when = relativeTime(s.updatedAt, dateLocale(lang));
+    return (
+      <RailMenuRow
+        key={s.sessionId}
+        title={
+          s.title ??
+          (s.sessionId === nativeSessionId ? firstPromptText : undefined) ??
+          t('chat.untitled')
+        }
+        meta={pinnedBlock ? `${when} · ${cwdBasename(s.cwd)}` : when}
+        active={active}
+        disabled={stale && !active}
+        titleAttr={
+          stale
+            ? t('chat.staleModel', { model: s.model ?? '?' })
+            : attached !== undefined && !active
+              ? t('chat.channelOpenHint')
+              : pinnedBlock
+                ? s.cwd
+                : (s.title ?? s.cwd)
+        }
+        onPick={() => pickNative(s)}
+      />
+    );
+  };
+  const railMenu = (() => {
+    if (rail.state === 'loading') return <RailMenuHint>{t('common.loading')}</RailMenuHint>;
+    if (rail.state === 'offline') return <RailMenuHint>{t('chat.sessionsOffline')}</RailMenuHint>;
+    if (rail.state === 'daemon-old')
+      return <RailMenuHint>{t('chat.sessionsDaemonOld')}</RailMenuHint>;
+    if (rail.state === 'error') return <RailMenuHint>{rail.message}</RailMenuHint>;
+    if (groups.length === 0 && pinnedRows.length === 0)
+      return <RailMenuHint>{t('chat.noSessions')}</RailMenuHint>;
+    return (
+      <>
+        {pinnedRows.map((s) => railMenuRow(s, true))}
+        {groups.map((g) => (
+          <Fragment key={g.cwd}>
+            <DropdownMenuLabel
+              title={g.cwd}
+              className="text-muted-foreground flex items-center gap-1.5 px-2 py-1.5 text-[11px] font-semibold"
+            >
+              <FolderIcon className="size-3 shrink-0" aria-hidden="true" />
+              <span className="truncate">{cwdBasename(g.cwd)}</span>
+            </DropdownMenuLabel>
+            {g.sessions.map((s) => railMenuRow(s, false))}
+          </Fragment>
+        ))}
+      </>
+    );
+  })();
+
   return (
     <>
       <div className="flex h-full min-h-0 flex-col">
@@ -1421,14 +1505,10 @@ export function AgentSessionPage() {
                     label: name,
                     detail: s.cwd,
                     active: s.sessionId === nativeSessionId,
-                    onClick: () => {
-                      void openChannel(undefined, undefined, {
-                        sessionId: s.sessionId,
-                        cwd: s.cwd,
-                      });
-                    },
+                    onClick: () => pickNative(s),
                   };
                 })}
+                sessionMenu={railMenu}
                 newSessionLabel={t('chat.newSession')}
                 // #126 — the collapsed door follows the expanded rail's gate
                 // (machine offline / chat disabled), which it used to ignore.
@@ -1451,6 +1531,7 @@ export function AgentSessionPage() {
                 channelByNative={channelByNative}
                 onToggleCwd={toggleCwd}
                 onOpenChannel={openChannel}
+                onPickSession={pickNative}
                 onNewSession={() => setPickerOpen(true)}
                 onRefresh={() => void refreshSessions(true)}
                 onDeleteSession={(sessionId, title) => setPendingDelete({ sessionId, title })}
@@ -1482,6 +1563,7 @@ export function AgentSessionPage() {
                   channelByNative={channelByNative}
                   onToggleCwd={toggleCwd}
                   onOpenChannel={openChannel}
+                  onPickSession={pickNative}
                   onNewSession={() => {
                     setRailOpen(false);
                     setPickerOpen(true);
