@@ -79,6 +79,7 @@ const en = {
   thinking: 'thinking…',
   stopped: 'Stopped',
   captureToNote: 'Save as note',
+  copyStep: 'Copy',
   running: 'running…',
   // #99 — the session-rail status words (no ellipsis: they sit beside a title).
   sessionRunning: 'running',
@@ -331,6 +332,7 @@ const zh: typeof en = {
   thinking: '思考中…',
   stopped: '已停止',
   captureToNote: '保存为笔记',
+  copyStep: '复制',
   running: '运行中…',
   sessionRunning: '运行中',
   sessionOpen: '已打开',

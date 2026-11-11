@@ -3,7 +3,7 @@
 // SPDX-License-Identifier: MIT
 
 import { memo, useEffect, useRef, useState } from 'react';
-import { BrainIcon, FileTextIcon, NotebookPenIcon } from 'lucide-react';
+import { BrainIcon, CheckIcon, CopyIcon, FileTextIcon, NotebookPenIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useI18n } from '@/i18n';
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
@@ -205,30 +205,66 @@ function ReasoningRow({ text, running }: { text: string; running: boolean }) {
 }
 
 /**
- * One assistant step: ordered blocks + the interrupted marker. A settled
- * step with text carries the #88 capture action (保存为笔记) — the parent
- * owns the dialog; this row only hands the step's markdown up.
+ * A step is capturable when it settled with text — the save-as-note and copy
+ * actions ride it. Exported for the stream's turn-tail merge decision.
  */
-export const AssistantStepRow = memo(function AssistantStepRow({
-  step,
-  onCapture,
-}: {
+export function stepCapturable(
+  step: AssistantStepRowProps['step'],
+  onCapture: ((markdown: string) => void) | undefined,
+): boolean {
+  return (
+    onCapture !== undefined &&
+    step.status === 'settled' &&
+    step.blocks.some((b) => b.type === 'text' && b.text.trim() !== '')
+  );
+}
+
+export interface AssistantStepRowProps {
   step: {
     status: 'running' | 'settled' | 'interrupted';
     blocks: { type: 'text' | 'reasoning'; text: string }[];
   };
   /** Present only where the surface supports capture (both chat rails). */
   onCapture?: (markdown: string) => void;
-}) {
+  /**
+   * The turn's tail stats when this step is the turn's LAST row — the tail
+   * merges into the action row (actions left, telemetry right) instead of
+   * riding below it as its own line.
+   */
+  tailStats?: TurnStats;
+}
+
+/**
+ * One assistant step: ordered blocks + the interrupted marker. A settled
+ * step with text carries the #88 actions — save-as-note and copy, ICON-ONLY
+ * (a text label read as if the note were already saved) — with the turn's
+ * telemetry right-aligned in the same row. The parent owns the capture
+ * dialog; this row only hands the step's markdown up.
+ */
+export const AssistantStepRow = memo(function AssistantStepRow({
+  step,
+  onCapture,
+  tailStats,
+}: AssistantStepRowProps) {
   const { t } = useI18n();
   const streaming = step.status === 'running';
   const last = step.blocks.length - 1;
+  const [copied, setCopied] = useState(false);
+  useEffect(() => {
+    if (!copied) return;
+    const id = window.setTimeout(() => setCopied(false), 1500);
+    return () => window.clearTimeout(id);
+  }, [copied]);
   if (step.blocks.length === 0 && !streaming) return null;
   const text = step.blocks
     .filter((b) => b.type === 'text')
     .map((b) => b.text)
     .join('\n');
-  const capturable = onCapture !== undefined && step.status === 'settled' && text.trim() !== '';
+  const capturable = stepCapturable(step, onCapture);
+  const copy = (): void => {
+    void navigator.clipboard?.writeText(text);
+    setCopied(true);
+  };
   return (
     <div className="flex min-w-0 flex-col gap-2">
       {step.blocks.map((b, i) =>
@@ -245,14 +281,32 @@ export const AssistantStepRow = memo(function AssistantStepRow({
         </span>
       ) : null}
       {capturable ? (
-        <button
-          type="button"
-          onClick={() => onCapture?.(text)}
-          className="text-muted-foreground hover:text-foreground mr-auto inline-flex items-center gap-1 rounded px-1.5 py-1 text-[11px] transition-colors"
-        >
-          <NotebookPenIcon className="size-3" />
-          {t('chat.captureToNote')}
-        </button>
+        // One row: the action icons left, the turn's telemetry right.
+        <div className="flex min-w-0 items-center justify-between gap-2">
+          <div className="flex items-center gap-0.5">
+            <button
+              type="button"
+              onClick={() => onCapture?.(text)}
+              aria-label={t('chat.captureToNote')}
+              title={t('chat.captureToNote')}
+              className="text-muted-foreground hover:text-foreground inline-flex size-6 items-center justify-center rounded transition-colors"
+            >
+              <NotebookPenIcon className="size-3.5" />
+            </button>
+            <button
+              type="button"
+              onClick={copy}
+              aria-label={t('chat.copyStep')}
+              title={t('chat.copyStep')}
+              className="text-muted-foreground hover:text-foreground inline-flex size-6 items-center justify-center rounded transition-colors"
+            >
+              {copied ? <CheckIcon className="size-3.5" /> : <CopyIcon className="size-3.5" />}
+            </button>
+          </div>
+          {tailStats !== undefined ? <TurnTail stats={tailStats} /> : null}
+        </div>
+      ) : tailStats !== undefined ? (
+        <TurnTail stats={tailStats} />
       ) : null}
     </div>
   );

@@ -7,7 +7,7 @@ import { ArrowDownIcon, ScrollTextIcon } from 'lucide-react';
 import { useI18n } from '@/i18n';
 import { DecisionRecordsDialog } from '@/components/decision-records-dialog';
 import type { FoldState } from './fold.js';
-import { AssistantStepRow, SystemNote, TurnTail, UserMessage } from './rows.js';
+import { AssistantStepRow, SystemNote, TurnTail, UserMessage, stepCapturable } from './rows.js';
 import { ToolCallRow } from './tool-card.js';
 import { SubagentRow } from './subagent-card.js';
 import { PermissionCards } from './permission-cards.js';
@@ -164,26 +164,39 @@ export function ChatStream({
               <p>{t('chat.emptyConversation')}</p>
             </div>
           ) : null}
-          {state.rows.map((row) => {
+          {state.rows.map((row, i) => {
             switch (row.row) {
               case 'user':
                 return <UserMessage key={row.key} blocks={row.blocks} />;
-              case 'assistant':
+              case 'assistant': {
+                // The turn's tail merges into this step's action row when
+                // this is the turn's last row and the actions exist.
+                const next = state.rows[i + 1];
+                const tailStats =
+                  next !== undefined && next.row === 'turn-tail' ? next.stats : undefined;
                 return (
                   <AssistantStepRow
                     key={row.key}
                     step={row.step}
+                    tailStats={tailStats}
                     {...(onCaptureStep !== undefined ? { onCapture: onCaptureStep } : {})}
                   />
                 );
+              }
               case 'tool':
                 return <ToolCallRow key={row.key} node={row.root} cwd={cwd} />;
               case 'subagent':
                 return <SubagentRow key={row.key} agent={row.agent} cwd={cwd} />;
               case 'system':
                 return <SystemNote key={row.key} text={row.text} tone={row.tone} />;
-              case 'turn-tail':
-                return <TurnTail key={row.key} stats={row.stats} />;
+              case 'turn-tail': {
+                const prev = state.rows[i - 1];
+                const merged =
+                  prev !== undefined &&
+                  prev.row === 'assistant' &&
+                  stepCapturable(prev.step, onCaptureStep);
+                return merged ? null : <TurnTail key={row.key} stats={row.stats} />;
+              }
               default:
                 return null;
             }
