@@ -262,7 +262,9 @@ export const AssistantStepRow = memo(function AssistantStepRow({
     .join('\n');
   const capturable = stepCapturable(step, onCapture);
   const copy = (): void => {
-    void navigator.clipboard?.writeText(text);
+    navigator.clipboard?.writeText(text).catch(() => {
+      /* no focus / policy denial — the optimistic check is harmless */
+    });
     setCopied(true);
   };
   return (

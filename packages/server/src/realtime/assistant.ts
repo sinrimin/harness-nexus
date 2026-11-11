@@ -123,8 +123,9 @@ interface LiveChannel {
    * Seeded from the persisted rows when the channel is created (the session's
    * history survives everything), then fed by the turn loop's `usage` events.
    * Title refine and delegated-approvals calls never touch the turn's emit
-   * path, so they are excluded by construction. Channel-lifetime: closing the
-   * channel drops the cache knowledge (rows do not persist cache fields).
+   * path, so they are excluded by construction. The rows persist the cache
+   * counts and the derived occupancy (#128 persistence amendment), so a
+   * reopen re-seeds everything the strip reads.
    */
   usage: SessionUsageAccumulator;
   /** #128 — last emitted session_usage JSON (a no-delta step must not re-emit). */

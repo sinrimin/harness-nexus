@@ -205,6 +205,7 @@
    * 9/11px face in the other roles. */
   --hud-label-size: 11px;
   --hud-value-size: 14px;
+  --hud-value-size-sm: 12px;
   --hud-bg: oklch(0.21 0.012 260);
   --hud-ink: oklch(0.95 0.004 250);
   --hud-dim: oklch(0.72 0.012 250);
