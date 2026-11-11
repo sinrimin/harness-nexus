@@ -217,7 +217,9 @@ export function SessionHud({ usage, sessionUsage, files, historyPartial }: Sessi
           ...files.list
             .slice(0, 5)
             .map((f) => `${f.path} +${String(f.added)} −${String(f.removed)}`),
-          ...(files.list.length > 5 ? [`+${String(files.list.length - 5)} more`] : []),
+          ...(files.list.length > 5
+            ? [t('chat.hudFilesMore', { count: String(files.list.length - 5) })]
+            : []),
         ].join('\n')
       : '';
 
@@ -237,7 +239,7 @@ export function SessionHud({ usage, sessionUsage, files, historyPartial }: Sessi
         <div
           data-slot="hud-slot"
           data-kind="ctx"
-          className="flex shrink-0 items-center min-w-[190px] @max-2xl:min-w-[100px]"
+          className={cn('flex shrink-0 items-center', SLOT_MIN.ctx)}
         >
           {pressure !== null ? (
             <Popover>
@@ -295,7 +297,7 @@ export function SessionHud({ usage, sessionUsage, files, historyPartial }: Sessi
         <div
           data-slot="hud-slot"
           data-kind="tok"
-          className="flex shrink-0 items-center min-w-[120px] @max-2xl:min-w-[80px]"
+          className={cn('flex shrink-0 items-center', SLOT_MIN.tok)}
         >
           {tokens !== null ? (
             <div
@@ -326,7 +328,7 @@ export function SessionHud({ usage, sessionUsage, files, historyPartial }: Sessi
         <div
           data-slot="hud-slot"
           data-kind="cache"
-          className="flex shrink-0 items-center min-w-[80px] @max-2xl:min-w-[60px]"
+          className={cn('flex shrink-0 items-center', SLOT_MIN.cache)}
         >
           {cache !== null ? (
             <div
@@ -346,7 +348,7 @@ export function SessionHud({ usage, sessionUsage, files, historyPartial }: Sessi
         <div
           data-slot="hud-slot"
           data-kind="files"
-          className="flex shrink-0 items-center min-w-[150px] @max-2xl:min-w-[96px]"
+          className={cn('flex shrink-0 items-center', SLOT_MIN.files)}
         >
           {files !== null ? (
             <div
