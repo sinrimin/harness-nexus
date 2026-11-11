@@ -494,7 +494,15 @@ export function startAssistantTurn(
           const usage = event.message.usage;
           if (usage !== undefined && (usage.input > 0 || usage.output > 0)) {
             lastUsage = { inputTokens: usage.input, outputTokens: usage.output };
-            emit({ kind: 'usage', inputTokens: usage.input, outputTokens: usage.output });
+            // #128 — the cache fields ride along for the realtime layer's
+            // session accumulator (the shared schema already allows them).
+            emit({
+              kind: 'usage',
+              inputTokens: usage.input,
+              outputTokens: usage.output,
+              cacheReadTokens: usage.cacheRead,
+              cacheWriteTokens: usage.cacheWrite,
+            });
           }
           if (event.message.stopReason === 'error' && event.message.errorMessage !== undefined) {
             emit({

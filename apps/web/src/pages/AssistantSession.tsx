@@ -42,6 +42,7 @@ import {
   type AssistantEventEnvelope,
   type AssistantHistoryEvent,
   type AssistantReadyPush,
+  type ChatSessionUsage,
 } from '@/realtime';
 import {
   HarnessNexusError,
@@ -52,6 +53,8 @@ import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { Dialog as DialogPrimitive } from 'radix-ui';
 import { ChatStream } from '@/components/chat/chat-stream.js';
+import { SessionHud } from '@/components/chat/session-hud.js';
+import { sessionToolCallStats } from '@/components/chat/hud-stats.js';
 import { CaptureNoteDialog } from '@/pages/notes/CaptureNoteDialog';
 import { WelcomePane, type WelcomeCard } from '@/components/chat/welcome-pane.js';
 import { ChannelTabs } from '@/components/chat/channel-tabs.js';
@@ -104,6 +107,8 @@ type Phase = 'idle' | 'ready' | 'closed';
 interface OpenRaceBuffer {
   history?: AssistantHistoryEvent['items'];
   configDone?: boolean;
+  /** #128 — the latest ready push (its sessionUsage snapshot restores the HUD). */
+  ready?: AssistantReadyPush;
 }
 
 /** The last-used assistant config (localStorage — same stance as the 端 pin). */
@@ -243,6 +248,21 @@ export function AssistantSessionPage() {
   /** #58-3 — the model registry (vision flags gate the composer's images). */
   const [providers, setProviders] = useState<LlmProviderView[] | null>(null);
   const [conversation, dispatch] = useReducer(fold, undefined, createFoldState);
+  /** #128 — server-side session token/cache totals (the HUD's TOK/CACHE). */
+  const [sessionUsage, setSessionUsage] = useState<ChatSessionUsage | null>(null);
+  /**
+   * #128 — tool-call totals for the HUD. `rows` identity changes on every
+   * streamed token (the fold slices on each delta), so the memo keys on the
+   * fold's toolRevision; the rows ride a ref so the walk sees the current
+   * transcript (the AgentSession hudFiles pattern).
+   */
+  const hudRowsRef = useRef(conversation.rows);
+  hudRowsRef.current = conversation.rows;
+  const hudTools = useMemo(
+    () => sessionToolCallStats(hudRowsRef.current),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [conversation.toolRevision],
+  );
   /** 9 W11 B — the tab strip (machine channels only in M1). */
   const channels = useChatChannels();
   const sessions = useAssistantSessions();
@@ -386,17 +406,27 @@ export function AssistantSessionPage() {
     const onEvent = (envelope: AssistantEventEnvelope): void => {
       if (envelope.event.kind === 'session_config') entry(envelope.sessionId).configDone = true;
     };
+    // #128 — a ready push inside the open ack carries the sessionUsage
+    // snapshot; buffer the LATEST (the sessionId effect applies it).
+    const onReady = (push: AssistantReadyPush): void => {
+      entry(push.sessionId).ready = push;
+    };
     socket.on('assistant:history', onHistory);
     socket.on('assistant:event', onEvent);
+    socket.on('assistant:session.ready', onReady);
     return () => {
       socket.off('assistant:history', onHistory);
       socket.off('assistant:event', onEvent);
+      socket.off('assistant:session.ready', onReady);
     };
   }, []);
 
   // Reset the pane whenever the channel changes; replay the buffered pushes.
   useEffect(() => {
     dispatch({ type: 'reset' });
+    // #128 — a switch starts clean; the buffered ready (or the live ready
+    // push) restores the server's snapshot.
+    setSessionUsage(null);
     if (sessionId === '') {
       setPhase('idle');
       return;
@@ -406,6 +436,9 @@ export function AssistantSessionPage() {
     if (buffered === undefined) return;
     raceBufferRef.current.delete(sessionId);
     if (buffered.history !== undefined) dispatch({ type: 'history', items: buffered.history });
+    if (buffered.ready !== undefined) {
+      setSessionUsage(buffered.ready.sessionUsage ?? null);
+    }
     // configDone: the session_config push raced ahead; ask the server to
     // re-emit it (idempotent, room-scoped).
     if (buffered.configDone === true) {
@@ -440,6 +473,12 @@ export function AssistantSessionPage() {
     const socket = appSocket();
     const onEvent = (envelope: AssistantEventEnvelope): void => {
       if (envelope.sessionId !== sessionId) return;
+      // #128 — derived telemetry: page state, never a transcript item (the
+      // fold ignores it too, so a history rebuild never owns the totals).
+      if (envelope.event.kind === 'session_usage') {
+        setSessionUsage(envelope.event);
+        return;
+      }
       dispatch({ type: 'event', event: envelope.event });
     };
     const onHistory = (push: AssistantHistoryEvent): void => {
@@ -450,6 +489,8 @@ export function AssistantSessionPage() {
       if (push.sessionId !== sessionId) return;
       setPhase('ready');
       setError(null);
+      // #128 — a rejoin's ready push carries the stored totals.
+      setSessionUsage(push.sessionUsage ?? null);
     };
     const onClosed = (push: AssistantClosedPush): void => {
       if (push.sessionId !== sessionId) return;
@@ -1163,11 +1204,22 @@ export function AssistantSessionPage() {
                       </div>
                     ) : null}
                     <Composer
+                      // #128 — the session telemetry is the card's fused top
+                      // cap (the AgentSession form): the HUD owns the context
+                      // reading on this page now, so the toolbar meter is off.
+                      header={
+                        <SessionHud
+                          usage={conversation.usage}
+                          sessionUsage={sessionUsage}
+                          toolCalls={hudTools}
+                        />
+                      }
                       value={draft}
                       onChange={setDraft}
                       phase={phase}
                       turnActive={conversation.turnActive}
                       usage={conversation.usage}
+                      showContextMeter={false}
                       onSend={() => void send()}
                       onCancel={requestStop}
                       attachments={attachments}

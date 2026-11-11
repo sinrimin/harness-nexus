@@ -20,6 +20,7 @@ import type {
 } from '@harness-nexus/shared';
 import { generateId } from '../infra/crypto.js';
 import { rowsToHistoryItems } from '../assistant/history.js';
+import { SessionUsageAccumulator } from '../assistant/usage.js';
 import { imageExpiryFrom } from '../services/settings.js';
 import {
   startAssistantTurn,
@@ -110,6 +111,17 @@ interface LiveChannel {
    * the channel when the turn ends instead.
    */
   closeWhenIdle?: boolean;
+  /**
+   * #128 — session-cumulative token/cache totals (the HUD's TOK/CACHE cells).
+   * Seeded from the persisted rows when the channel is created (the session's
+   * history survives everything), then fed by the turn loop's `usage` events.
+   * Title refine and delegated-approvals calls never touch the turn's emit
+   * path, so they are excluded by construction. Channel-lifetime: closing the
+   * channel drops the cache knowledge (rows do not persist cache fields).
+   */
+  usage: SessionUsageAccumulator;
+  /** #128 — last emitted session_usage JSON (a no-delta step must not re-emit). */
+  usageJson?: string;
 }
 
 function isRecord(v: unknown): v is Record<string, unknown> {
@@ -222,6 +234,35 @@ export class AssistantRealtimeService {
     for (const event of ch.ring) {
       this.io.toChannel(sessionId, 'assistant:event', { sessionId, event });
     }
+  }
+
+  /**
+   * #128 — fold one model response into the channel's accumulator and push
+   * the derived `session_usage` snapshot to the room. The snapshot BYPASSES
+   * the reconnect ring on purpose (the chat axis's rule: derived telemetry is
+   * live-socket state — a resync rebuilds the transcript, never the totals;
+   * the ready push restores them instead), and an unchanged snapshot is not
+   * re-sent (JSON compare, the daemon-side dedupe).
+   */
+  private recordUsage(
+    ch: LiveChannel,
+    report: {
+      inputTokens?: number | undefined;
+      outputTokens?: number | undefined;
+      cacheReadTokens?: number | undefined;
+      cacheWriteTokens?: number | undefined;
+    },
+  ): void {
+    ch.usage.record(report);
+    const snapshot = ch.usage.snapshot();
+    if (snapshot === null) return;
+    const json = JSON.stringify(snapshot);
+    if (ch.usageJson === json) return;
+    ch.usageJson = json;
+    this.io.toChannel(ch.sessionId, 'assistant:event', {
+      sessionId: ch.sessionId,
+      event: { kind: 'session_usage', ...snapshot },
+    });
   }
 
   private channelOf(userId: string, sessionId: string): LiveChannel | null {
@@ -413,6 +454,13 @@ export class AssistantRealtimeService {
       session.permissionMode ?? config.permissionMode ?? 'prompt';
 
     this.io.joinChannel(socketId, session.id);
+    // #128 — the rows load BEFORE the channel/ready push: a FRESH channel
+    // seeds its usage accumulator from the persisted transcript, and the
+    // ready push carries the snapshot (a rejoin must not blank the HUD —
+    // the chat axis's `chat:session.ready` contract). A LIVE channel keeps
+    // its own accumulator (no re-seed: the in-flight turn's responses are
+    // not in the rows yet).
+    const rows = await this.deps.uow.assistants.listMessages(session.id);
     let ch = this.live.get(session.id);
     if (ch === undefined) {
       ch = {
@@ -426,16 +474,18 @@ export class AssistantRealtimeService {
         run: null,
         openedAt: Date.now(),
         ring: [],
+        usage: SessionUsageAccumulator.fromRows(rows),
         ...(sessionId === undefined ? { pending: session } : {}),
       };
       this.live.set(session.id, ch);
     }
+    const usageSnapshot = ch.usage.snapshot();
     this.io.toChannel(session.id, 'assistant:session.ready', {
       sessionId: session.id,
       assistantId: ch.assistantId,
       assistantName: config.name,
+      ...(usageSnapshot !== null ? { sessionUsage: usageSnapshot } : {}),
     });
-    const rows = await this.deps.uow.assistants.listMessages(session.id);
     this.io.toChannel(session.id, 'assistant:history', {
       sessionId: session.id,
       items: await rowsToHistoryItems(rows, this.historyResolver()),
@@ -807,6 +857,9 @@ export class AssistantRealtimeService {
     // #11 — the echo is the single source of the user row for every viewer.
     // #59 — the echo carries the WIRE view (refs resolved inline, transient).
     this.emit(ch.sessionId, { kind: 'user_message', blocks: await this.wireView(prompt) });
+    // #128 — a user turn began (the HUD's `turns`; queued flushes re-enter
+    // here and count as their own turn, matching the persisted user rows).
+    ch.usage.countTurn();
 
     // #109 — the title's fallback lands at TURN START (the first prompt's
     // append), not at settle: the rail shows a real title even on the
@@ -834,7 +887,13 @@ export class AssistantRealtimeService {
         permissionMode: ch.permissionMode,
         prompt,
         rows: rowsBefore,
-        emit: (event) => this.emit(ch.sessionId, event),
+        // #128 — the turn's emit path is the ONLY place usage is counted:
+        // the title refine and the delegated-approvals decision model build
+        // their own calls outside this wrapper, so they never land here.
+        emit: (event) => {
+          this.emit(ch.sessionId, event);
+          if (event.kind === 'usage') this.recordUsage(ch, event);
+        },
         // The seam's prompt window must include THIS turn's prompt:
         // rowsBefore was read before the append above, so without the
         // synthesized row a first-message session handed the decision model
@@ -1055,10 +1114,13 @@ export class AssistantRealtimeService {
     if (ch === undefined || ch.ownerId !== userId) return false;
     this.io.joinChannel(socketId, sessionId);
     const config = await this.configOf(ch.ownerId, ch.assistantId);
+    const usageSnapshot = ch.usage.snapshot();
     this.io.toChannel(sessionId, 'assistant:session.ready', {
       sessionId,
       assistantId: ch.assistantId,
       assistantName: config?.name ?? '',
+      // #128 — the live accumulator's snapshot (a resync must not blank the HUD).
+      ...(usageSnapshot !== null ? { sessionUsage: usageSnapshot } : {}),
     });
     const rows = await this.deps.uow.assistants.listMessages(sessionId);
     this.io.toChannel(sessionId, 'assistant:history', {
