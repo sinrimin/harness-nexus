@@ -3,7 +3,7 @@
 // SPDX-License-Identifier: MIT
 
 import { useCallback, useState, type ReactNode } from 'react';
-import { MenuIcon, PanelLeftOpenIcon, PlusIcon } from 'lucide-react';
+import { ListIcon, PanelLeftOpenIcon, PlusIcon } from 'lucide-react';
 import { useI18n } from '@/i18n';
 import { Button } from '@/components/ui/button';
 import {
@@ -120,7 +120,9 @@ export function CollapsedRail({
                 aria-label={t('chat.railOpen')}
                 title={t('chat.railOpen')}
               >
-                <MenuIcon className="size-4" />
+                {/* The phone's session-list DOOR already wears this glyph —
+                    one concept (open the session list), one icon. */}
+                <ListIcon className="size-4" />
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent
