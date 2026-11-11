@@ -2,10 +2,16 @@
 //
 // SPDX-License-Identifier: MIT
 
-import { useCallback, useState } from 'react';
-import { PanelLeftOpenIcon, PlusIcon } from 'lucide-react';
+import { useCallback, useState, type ReactNode } from 'react';
+import { MenuIcon, PanelLeftOpenIcon, PlusIcon } from 'lucide-react';
 import { useI18n } from '@/i18n';
 import { Button } from '@/components/ui/button';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { cn } from '@/lib/utils';
 
 /**
@@ -63,12 +69,20 @@ export interface CollapsedRailTile {
 
 export function CollapsedRail({
   tiles,
+  sessionMenu,
   newSessionLabel,
   newSessionDisabled = false,
   onNewSession,
   onExpand,
 }: {
   tiles: readonly CollapsedRailTile[];
+  /**
+   * #127 — the floating session switcher's content. The component owns the
+   * chrome (trigger + popup shell) because the trigger belongs to the
+   * column's device row; each END renders its own rows, because the two ends
+   * list differently (cwd groups vs flat). Undefined = no switcher button.
+   */
+  sessionMenu?: ReactNode;
   /** The end's own wording for its new-session action (also the tooltip). */
   newSessionLabel: string;
   /** Mirrors the expanded rail's gate (machine offline, no assistant config). */
@@ -94,6 +108,31 @@ export function CollapsedRail({
         </Button>
       </div>
       <div className="flex min-h-0 w-full flex-1 flex-col items-center gap-1.5 px-1 py-2">
+        {/* #127 — switching without expanding: the hamburger opens the same
+            list the expanded rail shows, floating beside the column. */}
+        {sessionMenu !== undefined ? (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="size-8 shrink-0"
+                aria-label={t('chat.railOpen')}
+                title={t('chat.railOpen')}
+              >
+                <MenuIcon className="size-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent
+              side="right"
+              align="start"
+              sideOffset={8}
+              className="max-h-96 w-72 overflow-y-auto"
+            >
+              {sessionMenu}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        ) : null}
         <Button
           variant="ghost"
           size="icon"
@@ -132,4 +171,61 @@ export function CollapsedRail({
       </div>
     </div>
   );
+}
+
+/**
+ * #127 — one row of the floating session switcher. Two lines (title over a
+ * dim mono meta), the ACTIVE session marked by the signal dot and kept
+ * un-pickable (selecting it would close the menu for nothing), a stale native
+ * session disabled with its reason on the tooltip — the same honesty rules as
+ * the rail rows it mirrors.
+ */
+export function RailMenuRow({
+  title,
+  meta,
+  active = false,
+  disabled = false,
+  titleAttr,
+  onPick,
+}: {
+  title: string;
+  meta: string;
+  active?: boolean;
+  disabled?: boolean;
+  titleAttr?: string;
+  onPick: () => void;
+}) {
+  return (
+    <DropdownMenuItem
+      data-slot="rail-menu-row"
+      data-active={active ? 'true' : 'false'}
+      disabled={disabled}
+      title={titleAttr}
+      onSelect={(e) => {
+        if (active) {
+          // Keep the sheet open — the pick is a no-op, closing would read as
+          // a failed switch.
+          e.preventDefault();
+          return;
+        }
+        onPick();
+      }}
+      className="gap-2 py-1.5"
+    >
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-xs font-medium">{title}</span>
+        <span className="text-muted-foreground block truncate font-mono text-[10px] leading-4">
+          {meta}
+        </span>
+      </span>
+      {active ? (
+        <span aria-hidden="true" className="bg-signal size-1.5 shrink-0 rounded-full" />
+      ) : null}
+    </DropdownMenuItem>
+  );
+}
+
+/** #127 — the switcher's empty/offline states: a dim line, not a blank sheet. */
+export function RailMenuHint({ children }: { children: ReactNode }) {
+  return <p className="text-muted-foreground px-2 py-2 text-xs">{children}</p>;
 }

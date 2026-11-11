@@ -9,7 +9,12 @@ import type { ReactNode } from 'react';
 import { MemoryRouter } from 'react-router-dom';
 import { I18nProvider } from '@/i18n';
 import { SkinProvider } from '@/components/skin-provider';
-import { CollapsedRail, useRailCollapsed } from './collapsed-rail';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { CollapsedRail, RailMenuRow, useRailCollapsed } from './collapsed-rail';
 
 /**
  * #122/#126 — the collapsed rail's mechanical contract: the collapse is ONE
@@ -150,5 +155,63 @@ describe('CollapsedRail', () => {
     expect(
       (screen.getByRole('button', { name: 'New session' }) as HTMLButtonElement).disabled,
     ).toBe(true);
+  });
+
+  it('#127 — renders the sessions switcher only when menu content is provided', () => {
+    const menu = (
+      <>
+        <RailMenuRow title="Active one" meta="now · /tmp" active onPick={vi.fn()} />
+        <RailMenuRow title="Other" meta="2m" onPick={vi.fn()} />
+      </>
+    );
+    const { rerender } = render(
+      <CollapsedRail
+        tiles={tiles}
+        sessionMenu={menu}
+        newSessionLabel="New session"
+        onNewSession={vi.fn()}
+        onExpand={vi.fn()}
+      />,
+      { wrapper: Providers },
+    );
+    // The switcher button exists only when the end provided menu content
+    // (opening Radix's popup itself needs pointer events jsdom doesn't have —
+    // the row behaviour is covered below through a default-open menu).
+    expect(screen.queryByRole('button', { name: 'Sessions' })).not.toBeNull();
+
+    // without menu content the column has no switcher at all
+    rerender(
+      <CollapsedRail
+        tiles={tiles}
+        newSessionLabel="New session"
+        onNewSession={vi.fn()}
+        onExpand={vi.fn()}
+      />,
+    );
+    expect(screen.queryByRole('button', { name: 'Sessions' })).toBeNull();
+  });
+
+  it('#127 — a switcher row: the active one stays put, the others pick', () => {
+    const pick = vi.fn();
+    render(
+      <DropdownMenu defaultOpen>
+        <DropdownMenuTrigger asChild>
+          <button type="button">open</button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent>
+          <RailMenuRow title="Active one" meta="now · /tmp" active onPick={vi.fn()} />
+          <RailMenuRow title="Other" meta="2m" onPick={pick} />
+        </DropdownMenuContent>
+      </DropdownMenu>,
+      { wrapper: Providers },
+    );
+    const active = screen.getByRole('menuitem', { name: /Active one/ });
+    expect(active.getAttribute('data-active')).toBe('true');
+    // picking the CURRENT session is a no-op that keeps the sheet open
+    fireEvent.click(active);
+    expect(screen.getByRole('menuitem', { name: /Other/ })).not.toBeNull();
+    // any other row picks (the menu closes on select — Radix's own behavior)
+    fireEvent.click(screen.getByRole('menuitem', { name: /Other/ }));
+    expect(pick).toHaveBeenCalledTimes(1);
   });
 });
