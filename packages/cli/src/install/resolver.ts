@@ -63,7 +63,12 @@ export async function resolveProfile(opts: ResolveOptions): Promise<ResolvedProf
             mcpServer: {
               id: BUILTIN_MCP_SERVICE_ID,
               name: 'Built-in tools',
-              transport: { type: 'streamable-http', url: `${opts.server}/mcp` },
+              // Mirrors the server's builtinMcpServerRow: a `--server` value
+              // with a trailing slash must not become `//mcp` in the shim URL.
+              transport: {
+                type: 'streamable-http',
+                url: `${opts.server.replace(/\/$/, '')}/mcp`,
+              },
               dialSite: 'server',
               scope: 'global',
               ownerId: null,
