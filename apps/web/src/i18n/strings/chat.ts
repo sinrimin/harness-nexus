@@ -170,6 +170,9 @@ const en = {
   hudFilesTitle: 'Files in the loaded transcript: {files} · +{added} / −{removed}',
   hudFilesPathless: 'some diffs carried no path — file count is a lower bound',
   hudFilesPartial: 'older history not loaded — the count is a lower bound',
+  // English in both locales — the HUD is an engraved instrument face (the
+  // same exception as the labels above).
+  hudFilesMore: '+{count} more',
   permissionAsk: 'The agent asks permission',
   permissionAskTitle: 'The agent asks permission: {title}',
   // ---- 9 W14.1: agent questions (ACP elicitation) ----
@@ -403,6 +406,9 @@ const zh: typeof en = {
   hudFilesTitle: 'Files in the loaded transcript: {files} · +{added} / −{removed}',
   hudFilesPathless: 'some diffs carried no path — file count is a lower bound',
   hudFilesPartial: 'older history not loaded — the count is a lower bound',
+  // English in both locales — the HUD is an engraved instrument face (the
+  // same exception as the labels above).
+  hudFilesMore: '+{count} more',
   permissionAsk: '代理请求权限',
   permissionAskTitle: '代理请求权限：{title}',
   // ---- 9 W14.1: agent questions (ACP elicitation) ----
