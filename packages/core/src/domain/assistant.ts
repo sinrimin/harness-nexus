@@ -171,7 +171,20 @@ export type AssistantMessageRow =
       thought: string;
       toolCalls: AssistantToolCallItem[];
       stopReason: 'end_turn' | 'max_tokens' | 'refusal' | 'aborted' | 'error';
-      usage?: { inputTokens?: number; outputTokens?: number };
+      /**
+       * #128 — the response's reported counts (cache fields included) plus the
+       * occupancy the server DERIVED from them (contextUsed/contextSize), so
+       * a reopened session restores the HUD's CTX reading instead of blanking
+       * it until the next turn.
+       */
+      usage?: {
+        inputTokens?: number;
+        outputTokens?: number;
+        cacheReadTokens?: number;
+        cacheWriteTokens?: number;
+        contextUsed?: number;
+        contextSize?: number;
+      };
       error?: string;
     }
   | { seq: number; type: 'toolResult'; results: AssistantToolResultItem[] }

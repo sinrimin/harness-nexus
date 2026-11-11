@@ -9,12 +9,13 @@ import { cn } from '@/lib/utils';
 import type { ChatSessionUsage } from '@/realtime';
 import { ContextDetails, contextPressure, formatTokens } from './context-meter.js';
 import type { ComposerUsage, MeterTone } from './context-meter.js';
-import type { HudEditStats, HudToolCalls } from './hud-stats.js';
+import type { HudEditStats } from './hud-stats.js';
 
 /**
- * #124 — the session HUD, the band UNDER the Sender's top edge:
+ * #124/#128 — the session HUD, the band UNDER the Sender's top edge:
  *
- *   CTX ▮▮▯▯▯▯▯▯ 17% 34.1K/200K   TOK ↑34.1K ↓1.2K   CACHE 84%   FILES 3 +42 −7
+ *   CTX ▮▮▮▮▮▮▮▮▮▮▮▮▮▮▮▮ -- --   TOK -- | READ -- | WRITE -- | HIT -- | REQ --   FILES 0 +0 −0
+ *   CTX ▮▮▮▮▮▮▮▮▮▮▮▮▮▮▮▮ 1% 11.6K/1M   TOK 14.2K | READ 13.7K | WRITE 526 | HIT 0% | REQ 2   FILES 0 +0 −0
  *
  * The Sender keeps its full rounded rectangle; this strip is a sibling that
  * carries an 18px spacer in flow and then extends BEHIND the card (absolute,
@@ -25,45 +26,45 @@ import type { HudEditStats, HudToolCalls } from './hud-stats.js';
  * border fall on the band at the seam — the strip carries no shadow or border
  * of its own, so both surfaces read as one device's physics.
  *
- * The readings are centred in the 18px strip, and each cell sits in a FIXED
- * slot (`SLOT_MIN`) in the order CTX · TOK · CACHE · FILES — a real HUD's
- * gauges don't shuffle when one goes dark; the slot stays and reads blank.
- * No divider rules between them: the strip is one glass face.
+ * The reference layout (alpha.11 revision): three groups across one glass
+ * face — CTX on the left, the token/cache cluster (TOK · READ · WRITE · HIT ·
+ * REQ) in the middle behind hairline dividers, FILES on the right. Each cell
+ * sits in a FIXED slot (`SLOT_MIN`); nothing shuffles when a source goes
+ * dark.
  *
  * Material is the always-dark instrument glass (`data-surface="hud"`); every
  * colour and size is a `--hud-*` token, so BAY repaints it as its inverted LCD
  * window without touching this file. Labels are English in BOTH locales
- * (`CTX/TOK/CACHE/FILES`): the strip is an engraved instrument face, the same
- * exception as the nav-group labels; accessible names carry the full phrases.
+ * (`CTX/TOK/READ/WRITE/HIT/REQ/FILES`): the strip is an engraved instrument
+ * face, the same exception as the nav-group labels; tooltips are localized.
  *
- * Honesty (fixed-face revision, alpha.11): the strip is a FIXED instrument
- * face — labels and gauges always render, on both pages, in every state. An
- * UNKNOWN reads `--` (CTX/TOK/CACHE: no source reported yet — never a fake
- * zero); the fourth slot's zero state is a real number (`FILES 0 +0 −0`,
- * `TOOLS 0` — nothing ran is data, not absence). The strip never unmounts.
+ * Honesty (fixed face): labels and gauges always render, on both pages, in
+ * every state. An UNKNOWN reading is `--` (never a fake zero); the FILES
+ * zero state is a real number (`0 +0 −0` — nothing edited is data, not
+ * absence). The strip never unmounts.
+ *
+ * Phone: the CTX bar shortens (16 → 8 segments) and READ/WRITE abbreviate to
+ * R/W; the cells keep their fixed slots.
  */
 
-const SEGMENTS = 10;
+/** Wide-face segment count; the phone face draws the compact count. */
+const SEGMENTS = 16;
+const SEGMENTS_COMPACT = 6;
 
 /**
- * Each cell owns a FIXED slot — a real HUD's gauges sit at fixed positions,
- * so a reading with nothing to report leaves its slot blank instead of
- * letting the neighbours slide into it. The mins hold each cell's typical
- * widest content (rig-measured: 186/99/77/110 desktop, 98/75/57/82 under the
- * 2xl container break, plus value-growth headroom); pathological values
- * (999K-class FILES) outgrow the min and ride the strip's horizontal scroll.
- * #128 — the fourth slot has TWO tenants: FILES (machine sessions) and
- * TOOLS (the assistant, whose work product is tool calls, not edits). The
- * occupant is fixed PER PAGE (a prop choice, never a live flip), and TOOLS
- * holds a shorter figure (label + one count), so its min is its own.
+ * Each cell owns a FIXED slot; the mins hold its typical widest content plus
+ * a little headroom. The `@max-2xl` step is the narrow composer column (the
+ * used/size pair hides there too); `@max-sm` is the phone face.
  */
-const SLOT_MIN: Record<'ctx' | 'tok' | 'cache' | 'files' | 'tools', string> = {
-  ctx: 'min-w-[190px] @max-2xl:min-w-[100px]',
-  tok: 'min-w-[120px] @max-2xl:min-w-[80px]',
-  cache: 'min-w-[80px] @max-2xl:min-w-[60px]',
-  files: 'min-w-[150px] @max-2xl:min-w-[96px]',
-  tools: 'min-w-[110px] @max-2xl:min-w-[72px]',
-};
+const SLOT_MIN = {
+  ctx: 'min-w-[76px] @sm:min-w-[120px] @2xl:min-w-[210px]',
+  tok: 'min-w-[46px] @sm:min-w-[58px] @2xl:min-w-[70px]',
+  read: 'min-w-[30px] @sm:min-w-[56px] @2xl:min-w-[80px]',
+  write: 'min-w-[34px] @sm:min-w-[60px] @2xl:min-w-[82px]',
+  hit: 'min-w-[36px] @sm:min-w-[50px] @2xl:min-w-[62px]',
+  req: 'min-w-[34px] @sm:min-w-[48px] @2xl:min-w-[62px]',
+  files: 'min-w-[66px] @sm:min-w-[96px] @2xl:min-w-[130px]',
+} as const;
 
 /** "34.1k" → "34.1K" — the HUD reads in instrument case. */
 function compact(n: number): string {
@@ -85,9 +86,44 @@ function shortCount(n: number): string {
   return `${m.endsWith('.0') ? m.slice(0, -2) : m}M`;
 }
 
-function cacheHit(
-  usage: ChatSessionUsage | null,
-): { pct: string; read: number; write: number; input: number } | null {
+/** Session-cumulative token totals as the strip reads them. */
+interface Totals {
+  /** Total tokens through the session: input + output + cache read/written. */
+  total: number;
+  input?: number | undefined;
+  output?: number | undefined;
+  read?: number | undefined;
+  write?: number | undefined;
+  turns: number;
+}
+
+function sessionTotals(usage: ChatSessionUsage | null): Totals | null {
+  if (usage === null) return null;
+  const { inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens } = usage;
+  if (
+    inputTokens === undefined &&
+    outputTokens === undefined &&
+    cacheReadTokens === undefined &&
+    cacheWriteTokens === undefined
+  ) {
+    return null;
+  }
+  return {
+    total:
+      (inputTokens ?? 0) +
+      (outputTokens ?? 0) +
+      (cacheReadTokens ?? 0) +
+      (cacheWriteTokens ?? 0),
+    input: inputTokens,
+    output: outputTokens,
+    read: cacheReadTokens,
+    write: cacheWriteTokens,
+    turns: usage.turns,
+  };
+}
+
+/** Cache hit rate = read / (input + read + write); null until both sides known. */
+function cacheHit(usage: ChatSessionUsage | null): string | null {
   if (usage === null) return null;
   const read = usage.cacheReadTokens;
   const input = usage.inputTokens;
@@ -96,22 +132,40 @@ function cacheHit(
   const denom = input + read + write;
   if (denom <= 0) return null;
   const raw = (read / denom) * 100;
-  const pct = raw > 0 && raw < 1 ? '<1' : String(Math.round(raw));
-  return { pct, read, write, input };
+  return raw > 0 && raw < 1 ? '<1' : String(Math.round(raw));
 }
 
-function toneClass(tone: MeterTone): string | undefined {
+/**
+ * The pressure tone runs a health ramp (green → amber → red); the reference
+ * face shows a low reading in the ok ink, so neutral maps to --hud-ok here
+ * rather than the default ink of the surrounding values.
+ */
+function toneClass(tone: MeterTone): string {
   return tone === 'warn'
     ? 'text-(--hud-warn)'
     : tone === 'danger'
       ? 'text-(--hud-fail)'
-      : undefined;
+      : 'text-(--hud-ok)';
 }
 
 function Label({ children }: { children: string }) {
   return (
-    <span className="font-hud text-[length:var(--hud-label-size)] leading-none tracking-[0.12em] text-(--hud-dim) uppercase">
+    <span className="font-hud text-[length:var(--hud-label-size)] leading-none tracking-normal text-(--hud-dim) uppercase @sm:tracking-[0.12em]">
       {children}
+    </span>
+  );
+}
+
+/**
+ * A label that keeps its full engraved word on the wide face and its letter
+ * on the phone face (READ → R, WRITE → W). Both are always in the DOM; the
+ * container query picks one, so the accessible name stays the full word.
+ */
+function AbbrLabel({ full, short }: { full: string; short: string }) {
+  return (
+    <span className="font-hud text-[length:var(--hud-label-size)] leading-none tracking-normal text-(--hud-dim) uppercase @sm:tracking-[0.12em]">
+      <span className="hidden @sm:inline">{full}</span>
+      <span className="inline @sm:hidden">{short}</span>
     </span>
   );
 }
@@ -129,39 +183,54 @@ function Value({ children, className }: { children: ReactNode; className?: strin
   );
 }
 
-/**
- * VT323 ships no arrow glyphs — the UA fallback is a smooth outline that
- * breaks the 1-bit face, and the triangles/`^`/`v` substitutes read wrong.
- * The token direction is therefore drawn on the same pixel grid as the
- * digits: a 5×9 arrow, one SVG unit per CSS pixel, crisp edges.
- */
-function PixelArrow({ dir }: { dir: 'up' | 'down' }) {
+/** A hairline between the middle cluster's cells (never around the ends). */
+function Rule() {
+  return <span aria-hidden="true" className="h-3 w-px shrink-0 bg-(--hud-track)" />;
+}
+
+/** One segment gauge; the phone face renders the compact count. */
+function Segments({
+  pct,
+  tone,
+  count,
+  compactFace,
+}: {
+  pct: number;
+  tone: MeterTone;
+  count: number;
+  compactFace: boolean;
+}) {
+  const filled = Math.min(count, Math.max(0, Math.ceil((pct / 100) * count)));
   return (
-    <svg
-      viewBox="0 0 5 9"
-      width="5"
-      height="9"
+    <span
+      data-slot="hud-bar"
+      data-compact={compactFace ? 'true' : 'false'}
       aria-hidden="true"
-      shapeRendering="crispEdges"
-      fill="currentColor"
-      className="text-(--hud-dim)"
-    >
-      {dir === 'up' ? (
-        <>
-          <rect x="2" y="0" width="1" height="1" />
-          <rect x="1" y="1" width="3" height="1" />
-          <rect x="0" y="2" width="5" height="1" />
-          <rect x="2" y="3" width="1" height="6" />
-        </>
-      ) : (
-        <>
-          <rect x="2" y="0" width="1" height="6" />
-          <rect x="0" y="6" width="5" height="1" />
-          <rect x="1" y="7" width="3" height="1" />
-          <rect x="2" y="8" width="1" height="1" />
-        </>
+      className={cn(
+        'items-center',
+        compactFace ? 'flex gap-[1px] @sm:hidden' : 'hidden gap-[2px] @sm:flex',
       )}
-    </svg>
+    >
+      {Array.from({ length: count }, (_, i) => (
+        <span
+          key={i}
+          data-slot="hud-seg"
+          data-on={i < filled ? 'true' : 'false'}
+          data-tone={tone}
+          className={cn(
+            'h-2 rounded-[1px]',
+            compactFace ? 'w-[2px]' : 'w-[3px]',
+            i < filled
+              ? tone === 'warn'
+                ? 'bg-(--hud-warn)'
+                : tone === 'danger'
+                  ? 'bg-(--hud-fail)'
+                  : 'bg-(--hud-fill)'
+              : 'bg-(--hud-track)',
+          )}
+        />
+      ))}
+    </span>
   );
 }
 
@@ -174,18 +243,6 @@ export interface SessionHudProps {
   files?: HudEditStats | null;
   /** Older history is not loaded: the FILES count is a lower bound. */
   historyPartial?: boolean;
-  /**
-   * #128 — tool-call totals (the assistant's fourth slot's data). The slot's
-   * TENANT is the `slot4` prop, not this value's nullity — a page passes its
-   * tenant even before any data exists (the face is fixed).
-   */
-  toolCalls?: HudToolCalls | null;
-  /**
-   * #128 — the fourth slot's tenant: 'files' (machine sessions, the
-   * default) or 'tools' (the assistant). Explicit per page so an empty
-   * assistant still reads TOOLS 0, never FILES.
-   */
-  slot4?: 'files' | 'tools';
 }
 
 export function SessionHud({
@@ -193,17 +250,13 @@ export function SessionHud({
   sessionUsage,
   files = null,
   historyPartial = false,
-  toolCalls = null,
-  slot4 = 'files',
 }: SessionHudProps) {
   const { t } = useI18n();
   const pressure = contextPressure(usage);
-  const tokens =
-    sessionUsage !== null &&
-    (sessionUsage.inputTokens !== undefined || sessionUsage.outputTokens !== undefined)
-      ? sessionUsage
-      : null;
-  const cache = cacheHit(tokens);
+  const totals = sessionTotals(sessionUsage);
+  const hit = cacheHit(sessionUsage);
+
+  const noData = t('chat.hudNoData');
 
   const contextTitle =
     pressure !== null
@@ -212,64 +265,46 @@ export function SessionHud({
           size: formatTokens(pressure.size),
           pct: String(Math.round(pressure.pct)),
         })
-      : '';
+      : noData;
   const tokensTitle =
-    tokens !== null
+    totals !== null
       ? t('chat.hudTokensTitle', {
-          turns: String(tokens.turns),
-          input: tokens.inputTokens !== undefined ? compact(tokens.inputTokens) : '—',
-          output: tokens.outputTokens !== undefined ? compact(tokens.outputTokens) : '—',
+          total: compact(totals.total),
+          turns: String(totals.turns),
+          input: totals.input !== undefined ? compact(totals.input) : '--',
+          output: totals.output !== undefined ? compact(totals.output) : '--',
         })
-      : '';
-  const cacheTitle =
-    cache !== null
-      ? t('chat.hudCacheTitle', {
-          read: compact(cache.read),
-          write: compact(cache.write),
-          input: compact(cache.input),
-        })
-      : '';
+      : noData;
+  const readTitle =
+    totals?.read !== undefined
+      ? t('chat.hudReadTitle', { read: compact(totals.read) })
+      : noData;
+  const writeTitle =
+    totals?.write !== undefined
+      ? t('chat.hudWriteTitle', { write: compact(totals.write) })
+      : noData;
+  const hitTitle =
+    hit !== null ? t('chat.hudHitTitle', { pct: hit }) : noData;
+  const reqTitle =
+    totals !== null ? t('chat.hudReqTitle', { count: String(totals.turns) }) : noData;
   const filesTitle =
-    slot4 !== 'tools'
-      ? files !== null
-        ? [
-            t('chat.hudFilesTitle', {
-              files: files.files > 0 ? String(files.files) : '?',
-              added: String(files.added),
-              removed: String(files.removed),
-            }),
-            ...(files.pathless ? [t('chat.hudFilesPathless')] : []),
-            ...(historyPartial ? [t('chat.hudFilesPartial')] : []),
-            ...files.list
-              .slice(0, 5)
-              .map((f) => `${f.path} +${String(f.added)} −${String(f.removed)}`),
-            ...(files.list.length > 5
-              ? [t('chat.hudFilesMore', { count: String(files.list.length - 5) })]
-              : []),
-          ].join('\n')
-        : // The fixed face's zero state: nothing edited in the loaded
-          // transcript is a real zero, tooltip says so.
-          t('chat.hudFilesTitle', { files: '0', added: '0', removed: '0' })
-      : '';
-  // #128 — unlike the #124 strings, the TOOLS tooltip IS localized: tool
-  // names are protocol identifiers, but the sentence around them is copy.
-  const toolsTitle =
-    slot4 === 'tools'
-      ? toolCalls !== null
-        ? [
-            t('chat.hudToolsTitle', { count: String(toolCalls.count) }),
-            ...toolCalls.list.slice(0, 5).map((tc) => `${tc.name} ×${String(tc.n)}`),
-            ...(toolCalls.list.length > 5
-              ? [t('chat.hudToolsMore', { count: String(toolCalls.list.length - 5) })]
-              : []),
-          ].join('\n')
-        : t('chat.hudToolsTitle', { count: '0' })
-      : '';
-
-  const filled =
-    pressure !== null
-      ? Math.min(SEGMENTS, Math.max(0, Math.ceil((pressure.pct / 100) * SEGMENTS)))
-      : 0;
+    files !== null
+      ? [
+          t('chat.hudFilesTitle', {
+            files: String(files.files),
+            added: String(files.added),
+            removed: String(files.removed),
+          }),
+          ...(files.pathless ? [t('chat.hudFilesPathless')] : []),
+          ...(historyPartial ? [t('chat.hudFilesPartial')] : []),
+          ...files.list
+            .slice(0, 5)
+            .map((f) => `${f.path} +${String(f.added)} −${String(f.removed)}`),
+          ...(files.list.length > 5
+            ? [t('chat.hudFilesMore', { count: String(files.list.length - 5) })]
+            : []),
+        ].join('\n')
+      : t('chat.hudFilesTitle', { files: '0', added: '0', removed: '0' });
 
   return (
     <div data-slot="session-hud-slot" className="relative h-(--hud-h)">
@@ -277,8 +312,9 @@ export function SessionHud({
         data-slot="session-hud"
         data-surface="hud"
         aria-label={t('chat.hudAria')}
-        className="@container absolute inset-x-0 top-0 flex h-[calc(var(--hud-h)+var(--radius-xl)+2px)] items-stretch justify-between overflow-x-auto rounded-t-[var(--radius-xl)] bg-(--hud-bg) px-2 pb-[calc(var(--radius-xl)+2px)] text-(--hud-ink) [scrollbar-width:none]"
+        className="@container absolute inset-x-0 top-0 flex h-[calc(var(--hud-h)+var(--radius-xl)+2px)] items-stretch justify-between overflow-x-auto rounded-t-[var(--radius-xl)] bg-(--hud-bg) px-0.5 pb-[calc(var(--radius-xl)+2px)] text-(--hud-ink) [scrollbar-width:none] @sm:px-2"
       >
+        {/* CTX — occupancy gauge on the left. */}
         <div
           data-slot="hud-slot"
           data-kind="ctx"
@@ -293,38 +329,20 @@ export function SessionHud({
                   data-kind="ctx"
                   aria-label={contextTitle}
                   title={contextTitle}
-                  className="focus-visible:ring-ring/50 flex shrink-0 items-center gap-2 px-3 transition-colors hover:bg-(--hud-hover) focus-visible:ring-[3px] focus-visible:outline-none @max-2xl:gap-1 @max-2xl:px-1.5 @max-sm:px-1"
+                  className="focus-visible:ring-ring/50 flex shrink-0 items-center gap-0.5 px-0.5 transition-colors hover:bg-(--hud-hover) focus-visible:ring-[3px] focus-visible:outline-none @sm:gap-1 @sm:px-1.5 @2xl:gap-2 @2xl:px-2"
                 >
                   <Label>{t('chat.hudContext')}</Label>
-                  <span
-                    data-slot="hud-segments"
-                    data-tone={pressure.tone}
-                    aria-hidden="true"
-                    className="flex items-center gap-[2px]"
-                  >
-                    {Array.from({ length: SEGMENTS }, (_, i) => (
-                      <span
-                        key={i}
-                        data-slot="hud-seg"
-                        data-on={i < filled ? 'true' : 'false'}
-                        data-tone={pressure.tone}
-                        className={cn(
-                          'h-2 w-[3px] rounded-[1px]',
-                          i < filled
-                            ? pressure.tone === 'warn'
-                              ? 'bg-(--hud-warn)'
-                              : pressure.tone === 'danger'
-                                ? 'bg-(--hud-fail)'
-                                : 'bg-(--hud-fill)'
-                            : 'bg-(--hud-track)',
-                        )}
-                      />
-                    ))}
-                  </span>
-                  <Value className={toneClass(pressure.tone)}>
+                  <Segments pct={pressure.pct} tone={pressure.tone} count={SEGMENTS} compactFace={false} />
+                  <Segments
+                    pct={pressure.pct}
+                    tone={pressure.tone}
+                    count={SEGMENTS_COMPACT}
+                    compactFace
+                  />
+                  <Value className={cn(toneClass(pressure.tone), 'font-medium')}>
                     {String(Math.round(pressure.pct))}%
                   </Value>
-                  <span className="font-hud text-[length:var(--hud-value-size)] leading-none tabular-nums text-(--hud-dim) @max-2xl:hidden">
+                  <span className="font-hud text-[length:var(--hud-value-size)] hidden leading-none tabular-nums text-(--hud-dim) @2xl:inline">
                     {formatTokens(pressure.used).toUpperCase()}/
                     {formatTokens(pressure.size).toUpperCase()}
                   </span>
@@ -341,22 +359,27 @@ export function SessionHud({
               data-slot="hud-cell"
               data-kind="ctx"
               data-unknown="true"
-              className="flex shrink-0 items-center gap-2 px-3 @max-2xl:gap-1 @max-2xl:px-1.5 @max-sm:px-1"
+              className="flex shrink-0 items-center gap-2 px-2 @max-2xl:gap-1 @max-2xl:px-1.5 @max-sm:gap-1 @max-sm:px-0.5"
             >
               <Label>{t('chat.hudContext')}</Label>
               <span
-                data-slot="hud-segments"
-                data-unknown="true"
+                data-slot="hud-bar"
+                data-compact="false"
                 aria-hidden="true"
-                className="flex items-center gap-[2px]"
+                className="hidden items-center gap-[2px] @sm:flex"
               >
                 {Array.from({ length: SEGMENTS }, (_, i) => (
-                  <span
-                    key={i}
-                    data-slot="hud-seg"
-                    data-on="false"
-                    className="h-2 w-[3px] rounded-[1px] bg-(--hud-track)"
-                  />
+                  <span key={i} data-slot="hud-seg" data-on="false" className="h-2 w-[3px] rounded-[1px] bg-(--hud-track)" />
+                ))}
+              </span>
+              <span
+                data-slot="hud-bar"
+                data-compact="true"
+                aria-hidden="true"
+                className="flex items-center gap-[1px] @sm:hidden"
+              >
+                {Array.from({ length: SEGMENTS_COMPACT }, (_, i) => (
+                  <span key={i} data-slot="hud-seg" data-on="false" className="h-2 w-[2px] rounded-[1px] bg-(--hud-track)" />
                 ))}
               </span>
               <Value>--</Value>
@@ -364,140 +387,128 @@ export function SessionHud({
           )}
         </div>
 
-        <div
-          data-slot="hud-slot"
-          data-kind="tok"
-          className={cn('flex shrink-0 items-center', SLOT_MIN.tok)}
-        >
-          {tokens !== null ? (
+        {/* The token/cache cluster: TOK | READ | WRITE | HIT | REQ. */}
+        <div className="flex shrink-0 items-center">
+          <div
+            data-slot="hud-slot"
+            data-kind="tok"
+            className={cn('flex shrink-0 items-center', SLOT_MIN.tok)}
+          >
             <div
               data-slot="hud-cell"
               data-kind="tok"
+              data-unknown={totals !== null ? undefined : 'true'}
               role="group"
               aria-label={tokensTitle}
               title={tokensTitle}
-              className="flex shrink-0 items-center gap-2 px-3 @max-2xl:gap-1 @max-2xl:px-1.5 @max-sm:px-1"
+              className="flex shrink-0 items-center gap-0.5 px-0.5 @sm:gap-1 @sm:px-1.5 @2xl:gap-2 @2xl:px-2"
             >
               <Label>{t('chat.hudTokens')}</Label>
-              {tokens.inputTokens !== undefined ? (
-                <Value className="flex items-center gap-0.5">
-                  <PixelArrow dir="up" />
-                  {compact(tokens.inputTokens)}
-                </Value>
-              ) : null}
-              {tokens.outputTokens !== undefined ? (
-                <Value className="flex items-center gap-0.5">
-                  <PixelArrow dir="down" />
-                  {compact(tokens.outputTokens)}
-                </Value>
-              ) : null}
+              <Value>{totals !== null ? compact(totals.total) : '--'}</Value>
             </div>
-          ) : (
-            // Fixed face: both directions hold their glyphs, values unknown.
+          </div>
+
+          <Rule />
+          <div
+            data-slot="hud-slot"
+            data-kind="read"
+            className={cn('flex shrink-0 items-center', SLOT_MIN.read)}
+          >
             <div
               data-slot="hud-cell"
-              data-kind="tok"
-              data-unknown="true"
-              className="flex shrink-0 items-center gap-2 px-3 @max-2xl:gap-1 @max-2xl:px-1.5 @max-sm:px-1"
+              data-kind="read"
+              data-unknown={totals?.read !== undefined ? undefined : 'true'}
+              role="group"
+              aria-label={readTitle}
+              title={readTitle}
+              className="flex shrink-0 items-center gap-0.5 px-0.5 @sm:gap-1 @sm:px-1.5 @2xl:gap-2 @2xl:px-2"
             >
-              <Label>{t('chat.hudTokens')}</Label>
-              <Value className="flex items-center gap-0.5">
-                <PixelArrow dir="up" />--
-              </Value>
-              <Value className="flex items-center gap-0.5">
-                <PixelArrow dir="down" />--
-              </Value>
+              <AbbrLabel full={t('chat.hudRead')} short="R" />
+              <Value>{totals?.read !== undefined ? compact(totals.read) : '--'}</Value>
             </div>
-          )}
+          </div>
+
+          <Rule />
+          <div
+            data-slot="hud-slot"
+            data-kind="write"
+            className={cn('flex shrink-0 items-center', SLOT_MIN.write)}
+          >
+            <div
+              data-slot="hud-cell"
+              data-kind="write"
+              data-unknown={totals?.write !== undefined ? undefined : 'true'}
+              role="group"
+              aria-label={writeTitle}
+              title={writeTitle}
+              className="flex shrink-0 items-center gap-0.5 px-0.5 @sm:gap-1 @sm:px-1.5 @2xl:gap-2 @2xl:px-2"
+            >
+              <AbbrLabel full={t('chat.hudWrite')} short="W" />
+              <Value>{totals?.write !== undefined ? compact(totals.write) : '--'}</Value>
+            </div>
+          </div>
+
+          <Rule />
+          <div
+            data-slot="hud-slot"
+            data-kind="hit"
+            className={cn('flex shrink-0 items-center', SLOT_MIN.hit)}
+          >
+            <div
+              data-slot="hud-cell"
+              data-kind="hit"
+              data-unknown={hit !== null ? undefined : 'true'}
+              role="group"
+              aria-label={hitTitle}
+              title={hitTitle}
+              className="flex shrink-0 items-center gap-0.5 px-0.5 @sm:gap-1 @sm:px-1.5 @2xl:gap-2 @2xl:px-2"
+            >
+              <Label>{t('chat.hudHit')}</Label>
+              <Value>{hit !== null ? `${hit}%` : '--'}</Value>
+            </div>
+          </div>
+
+          <Rule />
+          <div
+            data-slot="hud-slot"
+            data-kind="req"
+            className={cn('flex shrink-0 items-center', SLOT_MIN.req)}
+          >
+            <div
+              data-slot="hud-cell"
+              data-kind="req"
+              data-unknown={totals !== null ? undefined : 'true'}
+              role="group"
+              aria-label={reqTitle}
+              title={reqTitle}
+              className="flex shrink-0 items-center gap-0.5 px-0.5 @sm:gap-1 @sm:px-1.5 @2xl:gap-2 @2xl:px-2"
+            >
+              <Label>{t('chat.hudReq')}</Label>
+              <Value>{totals !== null ? shortCount(totals.turns) : '--'}</Value>
+            </div>
+          </div>
         </div>
 
+        {/* FILES — what the loaded transcript edited (real zero when none). */}
         <div
           data-slot="hud-slot"
-          data-kind="cache"
-          className={cn('flex shrink-0 items-center', SLOT_MIN.cache)}
+          data-kind="files"
+          className={cn('flex shrink-0 items-center', SLOT_MIN.files)}
         >
-          {cache !== null ? (
-            <div
-              data-slot="hud-cell"
-              data-kind="cache"
-              role="group"
-              aria-label={cacheTitle}
-              title={cacheTitle}
-              className="flex shrink-0 items-center gap-2 px-3 @max-2xl:gap-1 @max-2xl:px-1.5 @max-sm:px-1"
-            >
-              <Label>{t('chat.hudCache')}</Label>
-              <Value>{cache.pct}%</Value>
-            </div>
-          ) : (
-            <div
-              data-slot="hud-cell"
-              data-kind="cache"
-              data-unknown="true"
-              className="flex shrink-0 items-center gap-2 px-3 @max-2xl:gap-1 @max-2xl:px-1.5 @max-sm:px-1"
-            >
-              <Label>{t('chat.hudCache')}</Label>
-              <Value>--</Value>
-            </div>
-          )}
-        </div>
-
-        {/* #128 — the fourth fixed slot's tenant is the page's `slot4` prop:
-        TOOLS on the assistant (its work product is tool calls), FILES on
-        machine sessions. Both have a REAL zero state — nothing ran is data. */}
-        <div
-          data-slot="hud-slot"
-          data-kind={slot4 === 'tools' ? 'tools' : 'files'}
-          className={cn(
-            'flex shrink-0 items-center',
-            slot4 === 'tools' ? SLOT_MIN.tools : SLOT_MIN.files,
-          )}
-        >
-          {slot4 === 'tools' ? (
-            <div
-              data-slot="hud-cell"
-              data-kind="tools"
-              role="group"
-              aria-label={toolsTitle}
-              title={toolsTitle}
-              className="flex shrink-0 items-center gap-2 px-3 @max-2xl:gap-1 @max-2xl:px-1.5 @max-sm:px-1"
-            >
-              <Label>{t('chat.hudTools')}</Label>
-              <Value>{toolCalls !== null ? shortCount(toolCalls.count) : '0'}</Value>
-            </div>
-          ) : files !== null ? (
-            <div
-              data-slot="hud-cell"
-              data-kind="files"
-              role="group"
-              aria-label={filesTitle}
-              title={filesTitle}
-              className="flex shrink-0 items-center gap-2 px-3 @max-2xl:gap-1 @max-2xl:px-1.5 @max-sm:px-1"
-            >
-              <Label>{t('chat.hudFiles')}</Label>
-              <Value>{files.files > 0 ? shortCount(files.files) : '?'}</Value>
-              {files.added > 0 ? (
-                <Value className="text-(--hud-ok)">+{shortCount(files.added)}</Value>
-              ) : null}
-              {files.removed > 0 ? (
-                <Value className="text-(--hud-fail)">−{shortCount(files.removed)}</Value>
-              ) : null}
-            </div>
-          ) : (
-            <div
-              data-slot="hud-cell"
-              data-kind="files"
-              data-zero="true"
-              role="group"
-              aria-label={filesTitle}
-              title={filesTitle}
-              className="flex shrink-0 items-center gap-2 px-3 @max-2xl:gap-1 @max-2xl:px-1.5 @max-sm:px-1"
-            >
-              <Label>{t('chat.hudFiles')}</Label>
-              <Value>0</Value>
-              <Value className="text-(--hud-ok)">+0</Value>
-              <Value className="text-(--hud-fail)">−0</Value>
-            </div>
-          )}
+          <div
+            data-slot="hud-cell"
+            data-kind="files"
+            data-zero={files === null ? 'true' : undefined}
+            role="group"
+            aria-label={filesTitle}
+            title={filesTitle}
+            className="flex shrink-0 items-center gap-0.5 px-0.5 @sm:gap-1 @sm:px-1.5 @2xl:gap-2 @2xl:px-2"
+          >
+            <Label>{t('chat.hudFiles')}</Label>
+            <Value>{files !== null ? shortCount(files.files) : '0'}</Value>
+            <Value className="text-(--hud-ok)">+{files !== null ? shortCount(files.added) : '0'}</Value>
+            <Value className="text-(--hud-fail)">−{files !== null ? shortCount(files.removed) : '0'}</Value>
+          </div>
         </div>
       </section>
     </div>

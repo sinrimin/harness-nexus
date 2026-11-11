@@ -13,12 +13,12 @@ import { SessionHud } from './session-hud';
 import type { HudEditStats } from './hud-stats';
 
 /**
- * #124/#128 — the HUD's mechanical contract: English engraved labels in both
- * locales, FIXED slots in the instrument order, and (the alpha.11 fixed-face
- * revision) the strip always renders — an unknown reading is `--`, never a
- * fake number and never an absent cell; the fourth slot's zero state is a
- * real zero (`FILES 0 +0 −0` / `TOOLS 0`). The CTX cell with data opens the
- * shared details card. Visual correctness is the agent-browser pass.
+ * #124/#128 — the HUD's mechanical contract: the fixed instrument face in the
+ * reference order CTX · TOK · READ · WRITE · HIT · REQ · FILES, English
+ * engraved labels in both locales with localized tooltips, `--` for unknown
+ * readings, a real zero state for FILES, hairline rules inside the middle
+ * cluster, the wide (16-segment) and phone (8-segment) gauges, and the CTX
+ * popover. Visual correctness is the agent-browser pass.
  */
 
 beforeAll(() => {
@@ -72,109 +72,130 @@ const files: HudEditStats = {
 const usage = { contextUsed: 34_100, contextSize: 200_000 };
 const sessionUsage = {
   turns: 2,
-  inputTokens: 500,
-  outputTokens: 20,
-  cacheReadTokens: 400,
-  cacheWriteTokens: 100,
+  inputTokens: 5_000,
+  outputTokens: 200,
+  cacheReadTokens: 4_000,
+  cacheWriteTokens: 1_000,
 };
 
+const cellsOf = (root: ParentNode) =>
+  [...root.querySelectorAll('[data-slot="hud-cell"]')] as HTMLElement[];
+
 describe('SessionHud', () => {
-  it('the fixed face: with no data at all the strip still renders — unknowns read --', () => {
+  it('the fixed face: every slot renders with no data — unknowns read --, FILES holds a real zero', () => {
     const { container } = render(
       <SessionHud usage={null} sessionUsage={null} files={null} historyPartial={false} />,
       { wrapper: Providers },
     );
     const hud = container.querySelector('[data-slot="session-hud"]');
     expect(hud).not.toBeNull();
-    const cells = hud?.querySelectorAll('[data-slot="hud-cell"]');
-    expect(cells?.length).toBe(4);
-    expect(cells?.[0]?.getAttribute('data-unknown')).toBe('true');
-    expect(cells?.[0]?.textContent).toContain('CTX');
-    expect(cells?.[0]?.textContent).toContain('--');
-    expect(cells?.[1]?.textContent).toContain('--');
-    expect(cells?.[2]?.textContent).toContain('--');
-    // The FILES zero state is a real zero — data, not absence.
-    expect(cells?.[3]?.getAttribute('data-zero')).toBe('true');
-    expect(cells?.[3]?.textContent).toContain('0');
-    expect(cells?.[3]?.textContent).toContain('+0');
-    expect(cells?.[3]?.textContent).toContain('−0');
+    const slots = hud?.querySelectorAll('[data-slot="hud-slot"]');
+    expect([...(slots ?? [])].map((s) => s.getAttribute('data-kind'))).toEqual([
+      'ctx',
+      'tok',
+      'read',
+      'write',
+      'hit',
+      'req',
+      'files',
+    ]);
+    const cells = cellsOf(hud!);
+    expect(cells.length).toBe(7);
+    for (const kind of ['ctx', 'tok', 'read', 'write', 'hit', 'req']) {
+      const cell = cells.find((c) => c.getAttribute('data-kind') === kind)!;
+      expect(cell.getAttribute('data-unknown')).toBe('true');
+      expect(cell.textContent).toContain('--');
+    }
+    const filesCell = cells.find((c) => c.getAttribute('data-kind') === 'files')!;
+    expect(filesCell.getAttribute('data-zero')).toBe('true');
+    expect(filesCell.textContent).toContain('FILES');
+    expect(filesCell.textContent).toContain('0');
+    expect(filesCell.textContent).toContain('+0');
+    expect(filesCell.textContent).toContain('−0');
+
+    // The CTX gauge keeps its two faces: 16 segments wide, 8 on the phone.
+    const bars = hud?.querySelectorAll('[data-slot="hud-bar"]');
+    expect([...(bars ?? [])].map((b) => b.getAttribute('data-compact'))).toEqual([
+      'false',
+      'true',
+    ]);
+    const wide = hud?.querySelector('[data-slot="hud-bar"][data-compact="false"]');
+    const narrow = hud?.querySelector('[data-slot="hud-bar"][data-compact="true"]');
+    expect(wide?.querySelectorAll('[data-slot="hud-seg"]').length).toBe(16);
+    expect(narrow?.querySelectorAll('[data-slot="hud-seg"]').length).toBe(6);
+
+    // Hairline rules sit INSIDE the middle cluster only (4 edges).
+    expect(hud?.querySelectorAll('span.w-px').length).toBe(4);
   });
 
-  it('keeps its labels English under the zh locale and formats every cell', () => {
+  it('renders every reading in the reference order', () => {
+    const { container } = render(
+      <SessionHud usage={usage} sessionUsage={sessionUsage} files={files} historyPartial={false} />,
+      { wrapper: Providers },
+    );
+    const hud = container.querySelector('[data-slot="session-hud"]')!;
+    const cells = cellsOf(hud);
+    const text = (kind: string) =>
+      cells.find((c) => c.getAttribute('data-kind') === kind)?.textContent ?? '';
+
+    expect(text('ctx')).toContain('CTX');
+    expect(text('ctx')).toContain('17%');
+    expect(text('ctx')).toContain('34.1K/200K');
+    // TOK = total through the session (in + out + cache read/written).
+    expect(text('tok')).toContain('TOK');
+    expect(text('tok')).toContain('10.2K');
+    expect(text('read')).toContain('READ');
+    expect(text('read')).toContain('4K');
+    expect(text('write')).toContain('WRITE');
+    expect(text('write')).toContain('1K');
+    // 4000 / (5000 + 4000 + 1000) = 40%.
+    expect(text('hit')).toContain('HIT');
+    expect(text('hit')).toContain('40%');
+    expect(text('req')).toContain('REQ');
+    expect(text('req')).toContain('2');
+    expect(text('files')).toContain('FILES');
+    expect(text('files')).toContain('+42');
+    expect(text('files')).toContain('−7');
+
+    // The CTX gauge fills by pressure (17% of 16 = 3 segments).
+    const on = hud.querySelectorAll('[data-slot="hud-bar"][data-compact="false"] [data-on="true"]');
+    expect(on.length).toBe(3);
+
+    // Tooltips carry the detailed sentences.
+    expect(cells.find((c) => c.getAttribute('data-kind') === 'tok')?.getAttribute('title')).toContain(
+      '10.2K total',
+    );
+    expect(cells.find((c) => c.getAttribute('data-kind') === 'hit')?.getAttribute('title')).toContain(
+      '40%',
+    );
+    expect(cells.find((c) => c.getAttribute('data-kind') === 'req')?.getAttribute('title')).toContain(
+      'Requests in this session: 2',
+    );
+  });
+
+  it('keeps the labels English under zh while the tooltips localize', () => {
     localStorage.setItem('hnx.lang', 'zh');
     const { container } = render(
       <SessionHud usage={usage} sessionUsage={sessionUsage} files={files} historyPartial={false} />,
       { wrapper: Providers },
     );
-    const hud = container.querySelector('[data-slot="session-hud"]');
-    expect(hud).not.toBeNull();
-    expect(hud?.textContent).toContain('CTX');
-    expect(hud?.textContent).toContain('TOK');
-    expect(hud?.textContent).toContain('CACHE');
-    expect(hud?.textContent).toContain('FILES');
-    expect(hud?.textContent).toContain('17%');
-    expect(hud?.textContent).toContain('34.1K/200K');
-    expect(hud?.textContent).toContain('500');
-    expect(hud?.textContent).toContain('20');
-    // 400 / (500 + 400 + 100) = 40%.
-    expect(hud?.textContent).toContain('40%');
-    expect(hud?.textContent).toContain('+42');
-    expect(hud?.textContent).toContain('−7');
-
-    // Unknown fields never become fake numbers: a turn-only snapshot keeps
-    // the TOK/CACHE glyphs with `--`, and FILES holds its real zero.
+    const hud = container.querySelector('[data-slot="session-hud"]')!;
+    for (const label of ['CTX', 'TOK', 'READ', 'WRITE', 'HIT', 'REQ', 'FILES']) {
+      expect(hud.textContent).toContain(label);
+    }
+    const readCell = cellsOf(hud).find((c) => c.getAttribute('data-kind') === 'read')!;
+    expect(readCell.getAttribute('title')).toContain('缓存读取：4K');
+    const reqCell = cellsOf(hud).find((c) => c.getAttribute('data-kind') === 'req')!;
+    expect(reqCell.getAttribute('title')).toContain('本会话请求数：2');
+    // Unknown is localized too.
     const { container: bare } = render(
-      <SessionHud usage={usage} sessionUsage={{ turns: 1 }} files={null} historyPartial={false} />,
+      <SessionHud usage={null} sessionUsage={null} files={null} />,
       { wrapper: Providers },
     );
-    const bareHud = bare.querySelector('[data-slot="session-hud"]');
-    expect(bareHud?.textContent).toContain('CTX');
-    expect(bareHud?.textContent).toContain('17%');
-    const tokCell = bareHud?.querySelector('[data-slot="hud-cell"][data-kind="tok"]');
-    expect(tokCell?.textContent).toContain('TOK');
-    expect(tokCell?.textContent).toContain('--');
-    expect(bareHud?.querySelector('[data-slot="hud-cell"][data-kind="cache"]')?.textContent).toContain(
-      '--',
-    );
-    expect(bareHud?.querySelector('[data-slot="hud-cell"][data-kind="files"]')?.textContent).toContain(
-      '+0',
-    );
-  });
-
-  it('each cell owns a fixed slot: absent readings leave the slot blank, not shuffled', () => {
-    // Full strip — four slots in the fixed instrument order.
-    const { container } = render(
-      <SessionHud usage={usage} sessionUsage={sessionUsage} files={files} historyPartial={false} />,
-      { wrapper: Providers },
-    );
-    const hud = container.querySelector('[data-slot="session-hud"]');
-    expect(hud?.querySelectorAll(':scope > [data-slot="hud-slot"]').length).toBe(4);
-    expect(
-      [...(hud?.querySelectorAll(':scope > [data-slot="hud-slot"]') ?? [])].map((s) =>
-        s.getAttribute('data-kind'),
-      ),
-    ).toEqual(['ctx', 'tok', 'cache', 'files']);
-    expect(hud?.querySelectorAll('[data-slot="hud-cell"]').length).toBe(4);
-
-    // No CTX report: the ctx SLOT still stands with its gauge dark and the
-    // value `--` — the tok cell does not slide into the leading position.
-    const { container: noCtx } = render(
-      <SessionHud usage={null} sessionUsage={sessionUsage} files={files} historyPartial={false} />,
-      { wrapper: Providers },
-    );
-    const strip = noCtx.querySelector('[data-slot="session-hud"]');
-    const slots = strip?.querySelectorAll(':scope > [data-slot="hud-slot"]');
-    expect(slots?.length).toBe(4);
-    expect(slots?.[0]?.getAttribute('data-kind')).toBe('ctx');
-    expect(slots?.[0]?.querySelector('[data-slot="hud-cell"]')?.getAttribute('data-kind')).toBe(
-      'ctx',
-    );
-    expect(slots?.[0]?.querySelector('[data-slot="hud-cell"]')?.getAttribute('data-unknown')).toBe(
-      'true',
-    );
-    expect(slots?.[1]?.querySelector('[data-slot="hud-cell"]')?.getAttribute('data-kind')).toBe(
-      'tok',
-    );
+    const hitCell = cellsOf(bare.querySelector('[data-slot="session-hud"]')!).find(
+      (c) => c.getAttribute('data-kind') === 'hit',
+    )!;
+    expect(hitCell.getAttribute('title')).toBe('暂无数据');
   });
 
   it('opens the shared context details from the CTX cell', () => {
@@ -195,23 +216,22 @@ describe('SessionHud', () => {
       pathless: false,
       list: [{ path: 'src/big.ts', added: 52_345, removed: 12_890 }],
     };
-    render(<SessionHud usage={null} sessionUsage={null} files={huge} historyPartial={false} />, {
-      wrapper: Providers,
-    });
-    const cell = document.querySelector('[data-slot="hud-cell"][data-kind="files"]');
+    const { container } = render(
+      <SessionHud usage={null} sessionUsage={null} files={huge} historyPartial={false} />,
+      { wrapper: Providers },
+    );
+    const cell = container.querySelector('[data-slot="hud-cell"][data-kind="files"]');
     expect(cell?.textContent).toContain('1.2K');
     expect(cell?.textContent).toContain('+52K');
     expect(cell?.textContent).toContain('−13K');
-    // The exact figures remain available on the tooltip.
     expect(cell?.getAttribute('title')).toContain('52345');
 
-    // Just under a million rounds to M, never the five-character "1000K".
     const nearMillion: HudEditStats = { ...huge, added: 999_999, removed: 0 };
-    const { container } = render(
+    const { container: c2 } = render(
       <SessionHud usage={null} sessionUsage={null} files={nearMillion} historyPartial={false} />,
       { wrapper: Providers },
     );
-    const nearCell = container.querySelector('[data-slot="hud-cell"][data-kind="files"]');
+    const nearCell = c2.querySelector('[data-slot="hud-cell"][data-kind="files"]');
     expect(nearCell?.textContent).toContain('+1M');
   });
 
@@ -224,105 +244,21 @@ describe('SessionHud', () => {
     expect(fileCell?.getAttribute('title')).toContain('src/a.ts +30 −5');
   });
 
-  // ---- #128 — the TOOLS fourth slot (the assistant page) ----
-
-  it('renders the TOOLS cell in the fourth fixed slot when the page declares the tenant', () => {
+  it('a partial snapshot shows only what it reported — the rest stays --', () => {
     const { container } = render(
       <SessionHud
         usage={null}
-        sessionUsage={sessionUsage}
-        slot4="tools"
-        toolCalls={{
-          count: 7,
-          list: [
-            { name: 'notes_search', n: 4 },
-            { name: 'dispatch_run', n: 3 },
-          ],
-        }}
+        sessionUsage={{ turns: 1, inputTokens: 700 }}
+        files={null}
       />,
       { wrapper: Providers },
     );
-    const hud = container.querySelector('[data-slot="session-hud"]');
-    const slots = hud?.querySelectorAll(':scope > [data-slot="hud-slot"]');
-    // The order stays CTX · TOK · CACHE · (FILES|TOOLS); the fourth slot's
-    // tenant flips per page, never shuffles.
-    expect([...(slots ?? [])].map((s) => s.getAttribute('data-kind'))).toEqual([
-      'ctx',
-      'tok',
-      'cache',
-      'tools',
-    ]);
-    const cell = hud?.querySelector('[data-slot="hud-cell"][data-kind="tools"]');
-    expect(cell?.textContent).toContain('TOOLS');
-    expect(cell?.textContent).toContain('7');
-    expect(hud?.querySelector('[data-slot="hud-cell"][data-kind="files"]')).toBeNull();
-  });
-
-  it('bounds the TOOLS count and keeps the exact tally plus top tools in the tooltip', () => {
-    const list = Array.from({ length: 7 }, (_, i) => ({ name: `tool_${String(i)}`, n: 2 }));
-    const { container } = render(
-      <SessionHud
-        usage={null}
-        sessionUsage={null}
-        slot4="tools"
-        toolCalls={{ count: 12_345, list: [{ name: 'notes_search', n: 12_345 }, ...list] }}
-      />,
-      { wrapper: Providers },
-    );
-    const cell = container.querySelector('[data-slot="hud-cell"][data-kind="tools"]');
-    expect(cell?.textContent).toContain('12K');
-    const title = cell?.getAttribute('title') ?? '';
-    expect(title).toContain('Tool calls: 12345');
-    // Top 5 by count, then the +N more line (the hudFilesMore pattern).
-    expect(title).toContain('notes_search ×12345');
-    expect(title).toContain('tool_0 ×2');
-    expect(title).not.toContain('tool_5');
-    expect(title).toContain('+3 more');
-  });
-
-  it('keeps the TOOLS label English under zh while the tooltip localizes', () => {
-    localStorage.setItem('hnx.lang', 'zh');
-    const { container } = render(
-      <SessionHud
-        usage={null}
-        sessionUsage={null}
-        slot4="tools"
-        toolCalls={{ count: 3, list: [{ name: 'notes_search', n: 3 }] }}
-      />,
-      { wrapper: Providers },
-    );
-    const cell = container.querySelector('[data-slot="hud-cell"][data-kind="tools"]');
-    expect(cell?.textContent).toContain('TOOLS');
-    // The engraved label stays English; the SENTENCE around the tool names
-    // is localized copy (unlike #124's titles).
-    expect(cell?.getAttribute('title')).toContain('工具调用：3 次');
-    expect(cell?.getAttribute('title')).toContain('notes_search ×3');
-  });
-
-  it('the fourth slot zero states: FILES 0 +0 −0 by default, TOOLS 0 when declared', () => {
-    // FILES tenant, nothing ran: a real zero, tooltip says zero.
-    const { container } = render(
-      <SessionHud usage={usage} sessionUsage={sessionUsage} files={null} />,
-      { wrapper: Providers },
-    );
-    const hud = container.querySelector('[data-slot="session-hud"]');
-    const slots = hud?.querySelectorAll(':scope > [data-slot="hud-slot"]');
-    expect(slots?.length).toBe(4);
-    expect(slots?.[3]?.getAttribute('data-kind')).toBe('files');
-    const filesCell = slots?.[3]?.querySelector('[data-slot="hud-cell"]');
-    expect(filesCell?.textContent).toContain('FILES');
-    expect(filesCell?.textContent).toContain('+0');
-    expect(filesCell?.getAttribute('title')).toContain('+0 / −0');
-
-    // TOOLS tenant with no calls yet: the label and a zero — the tenant is
-    // the page's declaration, not the data's nullity.
-    const { container: tools } = render(
-      <SessionHud usage={null} sessionUsage={null} slot4="tools" toolCalls={null} />,
-      { wrapper: Providers },
-    );
-    const toolsCell = tools.querySelector('[data-slot="hud-cell"][data-kind="tools"]');
-    expect(toolsCell?.textContent).toContain('TOOLS');
-    expect(toolsCell?.textContent).toContain('0');
-    expect(toolsCell?.getAttribute('title')).toContain('Tool calls: 0');
+    const cells = cellsOf(container.querySelector('[data-slot="session-hud"]')!);
+    const by = (kind: string) => cells.find((c) => c.getAttribute('data-kind') === kind)!;
+    expect(by('tok').textContent).toContain('700');
+    expect(by('read').textContent).toContain('--');
+    expect(by('write').textContent).toContain('--');
+    expect(by('hit').textContent).toContain('--');
+    expect(by('req').textContent).toContain('1');
   });
 });

@@ -166,6 +166,13 @@ export function startAssistantTurn(
     prompt: readonly AssistantPromptBlock[];
     /** The transcript BEFORE this turn (rebuild context — prompt rides separately). */
     rows: readonly AssistantMessageRow[];
+    /**
+     * #128 — the current binding's registry context window. Present ⇒ each
+     * persisted assistant row carries the derived occupancy (contextUsed /
+     * contextSize) for the HUD's restore path; absent ⇒ the row keeps the
+     * reported counts only (the CTX reading stays unknown).
+     */
+    contextWindow?: number;
     emit: AssistantEmit;
     /** Persist helper (seq-allocated by the caller's uow access). */
     append: (row: AssistantMessageRow) => Promise<void>;
@@ -574,7 +581,27 @@ export function startAssistantTurn(
                   ? 'error'
                   : 'end_turn',
           ...(m.usage !== undefined && (m.usage.input > 0 || m.usage.output > 0)
-            ? { usage: { inputTokens: m.usage.input, outputTokens: m.usage.output } }
+            ? {
+                usage: {
+                  inputTokens: m.usage.input,
+                  outputTokens: m.usage.output,
+                  // #128 persistence amendment — the cache counts and the
+                  // derived occupancy ride the row so a reopened session
+                  // restores the HUD's READ/WRITE/HIT/CTX readings.
+                  cacheReadTokens: m.usage.cacheRead,
+                  cacheWriteTokens: m.usage.cacheWrite,
+                  ...(input.contextWindow !== undefined
+                    ? {
+                        contextUsed:
+                          m.usage.input +
+                          m.usage.cacheRead +
+                          m.usage.cacheWrite +
+                          m.usage.output,
+                        contextSize: input.contextWindow,
+                      }
+                    : {}),
+                },
+              }
             : {}),
           ...(m.errorMessage !== undefined ? { error: m.errorMessage } : {}),
         });

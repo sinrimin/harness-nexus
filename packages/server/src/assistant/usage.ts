@@ -34,13 +34,15 @@ export class SessionUsageAccumulator {
     cacheWriteTokens: 0,
   };
   readonly #reported = { input: false, output: false, cacheRead: false, cacheWrite: false };
+  /** The LAST response's derived occupancy (the HUD's CTX reading). */
+  #context: { contextUsed: number; contextSize: number } | null = null;
 
   /**
    * Seed from the persisted transcript: one user row = one turn, each
-   * assistant row's `usage` (inputTokens/outputTokens — cache fields are not
-   * persisted, so seeded cache totals stay honestly unknown) one recorded
-   * response. A fresh channel opens with the session's history intact
-   * instead of blanking the HUD; cache knowledge is channel-lifetime.
+   * assistant row's `usage` one recorded response. Rows carry the cache
+   * counts and the derived occupancy since #128's persistence amendment, so
+   * a reopened session restores the whole strip (legacy rows without those
+   * fields keep them honestly unknown).
    */
   static fromRows(rows: readonly AssistantMessageRow[]): SessionUsageAccumulator {
     const acc = new SessionUsageAccumulator();
@@ -65,6 +67,8 @@ export class SessionUsageAccumulator {
     outputTokens?: number | undefined;
     cacheReadTokens?: number | undefined;
     cacheWriteTokens?: number | undefined;
+    contextUsed?: number | undefined;
+    contextSize?: number | undefined;
   }): void {
     if (report.inputTokens !== undefined) {
       this.#reported.input = true;
@@ -83,6 +87,20 @@ export class SessionUsageAccumulator {
       this.#reported.cacheWrite = true;
       this.#totals.cacheWriteTokens += report.cacheWriteTokens;
     }
+    // Occupancy is a LAST-WINS reading, never a sum (it describes the window
+    // as it now stands, not the session's throughput).
+    if (
+      report.contextUsed !== undefined &&
+      report.contextSize !== undefined &&
+      report.contextSize > 0
+    ) {
+      this.#context = { contextUsed: report.contextUsed, contextSize: report.contextSize };
+    }
+  }
+
+  /** The last response's derived occupancy (null when none was ever known). */
+  contextSnapshot(): { contextUsed: number; contextSize: number } | null {
+    return this.#context;
   }
 
   /**
