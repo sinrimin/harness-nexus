@@ -65,7 +65,12 @@ import { Composer, type ComposerConfig } from '@/components/chat/composer.js';
 import { usePageTitle } from '@/components/shell/page-slots';
 import { TodoPanel } from '@/components/chat/todo-panel.js';
 import { EndSwitcher } from '@/components/chat/end-switcher.js';
-import { CollapsedRail, useRailCollapsed } from '@/components/chat/collapsed-rail.js';
+import {
+  CollapsedRail,
+  RailMenuHint,
+  RailMenuRow,
+  useRailCollapsed,
+} from '@/components/chat/collapsed-rail.js';
 import { createFoldState, fold, type UserBlock } from '@/components/chat/fold.js';
 import type { ChatConfigSetPayload, PromptBlock } from '@/realtime';
 import {
@@ -916,6 +921,25 @@ export function AssistantSessionPage() {
                       if (s.id !== sessionId) void openSession(s.id);
                     },
                   }))}
+                // #127 — the flat assistant list (pinned first, same order
+                // as the rail) in the floating switcher.
+                sessionMenu={
+                  sortedSessions.length === 0 ? (
+                    <RailMenuHint>{t('assistants.noSessions')}</RailMenuHint>
+                  ) : (
+                    sortedSessions.map((s) => (
+                      <RailMenuRow
+                        key={s.id}
+                        title={s.title || t('chat.untitled')}
+                        meta={relativeTime(s.lastMessageAt ?? s.updatedAt, dateLocale(lang))}
+                        active={s.id === sessionId}
+                        onPick={() => {
+                          if (s.id !== sessionId) void openSession(s.id);
+                        }}
+                      />
+                    ))
+                  )
+                }
                 newSessionLabel={t('assistants.newAssistantSession')}
                 newSessionDisabled={assistantId === ''}
                 onNewSession={() => void openSession()}
