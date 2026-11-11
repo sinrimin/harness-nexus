@@ -118,6 +118,26 @@ describe('SessionHud', () => {
     expect(bareHud?.textContent).not.toContain('FILES');
   });
 
+  it('has no divider rules: the strip is one face, so a missing first cell leaves no leading mark', () => {
+    // Full strip — nothing but the four cells at the top level.
+    const { container } = render(
+      <SessionHud usage={usage} sessionUsage={sessionUsage} files={files} historyPartial={false} />,
+      { wrapper: Providers },
+    );
+    const hud = container.querySelector('[data-slot="session-hud"]');
+    expect(hud?.children.length).toBe(4);
+    expect(hud?.querySelectorAll('[data-slot="hud-cell"]').length).toBe(4);
+
+    // No CTX report: the strip STARTS with the TOK cell (no leading rule).
+    const { container: noCtx } = render(
+      <SessionHud usage={null} sessionUsage={sessionUsage} files={files} historyPartial={false} />,
+      { wrapper: Providers },
+    );
+    const strip = noCtx.querySelector('[data-slot="session-hud"]');
+    expect(strip?.firstElementChild?.getAttribute('data-kind')).toBe('tok');
+    expect(strip?.firstElementChild?.tagName).toBe('DIV');
+  });
+
   it('opens the shared context details from the CTX cell', () => {
     render(<SessionHud usage={usage} sessionUsage={null} files={null} historyPartial={false} />, {
       wrapper: Providers,

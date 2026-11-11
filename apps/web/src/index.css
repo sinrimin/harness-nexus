@@ -208,7 +208,6 @@
   --hud-bg: oklch(0.21 0.012 260);
   --hud-ink: oklch(0.95 0.004 250);
   --hud-dim: oklch(0.72 0.012 250);
-  --hud-rule: oklch(1 0 0 / 0.12);
   --hud-track: oklch(1 0 0 / 0.16);
   --hud-fill: oklch(0.92 0.004 250);
   --hud-ok: oklch(0.8 0.16 150);

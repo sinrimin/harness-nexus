@@ -143,7 +143,6 @@
   --hud-bg: var(--surface-inverted);
   --hud-ink: var(--surface-inverted-ink);
   --hud-dim: var(--surface-inverted-dim);
-  --hud-rule: rgba(200, 212, 224, 0.16);
   --hud-track: rgba(200, 212, 224, 0.18);
   --hud-fill: #93a3b5;
   --hud-ok: #6fdc8c;

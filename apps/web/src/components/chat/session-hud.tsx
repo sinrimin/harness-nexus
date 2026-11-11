@@ -14,10 +14,10 @@ import type { HudEditStats } from './hud-stats.js';
 /**
  * #124 — the session HUD, the band UNDER the Sender's top edge:
  *
- *   CTX ▮▮▯▯▯▯▯▯ 17% 34.1K/200K │ TOK ↑34.1K ↓1.2K │ CACHE 84% │ FILES 3 +42 −7
+ *   CTX ▮▮▯▯▯▯▯▯ 17% 34.1K/200K   TOK ↑34.1K ↓1.2K   CACHE 84%   FILES 3 +42 −7
  *
  * The Sender keeps its full rounded rectangle; this strip is a sibling that
- * carries a 26px spacer in flow and then extends BEHIND the card (absolute,
+ * carries an 18px spacer in flow and then extends BEHIND the card (absolute,
  * radius + 2px deeper than the visible strip). The card's opaque background
  * and rounded top corners therefore cut the strip's bottom edge into the
  * concave corners of a slider-phone body: the Sender is on top, the band
@@ -25,9 +25,10 @@ import type { HudEditStats } from './hud-stats.js';
  * border fall on the band at the seam — the strip carries no shadow or border
  * of its own, so both surfaces read as one device's physics.
  *
- * The readings are centred in the 18px strip (the context ticks ride 2px
- * above that centre — a level bar beside mono figures reads low), so the band
- * reads as a moulded-in header rather than a label parked at one edge.
+ * The readings are centred in the 18px strip and the cells spread
+ * `justify-between` — no divider rules between them: the strip is one glass
+ * face, and a leading rule would sit at its left edge whenever the first cell
+ * (CTX) has nothing to report.
  *
  * Material is the always-dark instrument glass (`data-surface="hud"`); every
  * colour and size is a `--hud-*` token, so BAY repaints it as its inverted LCD
@@ -139,10 +140,6 @@ function PixelArrow({ dir }: { dir: 'up' | 'down' }) {
       )}
     </svg>
   );
-}
-
-function Divider() {
-  return <span aria-hidden="true" className="my-1.5 w-px shrink-0 bg-(--hud-rule)" />;
 }
 
 export interface SessionHudProps {
@@ -275,71 +272,62 @@ export function SessionHud({ usage, sessionUsage, files, historyPartial }: Sessi
         ) : null}
 
         {tokens !== null ? (
-          <>
-            <Divider />
-            <div
-              data-slot="hud-cell"
-              data-kind="tok"
-              role="group"
-              aria-label={tokensTitle}
-              title={tokensTitle}
-              className="flex shrink-0 items-center gap-2 px-3 @max-2xl:gap-1 @max-2xl:px-1.5 @max-sm:px-1"
-            >
-              <Label>{t('chat.hudTokens')}</Label>
-              {tokens.inputTokens !== undefined ? (
-                <Value className="flex items-center gap-0.5">
-                  <PixelArrow dir="up" />
-                  {compact(tokens.inputTokens)}
-                </Value>
-              ) : null}
-              {tokens.outputTokens !== undefined ? (
-                <Value className="flex items-center gap-0.5">
-                  <PixelArrow dir="down" />
-                  {compact(tokens.outputTokens)}
-                </Value>
-              ) : null}
-            </div>
-          </>
+          <div
+            data-slot="hud-cell"
+            data-kind="tok"
+            role="group"
+            aria-label={tokensTitle}
+            title={tokensTitle}
+            className="flex shrink-0 items-center gap-2 px-3 @max-2xl:gap-1 @max-2xl:px-1.5 @max-sm:px-1"
+          >
+            <Label>{t('chat.hudTokens')}</Label>
+            {tokens.inputTokens !== undefined ? (
+              <Value className="flex items-center gap-0.5">
+                <PixelArrow dir="up" />
+                {compact(tokens.inputTokens)}
+              </Value>
+            ) : null}
+            {tokens.outputTokens !== undefined ? (
+              <Value className="flex items-center gap-0.5">
+                <PixelArrow dir="down" />
+                {compact(tokens.outputTokens)}
+              </Value>
+            ) : null}
+          </div>
         ) : null}
 
         {cache !== null ? (
-          <>
-            <Divider />
-            <div
-              data-slot="hud-cell"
-              data-kind="cache"
-              role="group"
-              aria-label={cacheTitle}
-              title={cacheTitle}
-              className="flex shrink-0 items-center gap-2 px-3 @max-2xl:gap-1 @max-2xl:px-1.5 @max-sm:px-1"
-            >
-              <Label>{t('chat.hudCache')}</Label>
-              <Value>{cache.pct}%</Value>
-            </div>
-          </>
+          <div
+            data-slot="hud-cell"
+            data-kind="cache"
+            role="group"
+            aria-label={cacheTitle}
+            title={cacheTitle}
+            className="flex shrink-0 items-center gap-2 px-3 @max-2xl:gap-1 @max-2xl:px-1.5 @max-sm:px-1"
+          >
+            <Label>{t('chat.hudCache')}</Label>
+            <Value>{cache.pct}%</Value>
+          </div>
         ) : null}
 
         {files !== null ? (
-          <>
-            <Divider />
-            <div
-              data-slot="hud-cell"
-              data-kind="files"
-              role="group"
-              aria-label={filesTitle}
-              title={filesTitle}
-              className="flex shrink-0 items-center gap-2 px-3 @max-2xl:gap-1 @max-2xl:px-1.5 @max-sm:px-1"
-            >
-              <Label>{t('chat.hudFiles')}</Label>
-              <Value>{files.files > 0 ? shortCount(files.files) : '?'}</Value>
-              {files.added > 0 ? (
-                <Value className="text-(--hud-ok)">+{shortCount(files.added)}</Value>
-              ) : null}
-              {files.removed > 0 ? (
-                <Value className="text-(--hud-fail)">−{shortCount(files.removed)}</Value>
-              ) : null}
-            </div>
-          </>
+          <div
+            data-slot="hud-cell"
+            data-kind="files"
+            role="group"
+            aria-label={filesTitle}
+            title={filesTitle}
+            className="flex shrink-0 items-center gap-2 px-3 @max-2xl:gap-1 @max-2xl:px-1.5 @max-sm:px-1"
+          >
+            <Label>{t('chat.hudFiles')}</Label>
+            <Value>{files.files > 0 ? shortCount(files.files) : '?'}</Value>
+            {files.added > 0 ? (
+              <Value className="text-(--hud-ok)">+{shortCount(files.added)}</Value>
+            ) : null}
+            {files.removed > 0 ? (
+              <Value className="text-(--hud-fail)">−{shortCount(files.removed)}</Value>
+            ) : null}
+          </div>
         ) : null}
       </section>
     </div>
